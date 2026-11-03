@@ -55,7 +55,7 @@ td code,li code{font:13px/1.3 ui-monospace,Consolas,monospace;color:#d7c9a3}
 button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
 /* ---------- the table, 874 x 402 ---------- */
-#stage{position:absolute;left:0;top:0;width:874px;height:402px;transform-origin:0 0;overflow:hidden;background:#040605;font-family:Rajdhani,'Arial Narrow',sans-serif;color:#F0EAD6;-webkit-font-smoothing:antialiased;--shx:0px;--shy:3px;user-select:none}
+#stage{position:absolute;left:0;top:0;width:874px;height:402px;transform-origin:0 0;overflow:hidden;background:#040605;font-family:Rajdhani,'Arial Narrow',sans-serif;color:#F0EAD6;-webkit-font-smoothing:antialiased;--shx:0px;--shy:1px;user-select:none}
 #world,#hud,#top{position:absolute;inset:0}
 #hud,#top{pointer-events:none}
 #world{will-change:transform}
@@ -64,12 +64,12 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 #shade{background:#000;opacity:0}
 #dim{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
 #flash{position:absolute;inset:0;opacity:0;pointer-events:none;background:rgba(255,222,150,.5)}
-.card{position:absolute;box-sizing:border-box;background:linear-gradient(160deg,#FFFDF7,#F7F4EA 55%,#E6E1D2);border:1px solid rgba(90,78,52,.45);box-shadow:0 1.5px 0 #D6D0BC,0 1px 2px rgba(0,0,0,.3),var(--shx) var(--shy) 10px rgba(0,0,0,.5);overflow:hidden}
+.card{position:absolute;box-sizing:border-box;background:linear-gradient(160deg,#FFFDF7,#F7F4EA 55%,#E6E1D2);border:1px solid rgba(90,78,52,.45);box-shadow:0 1.5px 0 #D6D0BC,0 .5px 1px rgba(0,0,0,.3),var(--shx) var(--shy) 3.5px rgba(0,0,0,.5);overflow:hidden}
 .card svg{position:absolute;inset:0;display:block}
 .card image{mix-blend-mode:multiply}
 .card .gl{position:absolute;inset:0;pointer-events:none}
-.card.bkc{border:1px solid rgba(201,168,76,.45);box-shadow:0 1px 2px rgba(0,0,0,.4),var(--shx) var(--shy) 10px rgba(0,0,0,.5)}
-.card.hi{box-shadow:0 0 0 2px #F3E0A6,0 0 22px rgba(243,224,166,.7),var(--shx) var(--shy) 10px rgba(0,0,0,.5)}
+.card.bkc{border:1px solid rgba(201,168,76,.45);box-shadow:0 .5px 1px rgba(0,0,0,.35),var(--shx) var(--shy) 3.5px rgba(0,0,0,.5)}
+.card.hi{box-shadow:0 0 0 2px #F3E0A6,0 0 22px rgba(243,224,166,.7),var(--shx) var(--shy) 3.5px rgba(0,0,0,.5)}
 #hand .card{transition:top .12s ease-out}
 .grp{position:absolute;inset:0;transform-origin:457px 222px;transition:transform .28s ease-out,filter .28s}
 .grp.prev{transform:translateY(9px) rotate(-7deg);filter:brightness(.6)}
@@ -87,7 +87,7 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .seat[data-side="top"] .passo{left:-60px;top:-8px}
 .seat[data-side="side"] .passo{left:0;top:27px}
 .fan{position:absolute;width:0;height:0}
-.bk{position:absolute;width:24.5px;height:43.5px;margin:-21.75px 0 0 -12.25px;border-radius:2.4px;box-shadow:inset 0 0 0 .7px rgba(201,168,76,.45),0 1px 2px rgba(0,0,0,.5)}
+.bk{position:absolute;width:24.5px;height:43.5px;margin:-21.75px 0 0 -12.25px;border-radius:2.4px;box-shadow:inset 0 0 0 .7px rgba(201,168,76,.45),0 .5px 1px rgba(0,0,0,.35)}
 #fly .bk{left:0;top:0;margin:0}
 .knob{position:absolute;left:6.3px;width:45.35px;height:45.35px;box-sizing:border-box;border-radius:50%;background:rgba(0,0,0,.6);border:1px solid rgba(201,168,76,.3);display:grid;place-items:center;pointer-events:auto}
 #menu{top:13.4px}#react{top:343.25px}
@@ -696,7 +696,7 @@ function step(dt,draw){simT+=dt;sceneT+=dt*1000;runEvents();runTweens();clockTic
   trauma=Math.max(0,trauma-dt*1.4);
   if(!draw){stepP(null,dt);return;}
   const lx=lamp.lx,ly=lamp.ly;drawScene(lx,ly,lamp.f);
-  stage.style.setProperty('--shx',((PILE[0]-lx)/26).toFixed(1)+'px');stage.style.setProperty('--shy',(3+(PILE[1]-ly)/30).toFixed(1)+'px');
+  stage.style.setProperty('--shx',((PILE[0]-lx)/78).toFixed(1)+'px');stage.style.setProperty('--shy',(1+(PILE[1]-ly)/90).toFixed(1)+'px');
   $('#shade').style.opacity=((1-lamp.L)*.85).toFixed(3);
   fxc.setTransform(V.K,0,0,V.K,0,0);fxc.clearRect(0,0,W,H);stepP(fxc,dt);drawAir(fxc);
   const s=trauma*trauma,n=k=>Math.sin(simT*31+k)*.6+Math.sin(simT*57+k*2.1)*.4;

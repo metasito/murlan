@@ -1,7 +1,7 @@
 // tests/e2e/cardShadowParity.nightly.spec.ts — the felt draws a card's shadow as the Lantern Table's `.card`
 // would for the same card under the same light, and no card view keeps one of its own once Skia has
-// drawn (#1259 plan 4, task 12). The owner's ruling of 2026-11-03 (#1966) thinned the shadows: the mockup's
-// probe cards take its values below, not the mockup's own. The same cards are laid on the mockup's stage, its `--shx`/`--shy`
+// drawn (#1259 plan 4, task 12). The mockup's own shadow rules carry the owner's ruling of 2026-11-03 (#1966):
+// a thin contact, a tight cast. The same cards are laid on the mockup's stage, its `--shx`/`--shy`
 // set from the app's lamp; each side's shadow is what turning it off gives back.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -9,6 +9,9 @@ import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mocku
 import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { feltPixels, rgbaOf, skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 import type { CardRect, CardRects, Felt } from "../../components/table/cardRects";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 import type { TraceFrame } from "../../lib/e2eTrace";
@@ -31,11 +34,12 @@ const WORST_GAP = 0.3;
 type Point = { x: number; y: number };
 type Shot = { width: number; height: number; data: Uint8Array | Buffer; perPt: number; origin: Point };
 
-/** The owner's ruling of 2026-11-03 (#1966), held here by hand so the oracle does not read the tokens it checks: the mockup's fall, cast blur and contact, a third and thinned. */
-const RULING = { fallX: 78, fallY: 90, drop: 1, castBlur: 3.5, castAlpha: 0.5, contactY: 0.5, contactBlur: 1, contactAlpha: 0.3 };
-
+/** `--shx`/`--shy` as the mockup's own script sets them, for this pile and light in design points. */
 function mockupFall(pile: Point, light: Point): Point {
-  return { x: (pile.x - light.x) / RULING.fallX, y: RULING.drop + (pile.y - light.y) / RULING.fallY };
+  const line = fs.readFileSync(fileURLToPath(FIXTURE), "utf8").split("\n").find((l) => l.startsWith("  stage.style.setProperty('--shx'"))!;
+  const [, shx, shy] = /'--shx',\((.+?)\)\.toFixed\(1\)\+'px'\);stage\.style\.setProperty\('--shy',\((.+?)\)\.toFixed/.exec(line)!;
+  const run = (expr: string) => vm.runInNewContext(expr, { PILE: [pile.x, pile.y], lx: light.x, ly: light.y }) as number;
+  return { x: run(shx), y: run(shy) };
 }
 
 function inside(p: Point, r: CardRect, felt: Felt, margin: number): boolean {
@@ -142,7 +146,6 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   await mock.addStyleTag({
     content: `#lit > *, #fly, #fx, #hud, #top, #dim, #flash { visibility: hidden !important; }
       #stage { --shx: ${fall.x}px !important; --shy: ${fall.y}px !important; }
-      .probe { box-shadow: 0 ${RULING.contactY}px ${RULING.contactBlur}px rgba(0,0,0,${RULING.contactAlpha}), var(--shx) var(--shy) ${RULING.castBlur}px rgba(0,0,0,${RULING.castAlpha}) !important; }
       .probe.off { box-shadow: none !important; }`,
   });
   await mock.evaluate(
