@@ -34,7 +34,7 @@ before=$(q "$stats")
 
 out=$(cd "$root" && DATABASE_URL="postgres://postgres@localhost:$port/$db" REDIS_URL="$REDIS_URL" \
   MURLAN_PG_POOL_MAX=10 MURLAN_SOCKET_ADAPTER_POOL_MAX=4 MURLAN_AUTH_RATE_LIMIT=100000 MURLAN_TICKET_RATE_LIMIT=100000 LOG_LEVEL=warn \
-  node --experimental-strip-types --no-warnings tests/soak/soak.ts --tables "$tables" --minutes "$minutes" --seed 4242 2>&1 | grep -E "^soak:" | tail -3)
+  node --experimental-strip-types --no-warnings tests/soak/soak.ts --tables "$tables" --minutes "$minutes" --seed 4242 2>&1 | grep -E "^soak:" | tail -3 || true)
 sleep 2
 after=$(q "$stats")
 
@@ -53,6 +53,12 @@ notifies=$((notifies - 1))
 cluster=$(echo "$out" | sed -n 's/.*; \([0-9][0-9]*\) cluster messages.*/\1/p' | tail -1)
 if [ -z "$cluster" ]; then
   echo "load.sh: the soak reported no cluster message count, so it was not counted" >&2
+  exit 1
+fi
+# The soak's positive control: one inbox message sent before the play, which the count must see.
+control=$(echo "$out" | sed -n 's/.* cluster messages, \([0-9][0-9]*\) of 1 control.*/\1/p' | tail -1)
+if [ "${control:-0}" -lt 1 ]; then
+  echo "load.sh: the cluster count did not see the soak's control message, so cluster messages were not counted" >&2
   exit 1
 fi
 echo "db: commits=$((c1 - c0)) inserted=$((i1 - i0)) updated=$((u1 - u0)) deleted=$((d1 - d0)) returned=$((r1 - r0)) fetched=$((f1 - f0)) moves=${moves:-?}"
