@@ -1,4 +1,4 @@
-import { Counter, Gauge } from "prom-client";
+import { Counter, Gauge } from "@prometheus-io/client";
 import { pgConnectionHeadroom, poolMeters } from "../store/pool.ts";
 import { eventLoopDelayMs } from "./eventLoop.ts";
 import { now } from "../http/clock.ts";

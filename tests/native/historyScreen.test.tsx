@@ -60,10 +60,12 @@ async function show(answer: { status?: number; body?: unknown }) {
   await setWindow({ width: 800, height: 600 });
   const view = await renderApp(<HistoryScreen />, { user: { id: 'u1', username: 'Ana' } });
   // Idle alone also matches a query mounted but not yet fetching, which still shows the spinner.
+  // A settled query is not yet a rendered screen: the spinner can outlive it by a commit.
   await waitFor(() => {
     const state = queryClient.getQueryState([HISTORY]);
     expect(state?.status).not.toBe('pending');
     expect(state?.fetchStatus).toBe('idle');
+    expect(view.queryByLabelText(t('history.loadingA11yLabel'))).toBeNull();
   });
   return view;
 }

@@ -9,7 +9,7 @@ import express from "express";
 import type { AddressInfo } from "node:net";
 import pg from "pg";
 import { createClient } from "redis";
-import { register } from "prom-client";
+import { register } from "@prometheus-io/client";
 import { connectRateLimits, routeLimiter } from "../../server/http/rateLimit.ts";
 import { installClock, realClock } from "../../server/http/clock.ts";
 import { closeRedis, keyspace, redisReady } from "../../server/store/redis.ts";

@@ -12,7 +12,7 @@ import {
 } from "express-rate-limit";
 import { createHmac } from "node:crypto";
 import { RedisStore, type RedisReply } from "rate-limit-redis";
-import { Counter } from "prom-client";
+import { Counter } from "@prometheus-io/client";
 import type { Request, RequestHandler } from "express";
 import { openRedis, redisKey, type RedisClient } from "../store/redis.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";

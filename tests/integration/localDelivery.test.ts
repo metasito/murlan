@@ -4,7 +4,7 @@
 // sends has anywhere to go but that process's own sockets.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { register } from "prom-client";
+import { register } from "@prometheus-io/client";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, waitFor, type TestSocket } from "../helpers/client.ts";
 import { playRoundOut } from "../helpers/gameDriver.ts";
