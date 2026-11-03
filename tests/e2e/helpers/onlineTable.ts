@@ -31,6 +31,9 @@ export interface OnlineTableSetup extends RoomSetup {
   username?: string;
   /** Applied to every seat's own browser context, so whichever one wins was laid out at this size all along. */
   viewport: { width: number; height: number };
+  /** Plays with motion on, as a player does; otherwise reduced, so a functional spec does not wait on it. */
+  motion?: boolean;
+  deviceScaleFactor?: number;
 }
 
 export interface OpenedOnlineTable {
@@ -83,13 +86,13 @@ export async function openOnlineTable(
   const seatCount = setup.playerCount;
   const contexts: BrowserContext[] = await Promise.all(
     Array.from({ length: seatCount }, () =>
-      browser.newContext({ locale: "it-IT", viewport: setup.viewport })
+      browser.newContext({ locale: "it-IT", viewport: setup.viewport, deviceScaleFactor: setup.deviceScaleFactor })
     )
   );
   const seats = await Promise.all(
     contexts.map(async (context) => {
       const page = await context.newPage();
-      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.emulateMedia({ reducedMotion: setup.motion ? "no-preference" : "reduce" });
       return { page, errors: collectConsoleErrors(page).entries };
     })
   );
@@ -126,17 +129,16 @@ export async function openOnlineTable(
       seats.map(({ page }) => page.locator(TABLE).waitFor({ timeout: DEAL_CEILING_MS }))
     );
 
-    let leaderIdx = -1;
-    for (let i = 0; i < seats.length; i++) {
-      const leads =
-        (await seats[i].page
+    // Motion on, the table shows before the turn does: the deal flies first, so the lead is awaited
+    // rather than read once.
+    const leaderIdx = await Promise.any(
+      seats.map(({ page }, i) =>
+        page
           .locator(`${TABLE}[${TABLE_STATE}^="${YOUR_TURN_PREFIX}"]`)
-          .count()) > 0;
-      if (leads) {
-        leaderIdx = i;
-        break;
-      }
-    }
+          .waitFor({ timeout: DEAL_CEILING_MS })
+          .then(() => i)
+      )
+    ).catch(() => -1);
     if (leaderIdx === -1) {
       throw new Error(
         `none of the ${seatCount} seats were dealt the lead. findStartingPlayer ` +
