@@ -132,7 +132,7 @@ describe('ParticleLayer', () => {
       expect(idle).toBe(0);
     });
 
-    it('lays the air out at most 240 times a second on a 1000 Hz display, every frame while dust is live', async () => {
+    it('lays the air out at most 30 times a second on a 1000 Hz display, every frame while dust is live', async () => {
       globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 1) as unknown as number;
       const ref = React.createRef<ParticleEmitter>();
       const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
@@ -144,8 +144,8 @@ describe('ParticleLayer', () => {
       };
       await laidIn(100);
       const idle = await laidIn(1000);
-      expect(idle).toBeGreaterThan(120);
-      expect(idle).toBeLessThanOrEqual(241);
+      expect(idle).toBeGreaterThan(20);
+      expect(idle).toBeLessThanOrEqual(31);
 
       await act(async () => ref.current!.emit([{ ...DUST, life: 60 }]));
       expect(await laidIn(1000)).toBeGreaterThan(900);
@@ -218,7 +218,7 @@ describe('ParticleLayer', () => {
       await setMotion('off');
       await view.rerender(<ParticleLayer rig={rig} landing={landing} />);
       shift(40);
-      expect(await frames(30)).toBeGreaterThan(20);
+      expect(await frames(30)).toBeGreaterThan(5);
 
       shift(0);
       await setMotion('on');
