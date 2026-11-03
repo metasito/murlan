@@ -1,6 +1,6 @@
 // One server instance, as server/index.ts boots it, plus an IPC hook that runs the app's own
 // shutdown(): on Windows child.kill("SIGTERM") is a hard TerminateProcess, so the graceful path is
-// unreachable by signal. Reports step timestamps to the parent over IPC.
+// unreachable by signal (on Linux SIGTERM reaches it too). Reports step timestamps over IPC.
 import { createApp } from "../../../../../../server/app.ts";
 import { shutdown } from "../../../../../../server/http/shutdown.ts";
 import { installProcessGuards } from "../../../../../../server/socket/socketSafety.ts";
@@ -17,6 +17,7 @@ process.on("message", (m) => {
   if (m !== "shutdown") return;
   send({ ev: "shutdown-start" });
   const tracedIo = {
+    sockets: io.sockets,
     close: async () => {
       send({ ev: "io.close-start" });
       const r = await io.close();
@@ -25,6 +26,12 @@ process.on("message", (m) => {
     },
   } as unknown as typeof io;
   const tracedTables = {
+    handOffTables: async (budgetMs: number) => {
+      send({ ev: "handOff-start" });
+      const r = await rt.handOffTables(budgetMs);
+      send({ ev: "handOff-done" });
+      return r;
+    },
     stopTables: async () => {
       send({ ev: "stopTables-start" });
       const r = await rt.stopTables();

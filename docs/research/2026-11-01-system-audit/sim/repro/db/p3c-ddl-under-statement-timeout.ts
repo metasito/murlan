@@ -34,6 +34,13 @@ if (mode === "lock") {
 }
 
 const t = Date.now();
+// The DDL client now waits out an older transaction instead of failing, so the holder lets go
+// after HOLD_MS and the wait it caused is measured.
+const HOLD_MS = 30_000;
+const release = mode === "lock" ? setTimeout(() => {
+  log(`the holder commits nothing and rolls back after ${HOLD_MS} ms`);
+  void other.query("ROLLBACK");
+}, HOLD_MS) : undefined;
 try {
   await ensureSchema();
   log(`ensureSchema: ok after ${Date.now() - t}ms`);
@@ -41,7 +48,8 @@ try {
   const err = e as { code?: string; message: string };
   log(`ensureSchema: FAILED after ${Date.now() - t}ms: ${err.code ?? ""} ${err.message.split("\n")[0]}`);
 }
-if (mode === "lock") await other.query("ROLLBACK");
+clearTimeout(release);
+if (mode === "lock") await other.query("ROLLBACK").catch(() => {});
 const idx = await other.query(`select indexname from pg_indexes where indexname='IDX_session_expire'`);
 log(`IDX_session_expire present afterwards: ${idx.rowCount === 1}`);
 await other.query(`TRUNCATE "session"`);

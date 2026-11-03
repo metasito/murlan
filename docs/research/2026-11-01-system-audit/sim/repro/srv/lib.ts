@@ -1,25 +1,34 @@
 // Shared harness for the server-side reproductions: boots real server processes (instance.ts)
-// against murlan_repro_srv, registers users, opens sockets the way the web and native clients do,
-// taps every Socket.IO adapter NOTIFY, and reads the shared Postgres statement log by PID.
+// against murlan_repro_srv and a Redis-protocol store, registers users, opens sockets the way the
+// web and native clients do, taps the cluster channel (RedisTap; NotifyTap is the Postgres
+// adapter's, kept for the history it recorded), and reads the shared Postgres statement log by PID.
 import pg from "pg";
 import net from "node:net";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { decode } from "@msgpack/msgpack";
+import { createClient } from "redis";
 import { PROTOCOL_VERSION } from "../../../../../../shared/protocol.ts";
 
 export const ROOT = path.resolve(import.meta.dirname, "../../../../../..");
 export const SRV = import.meta.dirname;
 export const RESULTS = path.resolve(ROOT, "docs/research/2026-11-01-system-audit/sim/results");
-export const SCRATCH =
-  "C:/Users/roton/AppData/Local/Temp/claude/C--Users-roton-murlan--claude-worktrees-archify-installation-6691b3/43894df7-2800-4ae1-aa9c-03a933e4e653/scratchpad/srv";
-export const PG_LOG =
-  "C:/Users/roton/AppData/Local/Temp/claude/C--Users-roton-murlan--claude-worktrees-archify-installation-6691b3/43894df7-2800-4ae1-aa9c-03a933e4e653/scratchpad/pg.log";
+export const SCRATCH = process.env.REPRO_SCRATCH ?? path.join(os.tmpdir(), "murlan-repro-srv");
+/** The Postgres server's log file; log_statement=all lands there. */
+export const PG_LOG = process.env.PGLOG ?? "";
 export const DB = "murlan_repro_srv";
-export const PG_PORT = 55432;
+export const PG_PORT = Number(process.env.PGPORT ?? 55432);
 export const DB_URL = `postgres://postgres@localhost:${PG_PORT}/${DB}`;
+/** A store of the instances' own, never a shared one: resetData deletes every key under `murlan:`. */
+export const REDIS_URL = process.env.REDIS_URL ?? "";
+if (!REDIS_URL) throw new Error("REDIS_URL is required: a disposable Redis-protocol store for the repro instances");
+/** The keyspace the instances use: server/store/redis.ts keyspace() of a DATABASE_URL with no search_path. */
+export const KEYSPACE = "murlan";
+/** The bearer token every repro instance's /metrics answers to. */
+export const METRICS_TOKEN = "repro-metrics-token-not-for-production";
 fs.mkdirSync(SCRATCH, { recursive: true });
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -31,8 +40,12 @@ export const q = async <R = Record<string, unknown>>(sql: string, params?: unkno
 /** Rows the app writes, emptied between experiments; the schema stays. */
 export async function resetData() {
   await q(`TRUNCATE users, auth_tokens, bug_reports, client_errors, events, friends, rooms, game_invites,
-    push_tokens, room_players, round_history, round_replays, server_errors, socket_io_attachments,
+    push_tokens, room_players, round_history, round_replays, server_errors,
     socket_ticket_nonces, user_achievements, user_ratings, user_stats, session, active_games CASCADE`);
+  const r = createClient({ url: REDIS_URL });
+  await r.connect();
+  for await (const keys of r.scanIterator({ MATCH: `${KEYSPACE}:*`, COUNT: 500 })) if (keys.length) await r.del(keys);
+  await r.destroy();
 }
 
 // ── instances ───────────────────────────────────────────────────────────────
@@ -52,7 +65,7 @@ const PIDS = path.join(SCRATCH, "pids.txt");
 export async function bootInstance(
   name: string,
   port: number,
-  { env = {}, dbUrl = DB_URL }: { env?: Record<string, string>; dbUrl?: string } = {}
+  { env = {}, dbUrl = DB_URL, redisUrl = REDIS_URL }: { env?: Record<string, string>; dbUrl?: string; redisUrl?: string } = {}
 ): Promise<Instance> {
   const logFile = path.join(SCRATCH, `${name}-${Date.now()}.log`);
   const fd = fs.openSync(logFile, "w");
@@ -61,6 +74,8 @@ export async function bootInstance(
     env: {
       ...process.env,
       DATABASE_URL: `${dbUrl}?application_name=${name}`,
+      REDIS_URL: redisUrl,
+      METRICS_TOKEN,
       PORT: String(port),
       SESSION_SECRET: "repro-srv-secret-not-for-production",
       NODE_ENV: "development",
@@ -92,11 +107,14 @@ export async function killInstance(i: Instance) {
   await i.exited;
 }
 
-/** Waits until each instance's adapter has heard the other's heartbeat (5 s interval). */
-export async function waitForPeers(tap: NotifyTap, uids = 2, ms = 15_000) {
+/**
+ * Waits until the tap has heard `uids` adapters' heartbeats: the positive control every count on
+ * the tap rests on, since a tap on the wrong channel would otherwise report zeros.
+ */
+export async function waitForPeers(tap: NotifyTap | RedisTap, uids = 2, ms = 15_000) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
-    const seen = new Set(tap.msgs.filter((m) => m.type === 1 || m.type === 2).map((m) => m.uid));
+    const seen = tap instanceof RedisTap ? tap.heartbeatUids() : new Set(tap.msgs.filter((m) => m.type === 1 || m.type === 2).map((m) => m.uid));
     if (seen.size >= uids) {
       await sleep(1_000);
       return;
@@ -132,12 +150,12 @@ export type Client = Socket;
 
 /**
  * `web`: what lib/socket.ts does in a browser on the same origin — the upgrade carries the session
- * cookie, and `auth` still carries a freshly minted ticket. `native`: the ticket alone.
+ * cookie and mints no ticket. `native`: a freshly minted ticket alone.
  */
 export async function connect(url: string, cookie: string, how: "web" | "native" = "web"): Promise<Client> {
-  const t = await ticket(url, cookie);
+  const auth = how === "web" ? { protocolVersion: PROTOCOL_VERSION } : { ticket: await ticket(url, cookie), protocolVersion: PROTOCOL_VERSION };
   const socket = ioClient(url, {
-    auth: { ticket: t, protocolVersion: PROTOCOL_VERSION },
+    auth,
     extraHeaders: how === "web" ? { cookie } : {},
     transports: ["websocket"],
     reconnection: false,
@@ -213,6 +231,12 @@ export class NotifyTap {
       } else rec.msg = m;
     });
     await this.client.query(`LISTEN "${channel}"`);
+    const deadline = Date.now() + 12_000;
+    while (this.msgs.length === 0 && Date.now() < deadline) await sleep(200);
+    if (this.msgs.length === 0) {
+      await this.stop();
+      throw new Error(`NotifyTap: nothing on Postgres channel "${channel}" in 12 s: the cluster no longer runs over it; use RedisTap`);
+    }
   }
   async settle() {
     await sleep(300);
@@ -332,6 +356,7 @@ export function countShapes(stmts: LogStatement[]) {
 
 interface Pair {
   id: number;
+  at: number;
   down: net.Socket;
   up: net.Socket;
   sawListen: boolean;
@@ -347,6 +372,10 @@ interface Pair {
  * that keeps each connection's byte order.
  */
 export class PgProxy {
+  targetPort: number;
+  constructor(targetPort: number = PG_PORT) {
+    this.targetPort = targetPort;
+  }
   pairs: Pair[] = [];
   server = net.createServer((down) => this.#accept(down));
   delayFor: () => number = () => 0;
@@ -355,8 +384,8 @@ export class PgProxy {
     return new Promise<void>((resolve) => this.server.listen(port, "127.0.0.1", resolve));
   }
   #accept(down: net.Socket) {
-    const up = net.connect(PG_PORT, "127.0.0.1");
-    const pair: Pair = { id: ++this.#next, down, up, sawListen: false, stalled: false, delayMs: () => this.delayFor(), heldUp: [], heldDown: [] };
+    const up = net.connect(this.targetPort, "127.0.0.1");
+    const pair: Pair = { id: ++this.#next, at: Date.now(), down, up, sawListen: false, stalled: false, delayMs: () => this.delayFor(), heldUp: [], heldDown: [] };
     this.pairs.push(pair);
     const pipe = (from: net.Socket, to: net.Socket, held: Buffer[], dir: "up" | "down") => {
       let chain = Promise.resolve();
@@ -398,6 +427,245 @@ export class PgProxy {
     }
     return new Promise<void>((resolve) => this.server.close(() => resolve()));
   }
+}
+
+// ── the Redis tap ───────────────────────────────────────────────────────────
+
+/** What the tap heard: one pub/sub message, or one entry of the adapter stream or of an inbox. */
+export interface Heard {
+  t: number;
+  via: "pubsub" | "stream" | "inbox";
+  key: string;
+  /** The adapter's MessageType name, or the inbox message's `kind`. */
+  type: string;
+  /** SERVER_SIDE_EMIT's event name, when there is one. */
+  event?: string;
+  uid?: string;
+  bytes: number;
+  /** Everything the message carried, decoded to text, for the credential scan. */
+  text: string;
+  entryId?: string;
+  msg?: Record<string, unknown>;
+}
+
+const HEARTBEAT_EVENT = "murlan:adapter-heartbeat";
+
+function decodeData(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    try {
+      return decode(Buffer.from(raw, "base64"));
+    } catch {
+      return raw;
+    }
+  }
+}
+
+/** JSON that survives the Buffers and Uint8Arrays msgpack hands back. */
+const textOf = (v: unknown) =>
+  JSON.stringify(v, (_k, x) => (x instanceof Uint8Array ? Buffer.from(x).toString("utf8") : typeof x === "bigint" ? String(x) : x));
+
+/**
+ * Every message the cluster puts on the store, the Redis-era counterpart of NotifyTap: the
+ * adapter's pub/sub (public and private channels, where FETCH_SOCKETS, server-side emits and
+ * every response travel), the adapter stream (room broadcasts) and every instance's inbox stream
+ * (addressed state, forwarded intents, hand-offs). Streams are read from the tap's start, so an
+ * inbox made after it is read whole.
+ */
+export class RedisTap {
+  heard: Heard[] = [];
+  sub = createClient({ url: REDIS_URL, name: "repro-tap-sub" });
+  reader = createClient({ url: REDIS_URL, name: "repro-tap-reader" });
+  cmd = createClient({ url: REDIS_URL, name: "repro-tap-cmd" });
+  #from = `${Date.now()}-0`;
+  #at = new Map<string, string>();
+  #running = false;
+  #loop: Promise<void> | null = null;
+
+  async start() {
+    for (const c of [this.sub, this.reader, this.cmd]) c.on("error", () => {});
+    await Promise.all([this.sub.connect(), this.reader.connect(), this.cmd.connect()]);
+    await this.sub.pSubscribe(
+      `${KEYSPACE}:socket.io#*`,
+      (message: Buffer, channel: Buffer | string) => this.#onPubsub(String(channel), message),
+      true
+    );
+    this.#running = true;
+    this.#loop = this.#read();
+  }
+
+  #onPubsub(channel: string, payload: Buffer) {
+    let m: Record<string, unknown>;
+    try {
+      m = decode(payload) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    const type = MSG[m.type as number] ?? String(m.type);
+    const data = m.data as { packet?: unknown[] } | undefined;
+    const event = type === "SERVER_SIDE_EMIT" && typeof data?.packet?.[0] === "string" ? (data.packet[0] as string) : undefined;
+    this.heard.push({ t: Date.now(), via: "pubsub", key: channel, type, event, uid: m.uid as string | undefined, bytes: payload.length, text: textOf(m), msg: m });
+  }
+
+  async #streams(): Promise<string[]> {
+    const keys: string[] = [];
+    for (const match of [`${KEYSPACE}:socket.io*`, `${KEYSPACE}:inbox:*`]) {
+      for await (const batch of this.cmd.scanIterator({ MATCH: match, COUNT: 500, TYPE: "stream" })) keys.push(...batch);
+    }
+    return keys;
+  }
+
+  async #read() {
+    let keys: string[] = [];
+    let listedAt = 0;
+    while (this.#running) {
+      try {
+        if (Date.now() - listedAt > 250) {
+          keys = await this.#streams();
+          listedAt = Date.now();
+        }
+        if (keys.length === 0) {
+          await sleep(100);
+          continue;
+        }
+        const reply = (await this.reader.xRead(
+          keys.map((key) => ({ key, id: this.#at.get(key) ?? this.#from })),
+          { BLOCK: 200, COUNT: 1000 }
+        )) as { name: string; messages: { id: string; message: Record<string, string> }[] }[] | null;
+        for (const { name, messages } of reply ?? []) {
+          for (const entry of messages) {
+            this.#at.set(name, entry.id);
+            this.#onEntry(name, entry.id, entry.message);
+          }
+        }
+      } catch {
+        if (this.#running) await sleep(100);
+      }
+    }
+  }
+
+  #onEntry(key: string, entryId: string, fields: Record<string, string>) {
+    const bytes = Object.entries(fields).reduce((a, [k, v]) => a + Buffer.byteLength(k) + Buffer.byteLength(v), 0);
+    if (key.includes(":inbox:")) {
+      let m: Record<string, unknown> = {};
+      try {
+        m = JSON.parse(fields.m ?? "{}") as Record<string, unknown>;
+      } catch {}
+      this.heard.push({ t: Date.now(), via: "inbox", key, type: String(m.kind ?? "?"), bytes, text: fields.m ?? "", entryId, msg: m });
+      return;
+    }
+    const data = decodeData(fields.data);
+    const type = MSG[Number(fields.type)] ?? String(fields.type);
+    const msg = { uid: fields.uid, nsp: fields.nsp, type: Number(fields.type), data } as Record<string, unknown>;
+    this.heard.push({ t: Date.now(), via: "stream", key, type, uid: fields.uid, bytes, text: textOf(msg), entryId, msg });
+  }
+
+  heartbeatUids(): Set<string> {
+    return new Set(this.heard.filter((h) => h.event === HEARTBEAT_EVENT && h.uid).map((h) => h.uid!));
+  }
+
+  /** The inboxes whose own boot entry the tap read: the inbox half of the positive control. */
+  bootedInboxes(): Set<string> {
+    return new Set(this.heard.filter((h) => h.via === "inbox" && h.type === "boot").map((h) => h.key));
+  }
+
+  mark() {
+    return this.heard.length;
+  }
+
+  /** What arrived since `mark`, less heartbeats and inbox boot entries. */
+  since(mark: number) {
+    return this.heard.slice(mark).filter((h) => h.event !== HEARTBEAT_EVENT && h.type !== "boot");
+  }
+
+  async settle(ms = 600) {
+    await sleep(ms);
+  }
+
+  async stop() {
+    this.#running = false;
+    await this.#loop?.catch(() => {});
+    for (const c of [this.sub, this.reader, this.cmd]) await c.destroy?.();
+  }
+}
+
+export function tally(heard: Heard[]) {
+  const by: Record<string, { n: number; bytes: number }> = {};
+  for (const h of heard) {
+    const k = `${h.via}:${h.type}${h.event ? `(${h.event})` : ""}`;
+    by[k] ??= { n: 0, bytes: 0 };
+    by[k].n += 1;
+    by[k].bytes += h.bytes;
+  }
+  return by;
+}
+
+/** The session id inside a `connect.sid=s%3A<sid>.<signature>` cookie. */
+export const sidOf = (cookie: string) => decodeURIComponent(/connect\.sid=([^;]+)/.exec(cookie)?.[1] ?? "").replace(/^s:/, "").split(".")[0] ?? "";
+
+/** Where any of `secrets` appears: every key and value in the store's keyspace, every stream entry the tap heard. */
+export async function secretsInStore(tap: RedisTap, secrets: string[]): Promise<string[]> {
+  const found: string[] = [];
+  const hit = (where: string, text: string) => {
+    for (const s of secrets) if (s && text.includes(s)) found.push(where);
+  };
+  for (const h of tap.heard) hit(`${h.via} ${h.type} ${h.key}`, h.text);
+  for await (const batch of tap.cmd.scanIterator({ MATCH: "*", COUNT: 500 })) {
+    for (const key of batch) {
+      const type = await tap.cmd.type(key);
+      let text = key;
+      if (type === "string") text += await tap.cmd.get(key);
+      else if (type === "hash") text += JSON.stringify(await tap.cmd.hGetAll(key));
+      else if (type === "set") text += JSON.stringify(await tap.cmd.sMembers(key));
+      else if (type === "zset") text += JSON.stringify(await tap.cmd.zRange(key, 0, -1));
+      else if (type === "list") text += JSON.stringify(await tap.cmd.lRange(key, 0, -1));
+      else if (type === "stream") text += textOf(await tap.cmd.xRange(key, "-", "+"));
+      hit(`key ${key} (${type})`, text);
+    }
+  }
+  return found;
+}
+
+/** Where any of `secrets` appears in a text or json column of any table but `except`. */
+export async function secretsInTables(secrets: string[], except: string[] = []): Promise<string[]> {
+  const cols = await q<{ t: string; c: string }>(
+    `SELECT table_name t, column_name c FROM information_schema.columns
+      WHERE table_schema = 'public' AND data_type IN ('text', 'character varying', 'json', 'jsonb', 'bytea')`
+  );
+  const found: string[] = [];
+  for (const { t, c } of cols) {
+    if (except.includes(t)) continue;
+    for (const s of secrets) {
+      if (!s) continue;
+      const [{ n }] = await q<{ n: number }>(`SELECT count(*)::int n FROM "${t}" WHERE position($1 in "${c}"::text) > 0`, [s]);
+      if (n > 0) found.push(`${t}.${c} (${n} rows)`);
+    }
+  }
+  return found;
+}
+
+// ── metrics ─────────────────────────────────────────────────────────────────
+
+/** `/metrics` as name -> samples, read with the instances' METRICS_TOKEN when one is set. */
+export async function scrapeMetrics(url: string, token = METRICS_TOKEN): Promise<Map<string, string[]>> {
+  const res = await fetch(`${url}/metrics`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  if (res.status !== 200) throw new Error(`/metrics answered ${res.status}`);
+  const out = new Map<string, string[]>();
+  for (const line of (await res.text()).split("\n")) {
+    const declared = /^# TYPE ([a-zA-Z_:][a-zA-Z0-9_:]*)/.exec(line)?.[1];
+    if (declared) {
+      if (!out.has(declared)) out.set(declared, []);
+      continue;
+    }
+    if (!line || line.startsWith("#")) continue;
+    const name = /^[a-zA-Z_:][a-zA-Z0-9_:]*/.exec(line)?.[0];
+    if (!name) continue;
+    const base = name.replace(/_(bucket|sum|count|total)$/, "");
+    for (const k of new Set([name, base])) out.set(k, [...(out.get(k) ?? []), line]);
+  }
+  return out;
 }
 
 // ── output ──────────────────────────────────────────────────────────────────

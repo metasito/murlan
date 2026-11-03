@@ -1,8 +1,10 @@
 // P5/P6 on a graceful deploy: A owns a table; A is shut down over IPC (the app's own shutdown());
 // a client reconnects on B and rejoins while A drains. Measures when A releases the room's advisory
 // lock relative to io.close()/exit, what the rejoiner sees, and how long it takes to recover.
+// Ported to the Redis channel: the leaving notice is the adapter's "murlan:adapter-leaving"
+// server-side emit, and the hand-off travels to B's inbox, both read by RedisTap.
 import {
-  bootInstance, connect, NotifyTap, out, q, register, resetData, sleep, waitForPeers,
+  bootInstance, connect, RedisTap, out, q, register, resetData, sleep, waitForPeers,
   type Client, type Instance,
 } from "./lib.ts";
 import type { WireGameState, WireRoomState } from "../../../../../../shared/protocol.ts";
@@ -10,7 +12,7 @@ import { ownershipKey } from "../../../../../../server/game/gameOwnership.ts";
 
 const { log, save } = out("exp-deploy.txt");
 const instances: Instance[] = [];
-const tap = new NotifyTap();
+const tap = new RedisTap();
 const T0 = Date.now();
 const rel = (t: number) => `${((t - T0) / 1000).toFixed(2)}s`;
 
@@ -18,7 +20,7 @@ async function openTableOn(inst: Instance, cookies: { cookie: string }[]): Promi
   const sockets: Client[] = [];
   for (const c of cookies) sockets.push(await connect(inst.url, c.cookie, "web"));
   const states: (WireGameState | null)[] = sockets.map(() => null);
-  sockets.forEach((s, i) => s.on("game:state", (st: WireGameState) => (states[i] = st)));
+  sockets.forEach((s, i) => s.on("game:state", (st: WireGameState, ack?: () => void) => { states[i] = st; ack?.(); }));
   const room = await new Promise<WireRoomState>((resolve) => {
     sockets[0].once("room:state", resolve);
     sockets[0].emit("room:create", { gameMode: "free_for_all", maxPlayers: cookies.length });
@@ -55,10 +57,10 @@ function rejoin(socket: Client, roomId: string, timeoutMs: number): Promise<{ ms
 
 try {
   await resetData();
+  await tap.start();
   instances.push(await bootInstance("srvA", 5581));
   instances.push(await bootInstance("srvB", 5582, { env: { MURLAN_LOBBY_GRACE_MS: "3000", MURLAN_DISCONNECT_GRACE_MS: "60000" } }));
   const [A, B] = instances;
-  await tap.start();
   await waitForPeers(tap);
   log("# exp-deploy: A owns a table, A shut down gracefully (IPC), client rejoins on B");
 
@@ -72,11 +74,13 @@ try {
   const lockLog: string[] = [];
   let prevA = true;
   let prevB = false;
+  let releasedA: number | null = null;
+  let heldB: number | null = null;
   const poll = setInterval(async () => {
     const a = await lockHeld(room.roomId, "srvA").catch(() => prevA);
     const b = await lockHeld(room.roomId, "srvB").catch(() => prevB);
-    if (a !== prevA) { lockLog.push(`${rel(Date.now())} srvA lock -> ${a ? "held" : "released"}`); prevA = a; }
-    if (b !== prevB) { lockLog.push(`${rel(Date.now())} srvB lock -> ${b ? "held" : "released"}`); prevB = b; }
+    if (a !== prevA) { lockLog.push(`${rel(Date.now())} srvA lock -> ${a ? "held" : "released"}`); prevA = a; if (!a) releasedA ??= Date.now(); }
+    if (b !== prevB) { lockLog.push(`${rel(Date.now())} srvB lock -> ${b ? "held" : "released"}`); prevB = b; if (b) heldB ??= Date.now(); }
   }, 25);
 
   // Reconnect player x on B before shutdown, so the only variable is the rejoin timing.
@@ -84,17 +88,18 @@ try {
   await sleep(300);
   const xOnB = await connect(B.url, players[0].cookie, "web");
   let xState: WireGameState | null = null;
-  xOnB.on("game:state", (st: WireGameState) => (xState = st));
+  xOnB.on("game:state", (st: WireGameState, ack?: () => void) => { xState = st; ack?.(); });
 
-  // Shut A down; mark ADAPTER_CLOSE from the tap.
+  // Shut A down; mark the leaving notice from the tap.
   const adapterCloseMark = tap.mark();
+  const shutdownAt = Date.now();
   log(`${rel(Date.now())} sending shutdown to A`);
   A.child.send("shutdown");
-  // Wait until B has dropped A as a peer (ADAPTER_CLOSE), then rejoin on B.
   const acDeadline = Date.now() + 5_000;
-  while (!tap.msgs.slice(adapterCloseMark).some((m) => m.type === 13) && Date.now() < acDeadline) await sleep(20);
-  const ac = tap.msgs.slice(adapterCloseMark).find((m) => m.type === 13);
-  log(`${rel(Date.now())} ADAPTER_CLOSE seen on tap: ${ac ? "yes at " + rel(ac.t) : "NO (never observed)"}`);
+  const leaving = () => tap.heard.slice(adapterCloseMark).find((m) => m.event === "murlan:adapter-leaving");
+  while (!leaving() && Date.now() < acDeadline) await sleep(20);
+  const ac = leaving();
+  log(`${rel(Date.now())} adapter-leaving seen on tap: ${ac ? "yes at " + rel(ac.t) : "NO (never observed)"}`);
 
   // Emulate useRejoin: SERVER_ERROR/TABLE_UNREACHABLE retried every 2 s, up to 3 attempts.
   const outcomes: string[] = [];
@@ -114,6 +119,12 @@ try {
 
   log("\n## advisory lock timeline");
   for (const l of lockLog) log("  " + l);
+  const ioCloseAt = A.events.find((e) => e.ev === "io.close-start")?.t as number | undefined;
+  log(`  hand-off: srvA released ${releasedA ? rel(releasedA) : "never seen"}, srvB held ${heldB ? rel(heldB) : "never seen"}; ` +
+    `gap ${releasedA && heldB ? `${heldB - releasedA} ms` : "n/a"}; shutdown to srvB holding ${heldB ? `${heldB - shutdownAt} ms` : "n/a"}; ` +
+    `srvA released ${releasedA && ioCloseAt ? `${ioCloseAt - releasedA} ms before io.close` : "n/a"}`);
+  const handOff = tap.heard.slice(adapterCloseMark).filter((h) => h.via === "inbox").map((h) => `${h.type}@${rel(h.t)}`);
+  log(`  inbox messages during the shutdown: ${handOff.join(", ") || "none"}`);
   log("\n## x rejoin on B (useRejoin emulation: 2 s x 3 on SERVER_ERROR)");
   for (const o of outcomes) log("  " + o);
   log(`recovered on B: ${recovered}`);

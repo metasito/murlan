@@ -1,57 +1,55 @@
-// Adapter threshold: the patched @socket.io/postgres-adapter sends a NOTIFY inline unless
-// Buffer.byteLength(JSON.stringify(message)) > payloadThreshold (8000), while Postgres refuses a
-// NOTIFY payload of 8000 bytes or more. Real socket.io Server on the real createSocketAdapter();
-// io.emit() a string sized so the adapter's JSON payload is 7999, 8000 and 8001 bytes.
+// Adapter threshold: the audit's patched @socket.io/postgres-adapter sent a NOTIFY inline unless
+// the payload was > 8000 bytes, while Postgres refuses 8000 or more, so a broadcast of exactly
+// 8000 bytes was lost to every other instance. D5 removed that adapter. This checks it is gone,
+// and sends broadcasts of 7999, 8000, 8001 and 200,000 bytes between two real socket.io servers
+// on the real createSocketAdapter() (Redis streams), counting what a client on the other one gets.
+import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 import { Server } from "socket.io";
+import { io as ioClient } from "socket.io-client";
 import { directUrl, log } from "./proxy.ts";
 
 process.env.DATABASE_URL = directUrl;
-// The adapter module as it stood at 5f464ce, which this reproduces; #1885 replaced it.
-type PgAdapterModule = {
-  createSocketAdapter(): Parameters<Server["adapter"]>[0];
-  socketAdapterPool(): import("pg").Pool | null;
-  socketAdapterReady(): Promise<void>;
-};
-const { createSocketAdapter, socketAdapterPool, socketAdapterReady } = (await import("../../../../../../server/socket/socketAdapter.ts")) as unknown as PgAdapterModule;
-const { logger } = await import("../../../../../../server/shared/logger.ts");
+process.env.LOG_LEVEL = "silent";
+if (!process.env.REDIS_URL) throw new Error("REDIS_URL is required: the adapter runs over Redis");
+// The lockfile, not require.resolve: a worktree nested in another checkout resolves that one's node_modules too.
+const lock = JSON.parse(readFileSync(new URL("../../../../../../package-lock.json", import.meta.url), "utf8")) as { packages: Record<string, unknown> };
+const installed = Object.keys(lock.packages).some((k) => k.endsWith("node_modules/@socket.io/postgres-adapter"));
+log(`@socket.io/postgres-adapter in package-lock.json: ${installed}`);
 
-const io = new Server();
-io.adapter(createSocketAdapter());
-const pool = socketAdapterPool()!;
-await socketAdapterReady().catch((e) => log("ready:", (e as Error).message));
-
-const sent: { kind: string; bytes: number; err?: string }[] = [];
-const orig = pool.query.bind(pool) as (...a: unknown[]) => Promise<unknown>;
-(pool as unknown as { query: (...a: unknown[]) => Promise<unknown> }).query = (...a: unknown[]) => {
-  const text = String(a[0]);
-  const params = a[1] as unknown[] | undefined;
-  const kind = text.includes("pg_notify") ? "pg_notify" : text.includes("INSERT INTO") ? "attachment insert" : "";
-  if (!kind) return orig(...a);
-  const rec = { kind, bytes: kind === "pg_notify" ? Buffer.byteLength(String(params![1])) : (params![0] as Buffer).length };
-  sent.push(rec);
-  return orig(...a).catch((e: Error) => { (rec as { err?: string }).err = e.message; throw e; });
+const { createSocketAdapter } = await import("../../../../../../server/socket/socketAdapter.ts");
+const listen = async () => {
+  const http = createServer();
+  const io = new Server(http);
+  io.adapter(createSocketAdapter({ livePeers: async () => 0, leave: () => {} }) as never);
+  await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
+  return { io, port: (http.address() as { port: number }).port };
 };
-const errors: string[] = [];
-const origError = logger.error.bind(logger);
-(logger as unknown as { error: (...a: unknown[]) => void }).error = (...a: unknown[]) => {
-  const msg = typeof a[1] === "string" ? a[1] : String(a[0]);
-  errors.push(msg);
-  return (origError as (...x: unknown[]) => void)(...a);
-};
+const sender = await listen();
+const receiver = await listen();
+const client = ioClient(`http://127.0.0.1:${receiver.port}`, { transports: ["websocket"], forceNew: true });
+await new Promise<void>((r) => client.once("connect", () => r()));
+await new Promise((r) => setTimeout(r, 1_500));
 
-const emitSized = async (len: number) => {
-  sent.length = 0; errors.length = 0;
-  io.emit("probe", "x".repeat(len));
+const got: number[] = [];
+client.on("probe", (s: string) => got.push(Buffer.byteLength(s)));
+const sizes = [7999, 8000, 8001, 200_000];
+const send = async (n: number) => {
+  const before = got.length;
+  sender.io.emit("probe", "x".repeat(n));
+  const deadline = Date.now() + 3_000;
+  while (got.length === before && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+  return got.length > before ? `delivered (${got.at(-1)} B)` : "LOST";
+};
+log(`positive control, a local emit on the receiver reaches its own client: ${await (async () => {
+  const before = got.length;
+  receiver.io.emit("probe", "x".repeat(10));
   await new Promise((r) => setTimeout(r, 300));
-  return sent.map((s) => `${s.kind} ${s.bytes} B${s.err ? ` -> ERROR ${s.err}` : " -> ok"}`).join("; ") +
-    (errors.length ? ` | logged: ${errors.join(" / ")}` : "");
-};
+  return got.length > before ? "yes" : "NO";
+})()}`);
+for (const n of sizes) log(`broadcast of a ${n} B string from the other server: ${await send(n)}`);
 
-const first = await emitSized(7000);
-const overhead = Number(first.match(/pg_notify (\d+) B/)![1]) - 7000;
-log(`JSON envelope overhead around the emitted string: ${overhead} bytes`);
-for (const target of [7999, 8000, 8001]) log(`payload ${target} B: ${await emitSized(target - overhead)}`);
-
-io.close();
-await pool.end().catch(() => {});
+client.close();
+sender.io.close();
+receiver.io.close();
 process.exit(0);

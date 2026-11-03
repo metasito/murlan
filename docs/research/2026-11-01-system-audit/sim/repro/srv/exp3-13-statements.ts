@@ -1,13 +1,15 @@
 // Claims 3 and 13 from the statement log (log_statement=all on murlan_repro_srv only). One instance.
-// Counts statement shapes only; parameter values are never read or printed.
+// Counts statement shapes only; parameter values are never read or printed. Friend notices are
+// counted on the cluster channel (RedisTap), now that they no longer travel as pg_notify.
 import {
   bootInstance, connect, countShapes, killInstance, logOffset, out, PidWatch, q,
-  readStatements, register, resetData, sleep, type Instance, type LogStatement,
+  readStatements, RedisTap, register, resetData, sleep, tally, waitForPeers, type Instance, type LogStatement,
 } from "./lib.ts";
 
 const { log, save } = out("exp3-13.txt");
 let A: Instance | undefined;
 const pids = new PidWatch();
+const tap = new RedisTap();
 
 async function measure(label: string, work: () => Promise<void>): Promise<LogStatement[]> {
   await pids.sample();
@@ -24,16 +26,23 @@ async function measure(label: string, work: () => Promise<void>): Promise<LogSta
 const count = (stmts: LogStatement[], re: RegExp) => stmts.filter((s) => re.test(s.sql)).length;
 const SESSION_SELECT = /select\s+sess\s+from/i;
 const SESSION_TOUCH = /update\s+"?(public"?\.)?"?session"?\s+set\s+"?expire/i;
-const EVENT_INSERT = /insert into "events"/i;
+const EVENT_INSERT = /insert into "?events"?/i;
 const NOTIFY = /pg_notify/i;
 
 try {
   await q("ALTER DATABASE murlan_repro_srv SET log_statement = 'all'");
   await resetData();
+  await tap.start();
   A = await bootInstance("srvA", 5581, { env: { MURLAN_WEB_DIST: "docs/research/2026-11-01-system-audit/sim/repro/srv/stub-dist" } });
+  await waitForPeers(tap, 1);
   await pids.start(100);
   const tag = Date.now().toString(36);
-  const me = await register(A.url, `s${tag}`);
+  let me = { cookie: "", id: "" };
+  // The statement-log positive control: a registration's writes, which the reader must attribute to A.
+  const control = await measure("positive control, one registration", async () => {
+    me = await register(A!.url, `s${tag}`);
+  });
+  if (count(control, /insert into "users"/i) === 0) throw new Error("the statement log showed no INSERT of A's: PGLOG or log_statement is wrong");
 
   log("# exp3: static files with and without a session cookie (10 requests each)");
   const get = (path: string, cookie?: string) =>
@@ -72,6 +81,8 @@ try {
   }
   const rows: string[] = [];
   for (const { label, n, user } of subjects) {
+    const mark = tap.mark();
+    const eventsBefore = (await q<{ n: number }>("SELECT count(*)::int n FROM events"))[0]!.n;
     const s = await measure(`one socket session, ${label}`, async () => {
       const socket = await connect(A!.url, user.cookie, "web");
       socket.emit("friend:get_online_list");
@@ -79,7 +90,9 @@ try {
       socket.close();
       await sleep(1_200);
     });
-    rows.push(`friends=${String(n).padStart(2)}: events INSERTs ${count(s, EVENT_INSERT)}, pg_notify ${count(s, NOTIFY)}`);
+    const heard = tap.since(mark);
+    const eventRows = (await q<{ n: number }>("SELECT count(*)::int n FROM events"))[0]!.n - eventsBefore;
+    rows.push(`friends=${String(n).padStart(2)}: events rows ${eventRows} in ${count(s, EVENT_INSERT)} INSERT statements, pg_notify ${count(s, NOTIFY)}, cluster messages ${heard.length} ${JSON.stringify(Object.fromEntries(Object.entries(tally(heard)).map(([k, v]) => [k, v.n])))}`);
   }
   log("\nsummary (connect, list, disconnect; single instance):");
   for (const r of rows) log("  " + r);
@@ -89,6 +102,7 @@ try {
   log("FAILED", String((err as Error).stack ?? err));
 } finally {
   if (A) await killInstance(A);
+  await tap.stop().catch(() => {});
   await pids.stop().catch(() => {});
   await q("ALTER DATABASE murlan_repro_srv RESET log_statement").catch(() => {});
   save();
