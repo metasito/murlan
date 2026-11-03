@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef } from "react";
 import {
   cancelAnimation,
   Easing,
@@ -48,10 +48,7 @@ export function useRoundEnding({
   const endedAt = useRef<number | null>(null);
   const started = useRef(false);
   const parked = useRef(false);
-  const onLandedRef = useRef(onLanded);
-  useEffect(() => {
-    onLandedRef.current = onLanded;
-  });
+  const land = useEffectEvent((at: number) => onLanded?.(at));
   const settled = match ? matchSettled : roundSettled;
   const end = match ? matchSettled : hold ? close : glowEnd;
 
@@ -96,7 +93,7 @@ export function useRoundEnding({
         ReduceMotion.Never
       )
     );
-    onLandedRef.current?.(t0);
+    land(t0);
   }, [ended, end, settled, match, landed, reduceMotion, clock, pileOpacity, runFrom]);
 
   useEffect(() => {

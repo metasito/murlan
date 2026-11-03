@@ -1,8 +1,10 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { useCountdown } from '@/components/table/countdown';
+import { useRoundEnding } from '@/components/table/useRoundEnding';
 
 type Fn = () => void;
+type Landed = (at: number) => void;
 
 /** A hook that keeps a caller's callback past the render that passed it calls the one the newest render passed. */
 export function latestCallbackCases() {
@@ -43,6 +45,21 @@ export function latestCallbackCases() {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it("useRoundEnding's onLanded is the newest render's when the landing starts the ending", async () => {
+      const first = jest.fn<Landed>();
+      const second = jest.fn<Landed>();
+      const view = await renderHook(
+        ({ landed, onLanded }: { landed: number | null; onLanded: Landed }) => useRoundEnding({ ended: true, landed, pileEmpty: false, onLanded }),
+        { initialProps: { landed: null as number | null, onLanded: first } }
+      );
+      const landsAt = performance.now();
+      await act(async () => view.rerender({ landed: landsAt, onLanded: second }));
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(1);
+      expect(second).toHaveBeenCalledWith(landsAt);
+      await view.unmount();
     });
   });
 }
