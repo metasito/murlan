@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { addOutline, buildGlow, CARD_ON_CARD_PATHS, buildShadow, castOffset, cardShades, handCardZ, handPaintOrder, pileGroupZ, pilePaintOrder, restingCast, shadeCards, shadeShape, SHADE_STEP, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
+import { CARD_ON_CARD_CSS } from "../e2e/helpers/cardOnCardCss.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { CardGlow, CardShadow, Colors, Layer as Layers, Motion } from "../../lib/tokens.ts";
 import { fixtureLine } from "../helpers/lanternFixture.ts";
@@ -29,6 +30,16 @@ describe("the card shadows are the owner's ruling, not the mockup's", () => {
     const src = fs.readFileSync(fileURLToPath(new URL("../../components/table/handShadeCanvas.tsx", import.meta.url)), "utf8");
     assert.doesNotMatch(src, /shadowFall|"cast"|castOffset|lamp\.value/);
     assert.match(src, /CARD_ON_CARD_PATHS/);
+  });
+
+  test("the Skia felt's passes paint the tokens, and the mockup's Skia-mode card-on-card is the contact tokens alone", () => {
+    const felt = fs.readFileSync(fileURLToPath(new URL("../../components/table/feltCanvas.tsx", import.meta.url)), "utf8");
+    assert.match(felt, /shadowPaint\(/);
+    assert.match(felt, /shadowFall\(/);
+    assert.doesNotMatch(felt, /CardShadow\.(cast|contact|fall)\.\w+\s*[*/+-]/);
+    assert.ok(!CARD_ON_CARD_CSS.includes("var(--shx)"), CARD_ON_CARD_CSS);
+    assert.ok(CARD_ON_CARD_CSS.includes(`.card{box-shadow:0 1.5px 0 #D6D0BC,0 .5px ${CardShadow.contact.blur}px rgba(0,0,0,.3)`), CARD_ON_CARD_CSS);
+    assert.ok(CARD_ON_CARD_CSS.includes(`.card.bkc{box-shadow:0 .5px ${CardShadow.contact.blur}px rgba(0,0,0,.35)`), CARD_ON_CARD_CSS);
   });
 
   test("on the felt the cast is a third of the old (fall 26, 30, drop 3, blur 10), a lifted card's shadow larger", () => {
