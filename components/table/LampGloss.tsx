@@ -128,7 +128,10 @@ export function LevelShade({ rectKey, rects, width, height }: Props) {
 }
 
 function Shade({ light, width, height }: { light: SharedValue<GlossLight>; width: number; height: number }) {
-  const style = useAnimatedStyle(() => ({ opacity: levelShade(light.value.level) }));
+  const style = useAnimatedStyle(() => {
+    const opacity = levelShade(light.value.level);
+    return { opacity, display: opacity > 0 ? "flex" : "none" };
+  });
   return (
     <Animated.View
       testID="card-level-shade"
