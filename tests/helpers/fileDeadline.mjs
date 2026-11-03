@@ -8,8 +8,8 @@ import path from "node:path";
 import { identityOf } from "../../scripts/lib/proc.mjs";
 
 /**
- * Eight times the slowest file CI has measured, `tests/tooling/mutationRun.test.ts` at about 85 s, so
- * it spends half the share tests/helpers/timeoutHeadroom.mjs allows.
+ * Eight times the slowest file CI has measured, `tests/tooling/mutationRun.test.ts`, whose one heavy
+ * test alone took 77.5 s, so it spends half the share tests/helpers/timeoutHeadroom.mjs allows.
  */
 export const FILE_DEADLINE_MS = 720_000;
 
