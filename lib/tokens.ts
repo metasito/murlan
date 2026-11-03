@@ -266,13 +266,15 @@ export const LastCard = {
   glow: '#FF5A46',
 } as const;
 
-// The felt's card shadows: the lantern mockup's `.card`, `.card.bkc`, `.bk` and `--shx`/`--shy`, in its
-// points at card scale 1, blurs as CSS states them (tests/ui-rules/cardShadows.test.ts parses the mockup).
+// The felt's card shadows, in points at card scale 1, blurs as CSS states them. The owner's ruling of
+// 2026-11-03 (#1966) overrides the lantern mockup's: cards lie skin to skin, so a card on a card casts
+// only `contact`, and on the felt `cast` falls a third of the mockup's (`fall`, `cast.blur`).
 export const CardShadow = {
-  cast: { blur: 10, alpha: 0.5 },
-  contact: { y: 1, blur: 2 },
-  alpha: { face: 0.3, back: 0.4, fan: 0.5 },
-  fall: { x: 26, y: 30, drop: 3 },
+  cast: { blur: 3.5, alpha: 0.5 },
+  contact: { y: 0.5, blur: 1 },
+  alpha: { face: 0.3, back: 0.35, fan: 0.35 },
+  fall: { x: 78, y: 90, drop: 1 },
+  lifted: { y: 4, blur: 8, alpha: 0.3 },
 } as const;
 
 // Design gate G1 (#1259 plan 4), tests/e2e/fixtures/card-glow: under a selected hand card and the going-out catch.

@@ -82,33 +82,26 @@ export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Rec
   };
 }
 
+const contactLayer = (opacity: number) => ({ color: '#000000', offsetY: CardShadow.contact.y, opacity, radius: CardShadow.contact.blur });
+const fallLayer = { color: '#000000', offsetY: CardShadow.fall.drop, opacity: CardShadow.cast.alpha, radius: CardShadow.cast.blur };
+
 const CARD_LAYERS = {
   /** A card resting on the felt. */
-  face: [
-    { color: '#000000', offsetY: 0.5, opacity: 0.62, radius: 0.75 },
-    { color: '#000000', offsetY: 2, opacity: 0.34, radius: 4.5 },
-  ],
-  /** A card held above the cloth. */
+  face: [contactLayer(CardShadow.alpha.face), fallLayer],
+  /** A card held above the cloth: the one card whose shadow is larger than the contact and the felt's cast. */
   lifted: [
-    { color: '#000000', offsetY: 1, opacity: 0.34, radius: 3 },
-    { color: '#000000', offsetY: 6, opacity: 0.3, radius: 13 },
+    contactLayer(CardShadow.alpha.face),
+    { color: '#000000', offsetY: CardShadow.lifted.y, opacity: CardShadow.lifted.alpha, radius: CardShadow.lifted.blur },
   ],
-  /** A card back — an opponent's fan resting on the felt, same contact+cast split as the face. */
-  back: [
-    { color: '#000000', offsetY: 0.5, opacity: 0.7, radius: 1 },
-    { color: '#000000', offsetY: 3, opacity: 0.36, radius: 6.5 },
-  ],
+  /** A card back: an opponent's fan resting on the felt. */
+  back: [contactLayer(CardShadow.alpha.back), fallLayer],
 } as const;
 const CARD_ELEVATION = { face: 3, lifted: 14, back: 5 } as const;
 
-/**
- * A card view's own contact+cast pair; a resting card's cast moved to `cast` where the table gives one, and
- * where it `shadesCards` as the Skia felt's hand shade does, cast as that shade is.
- */
-export function cardShadow(kind: keyof typeof CARD_LAYERS, cast?: { x: number; y: number } | null, shadesCards = false): Record<string, any> {
+/** A card view's own contact+fall pair; a resting card's fall moved to `cast` where the table gives one. */
+export function cardShadow(kind: keyof typeof CARD_LAYERS, cast?: { x: number; y: number } | null): Record<string, any> {
   const [contact, fall] = CARD_LAYERS[kind];
-  const fell = shadesCards ? { color: Colors.shadow, opacity: CardShadow.cast.alpha, radius: CardShadow.cast.blur } : fall;
-  const moved = cast && kind !== "lifted" ? { ...fell, offsetX: cast.x, offsetY: cast.y } : fall;
+  const moved = cast && kind !== "lifted" ? { ...fall, offsetX: cast.x, offsetY: cast.y } : fall;
   return makeLayeredShadow([contact, moved], CARD_ELEVATION[kind]);
 }
 

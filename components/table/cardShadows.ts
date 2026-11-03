@@ -11,6 +11,8 @@ import type { PlayRole } from "./trick.ts";
 export type ShadowKind = "face" | "back" | "fan";
 /** One path each; the cast is every face and back, a seat fan's backs cast nothing (`.bk`). */
 export const SHADOW_PATHS = ["cast", "face", "back", "fan"] as const;
+/** The paths a card casts on another card: the contact alone, never the lamp's cast (#1966). */
+export const CARD_ON_CARD_PATHS = ["face", "back"] as const satisfies readonly ShadowPath[];
 export type ShadowPath = (typeof SHADOW_PATHS)[number];
 
 export function shadowKind(key: string, rect: CardRect): ShadowKind {
