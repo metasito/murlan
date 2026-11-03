@@ -74,7 +74,7 @@ describe('a deal whose frame clock never advances', () => {
     expect(prompt()).not.toBeNull();
     expect(jest.mocked(reportError).mock.calls.map(([e]) => (e as Error).message)).toEqual(['table gate forced: deal']);
     await view.unmount();
-  }, 60_000);
+  });
 
   it('forces nothing while the page is hidden', async () => {
     const view = await render(
@@ -87,5 +87,5 @@ describe('a deal whose frame clock never advances', () => {
     await act(async () => jest.advanceTimersByTime(GATE_WATCHDOG_MS * 3));
     expect({ prompt: prompt() !== null, reported: jest.mocked(reportError).mock.calls.length }).toEqual({ prompt: false, reported: 0 });
     await view.unmount();
-  }, 60_000);
+  });
 });

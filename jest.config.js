@@ -72,9 +72,10 @@ module.exports = {
   projects: [project('ios'), project('android'), compiled],
   reporters: process.env.CI ? ['default', `${rootDir}/tools/ci/native-budget.mjs`] : ['default'],
   globalSetup: `${rootDir}/tools/ci/preflightMemory.mjs`,
-  // Eight times the slowest test and hook CI measured on the default, 4.3 s on a cold transform cache
-  // (tests/helpers/timeoutHeadroom.mjs); a test that needs more names its own.
-  testTimeout: 40_000,
+  // Eight times the slowest test and hook measured on the default (tests/helpers/timeoutHeadroom.mjs):
+  // 4.3 s on CI's cold transform cache, 8.6 s in ten local runs at CI's two workers. A test that needs
+  // more names its own.
+  testTimeout: 80_000,
   // A worker holds a whole React Native module graph, and jest's default is one
   // per core — enough of them to exhaust a developer machine's memory.
   maxWorkers: '50%',
