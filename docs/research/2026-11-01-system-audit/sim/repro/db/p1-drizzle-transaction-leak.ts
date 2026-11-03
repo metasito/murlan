@@ -1,5 +1,8 @@
-// P1: drizzle's transaction() through the app's real openDatabase() pool (max 2, MURLAN_PG_POOL_MAX).
-//   A  BEGIN rejects on a healthy client (bogus isolation level, the only deterministic trigger).
+// P1: the audit drove drizzle's transaction(); every server transaction now goes through
+// server/store/db.ts transaction() (D11, tests/server/transactionScan.test.ts), so that is what runs
+// here, on the app's real openDatabase() pool (max 2, MURLAN_PG_POOL_MAX).
+//   A  BEGIN rejects on a healthy client (the wrapper's BEGIN takes no config, so the client's
+//      query is made to reject on BEGIN: the code path, not the trigger, as the audit's was).
 //   B  BEGIN times out on a half-open client (proxy blackholes the pooled sockets).
 //   C  BEGIN succeeds, the connection goes half-open mid-transaction: is the client released with
 //      or without the error, and does it come back to the pool idle?
@@ -13,7 +16,8 @@ const scenario = process.argv[2] ?? "A";
 const proxy = await startProxy(PG_PORT);
 process.env.DATABASE_URL = viaProxy(proxy.port);
 process.env.MURLAN_PG_POOL_MAX = "2";
-const { openDatabase, db, pool } = await import("../../../../../../server/store/db.ts");
+const { openDatabase, transaction, pool } = await import("../../../../../../server/store/db.ts");
+const db = () => ({ transaction });
 openDatabase();
 const p = pool();
 const stats = (label: string) =>
@@ -57,18 +61,27 @@ if (scenario === "C2") {
 }
 
 if (scenario === "A") {
+  const connect = p.connect.bind(p) as () => Promise<pg.PoolClient>;
+  (p as unknown as { connect: () => Promise<pg.PoolClient> }).connect = async () => {
+    const client = await connect();
+    const query = client.query.bind(client) as (text: string) => Promise<unknown>;
+    (client as unknown as { query: (text: unknown) => Promise<unknown> }).query = (text: unknown) =>
+      text === "BEGIN" ? query("begin isolation level bogus level") : query(text as string);
+    return client;
+  };
   for (const i of [1, 2]) {
     await timed(`transaction #${i} with BEGIN that fails`, () =>
-      db().transaction(async (tx) => { await tx.execute(sql`select 1`); }, { isolationLevel: "bogus level" as never }));
+      db().transaction(async (tx) => { await tx.execute(sql`select 1`); }));
     stats(`after #${i}`);
   }
+  (p as unknown as { connect: typeof connect }).connect = connect;
   await timed("a plain query afterwards (pool.query)", () => p.query("select 1"));
   stats("after plain query");
   const direct = new pg.Client({ connectionString: directUrl });
   await direct.connect();
   const { rows } = await direct.query(
     "select pid, state, backend_xid, left(query,40) q from pg_stat_activity where datname='murlan_repro_db' and pid<>pg_backend_pid()");
-  log("server side, the two leaked backends:", JSON.stringify(rows));
+  log("server side, the database's backends afterwards:", JSON.stringify(rows));
   await direct.end();
 }
 

@@ -1,0 +1,381 @@
+After numbers for the 2026-11-01 system audit (#1897): every row of the baseline files rerun
+=========================================================================================
+Tree under test: main 9818c633099a30cea2c3dd6cad1bc08e53a19dc1 (#1943 merged; the audit ran 5f464ce).
+Run 2026-11-03. Same scripts (ported where the subject moved, see "Instruments"), same seed
+(sim/seed.sql, plus sim/seed-sessions.sql for the 100k session rows explain-baseline.txt's E11 ran
+against and seed.sql never wrote), same table counts and minutes, same --seed 4242.
+
+Machine: NOT the baseline's. The audit ran on Windows 11 (Node 24.13.1); this ran on Linux 6.18,
+4 vCPU Intel Xeon @ 2.10 GHz, 15 GB, Node 26.13.0, so absolute times differ by machine as well as
+by code. Where it matters, a row says which part is machine-independent (plan shape, counts).
+
+Engines, each started by hand (Docker's daemon was not running, so not `scripts/dev-stack.mjs up`):
+  Postgres 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1), its own cluster on localhost:55432, trust auth,
+    stock settings but logging_collector on; the same major and port as the baseline.
+    Postgres 19 is not in main (#1913/#1927), so every row is Postgres 16.
+  Valkey 9.1.3 (built locally; redis_version 7.2.4 compatibility), on localhost, no persistence.
+    The baseline had no key-value store at all: the cluster ran over Postgres LISTEN/NOTIFY.
+Packages: pg 8.23.1, pg-pool 3.14.0, drizzle-orm 0.45.4, redis 6.3.1, @socket.io/redis-streams-adapter
+  0.3.1, socket.io 4.8.4, @prometheus-io/client 0.16.1, zod 4.6.7, express-rate-limit 8.7.2,
+  rate-limit-redis 6.0.2 (npm ci of this tree's lockfile).
+Databases: murlan_soak (load.sh), murlan_repro_explain (seed + explain), murlan_repro_srv,
+  murlan_repro_db; Valkey logical DBs 1-3. All disposable, on servers nothing else uses.
+No run overlapped another, and no test suite ran during the load runs.
+Secrets are redacted: no cookie, ticket, session id or URL with credentials is printed below.
+
+Verdicts: FIXED (the claim no longer reproduces), NOT FIXED (it still does: an issue is named),
+CHANGED (the subject changed shape; what it is now is stated).
+
+Instruments (the port, sim/repro/):
+- srv/lib.ts RedisTap replaces NotifyTap as the cluster instrument: it reads the adapter's pub/sub
+  (public and private channels: FETCH_SOCKETS, server-side emits, every response), the adapter
+  stream (room broadcasts) and every instance's inbox stream, from the tap's start. Positive
+  controls every script asserts before reporting a zero: both adapters' heartbeats heard, both
+  inboxes' boot entries read, and (exp2) a FETCH_SOCKETS the harness publishes itself, which both
+  instances answer on the tap. NotifyTap now throws if its Postgres channel is silent for 12 s.
+- srv/lib.ts secretsInStore / secretsInTables: exact-value search for every cookie, session id and
+  ticket the harness holds, across every message heard, every key and value in the store, and
+  every text/json column; positive control: the session table's own sid column must be found.
+- srv/exp-p2.ts blackholes all of instance A's Redis connections through the lib.ts TCP proxy
+  (the sim/repro/db/proxy.ts pattern: bytes stop both ways, sockets stay open, new flows pass).
+- load.sh: counts extended-protocol statements ("execute <name>:") as well as simple ones, and
+  sends one control pg_notify the count must see before it reports pg_notify per move.
+- srv/lib.ts scrapeMetrics: /metrics with the instances' bearer token; a metric counts as exported
+  when its # TYPE line is served.
+
+=========================================================================================
+Measurements (REPORT.md "Measurements"; results/load-baseline.txt, statements-per-move.txt)
+=========================================================================================
+cmd: PGPORT=55432 REDIS_URL=<disposable store> bash sim/load.sh <tables> <minutes>
+(production pool sizes, one server process, clients in the same process as the baseline's).
+"Accepted" is moves less refusals, per second, as REPORT.md counts it.
+
+row                       | BEFORE                                     | AFTER                                       | verdict
+1 table (BEFORE 20 s,     | 21 moves/s; 5.2 pg_notify, 1.0 state       | 0.33 min: 442 moves in 24.1 s = 18.3/s;     | FIXED
+ AFTER 0.33 min)          | write, 10.8 commits per move               | 0.00 pg_notify, 0.76 state writes, 1.86     |
+                          |                                            | commits, 1.82 statements per move;          |
+                          |                                            | p50 1.4 ms, p99 5.3 ms                      |
+8 tables, 1 min           | 54 accepted/s, P50 9 ms, P99 27 ms         | 51.5 accepted/s (3266 moves, 88 refused,    | FIXED (latency); same throughput
+                          |                                            | 61.7 s), P50 6.3 ms, P99 28 ms              |
+32 tables, 1 min          | 197 accepted/s, P50 29 ms, P99 71 ms       | 193.2 accepted/s (12762, 320 refused,       | FIXED
+                          |                                            | 64.4 s), P50 23.7 ms, P99 47.1 ms           |
+96 tables, 1 min          | 156 accepted/s, P50 46 ms, P99 268 ms,     | 587.3 accepted/s (38693, 580 refused = 1.5 %| CHANGED: no longer bound by the
+                          | 61 % refused (the 60 moves/min limit)      | of sent, 64.9 s), P50 66.2 ms, P99 122.8 ms | move limit; 3.8x the accepted
+                          |                                            |                                             | moves at under half the P99
+database work per move    | 32 t: 3.94 commits, 0.37 ins, 1.18 upd;    | 8 t: 1.34 commits, 2.51 ins, 1.17 upd,      | FIXED
+ (pg_stat_database)       | 96 t: 2.97 commits, 0.35 ins, 1.19 upd     |   1.55 statements                           |
+                          | (1 t: 10.76 commits per move)              | 32 t: 1.07 commits, 1.86 ins, 0.92 upd,     |
+                          |                                            |   1.32 statements                           |
+                          |                                            | 96 t: 0.45 commits, 0.58 ins, 0.29 upd,     |
+                          |                                            |   0.71 statements                           |
+pg_notify per move        | 5.2                                        | 0.00 at 1, 8, 32 and 96 tables (control     | FIXED
+ (statement log)          |                                            | pg_notify seen each run)                    |
+state writes per move     | 1.0 (425 upserts / 417 moves)              | 1 t 0.76, 8 t 0.93, 32 t 0.77, 96 t 0.15    | FIXED (latest-wins coalescing:
+ (active_games upserts)   |                                            | (337/442, 3049/3266, 9777/12762, 5812/38693)| the write chain drops superseded
+                          |                                            |                                             | snapshots under load)
+cluster messages per move | (5.2 pg_notify, every one a cluster        | 0.00 at every table count, one instance     | FIXED
+                          |  message even on one instance)             | (cluster_messages_total; the counter's own  |
+                          |                                            | positive control is exp5's two-instance run)|
+The soak's refusals fell from 61 % to 1.5 % at 96 tables with the server's 60 moves/min limit
+unchanged (server/socket/socketGameplay.ts), so the 96-table row measures a different load than
+the baseline's: read it as "no longer limit-bound", not as a like-for-like latency.
+Statement shapes, 1 table: 337 active_games upserts, 27 SELECT 1 (health), 18 BEGIN/COMMIT pairs
+(round results and seats), 8 session SELECT + 8 session upsert (registration and logins), 0
+session touch UPDATE, 0 pg_notify; the batched telemetry insert appears in exp3-13 below.
+
+NOTIFY ceiling (results/notify-bench.txt, kept as history: the channel it measured is gone)
+row                       | BEFORE                                     | AFTER                                       | verdict
+the cluster channel's cap | pg_notify 2 kB: 2,808 / 3,426 / 3,491 /    | Valkey XADD 2 kB (MAXLEN ~ 120000): 19,350 /| CHANGED: the cap moved to the
+                          | 3,422 a second at 1 / 3 / 8 / 16           | 58,480 / 81,633 / 75,472 a second at 1 / 3 /| store, about 23x higher
+                          | connections, whole database                | 8 / 16 clients (redis-benchmark -n 100000)  |
+cluster messages per move | 5.2 (every emit, local or not)             | one instance: 0.00 (all four soak runs);    | FIXED
+                          |                                            | two instances, one of two seats remote:     |
+                          |                                            | 2.04 (28 moves: 29 deliver, 14 table-ask,   |
+                          |                                            | 14 table-answer; exp5 cluster trial)        |
+At 2.04 messages per move in that worst split, the 2 kB XADD rate is about 37,000-40,000 moves
+a second for the store; runtime.json's design peak (maxClusterMessagesPerSecond 1,000) is the
+binding number, and each stream's maxLen is sized from it.
+
+=========================================================================================
+Query plans (sim/explain.sql on the seed; results/explain-baseline.txt; REPORT.md findings 4, 7)
+=========================================================================================
+cmd: psql -d murlan_repro_explain -f sim/explain.sql (seed.sql + seed-sessions.sql, ANALYZE)
+query                                    | BEFORE                     | AFTER                                  | verdict
+E3 account delete, replay match          | 118.9 ms, Parallel Seq Scan| 0.072 ms, BitmapOr of GIN              | FIXED
+                                         | on round_replays           | round_replays_player_ids_idx and the   |
+                                         |                            | new round_replays_seats_idx            |
+E4 DELETE FROM users (whole)             | 278.5 ms                   | 8.3 ms                                 | FIXED
+E4  events_user_id_fkey trigger          | 212.2 ms                   | 1.0 ms (events_user_id_idx)            | FIXED
+E4  round_history_user_id_fkey trigger   | 40.8 ms                    | 4.2 ms                                 | FIXED
+E4  client_errors / bug_reports /        | 3.2 / 2.0 / 4.6 ms         | 0.25 / 0.26 / 0.30 ms                  | FIXED
+     game_invites_inviter triggers       |                            |                                        |
+E11 session rows of one user             | 49.9 ms, Seq Scan          | 0.080 ms, Index Scan session_user_id_idx| FIXED
+E6 admin active players, 7 days          | 2,367 ms, Seq Scan         | 82.6 ms, Bitmap Index Scan on the BRIN | FIXED
+                                         |                            | round_history_finished_idx             |
+E7 admin funnel, 30 days                 | 522.7 ms                   | 372.0 ms, Bitmap Index Scan            | CHANGED: indexed, still linear in
+                                         |                            | events_occurred_idx (172,792 rows);    | the window; on the admin pool (max 2,
+                                         |                            | the count(DISTINCT) is the rest        | statement_timeout 30 s, P8 below), as
+                                         |                            |                                        | TICKETS.md's dropped rollup decided
+E1 / E2 replays list                     | 0.449 / 0.083 ms           | 0.336 / 0.114 ms                       | unchanged
+E5 round_history prune (seed breaks cap) | 2,652 ms                   | 629 ms                                 | not a production number (REPORT.md)
+E8 quick match candidates (old shape)    | 4.6 ms                     | 1.6 ms                                 | see finding 10
+E9 leaderboard                           | 54.1 ms (cold)             | 3.0 ms (warm: run straight after seed) | not comparable (cache state)
+E10 profile history                      | 0.151 ms                   | 0.115 ms                               | unchanged
+The fixed rows are fixed by plan shape (index scans where the baseline scanned), which does not
+depend on the machine; the milliseconds do.
+
+=========================================================================================
+Server reproductions, in repro-srv.txt's order (sim/repro/srv, one server process per instance)
+=========================================================================================
+cmd: REDIS_URL=<disposable store> PGLOG=<pg log> node --experimental-strip-types
+     --no-warnings <script>.ts, from sim/repro/srv/
+
+2a. Connect sweeps the cluster (exp2-connect.ts)                                       FIXED
+Positive control: a FETCH_SOCKETS the harness published was heard, and both instances' replies
+(1 socket carried, with a session credential in it: what a sweep would still carry) were heard.
+Per web connect on A, 5 probes each, each probe with 5 friends on B:
+  N_on_B | BEFORE: NOTIFYs  FETCH_SOCKETS  sockets in replies | AFTER: cluster msgs (bytes)  FETCH_SOCKETS  sockets in replies
+       0 |         5        2              0                  |       1 (170 B)              0              0
+      10 |         5        2              20                 |       2 (985 B)              0              0
+      50 |         5        2              100                |       2 (985 B)              0              0
+     100 |         5        2              200 (~913 B each)  |       2 (985 B)              0              0
+  AFTER by type at N=100: 1 session-eviction server-side emit, 1 inbox deliver (the online notice
+  to B, one message carrying all five friends); flat in N.
+Herd, K clients at once split A/B:
+  BEFORE K=10: 20 FETCH_SOCKETS, 97 sockets carried; K=25: 50 FETCH_SOCKETS, 609 sockets, 49
+         attachment INSERTs (~K^2)
+  AFTER  K=10: 10 cluster messages (1,700 B), 0 FETCH_SOCKETS; K=25: 25 (4,250 B), 0 FETCH_SOCKETS
+         (one eviction emit per connect: linear in K)
+Online list answered in 7-31 ms at N=100 (BEFORE 28-68 ms). One instance alone: 1 message, 0
+FETCH_SOCKETS (BEFORE 1 NOTIFY, 0).
+
+2b. Swept handshakes put live credentials in the database (exp2-connect.ts)             FIXED
+BEFORE: socket_io_attachments rows (~91 kB) and inline NOTIFY payloads carried headers.cookie,
+        auth.ticket and data.sid of every swept socket.
+AFTER:  130 cookies, 130 session ids, one redeemed and one unspent ticket searched for by exact
+        value: found in none of 234 cluster messages heard after the control, in no key or value
+        in the store, in no text/json column of any table but session (positive control: all
+        130 session ids found in session.sid). socket_io_attachments no longer exists (boot drops
+        it, RETIRED_TABLES).
+
+6. Reconnect herd and the ticket limiter (exp6-herd.ts)                                 FIXED
+First reconnect after a deploy, 1,000 clients:
+  BEFORE: socket.io's backoff, 551-1499 ms in ten 50 ms teeth (one Math.random() for sign and size)
+  AFTER:  lib/socket.ts reconnection: false; the app's own loop (lib/reconnectDelay.ts) spreads
+          the first attempt over 1-999 ms, 20 strips of 50 ms all used, the busiest 71; after a
+          draining server's notice (server:draining, D20), 113-9,994 ms, 194 strips, the busiest 11.
+          No comb. (The socket.io backoff scenarios A and B rerun identically as history.)
+Ticket limiter, every client behind 127.0.0.1, measured on a real instance:
+  BEFORE: per IP: 1,000 clients -> 940 refused (100 -> 40); computed from the 60/min MemoryStore
+  AFTER:  keyed per signed-in session: 120 users, one ticket each, at once -> 0 refused (the per-IP
+          key refuses 60); positive control, one user minting 70 at once -> 33 refused (see the
+          note at the end); web mints no ticket at all (lib/socket.ts sends protocolVersion only).
+
+3. Session SELECT + touch UPDATE on every cookie-bearing request (exp3-13-statements.ts)  FIXED
+10 requests per row; statement-log positive control: a registration's INSERT INTO users was
+attributed to A's backends.
+  row                            | BEFORE: session SELECT / touch UPDATE | AFTER: session SELECT / touch UPDATE
+  /assets image, cookie          | 10 / 10                               | 0 / 0
+  /assets image, no cookie       | 0 / 0                                 | 0 / 0
+  dist hashed bundle, cookie     | 10 / 10                               | 0 / 0
+  dist hashed bundle, no cookie  | 0 / 0                                 | 0 / 0
+  GET /api/auth/me, cookie       | 10 / 10                               | 10 / 0 (disableTouch)
+The one statement in each static row is the health probe's SELECT 1, once a second.
+
+13. Telemetry and friend notices (exp3-13-statements.ts)                                FIXED
+One socket session (connect, list, disconnect), single instance, every friend offline:
+  BEFORE: friends 0 / 5 / 20: events INSERTs 2 / 2 / 2, pg_notify 1 / 11 / 41
+  AFTER:  friends 0 / 5 / 20: events rows 5 / 2 / 2 in 2 / 1 / 1 batched INSERT statements
+          (the first row's batch also flushed the registrations' mail.sendFailed events),
+          pg_notify 0 / 0 / 0, cluster messages 1 / 1 / 1 (the session-eviction emit only):
+          an offline friend costs nothing.
+
+5. Round-ending move waits on the database; results not durable (exp5-roundover.ts)     FIXED
+Ack latency, two humans playing round 1 on localhost:
+  BEFORE: ordinary median 2.3 / 2.4 ms, round-ending 10.5 / 41.0 ms: 4-17x
+  AFTER:  ordinary median 1.6 / 1.6 ms (n=21, 29), round-ending 4.6 / 2.9 ms: 1.8-2.9x; across the
+          five kill trials the round-ending ack was 2.9-10.8 ms. The ack is sent on apply
+          (server/game/tableMoves.ts: `void commitMove(...)` then `return OK`); the remainder is
+          the round-over CPU (serving the final state), not a database wait.
+Durability, kill -9 at a delay after the first game:round_over, then a fresh instance on the
+same database with a 1 s sweep:
+  BEFORE kill +0 ms (x2): user_stats 0, user_ratings 0, round_history 0, round_replays 1 (LOST,
+         replay orphaned); +50 / +200 ms: all present
+  AFTER  kill +0 ms (x3), +50 ms, +200 ms: user_stats 2, user_ratings 2, round_history 2,
+         round_replays 1, pendingResults 0, orphaned replays 0, before the fresh instance booted
+         and after it: round_over is emitted after the results commit (D1)
+  Positive control (no kill, 2.5 s): all rows present.
+
+P2. Half-open cluster connection is never detected (exp-p2.ts)                          FIXED
+BEFORE: A's LISTEN pair stalled: A deaf, 6,877 B queued, /health 200, no reconnect, no error log;
+        B's sweep waited 5,008 ms.
+AFTER:  all 10 of A's Redis connections stalled through the proxy (control first: X on A heard a
+        friend:status sent from B). A logged "Redis unreachable", opened its first new connection
+        at +6,138 ms and all 10 again, redis_reconnects_total 0 -> 10, logged "Redis reachable
+        again". The friend-online notice B sent at +16 ms (one inbox deliver to A, on the tap)
+        reached X on A at +6,762 ms: queued in A's inbox and read on reconnect, not lost. A
+        second notice once A was back arrived in 3 ms. Recovery within 15 s: yes, 6.8 s.
+        /health/ready stayed 200 throughout, by design (D17: a shared dependency never takes
+        an instance out of rotation).
+
+P6. Router reads a deaf owner's silence; waits its full budget (exp-p2.ts)              FIXED
+BEFORE: B's game:rejoin for the room deaf A owns -> TABLE_UNREACHABLE after 15,831 ms.
+AFTER:  same room, same deaf A (the partner rejoins on B, so X's socket on A is not evicted):
+        {ok:false, code:"TABLE_UNREACHABLE"} after 3,144 ms (3,142-3,150 over three runs): two
+        table-asks to A's inbox at +11 and +1,643 ms, then the pg_locks read that finds A still
+        holding the lock; under the 3.5 s bar and the client's 4 s a try.
+
+P5. A graceful deploy releases the table lock as its last step (exp-deploy.ts)          FIXED
+BEFORE: lock released at 11.39 s, after io.close at 11.24 s (only in closeOwnership, last step).
+AFTER:  shutdown sent 6.01 s; table-hand-off to B's inbox 6.02 s, answered 6.04 s; handOff done
+        6.05 s; srvA released and srvB held the room's advisory lock within one 25 ms poll, 36 ms
+        after the shutdown began, ahead of io.close (6.05 s; same poll); A exited 6.11 s. The
+        reconnected player's rejoin on B answered ok in 16 ms. Hand-off under 500 ms: yes.
+
+Ordering: client applies game:state with no sequence check (exp-ordering.ts)            FIXED
+BEFORE: two publisher connections delivered seq 11 before seq 10; the client applied any state.
+AFTER:  positive control, the client's own check (shared/stateOrder.ts supersedes): 11 then 10 ->
+        applied 1, refused 1; a newer epoch wins over a higher seq. A live round with seat 1 on
+        the other instance: 28 states each seat, all carrying (roomId, epoch, seq), 0 out of order,
+        28 applied, 0 refused; 61 inbox messages crossed. Each inbox is one stream read in order
+        by one reader, and sends to one instance wait for the one before (instanceInbox.ts).
+
+=========================================================================================
+Database reproductions, in repro-db.txt's order (sim/repro/db)
+=========================================================================================
+cmd: REDIS_URL=<disposable store> node --experimental-strip-types --no-warnings <script> [args]
+
+P1. A failed BEGIN leaks a pool client; the error path releases without err           FIXED
+Every server transaction now goes through server/store/db.ts transaction() (pool.ts inTransaction,
+D11), so the scripts drive that, on the real openDatabase() pool (max 2).
+  A (BEGIN made to reject): BEFORE two failures -> total=2 idle=0, next query timed out at 5 s.
+    AFTER each failure releases with its error, pg-pool discards the client (total 0), the next
+    query is ok in 6 ms.
+  B (BEGIN on half-open clients): BEFORE both slots lost for good, still at 35 s. AFTER each
+    failure at 5.0 s releases with "Query read timeout", the client is discarded, the next query
+    is ok in 8 ms, and again after 35 s.
+  C (half-open after BEGIN): BEFORE released with no error, counted idle again. AFTER released with
+    the error and discarded; the caller sees the body's error ("select 2") with the rollback's as
+    its cause. The transaction still takes 10 s (body 5 s + rollback 5 s): CHANGED, not shorter.
+  C2: BEFORE the returned client's next BEGIN leaked it for good. AFTER the client was discarded,
+    transaction #2 ran ok in 8 ms.
+  D (backend terminated): BEFORE discarded; AFTER discarded, released with its error.
+  E (terminate race, 20 trials, max-1 pool): BEFORE 13/20 leaked (drizzle's transaction()).
+    AFTER through inTransaction: 0/20 leaked (20 failed on the dead connection, the next query ok
+    every time); positive control, the same trials through drizzle's own transaction(): 20/20
+    leaked.
+
+P3. ensureSchema races at boot and runs under the 5 s timeouts                         FIXED
+  race, in-process: BEFORE 2 boots x 10 reps -> 10 reps lost a boot (23505); 4 x 5 -> 3 of 4
+    failed each rep. AFTER 2 x 10: 0 failed (340 ms a rep); 4 x 5: 0 failed (550 ms a rep).
+  race, separate processes (p3b, 5 reps): BEFORE one process exited 1 every rep. AFTER exits 0,0
+    every rep; a further boot exits 0.
+  big table, 10 M session rows: BEFORE ensureSchema FAILED "Query read timeout" at 5.3 s, index
+    missing. AFTER ok after 9.1 s (the build alone 5.7 s), IDX_session_expire present.
+    2 M rows: BEFORE ok 1.5 s; AFTER ok 1.6 s.
+  held writer (an open transaction on "session"): BEFORE FAILED at 5.1 s, index missing. AFTER
+    CHANGED: the concurrent build waits the holder out (lock_timeout 0 for CREATE INDEX
+    CONCURRENTLY, schemaDdl.ts applySchema) and finishes once it ends: ok after 30.0 s when the
+    holder rolled back at 30 s; index present. Boot no longer fails, it waits; the app's own
+    sessions end within idle_in_transaction_session_timeout 10 s / statement_timeout 5 s, so only
+    a transaction outside the app's pools can hold boot longer.
+
+P4. Ownership reclaim conflicts with its own still-alive session                       FIXED
+  reclaim (old flow lost, FIN dropped): BEFORE 3/3 rooms onRoomLost at 20.4 s, locks stranded on
+    the process's own old pid. AFTER 0/3 lost; the old backend is gone and the 3 locks sit on the
+    new pid at 24.9 s; the process can claim room-a again.
+  reclaim-fin: BEFORE 0/3; AFTER 0/3.
+  connect timeout (proxy accepts, forwards nothing): BEFORE both claims pending at 30 s. AFTER
+    both settled false after 3,007 ms.
+
+P7. /health runs SELECT 1 on the app pool, so saturation answers 503                    FIXED
+The real mountHealth() served on the real pools while the app pool (max 10) is saturated:
+  held (10 clients checked out): BEFORE 503 at 5,003 ms. AFTER /health/ready 200 in 5 ms
+    (db "connected", from the health pool), /health/live 200 in 2 ms.
+  busy (10 x pg_sleep(4)): BEFORE 200 after 3,801 ms. AFTER 200 in 4 ms.
+  backlog (60 x pg_sleep(1)): BEFORE 200 after 4,936 ms. AFTER 200 in 3 ms (the app's own 10 of
+    60 queries still time out at the connect timeout, as before: that is the load, not health).
+
+P8. Pool hygiene: no application_name, idle-in-transaction timeout, keep-alive, lifetime  FIXED
+  BEFORE: every session application_name "", idle_in_transaction_session_timeout 0, keepAlive
+    false, maxLifetimeSeconds 0; adapter pool statement_timeout 0.
+  AFTER (live sessions and client configs):
+    murlan-app    idle_in_tx 10s, statement_timeout 5s, keepAlive true (10 s), max 10, lifetime 1800 s
+    murlan-admin  idle_in_tx 10s, statement_timeout 30s, keepAlive true (10 s), max 2, lifetime 1800 s
+    murlan-health idle_in_tx 10s, statement_timeout 2s, keepAlive true (10 s), max 1, lifetime 1800 s
+    murlan-ownership named in pg_stat_activity
+    Redis connections: murlan-adapter / murlan-inbox, PING every 5 s, keepAlive 10 s, command
+    timeout 3 s. The Postgres adapter pool is gone.
+  Positive control: a pool configured by hand reads back its own name, keep-alive and lifetime.
+
+Adapter threshold: an 8000-byte broadcast is dropped                                    FIXED
+  BEFORE: pg_notify 7999 B ok, 8000 B "payload string too long" (lost to every other instance),
+    8001 B via attachment.
+  AFTER: @socket.io/postgres-adapter is not in package-lock.json. Two socket.io servers on the real
+    createSocketAdapter() (Redis streams): broadcasts of 7,999, 8,000, 8,001 and 200,000 bytes all
+    delivered to a client on the other server.
+
+Finding 9. Friend lists select whole users rows, password hash included                FIXED
+  BEFORE: getFriends / getPendingFriendRequests selected users.password and users.email.
+  AFTER: both select "users"."id", "users"."username", "users"."last_seen" only; the rows carry
+    id, username, lastSeen; password and email absent.
+
+Finding 11. Orphan sweep reads every active_games envelope                               FIXED
+  BEFORE: select "room_id", "game_state" from "active_games", no WHERE: 1,000 envelopes, 3.0 MB in
+    the heap, 29 ms.
+  AFTER: activeGameStore.listResumable() projects the seat ids, the round-over flag and whether
+    results are pending, filtered in SQL: 1,000 rows, 119 kB in the heap, 35 ms. (The script's
+    "plan:" line still EXPLAINs the old statement, for comparison.)
+
+=========================================================================================
+Metrics (D17, #1886): /metrics scraped mid-round (exp5-roundover.ts, ctl0, after its sixth move)
+=========================================================================================
+  exported event_loop_lag_p99_seconds        e.g. 0.0073
+  exported pg_pool_total / _idle / _waiting  e.g. {pool="murlan-app"} 2 / 2 / 0
+  exported redis_reconnects_total            declared, no sample until a reconnect (exp-p2: 0 -> 10)
+  exported redis_stream_lag_seconds          e.g. {stream="inbox"} 0.004
+  exported redis_stream_read_age_seconds     e.g. {stream="inbox"} 0.577
+  exported state_acks_missed_total           0
+  exported limiter_fallbacks_total           declared, no sample until a fallback
+  exported pg_connection_headroom            75
+  exported cluster_messages_total            {channel="adapter"} 2
+  MISSING  round_results_pending             D1/D17: rounds pending (#1892)
+  MISSING  round_results_pending_age_seconds D1/D17: alerts at 60 s (#1892)
+  MISSING  coalesced writes                  D17 (#1891); no metric of that kind is registered
+  MISSING  telemetry rows dropped            D17/D19 (#1891); no metric of that kind is registered
+No metric of any name for these four is registered in server/ (grep of new Counter/new Gauge).
+Verdict: NOT FIXED. Issue: #1944
+
+=========================================================================================
+SUMMARY: every finding and pool finding of REPORT.md
+=========================================================================================
+claim | BEFORE                                         | AFTER                                         | verdict
+1     | 5.2 pg_notify, 10.8 commits per move            | 0 pg_notify, 0 cluster messages per move on one instance; 1.86 commits | FIXED
+2     | 2 FETCH_SOCKETS per connect, ~913 B a remote socket; herd ~K^2 | 0 FETCH_SOCKETS; 1-2 messages per connect, flat in N; herd linear | FIXED
+2b    | cookie, ticket, sid in socket_io_attachments and NOTIFY | none in any message, key or table but session | FIXED
+3     | session SELECT + touch UPDATE per static file   | 0 per static file; API: SELECT only, 0 touch   | FIXED
+4     | DELETE FROM users 279 ms; events cascade 212 ms; replay match 119 ms; session 50 ms | 8.3 / 1.0 / 0.07 / 0.08 ms, index scans | FIXED
+5     | round-ending ack 4-17x; kill +0 ms loses results, orphans a replay | 1.8-2.9x, acked on apply; kill +0 ms keeps every row, no orphan | FIXED
+6     | 551-1499 ms in ten teeth; 940/1000 refused per IP | full jitter, no comb; draining spread 0-10 s; 0/120 refused per user | FIXED
+7     | active players 2.4 s; funnel 0.5 s; on the gameplay pool | 83 ms (BRIN); funnel 0.37 s, on the admin pool | FIXED (funnel CHANGED)
+8     | rate limits per instance (read)                 | one ticket limit across two instances: 40 + 40 -> 21 refused (exp6) | FIXED
+9     | password and email selected                     | id, username, last_seen only                  | FIXED
+10    | every waiting room, no LIMIT, mode filtered in JS (read; 4.6 ms) | predicates in SQL, paged by QUICK_MATCH_PAGE (roomStore.ts findQuickMatchCandidates, read); E8's old shape 1.6 ms | FIXED (read)
+11    | whole table, whole column, every sweep          | seat ids and flags projected, filtered in SQL: 119 kB vs 3.0 MB | FIXED
+12    | 1.0 state write per move, uncoalesced           | 0.76-0.93, 0.15 at 96 tables (coalesced)       | FIXED (its metric missing, see Metrics)
+13    | 2 events INSERTs per session; 2 pg_notify per friend | 1 batched INSERT; 0 per friend, offline ones free | FIXED
+P1    | failed BEGIN leaks for good; broken client pooled | released with its error and discarded; 0/20 leaked (control 20/20) | FIXED
+P2    | deaf instance, /health 200, no reconnect        | detected and reconnected at 6.1 s; queued notice delivered at 6.8 s | FIXED
+P3    | boot race 15/15; DDL fails at 5 s               | 0 failed boots; 10 M-row index built in 9.1 s; a held writer is waited out | FIXED
+P4    | 3/3 rooms disposed on its own lock; no connect timeout | 0/3; claims settle at 3.0 s           | FIXED
+P5    | lock released after io.close (11.39 vs 11.24 s) | handed off in 36 ms, ahead of io.close; rejoin ok in 16 ms | FIXED
+P6    | forward waits 15,831 ms                         | TABLE_UNREACHABLE after 3,144 ms              | FIXED
+P7    | 503 at 5,003 ms with a full pool                | 200 in 3-5 ms from the health pool            | FIXED
+P8    | no name, no idle-in-tx timeout, no keep-alive, no lifetime | all set on every pool                 | FIXED
+Ord   | seq 11 delivered before seq 10, applied         | (epoch, seq) checked; 0 out of order live     | FIXED
+Thr   | an 8000 B broadcast dropped                     | adapter removed; 7,999-200,000 B delivered     | FIXED
+D17   | no metrics                                      | 4 of D17's metrics not registered             | NOT FIXED: #1944
+
+Note, outside the audit's rows: the ticket limiter's positive control refused 22, 23 and 33 of 70
+requests sent at once by one user (the limit is 60, so 10 or 11 is right), while 70 sent one at a
+time refused exactly 10. Concurrent requests of one key over-count; it errs toward refusing. Filed as #1945.

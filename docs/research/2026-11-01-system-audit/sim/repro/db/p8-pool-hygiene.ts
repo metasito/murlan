@@ -1,18 +1,18 @@
-// P8: what the three pools actually set, read from a live session of each and from the pg
-// client config each was built with. App pool: real openDatabase(); adapter pool: real
-// createSocketAdapter(); ownership: the real gameOwnership client (via claimRoom).
+// P8: what each pool actually sets, read from a live session of each and from the pg client
+// config each was built with. App and admin pools: real openDatabase(); health: the real "health"
+// profile of createPool; ownership: the real gameOwnership client (via claimRoom). The audit's
+// adapter pool is gone (the cluster runs over Redis), so the Redis connection options are printed
+// in its place, from the real redisOptions().
 import pg from "pg";
 import { directUrl } from "./proxy.ts";
 
 process.env.DATABASE_URL = directUrl;
 process.env.LOG_LEVEL = "silent";
-const { openDatabase, pool } = await import("../../../../../../server/store/db.ts");
-// The adapter module as it stood at 5f464ce, which this reproduces; #1885 replaced it.
-type PgAdapterModule = { createSocketAdapter(): unknown; socketAdapterPool(): pg.Pool | null };
-const { createSocketAdapter, socketAdapterPool } = (await import("../../../../../../server/socket/socketAdapter.ts")) as unknown as PgAdapterModule;
+const { openDatabase, pool, adminPool } = await import("../../../../../../server/store/db.ts");
+const { createPool } = await import("../../../../../../server/store/pool.ts");
+const { redisOptions } = await import("../../../../../../server/store/redis.ts");
 const own = await import("../../../../../../server/game/gameOwnership.ts");
 openDatabase();
-createSocketAdapter();
 const { activeGameStore } = await import("../../../../../../server/store/activeGameStore.ts");
 own.reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
 
@@ -20,6 +20,7 @@ const probe = `select pg_backend_pid() pid,
   current_setting('application_name') application_name,
   current_setting('idle_in_transaction_session_timeout') idle_in_tx_timeout,
   current_setting('statement_timeout') statement_timeout,
+  current_setting('lock_timeout') lock_timeout,
   current_setting('tcp_keepalives_idle') ka_idle,
   current_setting('tcp_keepalives_interval') ka_interval,
   current_setting('tcp_keepalives_count') ka_count`;
@@ -37,7 +38,14 @@ const show = async (name: string, p: pg.Pool) => {
   c.release();
 };
 await show("app pool", pool());
-await show("adapter pool", socketAdapterPool()!);
+await show("admin pool", adminPool());
+const healthPool = createPool("health");
+await show("health pool", healthPool);
+await healthPool.end();
+for (const use of ["adapter", "inbox"] as const) {
+  const o = redisOptions(use, "redis://127.0.0.1:6379");
+  console.log(`redis ${use}: ${JSON.stringify({ name: o.name, pingInterval: o.pingInterval, keepAlive: o.socket.keepAlive, keepAliveInitialDelay: o.socket.keepAliveInitialDelay, socketTimeout: o.socket.socketTimeout, commandTimeout: o.commandOptions.timeout })}`);
+}
 const control = new pg.Pool({ connectionString: directUrl, max: 1, keepAlive: true, keepAliveInitialDelayMillis: 10_000, application_name: "control", maxLifetimeSeconds: 1800 } as pg.PoolConfig);
 await show("positive control (keepAlive, application_name, lifetime set)", control);
 await control.end();

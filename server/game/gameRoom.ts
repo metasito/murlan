@@ -156,6 +156,19 @@ export interface OnlineGameState {
 
 export const activeGames = new Map<string, OnlineGameState>();
 
+/** Round results held in memory across every table, and when the oldest finished; in memory only, as a scrape calls it. */
+export function pendingResultsHeld(): { count: number; oldestFinishedAt: number | null } {
+  let count = 0;
+  let oldestFinishedAt: number | null = null;
+  for (const game of activeGames.values()) {
+    for (const { finishedAt } of game.pendingResults) {
+      count++;
+      if (oldestFinishedAt === null || finishedAt < oldestFinishedAt) oldestFinishedAt = finishedAt;
+    }
+  }
+  return { count, oldestFinishedAt };
+}
+
 let shuttingDown = false;
 
 /**

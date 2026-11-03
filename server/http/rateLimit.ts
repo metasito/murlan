@@ -210,15 +210,30 @@ class SharedStore implements Store {
     });
   }
 
+  #localTail: Promise<unknown> = Promise.resolve();
+
+  // MemoryStore hands back its live record, so a count read after an `await` includes the hits that
+  // came in meanwhile: in a burst, the last of 70 requests are all judged by 70. Each increment is
+  // read before the next starts. It is also taken after Redis answers or misses, not alongside:
+  // Redis numbers a burst in the order it was sent and replies in that order, so the two counts
+  // agree on who the last requests were, and the larger of them refuses only those. A request that
+  // misses its deadline is ranked early in Redis and late here, so a burst with a miss can refuse more.
+  #incrementLocal(key: string): Promise<IncrementResponse> {
+    const taken = this.#localTail.then(async () => {
+      const { totalHits, resetTime } = await this.#memory.increment(key);
+      return { totalHits, resetTime };
+    });
+    this.#localTail = taken.catch(() => {});
+    return taken;
+  }
+
   async increment(key: string): Promise<IncrementResponse> {
-    const [local, shared] = await Promise.all([
-      this.#memory.increment(key),
-      this.#shared(key, (k) => this.#redis.increment(k)).catch(async () => {
-        fallbacks.inc({ limiter: this.#name });
-        await this.#unshared.increment(key);
-        return undefined;
-      }),
-    ]);
+    const shared = await this.#shared(key, (k) => this.#redis.increment(k)).catch(async () => {
+      fallbacks.inc({ limiter: this.#name });
+      await this.#unshared.increment(key);
+      return undefined;
+    });
+    const local = await this.#incrementLocal(key);
     return shared && shared.totalHits >= local.totalHits ? shared : local;
   }
 

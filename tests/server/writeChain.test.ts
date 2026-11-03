@@ -4,6 +4,8 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
+import { register } from "@prometheus-io/client";
+import "../../server/shared/metrics.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { closeTable, disposeGame, stopTables, tableWriters } from "../../server/game/gamePersistence.ts";
@@ -204,4 +206,26 @@ test("stopping the tables waits for the queued snapshot as well as the one in fl
   writes.landNext();
   await stopping;
   assert.deepEqual(order, ["write:1", "write:2"]);
+});
+
+test("each snapshot that replaces a waiting one adds 1 to coalesced_writes_total", async (t) => {
+  ROOM = "chain-coalesced-metric";
+  useMemoryTableStores(t, { rows: [[ROOM, {}]] });
+  const writes = heldWrites(t, []);
+  const { rt } = recordingRuntime({ persist: "real" });
+  await heldRoom(t, ROOM);
+  const game = table();
+  const coalesced = async () => (await register.getSingleMetric("coalesced_writes_total")!.get()).values[0]!.value;
+  const before = await coalesced();
+
+  void rt.writers.persistGameState(ROOM, game); // starts at once and is held
+  void rt.writers.persistGameState(ROOM, game); // waits
+  assert.equal((await coalesced()) - before, 0, "a snapshot that replaced nothing was counted");
+  void rt.writers.persistGameState(ROOM, game); // replaces the waiting one
+  assert.equal((await coalesced()) - before, 1);
+
+  writes.landNext();
+  await ticks();
+  writes.landNext();
+  await ticks();
 });

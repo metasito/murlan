@@ -2,6 +2,9 @@ import { Counter, Gauge } from "@prometheus-io/client";
 import { pgConnectionHeadroom, poolMeters } from "../store/pool.ts";
 import { eventLoopDelayMs } from "./eventLoop.ts";
 import { now } from "../http/clock.ts";
+import { pendingResultsHeld } from "../game/gameRoom.ts";
+import { coalescedWrites } from "../game/roomWriteChain.ts";
+import { telemetryRowsDropped } from "./telemetryBatch.ts";
 
 new Gauge({
   name: "event_loop_lag_p99_seconds",
@@ -128,3 +131,41 @@ export const storeMisconfigured = new Counter({
   help: "Checks that found the key-value store unlike deploy/runtime.json's, by what differed",
   labelNames: ["reason"],
 });
+
+new Gauge({
+  name: "round_results_pending",
+  help: "Finished rounds whose result has not yet landed in the database, across the tables this instance owns",
+  collect() {
+    this.set(pendingResultsHeld().count);
+  },
+});
+
+new Gauge({
+  name: "round_results_pending_age_seconds",
+  help: "How long the oldest unlanded round result has waited; 0 when none is pending",
+  collect() {
+    const { oldestFinishedAt } = pendingResultsHeld();
+    this.set(oldestFinishedAt === null ? 0 : Math.max(0, now() - oldestFinishedAt) / 1_000);
+  },
+});
+
+/** A counter whose total another module already keeps: each scrape adds what grew since the last. */
+function mirror(name: string, help: string, total: () => number): void {
+  let reported = 0;
+  new Counter({
+    name,
+    help,
+    collect() {
+      const current = total();
+      this.inc(current - reported);
+      reported = current;
+    },
+  });
+}
+
+mirror("coalesced_writes_total", "Table snapshots replaced by a newer one before they were written", coalescedWrites);
+mirror(
+  "telemetry_rows_dropped_total",
+  "Diagnostic rows lost: pushed out of a full queue, refused by the database, or for a deleted account",
+  telemetryRowsDropped
+);

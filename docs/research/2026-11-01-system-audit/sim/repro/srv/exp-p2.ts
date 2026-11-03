@@ -1,129 +1,144 @@
-// P2: a half-open adapter LISTEN connection. A TCP proxy sits between instance A's pools and
-// Postgres; the pair carrying A's adapter LISTEN is stalled (bytes stop flowing, socket stays open).
-// Shows A goes deaf to the cluster, /health stays 200, nothing reconnects. Also P6's router wait:
-// a client on B routing to a room the deaf A owns waits the router's full budget, not ~instant.
+// P2: half-open cluster links. The audit stalled A's Postgres LISTEN connection; the cluster now
+// runs over Redis, so a TCP proxy sits between instance A and Redis and every connection A holds
+// is stalled at once (bytes stop both ways, sockets stay open), while connections A opens after
+// still forward: a partition that heals for new flows. Measures whether A notices, how long until
+// it hears its peers again, what /health says meanwhile, and P6's router: how long a client on B
+// waits for an answer about a room the deaf A owns.
 import {
-  bootInstance, connect, NotifyTap, out, PgProxy, q, register, resetData, sleep, waitForPeers,
-  type Client, type Instance,
+  bootInstance, connect, out, PgProxy, q, RedisTap, register, resetData, scrapeMetrics, sleep, waitForPeers,
+  KEYSPACE, REDIS_URL, type Client, type Instance,
 } from "./lib.ts";
 import type { WireRoomState } from "../../../../../../shared/protocol.ts";
 
 const { log, save } = out("exp-p2.txt");
 const instances: Instance[] = [];
-const tap = new NotifyTap();
-const proxy = new PgProxy();
-const PROXY_PORT = 55991;
+const tap = new RedisTap();
+const redis = new URL(REDIS_URL);
+const proxy = new PgProxy(Number(redis.port || 6379));
+const PROXY_PORT = 55992;
 
 async function openTableOn(inst: Instance, cookies: { cookie: string }[]): Promise<WireRoomState> {
   const sockets: Client[] = [];
   for (const c of cookies) sockets.push(await connect(inst.url, c.cookie, "web"));
   const room = await new Promise<WireRoomState>((resolve) => {
-    sockets[0].once("room:state", resolve);
-    sockets[0].emit("room:create", { gameMode: "free_for_all", maxPlayers: cookies.length });
+    sockets[0]!.once("room:state", resolve);
+    sockets[0]!.emit("room:create", { gameMode: "free_for_all", maxPlayers: cookies.length });
   });
   for (const s of sockets.slice(1)) await new Promise<void>((r) => { s.once("room:state", () => r()); s.emit("room:join", { code: room.code }); });
-  sockets[0].emit("room:start");
+  sockets[0]!.emit("room:start");
   await sleep(1_000);
   for (const s of sockets) s.close();
   return room;
 }
 
+const presenceOf = async (userId: string) => {
+  const value = await tap.cmd.get(`${KEYSPACE}:online:${userId}`);
+  const hash = { instance: value ? value.split(/[^0-9a-f-]/)[0] : "" };
+  const live: string[] = [];
+  for await (const keys of tap.cmd.scanIterator({ MATCH: `${KEYSPACE}:instance:*`, COUNT: 100 })) live.push(...keys.map((k) => k.slice(-8)));
+  return `presence ${hash.instance ? `on instance ${hash.instance.slice(-8)}` : "NONE"}; live instance keys ${live.join(",") || "none"}`;
+};
+
+const reconnects = async (inst: Instance) =>
+  ((await scrapeMetrics(inst.url)).get("redis_reconnects_total") ?? []).map((l) => Number(l.split(" ").at(-1))).reduce((a, b) => a + b, 0);
+
 try {
   await resetData();
-  await proxy.listen(PROXY_PORT);
-  // A's pools all go through the proxy (127.0.0.1, IPv4). B connects to Postgres directly.
-  instances.push(await bootInstance("srvA", 5581, { dbUrl: `postgres://postgres@127.0.0.1:${PROXY_PORT}/murlan_repro_srv` }));
-  instances.push(await bootInstance("srvB", 5582));
-  const [A, B] = instances;
   await tap.start();
+  await proxy.listen(PROXY_PORT);
+  instances.push(await bootInstance("srvA", 5581, { redisUrl: `redis://127.0.0.1:${PROXY_PORT}${redis.pathname}` }));
+  instances.push(await bootInstance("srvB", 5582));
+  const [A, B] = instances as [Instance, Instance];
   await waitForPeers(tap);
-  log("# exp-p2: A's adapter LISTEN stalled via a TCP proxy (half-open)");
+  log("# exp-p2: every Redis connection of A stalled via a TCP proxy (half-open); new connections forward");
 
   const tag = Date.now().toString(36);
-  // X and a partner on A, so A owns a started table; a friend of X on B for the presence test.
   const x = await register(A.url, `x${tag}`);
   const partner = await register(A.url, `p${tag}`);
   const friendOfX = await register(B.url, `f${tag}`);
-  // Make X and friendOfX friends (direct rows).
   await q(`INSERT INTO friends (user_id, friend_user_id, status) VALUES ($1,$2,'accepted'),($2,$1,'accepted')`, [x.id, friendOfX.id]);
   const room = await openTableOn(A, [x, partner]);
   const ownerA = (await q<{ n: number }>(
     `SELECT count(*)::int n FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid WHERE l.locktype='advisory' AND a.application_name='srvA'`
-  ))[0].n;
+  ))[0]!.n;
   log(`table ${room.code} started on A; advisory locks held by srvA: ${ownerA}`);
 
-  // Positive control: X reconnects on A; friendOfX connecting on B should hear friend:status online.
   const xOnA = await connect(A.url, x.cookie, "web");
   await sleep(500);
-  let heardStatus: unknown = null;
-  xOnA.on("friend:status", (p: unknown) => (heardStatus = p));
+  const statuses: { t: number; p: unknown }[] = [];
+  xOnA.on("friend:status", (p: unknown) => statuses.push({ t: Date.now(), p }));
   const fSock1 = await connect(B.url, friendOfX.cookie, "web");
-  await sleep(1_500);
-  log(`control (before stall): X on A heard friend:status for friend connecting on B -> ${heardStatus ? "yes" : "no"}`);
+  const ctlDeadline = Date.now() + 5_000;
+  while (statuses.length === 0 && Date.now() < ctlDeadline) await sleep(50);
+  log(`control (before stall): X on A heard friend:status for a friend connecting on B -> ${statuses.length ? "yes" : "NO"}`);
+  if (statuses.length === 0) throw new Error("positive control failed: no friend:status across instances before the stall");
   fSock1.close();
-  await sleep(1_000);
+  await sleep(1_500);
 
-  // Find A's adapter LISTEN backend and stall exactly its proxy pair.
-  const listenRows = await q<{ client_port: number }>(
-    `SELECT client_port FROM pg_stat_activity WHERE application_name='srvA' AND query LIKE 'LISTEN%'`
-  );
-  const listenPorts = new Set(listenRows.map((r) => r.client_port));
-  const pair = proxy.pairs.find((p) => !p.up.destroyed && listenPorts.has(p.up.localPort ?? -1));
-  log(`srvA LISTEN backend client_port(s): ${[...listenPorts].join(",")}; matched proxy pair: ${pair ? "yes" : "NO"}`);
-  if (!pair) throw new Error("could not isolate A's LISTEN connection");
-  proxy.stall(pair);
+  log(`X before the stall: ${await presenceOf(x.id)}`);
+  const reconnectsBefore = await reconnects(A);
+  const live = proxy.pairs.filter((p) => !p.down.destroyed);
+  for (const p of live) proxy.stall(p);
+  const pairsAtStall = proxy.pairs.length;
   const stallAt = Date.now();
-  log(`stalled A's LISTEN pair at t0; its socket stays open (destroyed=${pair.up.destroyed})`);
+  const stallMark = tap.mark();
+  log(`stalled ${live.length} connections of A at t0; their sockets stay open`);
 
-  // 1) An emit from B to X (on A): friend:status when friendOfX reconnects on B. Should never arrive.
-  heardStatus = null;
+  // P6/D18: a client on B asks for A's room while A cannot read its inbox.
+  // The partner, not X: one socket per account, so X connecting on B would evict X's socket on A.
+  const xOnB = await connect(B.url, partner.cookie, "web");
+  const rejoin = (async () => {
+    const t = performance.now();
+    const reply = await new Promise<unknown>((resolve) => {
+      xOnB.emit("game:rejoin", { roomId: room.roomId }, (r: unknown) => resolve(r));
+      setTimeout(() => resolve("NO_ACK_IN_25s"), 25_000);
+    });
+    return { reply, ms: performance.now() - t };
+  })();
+
+  statuses.length = 0;
   const fSock2 = await connect(B.url, friendOfX.cookie, "web");
-  const waitStatus = Date.now() + 15_000;
-  while (!heardStatus && Date.now() < waitStatus) await sleep(200);
-  log(`after stall: X on A heard the friend-online status from B within 15 s -> ${heardStatus ? "yes" : "NO (A is deaf)"}`);
-  log(`  held bytes queued on the stalled pair (down->A): ${pair.heldDown.reduce((a, b) => a + b.length, 0)} B (Postgres sent, A never received)`);
+  const sentAt = Date.now();
+  const healthDuring = await fetch(`${A.url}/health/ready`).then(async (r) => ({ status: r.status, body: await r.json() as Record<string, unknown> }));
+  const { reply, ms } = await rejoin;
+  const waitStatus = Date.now() + 30_000;
+  while (statuses.length === 0 && Date.now() < waitStatus) await sleep(100);
+  const firstNewPair = proxy.pairs[pairsAtStall];
+  const toInboxes = tap.heard.slice(stallMark).filter((h) => h.via === "inbox" && h.type !== "boot").map((h) => `${h.type} to inbox ${h.key.slice(-8)} at +${h.t - stallAt} ms`);
 
-  // 2) A /health still 200.
-  const health = await fetch(`${A.url}/health`).then((r) => r.json() as Promise<Record<string, unknown>>);
-  log(`A /health: status ${health.status}, db ${health.db}, adapterPool ${JSON.stringify(health.adapterPool)}`);
-
-  // 3) No new LISTEN backend for srvA, no new proxy pair carrying LISTEN, no adapter error in A's log.
-  await sleep(1_000);
-  const stillListening = await q<{ n: number }>(`SELECT count(*)::int n FROM pg_stat_activity WHERE application_name='srvA' AND query LIKE 'LISTEN%'`);
-  log(`srvA LISTEN backends now: ${stillListening[0].n} (reconnect would make 2); proxy pairs that ever carried LISTEN: ${proxy.pairs.filter((p) => p.sawListen).length}`);
-  const alog = (await import("node:fs")).readFileSync(A.logFile, "utf8");
-  log(`A log mentions "adapter error"/"not reaching other instances": ${/not reaching other instances|adapter error/i.test(alog) ? "yes" : "no"}`);
-
-  // 4) B's friend:online_list latency: B still counts A as a peer, so the sweep waits A out (~5 s).
-  const fSock3 = fSock2;
-  const t = performance.now();
-  const listLatency = await new Promise<number>((resolve) => {
-    fSock3.once("friend:online_list", () => resolve(performance.now() - t));
-    fSock3.emit("friend:get_online_list");
-    setTimeout(() => resolve(-1), 10_000);
-  });
-  log(`B friend:online_list latency while A is deaf: ${listLatency < 0 ? ">10 s" : listLatency.toFixed(0) + " ms"} (adapter DEFAULT_TIMEOUT is 5 s)`);
-
-  // 5) P6 router wait: a client on B routes a rejoin to the room the deaf A owns. B still sees A as
-  //    a peer, so every attempt waits the 5 s ack timeout; 3 attempts -> ~15 s -> TABLE_UNREACHABLE.
-  const xOnB = await connect(B.url, x.cookie, "web");
-  const rt = performance.now();
-  const reply = await new Promise<unknown>((resolve) => {
-    xOnB.emit("game:rejoin", { roomId: room.roomId }, (r: unknown) => resolve(r));
-    setTimeout(() => resolve("NO_ACK_IN_25s"), 25_000);
-  });
-  const routerMs = performance.now() - rt;
-  log(`\n## P6 router wait (deaf owner holding the lock)`);
-  log(`  B's game:rejoin for A's room returned ${JSON.stringify(reply)} after ${routerMs.toFixed(0)} ms`);
-  log(`  client budgets: sendIntent 4 s x 3 = ~12 s; useRejoin 2 s x 3 = 6 s; this is longer, so the client gives up first`);
-  xOnB.close();
+  const firstHeard = statuses[0]?.t;
+  const presenceAfterWait = await presenceOf(x.id);
+  // After A is back: the friend goes offline and comes back on B, so a second notice is sent to a healthy A.
   fSock2.close();
+  await sleep(1_500);
+  statuses.length = 0;
+  const fSock3 = await connect(B.url, friendOfX.cookie, "web");
+  const secondAt = Date.now();
+  const waitSecond = Date.now() + 15_000;
+  while (!statuses.some((st) => (st.p as { online?: boolean }).online) && Date.now() < waitSecond) await sleep(100);
+  const second = statuses.find((st) => (st.p as { online?: boolean }).online);
+  fSock3.close();
+  const presenceAtEnd = await presenceOf(x.id);
+
+  log(`\n## detection and recovery`);
+  log(`  first new connection from A through the proxy: ${firstNewPair ? `+${firstNewPair.at - stallAt} ms` : "none"}; connections A opened after the stall: ${proxy.pairs.length - pairsAtStall}`);
+  log(`  X on A heard the friend-online status sent from B at +${sentAt - stallAt} ms: ${firstHeard ? `yes, at +${firstHeard - stallAt} ms after the stall` : "NO within 30 s"}`);
+  log(`  inbox entries written during that wait (inbox key's last 8 chars): ${toInboxes.join("; ") || "none"} (A's own boot entries excluded)`);
+  log(`  after A reconnected, the friend reconnected on B at +${secondAt - stallAt} ms: X on A heard it ${second ? `after ${second.t - secondAt} ms (+${second.t - stallAt} ms after the stall)` : "NOT within 15 s"}`);
+  log(`  X (still connected to A) after the first wait: ${presenceAfterWait}; at the end: ${presenceAtEnd}`);
+  log(`  bytes queued on the stalled connections, Redis to A: ${live.reduce((a, p) => a + p.heldDown.reduce((x, b) => x + b.length, 0), 0)} B`);
+  const alog = (await import("node:fs")).readFileSync(A.logFile, "utf8");
+  log(`  A logged "Redis unreachable": ${/Redis unreachable/.test(alog) ? "yes" : "no"}; "Redis reachable again": ${/Redis reachable again/.test(alog) ? "yes" : "no"}`);
+  log(`  redis_reconnects_total on A: ${reconnectsBefore} before, ${await reconnects(A)} after`);
+  log(`  A GET /health/ready during the stall: ${healthDuring.status}, body ${JSON.stringify(healthDuring.body)}`);
+
+  log(`\n## P6 router: B's game:rejoin for the room deaf A owns`);
+  log(`  returned ${JSON.stringify(reply)} after ${ms.toFixed(0)} ms (client budget: sendIntent 4 s a try)`);
+  xOnB.close();
   xOnA.close();
-  void stallAt;
 } catch (err) {
   log("FAILED", String((err as Error).stack ?? err));
 } finally {
-  // Kill A before closing the proxy, or A's adapter loops reconnecting into a closed port.
   for (const i of instances) { if (i.child.exitCode === null) i.child.kill("SIGKILL"); }
   await sleep(300);
   await proxy.close();
