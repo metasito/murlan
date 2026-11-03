@@ -10,7 +10,7 @@
 // Run: npm run soak -- --seats 4 --minutes 2 --seed 12345
 // Throughput: npm run soak -- --tables 8 --minutes 1 (moves/sec and broadcast p99)
 import { setTimeout as sleep } from "node:timers/promises";
-import { register } from "prom-client";
+import { register } from "@prometheus-io/client";
 import { pathToFileURL } from "node:url";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, reconnectWith, sendMove, DEADLINE_SCALE, type TestEmits, type TestSocket } from "../helpers/client.ts";

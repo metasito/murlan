@@ -199,7 +199,7 @@ says `status` ok and both links `connected`.
   `redis_reconnects_total`, `redis_stream_lag_seconds` and `redis_stream_read_age_seconds` climbing, read beside the instances'
   readiness.
 
-Each feature registers its own metric on prom-client's default registry, which `/metrics` serves.
+Each feature registers its own metric on `@prometheus-io/client`'s default registry, which `/metrics` serves.
 
 ## Backups
 

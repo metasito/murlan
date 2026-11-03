@@ -2,7 +2,7 @@
 // store unlike deploy/runtime.json's named at once without stopping the server.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { register } from "prom-client";
+import { register } from "@prometheus-io/client";
 import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { checkStore, parseInfo } from "../../server/store/storeInfo.ts";
 import { noteStoreInfo } from "../../server/shared/metrics.ts";

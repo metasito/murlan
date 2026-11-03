@@ -2,7 +2,7 @@ import type express from "express";
 import type { Request, Response } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { register } from "prom-client";
+import { register } from "@prometheus-io/client";
 import { pingDatabase } from "../store/db.ts";
 import { openRedis, type RedisClient } from "../store/redis.ts";
 import { isShuttingDown } from "../game/gameRoom.ts";

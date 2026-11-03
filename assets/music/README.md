@@ -37,7 +37,14 @@ Chosen by the owner on #113 from the twelve candidates auditioned in #163.
 
 Each source was decoded at 48 kHz through Chromium's `OfflineAudioContext`, had
 its loop closed with a **20 ms equal-power crossfade**, and was encoded to
-**WebM Opus, 96 kbps stereo, 48 kHz** with ffmpeg.
+**WebM Opus, 96 kbps stereo, 48 kHz** with ffmpeg, then remuxed, packets untouched, to a
+0.5 ms timestamp scale:
+`mkvmerge -w --timestamp-scale 500000 --disable-lacing --no-date --disable-track-statistics-tags -o out.webm in.webm`.
+
+The remux is what keeps the head of the loop. Opus's 312-sample pre-skip is 6.5 ms, which
+ffmpeg's 1 ms scale cannot hold; from Chromium 156 the decode trims the rounded 7 ms
+(336 samples), cutting 24 samples off the head and breaking the join. At 0.5 ms it is
+exactly 13 ticks, and every decoder trims the 312 that `CodecDelay` and the OpusHead declare.
 
 The crossfade is not cosmetic. `Retro Lounge BASE` — the loop the game plays
 most — stepped **14.2×** the waveform's own 95th-percentile sample-to-sample

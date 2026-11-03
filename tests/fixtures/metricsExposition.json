@@ -1,0 +1,150 @@
+{
+  "event_loop_lag_p99_seconds": {
+    "type": "gauge",
+    "help": "The event loop's delay at the 99th percentile over the last few seconds",
+    "samples": {
+      "event_loop_lag_p99_seconds": []
+    }
+  },
+  "pg_pool_total": {
+    "type": "gauge",
+    "help": "Connections a Postgres pool holds",
+    "samples": {
+      "pg_pool_total": [
+        "pool"
+      ]
+    }
+  },
+  "pg_pool_idle": {
+    "type": "gauge",
+    "help": "Connections a Postgres pool holds and nobody is using",
+    "samples": {
+      "pg_pool_idle": [
+        "pool"
+      ]
+    }
+  },
+  "pg_pool_waiting": {
+    "type": "gauge",
+    "help": "Requests queued for a connection from a Postgres pool",
+    "samples": {
+      "pg_pool_waiting": [
+        "pool"
+      ]
+    }
+  },
+  "pg_connection_headroom": {
+    "type": "gauge",
+    "help": "Postgres connections left once every instance seen holds its full share; NaN before the first check",
+    "samples": {
+      "pg_connection_headroom": []
+    }
+  },
+  "redis_reconnects_total": {
+    "type": "counter",
+    "help": "Attempts to reconnect a Redis connection, by what the connection is for",
+    "samples": {
+      "redis_reconnects_total": [
+        "use"
+      ]
+    }
+  },
+  "state_acks_missed_total": {
+    "type": "counter",
+    "help": "game:state sends a socket did not acknowledge in time",
+    "samples": {
+      "state_acks_missed_total": []
+    }
+  },
+  "cluster_messages_total": {
+    "type": "counter",
+    "help": "Messages this instance put on Redis for other instances, by channel: the adapter's (bar its heartbeats) or an instance inbox",
+    "samples": {
+      "cluster_messages_total": [
+        "channel"
+      ]
+    }
+  },
+  "redis_stream_lag_seconds": {
+    "type": "gauge",
+    "help": "How long the last entry read from a stream had waited in it; 0 once nothing has been read for 30 s",
+    "samples": {
+      "redis_stream_lag_seconds": [
+        "stream"
+      ]
+    }
+  },
+  "redis_stream_read_age_seconds": {
+    "type": "gauge",
+    "help": "How long since an entry was last read from a stream: a stuck reader grows it, and so does a quiet stream",
+    "samples": {
+      "redis_stream_read_age_seconds": [
+        "stream"
+      ]
+    }
+  },
+  "limiter_fallbacks_total": {
+    "type": "counter",
+    "help": "Requests a rate limiter counted only in this instance's memory because Redis did not answer",
+    "samples": {
+      "limiter_fallbacks_total": [
+        "limiter"
+      ]
+    }
+  },
+  "store_used_memory_bytes": {
+    "type": "gauge",
+    "help": "Memory the key-value store holds",
+    "samples": {
+      "store_used_memory_bytes": []
+    }
+  },
+  "store_maxmemory_bytes": {
+    "type": "gauge",
+    "help": "The key-value store's memory limit; 0 is none",
+    "samples": {
+      "store_maxmemory_bytes": []
+    }
+  },
+  "store_evicted_keys": {
+    "type": "gauge",
+    "help": "Keys the key-value store evicted since it started; any is state lost",
+    "samples": {
+      "store_evicted_keys": []
+    }
+  },
+  "store_blocked_clients": {
+    "type": "gauge",
+    "help": "Connections waiting in a blocking read on the key-value store",
+    "samples": {
+      "store_blocked_clients": []
+    }
+  },
+  "store_rejected_connections": {
+    "type": "gauge",
+    "help": "Connections the key-value store refused since it started",
+    "samples": {
+      "store_rejected_connections": []
+    }
+  },
+  "store_info": {
+    "type": "gauge",
+    "help": "1, labelled with the key-value store's engine, version and eviction policy from its last INFO",
+    "samples": {
+      "store_info": [
+        "engine",
+        "maxmemory_policy",
+        "version"
+      ]
+    }
+  },
+  "store_misconfigured_total": {
+    "type": "counter",
+    "help": "Checks that found the key-value store unlike deploy/runtime.json's, by what differed",
+    "samples": {
+      "store_misconfigured_total": [
+        "reason"
+      ]
+    }
+  }
+}
