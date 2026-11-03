@@ -33,16 +33,28 @@ export function glossLightOf(lamp: GlossLight): GlossLight {
   return { lx: lamp.lx, ly: lamp.ly, level: lamp.level, r: lamp.r, t: lamp.t };
 }
 
+const withinStep = (shown: GlossLight, lx: number, ly: number, level: number, r: number) => {
+  "worklet";
+  return (
+    Math.abs(lx - shown.lx) < GLOSS_POINT_STEP &&
+    Math.abs(ly - shown.ly) < GLOSS_POINT_STEP &&
+    Math.abs(level - shown.level) < GLOSS_LIGHT_STEP &&
+    Math.abs(r - shown.r) < GLOSS_LIGHT_STEP
+  );
+};
+
 /** The light every gloss should now read, or null while `lamp` is within a step or a frame of `shown`. */
 export function nextGlossLight(shown: GlossLight, lamp: GlossLight): GlossLight | null {
   "worklet";
   if (lamp.t - shown.t < GLOSS_FRAME_S) return null;
-  const still =
-    Math.abs(lamp.lx - shown.lx) < GLOSS_POINT_STEP &&
-    Math.abs(lamp.ly - shown.ly) < GLOSS_POINT_STEP &&
-    Math.abs(lamp.level - shown.level) < GLOSS_LIGHT_STEP &&
-    Math.abs(lamp.r - shown.r) < GLOSS_LIGHT_STEP;
-  return still ? null : glossLightOf(lamp);
+  return withinStep(shown, lamp.lx, lamp.ly, lamp.level, lamp.r) ? null : glossLightOf(lamp);
+}
+
+/** The light an opponent's back reads: the lamp where it points, unswayed (`x`, not `lx`), so it moves with a target or a level and never with the sway. */
+export function nextStillLight(shown: GlossLight, lamp: Pick<Lamp, "x" | "ly" | "level" | "r" | "t">): GlossLight | null {
+  "worklet";
+  if (lamp.t - shown.t < GLOSS_FRAME_S) return null;
+  return withinStep(shown, lamp.x, lamp.ly, lamp.level, lamp.r) ? null : { lx: lamp.x, ly: lamp.ly, level: lamp.level, r: lamp.r, t: lamp.t };
 }
 
 const clamp01 = (v: number) => {

@@ -449,8 +449,6 @@ function CardViewBase({
   const cast = useContext(CardCastContext);
   const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast, rectKey !== undefined && /^(hand|pile):/.test(rectKey));
 
-  const opponentBack = rectKey?.startsWith("fan:") ?? false;
-
   if (faceDown) {
     const backStyle = {
       borderRadius: cardRadius(w),
@@ -464,12 +462,8 @@ function CardViewBase({
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
         >
           <Image source={BACK_ART[backKey]()} style={ART_FILL} resizeMode="stretch" {...a11yHidden()} />
-          {opponentBack ? null : (
-            <>
-              <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
-              <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} />
-            </>
-          )}
+          <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
+          <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
         <LevelShade rectKey={rectKey} rects={rects} width={w} height={h} />
       </View>
