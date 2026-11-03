@@ -91,5 +91,60 @@
         "limiter"
       ]
     }
+  },
+  "store_used_memory_bytes": {
+    "type": "gauge",
+    "help": "Memory the key-value store holds",
+    "samples": {
+      "store_used_memory_bytes": []
+    }
+  },
+  "store_maxmemory_bytes": {
+    "type": "gauge",
+    "help": "The key-value store's memory limit; 0 is none",
+    "samples": {
+      "store_maxmemory_bytes": []
+    }
+  },
+  "store_evicted_keys": {
+    "type": "gauge",
+    "help": "Keys the key-value store evicted since it started; any is state lost",
+    "samples": {
+      "store_evicted_keys": []
+    }
+  },
+  "store_blocked_clients": {
+    "type": "gauge",
+    "help": "Connections waiting in a blocking read on the key-value store",
+    "samples": {
+      "store_blocked_clients": []
+    }
+  },
+  "store_rejected_connections": {
+    "type": "gauge",
+    "help": "Connections the key-value store refused since it started",
+    "samples": {
+      "store_rejected_connections": []
+    }
+  },
+  "store_info": {
+    "type": "gauge",
+    "help": "1, labelled with the key-value store's engine, version and eviction policy from its last INFO",
+    "samples": {
+      "store_info": [
+        "engine",
+        "maxmemory_policy",
+        "version"
+      ]
+    }
+  },
+  "store_misconfigured_total": {
+    "type": "counter",
+    "help": "Checks that found the key-value store unlike deploy/runtime.json's, by what differed",
+    "samples": {
+      "store_misconfigured_total": [
+        "reason"
+      ]
+    }
   }
 }

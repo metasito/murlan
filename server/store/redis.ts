@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { createClient } from "redis";
+import { createClient, type RedisScripts } from "redis";
 import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
 import { redisReconnects } from "../shared/metrics.ts";
 
-export { WatchError } from "redis";
+export { defineScript, WatchError, type CommandParser } from "redis";
 
 export type RedisUse = "adapter" | "inbox" | "presence" | "limits" | "owners" | "health";
-export type RedisClient = ReturnType<typeof newClient>;
+type NoScripts = Record<never, never>;
+export type RedisClient<S extends RedisScripts = NoScripts> = ReturnType<typeof newClient<S>>;
 
 export const instanceId = randomUUID();
 
@@ -83,8 +84,8 @@ export function redisOptions(use: RedisUse, url: string, offlineQueue = true) {
   };
 }
 
-function newClient(use: RedisUse, url: string, offlineQueue: boolean) {
-  return createClient(redisOptions(use, url, offlineQueue));
+function newClient<S extends RedisScripts = NoScripts>(use: RedisUse, url: string, offlineQueue: boolean, scripts?: S) {
+  return createClient({ ...redisOptions(use, url, offlineQueue), scripts });
 }
 
 /** Every open connection, and when it last answered. */
@@ -128,9 +129,12 @@ function watchForHalfOpen(client: RedisClient, use: RedisUse): void {
 }
 
 /** Opens a Redis connection: the only place in the server that does. */
-export function openRedis(use: RedisUse, { url = process.env.REDIS_URL, offlineQueue = true, connect = true }: OpenOptions = {}): RedisClient {
+export function openRedis<S extends RedisScripts = NoScripts>(
+  use: RedisUse,
+  { url = process.env.REDIS_URL, offlineQueue = true, connect = true, scripts }: OpenOptions & { scripts?: S } = {}
+): RedisClient<S> {
   if (!url) throw new Error("REDIS_URL is not set");
-  const client = newClient(use, url, offlineQueue);
+  const client = newClient(use, url, offlineQueue, scripts);
   client.on("error", (err: unknown) => {
     if (client.isOpen) noteDown(use, err);
   });

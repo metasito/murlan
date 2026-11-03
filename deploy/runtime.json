@@ -1,7 +1,7 @@
 {
   "node": 26,
   "postgres": 16,
-  "redis": 7,
+  "keyValue": { "engine": "valkey", "major": 9, "maxmemoryPolicy": "noeviction" },
   "sigtermGraceMs": 12000,
   "proxyHops": 1,
   "pgConnectionsPerInstance": 15,
