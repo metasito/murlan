@@ -5,7 +5,7 @@
 // row for its trend panels, so this screen pages over a list it is holding
 // anyway.
 import React, { useRef, useState } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, type ScrollViewInstance } from "react-native";
 import { queryKey, useApi } from "@/lib/queries";
 import { MenuLayout } from "@/components/MenuLayout";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -32,7 +32,7 @@ export default function HistoryScreen() {
   const rows = history.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
   const pageLabel = t("history.pageLabel", { page: current + 1, total: pageCount });
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   function goTo(next: number) {
     setPage(next);
     scrollRef.current?.scrollTo({ y: 0, animated: false });

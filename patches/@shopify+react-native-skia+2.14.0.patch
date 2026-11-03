@@ -1,7 +1,8 @@
 diff --git a/node_modules/@shopify/react-native-skia/apple/MetalWindowContext.mm b/node_modules/@shopify/react-native-skia/apple/MetalWindowContext.mm
+index b93d4c3..bae8d1d 100644
 --- a/node_modules/@shopify/react-native-skia/apple/MetalWindowContext.mm
 +++ b/node_modules/@shopify/react-native-skia/apple/MetalWindowContext.mm
-@@ -18,7 +18,6 @@
+@@ -18,7 +18,6 @@ MetalWindowContext::MetalWindowContext(GrDirectContext *directContext,
  #pragma clang diagnostic pop
    _layer.framebufferOnly = NO;
    _layer.device = device;
@@ -10,9 +11,10 @@ diff --git a/node_modules/@shopify/react-native-skia/apple/MetalWindowContext.mm
    _layer.contentsScale = [UIScreen mainScreen].scale;
  #else
 diff --git a/node_modules/@shopify/react-native-skia/apple/SkiaUIView.mm b/node_modules/@shopify/react-native-skia/apple/SkiaUIView.mm
+index 6443fbf..c81bf7a 100644
 --- a/node_modules/@shopify/react-native-skia/apple/SkiaUIView.mm
 +++ b/node_modules/@shopify/react-native-skia/apple/SkiaUIView.mm
-@@ -71,6 +71,7 @@
+@@ -47,6 +47,7 @@
          throw std::runtime_error(
              "Expected Skia view implementation, got nullptr.");
        }
@@ -20,13 +22,13 @@ diff --git a/node_modules/@shopify/react-native-skia/apple/SkiaUIView.mm b/node_
        [self.layer addSublayer:_impl->getLayer()];
        if (_nativeId != 0) {
          _manager->setSkiaView(_nativeId, _impl->getDrawView());
-@@ -161,6 +162,9 @@
-
+@@ -131,6 +132,9 @@
+ 
  - (void)setOpaque:(bool)opaque {
    _opaque = opaque;
 +  if (_impl != nullptr) {
 +    _impl->getLayer().opaque = opaque;
 +  }
  }
-
+ 
  - (void)setNativeId:(size_t)nativeId {

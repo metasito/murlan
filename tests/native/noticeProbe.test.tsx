@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, render, screen } from '@testing-library/react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import type { DiagRow } from '@/lib/diagnostics';
 
 const mockRows: DiagRow[] = [];

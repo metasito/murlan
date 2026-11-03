@@ -3,7 +3,8 @@
 // turn pill standing in for a seat's ring.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { act, render, within, type RenderResult } from '@testing-library/react-native';
-import Animated, { getAnimatedStyle, useAnimatedStyle } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 // While held, every UI-to-JS report waits in `queue` until the test lets the hop land.
 const mockHop: { held: boolean; queue: (() => void)[] } = { held: false, queue: [] };

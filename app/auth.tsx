@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TextInput,
+  type TextInputInstance,
   StyleSheet,
   Pressable,
 } from "react-native";
@@ -51,8 +52,8 @@ export default function AuthScreen() {
     params.notice === "passwordReset" ? t("auth.passwordResetNotice") : null
   );
   const [checkEmail, setCheckEmail] = useState<CheckEmailState | null>(null);
-  const emailRef = useRef<TextInput>(null);
-  const pwdRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInputInstance>(null);
+  const pwdRef = useRef<TextInputInstance>(null);
   const usernameReturn = useReturnFocuses(tab === "register" ? emailRef : pwdRef);
   const emailReturn = useReturnFocuses(pwdRef);
 

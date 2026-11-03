@@ -1,4 +1,4 @@
-// Fails a device run whose app died of a native crash, or on Android of an ANR.
+// Fails a device run whose app died of a native crash, or on Android of an uncaught Java exception or an ANR.
 //
 //   node tools/ci/find-native-crash.mjs <android|ios> <app id> [--copy-to <dir>] <path>...
 //
@@ -24,6 +24,43 @@ export function androidCrash(appId, text) {
     return { process: match[2], thread: match[1], signal: signal ?? "an unknown signal" };
   }
   return null;
+}
+
+/**
+ * The app's own tombstone as logcat printed it, from its header to the end of its backtrace, so the run's
+ * log carries the frames: the artifact holding the whole logcat is not always readable from where a run is read.
+ * @returns {string[]}
+ */
+export function androidTombstone(appId, text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const at = lines.findIndex((line) => new RegExp(`>>> ${escape(appId)}(?::\\S+)? <<<`).test(line));
+  if (at === -1) return [];
+  const tail = lines.slice(at, at + 400).filter((line) => /\bDEBUG\b/.test(line));
+  const end = tail.findIndex((line, i) => i > 0 && /\*\*\* \*\*\* \*\*\*/.test(line));
+  return (end === -1 ? tail : tail.slice(0, end)).slice(0, 120);
+}
+
+/** The AndroidRuntime lines of an uncaught Java exception that killed the app's own process, or []. */
+export function androidJavaCrashLines(appId, text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!/AndroidRuntime.*FATAL EXCEPTION/.test(lines[i])) continue;
+    const process = lines.slice(i + 1, i + 3).join("\n").match(/Process: (\S+?),/)?.[1];
+    if (process !== appId && !process?.startsWith(`${appId}:`)) continue;
+    return lines.slice(i, i + 200).filter((line) => /AndroidRuntime/.test(line)).slice(0, 60);
+  }
+  return [];
+}
+
+/** `{ process, thread, signal }` of an uncaught Java exception in the app's own process, or null. */
+export function androidJavaCrash(appId, text) {
+  const lines = androidJavaCrashLines(appId, text);
+  if (lines.length === 0) return null;
+  return {
+    process: lines.join("\n").match(/Process: (\S+?),/)?.[1] ?? appId,
+    thread: lines[0].match(/FATAL EXCEPTION: (.+?)\s*$/)?.[1] ?? "a thread",
+    signal: `an uncaught exception (${lines[2]?.replace(/^.*AndroidRuntime[^:]*:\s*/, "") ?? "unknown"})`,
+  };
 }
 
 /** `{ process, line }` of the ActivityManager's ANR of the app in a logcat, or null. */
@@ -60,10 +97,32 @@ export function iosCrash(appId, text) {
   };
 }
 
+/**
+ * What an iOS `.ips` says about why the app died: the abort's own message (`asi`, where React Native
+ * writes an unhandled JS exception), the exception's backtrace, and the crashed thread's top frames.
+ * @returns {string[]}
+ */
+export function iosCrashDetail(text) {
+  const newline = text.indexOf("\n");
+  const body = newline === -1 ? null : parse(text.slice(newline + 1));
+  if (!body) return [];
+  const images = body.usedImages ?? [];
+  const frame = (f) => `  ${images[f.imageIndex]?.name ?? "?"}  ${f.symbol ?? `+${f.imageOffset}`}`;
+  const asi = Object.entries(body.asi ?? {}).flatMap(([image, messages]) => [].concat(messages).map((m) => `asi ${image}: ${m}`));
+  const thrown = (body.lastExceptionBacktrace ?? []).slice(0, 25).map(frame);
+  const crashed = (body.threads ?? []).find((t) => t.triggered);
+  return [
+    ...asi,
+    ...(thrown.length > 0 ? ["last exception backtrace:", ...thrown] : []),
+    ...(crashed ? [`crashed thread ${crashed.name ?? crashed.queue ?? ""}:`, ...(crashed.frames ?? []).slice(0, 25).map(frame)] : []),
+  ];
+}
+
 const PLATFORMS = {
   android: {
     reads: (file) => !/\.(png|jpe?g|gif|mp4|webm|zip)$/i.test(file),
-    find: (appId, text) => androidCrash(appId, text) ?? androidAnr(appId, text),
+    find: (appId, text) => androidCrash(appId, text) ?? androidJavaCrash(appId, text) ?? androidAnr(appId, text),
+    detail: (appId, text) => (androidCrash(appId, text) ? androidTombstone(appId, text) : androidJavaCrashLines(appId, text)),
     describe: (c) => (c.line ? `${c.process} was not responding and was killed (${c.line})` : `${c.thread} in ${c.process} died of ${c.signal}`),
     after:
       "Maestro asserts against a stale hierarchy afterwards, so the step that failed is not where the problem is - read the screenshot beside it.",
@@ -71,6 +130,7 @@ const PLATFORMS = {
   ios: {
     reads: (file) => /\.(ips|crash)$/i.test(file),
     find: iosCrash,
+    detail: (_appId, text) => iosCrashDetail(text),
     describe: (c) => `${c.process} died of ${c.signal}`,
     after: "The report is in this shard's crash-reports-ios-<shard> artifact.",
   },
@@ -102,19 +162,20 @@ function main([platform, appId, ...rest]) {
     if (!spec.reads(file)) continue;
     read++;
     const crash = spec.find(appId, readFileSync(file, "latin1"));
-    if (crash) found.push({ file, crash });
+    if (crash) found.push({ file, crash, text: spec.detail(appId, readFileSync(file, "latin1")) });
   }
   if (found.length === 0) {
     console.log(`No native crash of ${appId}: read ${read} report(s) under ${rest.join(", ")}.`);
     return 0;
   }
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "found=true\n");
-  for (const { file, crash } of found) {
+  for (const { file, crash, text } of found) {
     if (copyTo) {
       mkdirSync(copyTo, { recursive: true });
       copyFileSync(file, path.join(copyTo, path.basename(file)));
     }
     console.log(`::error::The app died during this run: ${spec.describe(crash)}. ${spec.after} Report: ${file}.`);
+    if (text.length > 0) console.log([`::group::What ${file} says`, ...text, "::endgroup::"].join("\n"));
   }
   return 1;
 }

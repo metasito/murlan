@@ -3,7 +3,7 @@ import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { GameTable } from '@/components/GameTable';
 import { farthest, frameOfFirst } from './helpers/landing';

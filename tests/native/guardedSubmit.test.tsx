@@ -2,10 +2,10 @@
 // repeat of a held Enter while the field is readOnly, so `submit` is what refuses the repeats.
 import { describe, it, expect } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
-import type { NativeSyntheticEvent, TextInputSubmitEditingEventData } from 'react-native';
+import type { TextInputSubmitEditingEvent } from 'react-native';
 import { useGuardedSubmit } from '@/lib/useGuardedSubmit';
 
-const enter = {} as NativeSyntheticEvent<TextInputSubmitEditingEventData>;
+const enter = {} as TextInputSubmitEditingEvent;
 
 function deferred() {
   let resolve!: () => void;

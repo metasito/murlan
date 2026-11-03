@@ -44,7 +44,7 @@ import { byId, propsEqualExcept, shallowEqual } from "@/lib/memo";
 import type { HandSelection } from "./useSelection";
 import type { SettledSelection } from "./selectionLeaves";
 import { DEAL_FLIGHT_MS, dealLeaveMs } from "@/lib/timeline/dealTimeline";
-import { clipOverflow } from "@/lib/platform";
+import { clipOverflow, webDeps } from "@/lib/platform";
 import { dealEase, handDealArc } from "@/components/table/dealPose";
 import { handRowHeadroom } from "@/components/seatLayout";
 import { CARD_W, cardRadius, FIELD_SCALE, handCardSize, type HandCardSize } from "@/components/cardFaceModel";
@@ -327,7 +327,7 @@ function CardItemBase({
       liftY.set(withSpring(on ? selectLift : 0, Motion.spring.pickup));
       tilt.set(withSpring(on ? selectTilt(false) : 0, Motion.spring.pickup));
     },
-    [reduceMotion, selectLift]
+    webDeps([reduceMotion, selectLift])
   );
   useAnimatedReaction(
     () => pressed.value === cardId,
@@ -340,7 +340,7 @@ function CardItemBase({
       if (reduceMotion) press.set(on ? 1 : 0);
       else press.set(withSpring(on ? 1 : 0, on ? Motion.spring.pickup : Motion.spring.land));
     },
-    [reduceMotion]
+    webDeps([reduceMotion])
   );
 
   // -1 sunk and faded, 0 untouched, +1 lifted and lit. One value rather than

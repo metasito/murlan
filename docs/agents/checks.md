@@ -128,7 +128,7 @@ a native build otherwise, request one: `gh workflow run ci.yml --ref agent/<n>-<
 native=true`, then wait on it with `await-run.mjs`.
 
 One `ios.yml` shard also runs `.maestro/felt-opaque.yaml`: the felt's Metal layer is opaque only through
-`patches/@shopify+react-native-skia+2.12.0.patch`, and an opaque layer whose drawable misses its
+`patches/@shopify+react-native-skia+2.14.0.patch`, and an opaque layer whose drawable misses its
 bounds shows black. `tools/ci/feltPixels.mjs` fails its two screenshots (the table as it appears and
 settled, both after the landscape lock resized the felt) on a black band along an edge or over 5 %
 black; they upload as `felt-ios`. They show no black, not that the layer is opaque: the bench's

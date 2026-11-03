@@ -3,7 +3,7 @@
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
-import { getAnimatedStyle } from "react-native-reanimated";
+import { getAnimatedStyle } from "./harness/animatedStyle";
 
 const mockRenders = { card: 0, animatedHooks: 0 };
 jest.mock("@/lib/cosmetics", () => {

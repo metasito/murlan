@@ -2,7 +2,7 @@
 // card by card, and its badge counts only what has landed (#1102).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { render, screen, within } from '@testing-library/react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 jest.mock('@/components/table/dealSlots', () => {
   const actual = jest.requireActual<typeof import('@/components/table/dealSlots')>('@/components/table/dealSlots');

@@ -88,7 +88,7 @@ function table(gameState: GameState, opts: { viewerSeat?: number; turnTimer?: Tu
  */
 const zIndexAbove = (node: { parent: unknown; props: { style?: unknown } } | null): number => {
   if (!node) return 0;
-  const own = (StyleSheet.flatten(node.props?.style) as Record<string, number> | undefined)?.zIndex;
+  const own = (StyleSheet.flatten(node.props?.style as Parameters<typeof StyleSheet.flatten>[0]) as Record<string, number> | undefined)?.zIndex;
   if (typeof own === 'number') return own;
   return zIndexAbove(node.parent as Parameters<typeof zIndexAbove>[0]);
 };

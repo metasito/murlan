@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, ScrollView, StyleSheet, ViewStyle, KeyboardAvoidingView,
+  View, ScrollView, StyleSheet, ViewStyle, KeyboardAvoidingView, type ScrollViewInstance,
 } from 'react-native';
 import Animated, {
   cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming,
@@ -75,7 +75,7 @@ interface MenuLayoutProps {
    * brings its own avoidance, and this one would move the screen behind it.
    */
   avoidsKeyboard?: boolean;
-  scrollRef?: React.Ref<ScrollView>;
+  scrollRef?: React.Ref<ScrollViewInstance>;
 }
 
 export function MenuLayout({

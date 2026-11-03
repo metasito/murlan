@@ -134,7 +134,7 @@ describe('share', () => {
   });
 
   it('shares the code and an https join link', async () => {
-    const spy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+    const spy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction', activityType: undefined });
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(locale['room.share']));
     const { message } = spy.mock.calls[0][0] as { message: string };

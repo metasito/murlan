@@ -4,7 +4,8 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import React from 'react';
 import { act, render, renderHook, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle, makeMutable, type FrameCallback } from 'react-native-reanimated';
+import { makeMutable, type FrameCallback } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 const mockFrameCallbacks: FrameCallback[] = [];
 jest.mock('react-native-reanimated', () => {

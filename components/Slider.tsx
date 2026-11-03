@@ -3,7 +3,7 @@
 // is not the answer: its react-native-web layer is the one part of this
 // app's web build it would put at risk (#342).
 import { useCallback } from "react";
-import { Platform, StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { Platform, StyleSheet, View, type KeyDownEvent, type LayoutChangeEvent } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming } from "react-native-reanimated";
@@ -131,10 +131,10 @@ export function Slider({
     Platform.OS === "web"
       ? {
           tabIndex: (disabled ? -1 : 0) as 0 | -1,
-          onKeyDown: (e: { key: string; preventDefault?: () => void }) => {
-            const delta = KEY_DELTA[e.key];
+          onKeyDown: (e: KeyDownEvent) => {
+            const delta = KEY_DELTA[e.nativeEvent.key];
             if (delta === undefined) return;
-            e.preventDefault?.();
+            e.preventDefault();
             step(delta);
           },
         }

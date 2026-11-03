@@ -53,7 +53,8 @@ jest.mock('react-native-reanimated', () => {
 // Imported after the mock above (jest hoists `jest.mock` calls to the top of
 // the file, ahead of every import) so both this file's `Animated.View` and
 // `useTableFeedback.ts`'s own `useSharedValue` calls go through the wrapper.
-import Animated, { getAnimatedStyle, makeMutable, type SharedValue } from 'react-native-reanimated';
+import Animated, { makeMutable, type SharedValue } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { Motion } from '@/lib/theme';
 import { NO_LANDING, type LandingSignal } from '@/components/table/useFlightClock';
 import { fireLanding, useFeedbackOnTimeline } from './helpers/landing';

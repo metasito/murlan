@@ -3,7 +3,7 @@ import React from 'react';
 import { act, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from '../harness/animatedStyle';
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { emptyRankTally } from '@/lib/game/gameEngine';

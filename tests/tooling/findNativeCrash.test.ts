@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { androidAnr, androidCrash, iosCrash } from "../../tools/ci/find-native-crash.mjs";
+import { androidAnr, androidCrash, androidJavaCrash, androidJavaCrashLines, androidTombstone, iosCrash, iosCrashDetail } from "../../tools/ci/find-native-crash.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = "com.murlan.cardgame";
@@ -122,5 +122,94 @@ describe("the command a device run calls", () => {
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /read 1 report/);
     assert.doesNotMatch(result.stdout, /::error::/);
+  });
+});
+
+describe("the tombstone in the run's log", () => {
+  const backtrace = [
+    "09-21 04:41:02.126  1234  1234 F DEBUG   : backtrace:",
+    "09-21 04:41:02.127  1234  1234 F DEBUG   :       #00 pc 0000000000012345  /data/app/lib/x86_64/libreanimated.so",
+  ];
+  const next = "09-21 04:41:03.000  1234  1234 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***";
+
+  test("runs from our header to the end of its backtrace, and stops at the next tombstone", () => {
+    const text = [tombstone(APP, "signal 11 (SIGSEGV)"), "09-21 04:41:02.126  999  999 I ActivityManager: unrelated", ...backtrace, next, tombstone("com.android.systemui", "signal 6 (SIGABRT)")].join("\n");
+    const lines = androidTombstone(APP, text);
+    assert.match(lines[0], /name: RenderThread {2}>>> com\.murlan\.cardgame <<</);
+    assert.ok(lines.at(-1)!.includes("libreanimated.so"));
+    assert.ok(!lines.some((l) => l.includes("ActivityManager") || l.includes("systemui")));
+  });
+
+  test("reads logcat's -v time form too, the one the device workflows write", () => {
+    const text = `11-03 03:10:01.123 F/DEBUG   ( 1234): pid: 4321, tid: 4400, name: mqt_v_js  >>> ${APP} <<<\n11-03 03:10:01.124 F/DEBUG   ( 1234):       #00 pc 0000abcd  /lib/libhermes.so`;
+    assert.equal(androidTombstone(APP, text).length, 2);
+  });
+
+  test("the finder prints it for a crash it reports", () => {
+    const dir = dirWith({ "logcat.txt": [tombstone(APP, "signal 11 (SIGSEGV)"), ...backtrace].join("\n") });
+    const out = run("android", APP, dir);
+    assert.equal(out.status, 1);
+    assert.match(out.stdout, /::group::What [^\n]+ says\n[^\n]*>>> com\.murlan\.cardgame <<<[\s\S]*libreanimated\.so\n::endgroup::/);
+  });
+});
+
+describe("what an iOS report says", () => {
+  const report = (body: object) => JSON.stringify({ bundleID: APP, name: "Murlan" }) + "\n" + JSON.stringify(body);
+
+  test("the abort's message, the exception's backtrace and the crashed thread's frames, by image", () => {
+    const lines = iosCrashDetail(
+      report({
+        procName: "Murlan",
+        exception: { type: "EXC_CRASH", signal: "SIGABRT" },
+        asi: { CoreFoundation: ["*** Terminating app due to uncaught exception 'RCTFatalException: Unhandled JS Exception: boom'"] },
+        usedImages: [{ name: "Murlan" }, { name: "libsystem_kernel.dylib" }],
+        lastExceptionBacktrace: [{ imageIndex: 0, symbol: "RCTFatal" }],
+        threads: [{ name: "idle", frames: [] }, { triggered: true, queue: "com.facebook.react.ExceptionsManagerQueue", frames: [{ imageIndex: 1, symbol: "__pthread_kill" }, { imageIndex: 0, imageOffset: 4096 }] }],
+      })
+    );
+    assert.deepEqual(lines, [
+      "asi CoreFoundation: *** Terminating app due to uncaught exception 'RCTFatalException: Unhandled JS Exception: boom'",
+      "last exception backtrace:",
+      "  Murlan  RCTFatal",
+      "crashed thread com.facebook.react.ExceptionsManagerQueue:",
+      "  libsystem_kernel.dylib  __pthread_kill",
+      "  Murlan  +4096",
+    ]);
+  });
+
+  test("a legacy report or a bare header says nothing more", () => {
+    assert.deepEqual(iosCrashDetail("Identifier: com.murlan.cardgame\nException Type: EXC_CRASH"), []);
+  });
+});
+
+describe("an uncaught Java exception", () => {
+  const fatal = (pkg: string) =>
+    [
+      "11-03 03:10:01.120 E/AndroidRuntime( 4321): FATAL EXCEPTION: mqt_v_js",
+      `11-03 03:10:01.121 E/AndroidRuntime( 4321): Process: ${pkg}, PID: 4321`,
+      "11-03 03:10:01.122 E/AndroidRuntime( 4321): com.facebook.react.common.JavascriptException: TypeError: boom, stack:",
+      "11-03 03:10:01.123 I/ActivityManager(  520): unrelated",
+      "11-03 03:10:01.124 E/AndroidRuntime( 4321): 	at com.facebook.react.modules.core.ExceptionsManagerModule.reportException",
+    ].join("\n");
+
+  test("in our process is a crash, named by thread and exception, with its lines to print", () => {
+    assert.deepEqual(androidJavaCrash(APP, fatal(APP)), {
+      process: APP,
+      thread: "mqt_v_js",
+      signal: "an uncaught exception (com.facebook.react.common.JavascriptException: TypeError: boom, stack:)",
+    });
+    assert.equal(androidJavaCrashLines(APP, fatal(APP)).length, 4);
+  });
+
+  test("in another process, or one whose name only starts with ours, is not", () => {
+    assert.equal(androidJavaCrash(APP, fatal("com.android.systemui")), null);
+    assert.equal(androidJavaCrash(APP, fatal(`${APP}x`)), null);
+  });
+
+  test("fails the run and prints the exception", () => {
+    const out = run("android", APP, dirWith({ "logcat.txt": fatal(APP) }));
+    assert.equal(out.status, 1);
+    assert.match(out.stdout, /::error::The app died during this run: mqt_v_js in com\.murlan\.cardgame died of an uncaught exception/);
+    assert.match(out.stdout, /::group::What [^\n]+ says\n[\s\S]*JavascriptException: TypeError: boom[\s\S]*::endgroup::/);
   });
 });

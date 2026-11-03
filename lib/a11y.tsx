@@ -19,8 +19,7 @@ type StateProps = AccessibilityState & { role?: AccessibilityRole };
 
 /** Accessibility state for a control, on both React Native and the DOM. */
 export function a11yState({ role, ...state }: StateProps): AccessibilityProps {
-  const props: AccessibilityProps = { accessibilityState: state };
-  if (role) props.accessibilityRole = role;
+  const props: AccessibilityProps = role ? { accessibilityState: state, accessibilityRole: role } : { accessibilityState: state };
   if (!isWeb) return props;
 
   const web = props as Record<string, unknown>;
@@ -90,8 +89,7 @@ export function a11yDialog(label: string): AccessibilityProps {
  */
 export function a11yGroup(label: string): AccessibilityProps {
   const props: AccessibilityProps = { accessible: true, accessibilityLabel: label };
-  if (isWeb) props.role = "group";
-  return props;
+  return isWeb ? { ...props, role: "group" } : props;
 }
 
 /** Hides a decorative subtree from assistive technology on both platforms. */

@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name = 'MurlanRNPatches'
   s.version = '1.0.0'
-  s.summary = 'The app\'s React Native flags and its fix to recycled view layout'
+  s.summary = 'The app\'s React Native flags'
   s.homepage = 'https://github.com/metasito/murlan'
   s.license = 'UNLICENSED'
   s.author = 'Murlan'

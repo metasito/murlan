@@ -37,7 +37,7 @@ describe('followInviteTaps', () => {
     jest.clearAllMocks();
     mockListeners.clear();
     mockLaunch.response = null;
-    openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
   });
 
   it('opens the join route for the invited room, and navigates nowhere else', () => {

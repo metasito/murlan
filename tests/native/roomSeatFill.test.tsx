@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from "@jest/globals";
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
-import { getAnimatedStyle } from "react-native-reanimated";
+import { getAnimatedStyle } from "./harness/animatedStyle";
 
 import { RoomSeatList } from "@/components/RoomSeatList";
 import { bootFeedback, sounds } from "./helpers/feedback";

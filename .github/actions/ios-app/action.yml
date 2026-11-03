@@ -18,14 +18,13 @@ outputs:
 runs:
   using: composite
   steps:
-    # The dist-tag named for the installed SDK is the fingerprint version that reads that SDK's config.
+    # The fingerprint expo itself depends on is the version that reads its SDK's config.
     # This file stands for every build input the fingerprint cannot see; the workflows calling it are not one.
     - name: Fingerprint the native build
       id: native
       shell: bash
       run: |
-        sdk=$(node -p "require('expo/package.json').version.split('.')[0]")
-        hash=$(npx --yes "@expo/fingerprint@sdk-$sdk" fingerprint:generate --platform ios \
+        hash=$(npx --no-install fingerprint fingerprint:generate --platform ios \
           | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).hash")
         xcode=$(xcodebuild -version | shasum | cut -c1-12)
         build=$(shasum < "$GITHUB_ACTION_PATH/action.yml" | cut -c1-12)

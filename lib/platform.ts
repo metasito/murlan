@@ -16,3 +16,9 @@ export const clipOverflow: ViewStyle | null =
 export const viewFilterGrey = Platform.OS !== "ios";
 
 export const hapticsAvailable = Platform.OS !== "web";
+
+/**
+ * A Reanimated worklet hook's dependency list, which it reads on web alone: there no Babel plugin gives
+ * the worklet a closure to key on. On native it keys on that closure, and warns when handed a list.
+ */
+export const webDeps = (deps: unknown[]): unknown[] | undefined => (Platform.OS === "web" ? deps : undefined);

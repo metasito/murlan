@@ -2,7 +2,8 @@
 // on its own views, even while they are still in the air (D4 #5, task 4's review M2).
 import { describe, it, expect, jest, afterEach } from "@jest/globals";
 import { act, render, screen, within } from "@testing-library/react-native";
-import { Easing, getAnimatedStyle, makeMutable } from "react-native-reanimated";
+import { Easing, makeMutable } from "react-native-reanimated";
+import { getAnimatedStyle } from "./harness/animatedStyle";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 import { card, fireLanding, flightOf, pileOf } from "./helpers/landing";
 import { setMotionPreference } from "@/lib/accessibility";

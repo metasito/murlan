@@ -4,7 +4,7 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { activate } from './tapHelpers';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';

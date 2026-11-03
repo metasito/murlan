@@ -38,7 +38,7 @@ process.on("message", (m) => {
     tables: tracedTables,
     exit: (code) => {
       process.send?.({ ev: "exit", code, t: Date.now() }, () => process.exit(code));
-      setTimeout(() => process.exit(code), 200).unref();
+      (setTimeout(() => process.exit(code), 200) as unknown as NodeJS.Timeout).unref();
     },
   });
 });

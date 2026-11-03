@@ -419,6 +419,14 @@ jobs:
           node tools/ci/find-native-crash.mjs ios "$APP_ID" --copy-to "$RUNNER_TEMP/crash-reports" \
             "$HOME/Library/Logs/DiagnosticReports"
 
+      # A C++ exception out of a worklet ends in std::terminate, whose message reaches the
+      # simulator's log and not the crash report.
+      - name: What the app logged as it failed
+        if: failure()
+        run: |
+          xcrun simctl spawn "$SIMULATOR_UDID" log show --last 30m --style compact --predicate 'process == "Murlan"' > "$RUNNER_TEMP/app-log.txt" 2>&1 || :
+          grep -iE "terminat|JSError|\[Worklets\]|exception|com\.facebook\.react\.log" "$RUNNER_TEMP/app-log.txt" | grep -v "com.apple.dt.xctest" | tail -80 || :
+
       - name: Upload crash reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

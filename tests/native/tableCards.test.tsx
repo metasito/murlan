@@ -6,7 +6,7 @@ import React from 'react';
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { render, screen } from '@testing-library/react-native';
 import type { TestInstance } from 'test-renderer';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { CardView } from '@/components/CardView';
 import { CARD_SCOPES, type CardRects } from '@/components/table/cardRects';

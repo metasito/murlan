@@ -49,6 +49,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { repeatTimes, useLoop } from "@/lib/motion";
 import type { Combination, Player } from "@/lib/game/gameEngine";
 import { useRingProbe } from "@/lib/diagnostics";
+import { webDeps } from "@/lib/platform";
 
 /** An exchange's marks on a seat: lit while its card is in the air, pinged as it leaves or rests. */
 export interface SeatMark { lit: boolean; seat: number; flash: SharedValue<RingFlash> }
@@ -221,7 +222,7 @@ function useArrivedCount(arrivals: DealArrivals | undefined): number {
     (now, prev) => {
       if (now !== prev) scheduleOnRN(setN, now);
     },
-    [at, clock]
+    webDeps([at, clock])
   );
   if (!arrivals) return Infinity;
   return n >= arrivals.at.length ? Infinity : n;

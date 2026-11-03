@@ -4,7 +4,7 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';

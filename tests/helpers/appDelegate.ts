@@ -6,18 +6,20 @@ import { gunzipSync } from "node:zlib";
 const require = createRequire(import.meta.url);
 const { insertSwiftUIFilters } = require("../../plugins/withSwiftUIFilters.js") as { insertSwiftUIFilters: (s: string) => string };
 
-/** The AppDelegate `expo prebuild` writes, read out of the installed template's ustar archive. */
-export function templateAppDelegate(): string {
+/** A file of the iOS app `expo prebuild` writes, read out of the installed template's ustar archive. */
+export function templateIosFile(file: string): string {
   const tar = gunzipSync(readFileSync(require.resolve("expo/template.tgz")));
   const field = (at: number, len: number) => tar.toString("latin1", at, at + len).replace(/\0.*$/s, "");
   for (let at = 0; at + 512 <= tar.length && tar[at] !== 0; ) {
     const name = field(at + 345, 155) + "/" + field(at, 100);
     const size = parseInt(field(at + 124, 12).trim(), 8) || 0;
-    if (name.endsWith("/AppDelegate.swift")) return tar.toString("utf8", at + 512, at + 512 + size);
+    if (name.endsWith(`/${file}`)) return tar.toString("utf8", at + 512, at + 512 + size);
     at += 512 + Math.ceil(size / 512) * 512;
   }
-  throw new Error("the installed Expo template has no AppDelegate.swift");
+  throw new Error(`the installed Expo template has no ${file}`);
 }
+
+export const templateAppDelegate = (): string => templateIosFile("AppDelegate.swift");
 
 export const patchedAppDelegate = (): string => insertSwiftUIFilters(templateAppDelegate());
 export { insertSwiftUIFilters };

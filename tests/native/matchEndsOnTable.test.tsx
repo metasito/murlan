@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import React from 'react';
 import { act, fireEvent, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setMotionPreference } from '@/lib/accessibility';

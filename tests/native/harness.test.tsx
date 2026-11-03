@@ -3,6 +3,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React, { useEffect } from 'react';
 import { Text } from 'react-native';
 import { act } from '@testing-library/react-native';
+import { router } from 'expo-router';
 
 import { en as locale } from '@/locales/en';
 import { useAuth } from '@/context/AuthContext';
@@ -59,6 +60,8 @@ describe('renderApp', () => {
   });
 
   it('signs the player out when the socket ticket is refused', async () => {
+    // No navigator is mounted here, and expo-router's imperative router throws until one binds it.
+    const replace = jest.spyOn(router, 'replace').mockImplementation(() => {});
     const view = await renderApp(<Probe />, { user: ANA });
     route('POST', '/api/auth/socket-ticket', { status: 401 });
 
@@ -67,6 +70,8 @@ describe('renderApp', () => {
     });
 
     expect(text(view, 'user')).toBe('none');
+    expect(replace).toHaveBeenCalledWith('/auth');
+    replace.mockRestore();
   });
 
   it('opens no socket for a signed-out player', async () => {

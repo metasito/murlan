@@ -1,7 +1,8 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { AccessibilityInfo, View } from 'react-native';
-import Animated, { getAnimatedStyle } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { setMotionPreference, type MotionPreference } from '@/lib/accessibility';

@@ -14,7 +14,8 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
+import { makeMutable } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { GameTable } from '@/components/GameTable';
 import { useCountdown } from '@/components/table/countdown';

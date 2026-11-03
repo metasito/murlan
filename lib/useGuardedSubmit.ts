@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
-import type { TextInput, TextInputProps } from "react-native";
+import type { TextInputInstance, TextInputProps } from "react-native";
 
 type FieldProps = Pick<TextInputProps, "editable" | "onSubmitEditing">;
 
@@ -32,7 +32,7 @@ export function useGuardedSubmit(run: () => Promise<void>): {
 
 /** For a field whose return key only moves focus to the next one. */
 export function useReturnFocuses(
-  next: RefObject<TextInput | null>,
+  next: RefObject<TextInputInstance | null>,
 ): Pick<TextInputProps, "onSubmitEditing" | "returnKeyType" | "submitBehavior"> {
   return { onSubmitEditing: () => next.current?.focus(), returnKeyType: "next", submitBehavior: "submit" };
 }

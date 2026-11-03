@@ -38,12 +38,15 @@ const project = (platform) => ({
     ...(platform === 'ios' ? [] : Object.keys(IOS_ONLY).map((file) => `!${rootDir}/tests/native/${file}`)),
   ],
   setupFilesAfterEnv: [`${rootDir}/tests/native/setup.ts`],
-  // react-native-worklets ships `.native.ts` files that call into a real
-  // native module `setUpTests()` cannot stand in for under Jest. Its own
-  // resolver strips the `.native` extension so requests resolve to the
-  // plain (mockable) implementation instead — without it, requiring
-  // react-native-reanimated throws before any test runs.
-  resolver: require.resolve('react-native-worklets/jest/resolver'),
+  // react-native-worklets and Reanimated ship `.native.ts` files that call into
+  // a real native module `setUpTests()` cannot stand in for under Jest.
+  // Reanimated's resolver sends its own web-only modules and every worklets
+  // request to the plain (mockable) implementation instead — without it,
+  // requiring react-native-reanimated throws before any test runs.
+  resolver: require.resolve('react-native-reanimated/jest/resolver'),
+  // jest-expo stubs `react-native/asset-registry`, but react-native's index and its Image resolvers
+  // require the private module behind that entry point directly, and so meet the real, empty registry.
+  moduleNameMapper: { '(^|/)private/assets/AssetRegistry$': `${rootDir}/tests/native/harness/assetRegistry.ts` },
   // jest-expo transforms Metro's default asset extensions; FLAC is one metro.config.js adds.
   transform: { '^.+\\.flac$': require.resolve('jest-expo/src/preset/assetFileTransformer.js') },
 });

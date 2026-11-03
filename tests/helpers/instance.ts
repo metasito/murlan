@@ -42,7 +42,7 @@ export async function boot(
     }
   );
   let up = false;
-  let giveUp: NodeJS.Timeout | undefined;
+  let giveUp: ReturnType<typeof setTimeout> | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
       giveUp = setTimeout(() => reject(new Error(`instance on ${port} never came up`)), 45_000);

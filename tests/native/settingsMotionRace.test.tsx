@@ -4,7 +4,7 @@
 import { test, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SETTINGS_KEY } from '@/lib/storageKeys';
 import type { Card } from '@/lib/game/gameEngine';

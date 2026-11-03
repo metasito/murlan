@@ -1,7 +1,7 @@
 // tests/native/dealTurnGrowth.test.tsx — the landed hand grows into its turn size from where the deal drew it (#1432).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { render, screen } from '@testing-library/react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { HAND_SCALE, HAND_SCALE_ON_TURN } from '@/components/cardFaceModel';
 import { type CardRects } from '@/components/table/cardRects';

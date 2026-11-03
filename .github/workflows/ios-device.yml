@@ -40,8 +40,7 @@ jobs:
       - name: Fingerprint the native build
         id: native
         run: |
-          sdk=$(node -p "require('expo/package.json').version.split('.')[0]")
-          hash=$(npx --yes "@expo/fingerprint@sdk-$sdk" fingerprint:generate --platform ios \
+          hash=$(npx --no-install fingerprint fingerprint:generate --platform ios \
             | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).hash")
           xcode=$(xcodebuild -version | shasum | cut -c1-12)
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
