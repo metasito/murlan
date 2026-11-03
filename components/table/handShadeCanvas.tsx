@@ -19,7 +19,9 @@ const PAINTS: readonly ShadowPath[] = ["cast", "face", "back"];
 export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
   const { rects, handOrder, pileOrder, motion, felt } = cards;
   const midX = cards.hand.x;
-  const pile = { x: cards.pile.x / felt.sx, y: cards.pile.y / felt.sy };
+  const pileX = cards.pile.x / felt.sx;
+  const pileY = cards.pile.y / felt.sy;
+  const pile = useMemo(() => ({ x: pileX, y: pileY }), [pileX, pileY]);
   const recorder = useMemo(() => Skia.PictureRecorder(), []);
   const builder = useMemo(() => Skia.PathBuilder.Make(), []);
   const blurs = useMemo(

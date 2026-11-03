@@ -44,9 +44,14 @@ function remoteCalls(code: string): string[] {
 }
 
 test("no worklet closes over a function the React Compiler hoisted out of it", () => {
-  const found = sourcesUnder(repoRoot, ["app", "components", "context", "lib"])
-    .filter(([rel, src]) => !/\.web\.tsx?$|\.d\.ts$/.test(rel) && UI_CODE.test(src))
-    .flatMap(([rel, src]) => remoteCalls(compiled(rel, src)).map((hit) => `${rel} ${hit}`));
+  const scanned = sourcesUnder(repoRoot, ["app", "components", "context", "lib"]).filter(
+    ([rel, src]) => !/\.web\.tsx?$|\.d\.ts$/.test(rel) && UI_CODE.test(src),
+  );
+  assert.ok(
+    scanned.some(([rel]) => rel === "components/table/feltCanvas.tsx"),
+    "the scan no longer reaches the felt's worklets",
+  );
+  const found = scanned.flatMap(([rel, src]) => remoteCalls(compiled(rel, src)).map((hit) => `${rel} ${hit}`));
   assert.deepEqual(found, [], 'give each callback inside these worklets its own "worklet" directive');
 });
 
