@@ -7,6 +7,8 @@ import { trackEvent } from "../../server/shared/events.ts";
 import { recordClientError } from "../../server/http/clientErrors.ts";
 import { flushTelemetry, telemetryRowsDropped } from "../../server/shared/telemetryBatch.ts";
 import { logger } from "../../server/shared/logger.ts";
+import { register } from "@prometheus-io/client";
+import "../../server/shared/metrics.ts";
 
 openDatabase();
 
@@ -82,8 +84,11 @@ test("the row past 5,000 queued drops the oldest and is counted", async (t) => {
   for (let i = 0; i < 200; i++) trackEvent("lobby.entered", `held-${i}`);
   for (let i = 0; i < 5_000; i++) trackEvent("lobby.entered", `queued-${i}`);
   assert.equal(telemetryRowsDropped() - before, 0, "a queue at its cap dropped a row");
+  const exported = async () => (await register.getSingleMetric("telemetry_rows_dropped_total")!.get()).values[0]!.value;
+  const exportedBefore = await exported();
   trackEvent("lobby.entered", "queued-5000");
   assert.equal(telemetryRowsDropped() - before, 1);
+  assert.equal((await exported()) - exportedBefore, 1, "telemetry_rows_dropped_total did not follow the drop");
 
   land();
   await flushTelemetry();

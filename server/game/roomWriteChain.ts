@@ -14,6 +14,13 @@ interface Entry {
 
 const queues = new Map<string, Entry[]>();
 
+let coalesced = 0;
+
+/** Snapshots replaced by a newer one before they started, since boot. */
+export function coalescedWrites(): number {
+  return coalesced;
+}
+
 function entry(kind: Entry["kind"], write: () => Promise<void>): Entry {
   let land!: () => void;
   const landed = new Promise<void>((resolve) => (land = resolve));
@@ -49,6 +56,7 @@ export function queueSnapshot(roomId: string, write: () => Promise<void>): Promi
   const last = queues.get(roomId)?.at(-1);
   if (last && last.kind === "snapshot" && !last.started) {
     last.write = write;
+    coalesced++;
     return last.landed;
   }
   const next = entry("snapshot", write);
