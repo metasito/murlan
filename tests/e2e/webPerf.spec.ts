@@ -11,17 +11,22 @@
 // `npm run test:e2e` costs nothing and gains no noise from it. Run it with
 // `npm run perf:web`, and see docs/WEB-PERF.md for what the numbers mean and
 // what to compare them against.
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";
-import { HAND_CARDS } from "./helpers/selectors";
+import { driveGameToCompletion } from "./helpers/bot";
+import { YOUR_TURN_PREFIX } from "./helpers/labels";
+import { HAND_CARDS, TABLE_STATE } from "./helpers/selectors";
 import { PAST_HOLD_MS } from "./helpers/press";
 
 const TABLE = '[data-testid="game-table"]';
 
 interface FrameReport {
   frames: number;
+  /** Presented frames per second over the window; 60 is a table holding the display's rate. */
+  fps: number;
   /** Milliseconds between presented frames — 16.7 is one frame at 60fps. */
   p50: number;
   p95: number;
@@ -35,72 +40,101 @@ interface FrameReport {
   domNodes: number;
 }
 
+// A phone, not a desktop: the owner's table is an iPhone 16 Pro in landscape at 3x, and
+// every case runs with motion on because that is how it is played (#1965).
+test.use({ reducedMotion: "no-preference", deviceScaleFactor: 3 });
+
+const PHONE_VIEWPORT = { width: 874, height: 402 };
+/** Lighthouse's mobile CPU preset. */
+const PHONE_CPU_RATE = 4;
+
+async function throttleCpu(page: Page, rate: number): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate });
+}
+
 /**
  * Watches real presented frames via requestAnimationFrame, and long tasks via
- * PerformanceObserver, for `ms`. rAF rather than a frame-timing API because it
- * is what every browser has, and it measures the thing that matters here:
- * whether the main thread got back in time to paint.
+ * PerformanceObserver, from now until `stop()`. rAF rather than a frame-timing
+ * API because it is what every browser has, and it measures the thing that
+ * matters here: whether the main thread got back in time to paint.
  */
-async function record(page: import("@playwright/test").Page, ms: number): Promise<FrameReport> {
-  return page.evaluate(async (duration) => {
-    const intervals: number[] = [];
-    let longTasks = 0;
-    let longTaskMs = 0;
-
-    let observer: PerformanceObserver | null = null;
+async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport> }> {
+  await page.evaluate(() => {
+    const rec = { times: [] as number[], longTasks: 0, longTaskMs: 0, running: true };
+    (window as unknown as { __perfRec: typeof rec }).__perfRec = rec;
     try {
-      observer = new PerformanceObserver((list) => {
+      new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          longTasks += 1;
-          longTaskMs += entry.duration;
+          rec.longTasks += 1;
+          rec.longTaskMs += entry.duration;
         }
-      });
-      observer.observe({ entryTypes: ["longtask"] });
+      }).observe({ entryTypes: ["longtask"] });
     } catch {
       // Not every engine exposes longtask; the frame intervals still stand.
     }
-
-    await new Promise<void>((resolve) => {
-      let last = performance.now();
-      const started = last;
-      const tick = (now: number) => {
-        intervals.push(now - last);
-        last = now;
-        if (now - started >= duration) resolve();
-        else requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
-    observer?.disconnect();
-
-    // The first interval spans from before the loop started, so it measures
-    // scheduling latency rather than a frame.
-    const sorted = intervals.slice(1).sort((a, b) => a - b);
-    const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ?? 0;
-
-    const transformed = [...document.querySelectorAll("*")].filter((el) => {
-      const t = getComputedStyle(el).transform;
-      return t && t !== "none";
-    }).length;
-
-    return {
-      frames: sorted.length,
-      p50: +at(0.5).toFixed(2),
-      p95: +at(0.95).toFixed(2),
-      worst: +(sorted[sorted.length - 1] ?? 0).toFixed(2),
-      janky: sorted.filter((ms) => ms > 33.4).length,
-      longTasks,
-      longTaskMs: +longTaskMs.toFixed(1),
-      transformed,
-      domNodes: document.querySelectorAll("*").length,
+    const tick = (now: number) => {
+      rec.times.push(now);
+      if (rec.running) requestAnimationFrame(tick);
     };
-  }, ms);
+    requestAnimationFrame(tick);
+  });
+
+  return {
+    stop: () =>
+      page.evaluate(() => {
+        const rec = (window as unknown as {
+          __perfRec: { times: number[]; longTasks: number; longTaskMs: number; running: boolean };
+        }).__perfRec;
+        rec.running = false;
+
+        const sorted = rec.times
+          .slice(1)
+          .map((t, i) => t - rec.times[i]!)
+          .sort((a, b) => a - b);
+        const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ?? 0;
+        const span = (rec.times[rec.times.length - 1]! - rec.times[0]!) / 1000;
+
+        const transformed = [...document.querySelectorAll("*")].filter((el) => {
+          const t = getComputedStyle(el).transform;
+          return t && t !== "none";
+        }).length;
+
+        return {
+          frames: sorted.length,
+          fps: span > 0 ? +(sorted.length / span).toFixed(1) : 0,
+          p50: +at(0.5).toFixed(2),
+          p95: +at(0.95).toFixed(2),
+          worst: +(sorted[sorted.length - 1] ?? 0).toFixed(2),
+          janky: sorted.filter((ms) => ms > 33.4).length,
+          longTasks: rec.longTasks,
+          longTaskMs: +rec.longTaskMs.toFixed(1),
+          transformed,
+          domNodes: document.querySelectorAll("*").length,
+        };
+      }),
+  };
+}
+
+async function record(page: Page, ms: number): Promise<FrameReport> {
+  const recording = await startRecording(page);
+  await page.waitForTimeout(ms);
+  return recording.stop();
+}
+
+/** The viewer holds the lead or the turn: nothing but ambient motion is running. */
+async function waitForViewerTurn(page: Page): Promise<void> {
+  await page
+    .locator(`${TABLE}[${TABLE_STATE}^="${YOUR_TURN_PREFIX}"]`)
+    .waitFor({ timeout: 120_000 });
+  await page.waitForTimeout(1_000);
 }
 
 test.describe("web frame performance", () => {
   test("records a baseline through the deal and the first plays", async ({ page, baseURL }) => {
     test.setTimeout(3 * 60_000);
 
+    await page.setViewportSize(PHONE_VIEWPORT);
     await openApp(page, baseURL!);
     // Recording starts on the click that begins the game, not after the table
     // has settled: the deal is the burst worth measuring, and waiting for the
@@ -203,12 +237,54 @@ test.describe("web frame performance", () => {
     expect(drag.domNodes, "the table never rendered").toBeGreaterThan(100);
   });
 
+  // The phone's CPU is the budget a desktop run hides: the same table that holds 60fps at 1x
+  // is a fraction of that at 4x, and the owner plays it on the phone.
+  test("records a settled table at phone speed", async ({ page, baseURL }) => {
+    test.setTimeout(3 * 60_000);
+
+    await page.setViewportSize(PHONE_VIEWPORT);
+    await openApp(page, baseURL!);
+    await throttleCpu(page, PHONE_CPU_RATE);
+    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
+    await page.locator(TABLE).waitFor({ timeout: 120_000 });
+    await waitForViewerTurn(page);
+    const settled4x = await record(page, 4_000);
+
+    console.log(`[web-perf] idle-4x ${JSON.stringify(settled4x)}`);
+    expect(settled4x.frames, "no frames were observed on the throttled table").toBeGreaterThan(5);
+    expect(settled4x.domNodes, "the table never rendered").toBeGreaterThan(100);
+  });
+
+  // One round from the click to the result, the recorder running throughout: the deal, every
+  // throw, the bots' replies and the settle between them, which no fixed window covers.
+  // `transformed` and `domNodes` are sampled at its end, on the result screen.
+  test("records a full round at phone speed", async ({ page, baseURL }) => {
+    test.setTimeout(15 * 60_000);
+
+    await page.setViewportSize(PHONE_VIEWPORT);
+    await openApp(page, baseURL!);
+    await throttleCpu(page, PHONE_CPU_RATE);
+    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all", format: "single" });
+    const recording = await startRecording(page);
+    await driveGameToCompletion(page, {
+      isFinished: (p) => p.getByTestId("btn-home").isVisible(),
+      maxTotalMs: 12 * 60_000,
+      stallMs: 60_000,
+    });
+    const round = await recording.stop();
+
+    console.log(`[web-perf] round-4x ${JSON.stringify(round)}`);
+    expect(round.frames, "no frames were observed through the round").toBeGreaterThan(100);
+  });
+
   test("records a settled online table", async ({ browser, baseURL }) => {
     test.setTimeout(3 * 60_000);
     const table = await openOnlineTable(browser, baseURL!, {
       playerCount: 2,
       gameMode: "free_for_all",
       viewport: { width: 844, height: 390 },
+      deviceScaleFactor: 3,
+      motion: true,
     });
     try {
       await table.page.waitForTimeout(2_000);
