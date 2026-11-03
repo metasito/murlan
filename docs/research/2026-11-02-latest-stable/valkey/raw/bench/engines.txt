@@ -1,0 +1,4 @@
+redis_version:7.4.12
+redis_version:7.2.4
+server_name:valkey
+valkey_version:9.1.3

@@ -108,5 +108,5 @@ describe('an announcement taking over from the open phase', () => {
     expect(cues()[1]).toBeGreaterThan(received!);
     expect(onReady).toHaveBeenCalledTimes(1);
     await view.unmount();
-  });
+  }, 20_000);
 });

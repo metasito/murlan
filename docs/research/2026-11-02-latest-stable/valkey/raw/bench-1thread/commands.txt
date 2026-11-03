@@ -1,0 +1,20 @@
+redis-7.4.12 xadd-nomkstream-maxlen: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -x xadd inbox NOMKSTREAM MAXLEN ~ 120000 * m <payload-state.json
+redis-7.4.12 xadd-nomkstream-maxlen-small: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -x xadd inbox NOMKSTREAM MAXLEN ~ 120000 * m <payload-table-ask.json
+redis-7.4.12 xadd-nomkstream-maxlen-at-cap: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -x xadd inbox NOMKSTREAM MAXLEN ~ 120000 * m <payload-state.json
+redis-7.4.12 xread-count100: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 xread COUNT 100 STREAMS inbox 0-0 <payload-state.json
+redis-7.4.12 xread-count1: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 xread COUNT 1 STREAMS inbox 0-0 <payload-state.json
+redis-7.4.12 refresh-lua: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 10000 evalsha 4e7a077c8af7b21447cc8259fcd93a2aca83d23c 1 owner:__rand_int__ 0f3c2b1e-6a4d-4c1e-9b7a-2d5e8f1a3c4b:7 30000 <payload-state.json
+redis-7.4.12 clear-lua: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 200000 --sequential evalsha 6fbe84d1140fd2047394924af9d845b83c070bec 1 owner:__rand_int__ 0f3c2b1e-6a4d-4c1e-9b7a-2d5e8f1a3c4b:7 <payload-state.json
+redis-7.4.12 limit-increment-lua: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 10000 evalsha 9f27905e3ad8a8c96d8bc4fc8a194d9ba920cebe 1 limit:__rand_int__ 60000 <payload-state.json
+redis-7.4.12 limit-decrement-lua: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 10000 evalsha 0381c732fe0501802defbe8a298c318685154247 1 limit:__rand_int__ <payload-state.json
+valkey-9.1.3 xadd-nomkstream-maxlen: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -x xadd inbox NOMKSTREAM MAXLEN ~ 120000 * m <payload-state.json
+valkey-9.1.3 xadd-nomkstream-maxlen-small: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -x xadd inbox NOMKSTREAM MAXLEN ~ 120000 * m <payload-table-ask.json
+valkey-9.1.3 xadd-nomkstream-maxlen-at-cap: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -x xadd inbox NOMKSTREAM MAXLEN ~ 120000 * m <payload-state.json
+valkey-9.1.3 xread-count100: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 xread COUNT 100 STREAMS inbox 0-0 <payload-state.json
+valkey-9.1.3 xread-count1: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 xread COUNT 1 STREAMS inbox 0-0 <payload-state.json
+valkey-9.1.3 refresh-lua: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 10000 evalsha 4e7a077c8af7b21447cc8259fcd93a2aca83d23c 1 owner:__rand_int__ 0f3c2b1e-6a4d-4c1e-9b7a-2d5e8f1a3c4b:7 30000 <payload-state.json
+valkey-9.1.3 clear-lua: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 200000 --sequential evalsha 6fbe84d1140fd2047394924af9d845b83c070bec 1 owner:__rand_int__ 0f3c2b1e-6a4d-4c1e-9b7a-2d5e8f1a3c4b:7 <payload-state.json
+valkey-9.1.3 limit-increment-lua: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 10000 evalsha 9f27905e3ad8a8c96d8bc4fc8a194d9ba920cebe 1 limit:__rand_int__ 60000 <payload-state.json
+valkey-9.1.3 limit-decrement-lua: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 10000 evalsha 0381c732fe0501802defbe8a298c318685154247 1 limit:__rand_int__ <payload-state.json
+valkey-9.1.3 refresh-set-ifeq: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 10000 set owner:__rand_int__ 0f3c2b1e-6a4d-4c1e-9b7a-2d5e8f1a3c4b:7 PX 30000 IFEQ 0f3c2b1e-6a4d-4c1e-9b7a-2d5e8f1a3c4b:7 <payload-state.json
+valkey-9.1.3 clear-delifeq: taskset -c 2,3 valkey-benchmark -p 46431 -c 50 --csv -n 200000 -r 200000 --sequential delifeq owner:__rand_int__ 0f3c2b1e-6a4d-4c1e-9b7a-2d5e8f1a3c4b:7 <payload-state.json

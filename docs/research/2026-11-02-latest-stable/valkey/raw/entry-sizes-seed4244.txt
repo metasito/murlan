@@ -1,0 +1,12 @@
+entry-sizes: 16 tables split over 2 instances, 13280 moves in 124.1s
+inbox: 27367 entries, field+value bytes n=27367 mean=1707.5 p50=352 p90=3800 p99=4280 max=5052; MEMORY USAGE 51727664 B = 1890.1 B/entry
+  deliver:state+state: n=12958 mean=3299.8 p50=3271 p90=3962 p99=4376 max=5052
+  table-answer: n=6767 mean=91.0 p50=91 p90=91 p99=91 max=91
+  table-ask: n=6767 mean=326.8 p50=317 p90=342 p99=361 max=418
+  deliver:emit: n=572 mean=394.1 p50=388 p90=427 p99=795 max=795
+  deliver:state+state+emit+emit: n=131 mean=4285.5 p50=4288 p90=4362 p99=4388 max=4391
+  deliver:emit+emit: n=90 mean=1788.7 p50=1821 p90=1827 p99=1868 max=1868
+  stop-spectating: n=32 mean=75.0 p50=75 p90=75 p99=75 max=75
+  deliver:state+state+emit: n=32 mean=3540.4 p50=3446 p90=4209 p99=4695 max=4695
+  deliver:emit+state+state+emit+emit: n=16 mean=4981.5 p50=4984 p90=4990 p99=4994 max=4994
+  boot: n=2 mean=16.0 p50=16 p90=16 p99=16 max=16
