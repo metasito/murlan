@@ -44,6 +44,7 @@ const project = (platform) => ({
   // request to the plain (mockable) implementation instead — without it,
   // requiring react-native-reanimated throws before any test runs.
   resolver: require.resolve('react-native-reanimated/jest/resolver'),
+  testEnvironment: `${rootDir}/tests/native/harness/timeoutHeadroomEnvironment.mjs`,
   // jest-expo stubs `react-native/asset-registry`, but react-native's index and its Image resolvers
   // require the private module behind that entry point directly, and so meet the real, empty registry.
   moduleNameMapper: { '(^|/)private/assets/AssetRegistry$': `${rootDir}/tests/native/harness/assetRegistry.ts` },
