@@ -22,7 +22,7 @@ export interface Gloss {
 /** The lamp as a gloss reads it. */
 export type GlossLight = Pick<Lamp, "lx" | "ly" | "level" | "r" | "t">;
 
-/** Steps no soft gloss shows: the 20 pt sway crossed 0.5 pt 20-35 times a second, and at 4x throttle 2 pt lifts a settled table from 15.3 to 23.4 fps. */
+/** Steps no soft gloss shows, coarse enough that the lamp's sway poses every gloss a few times a second rather than every frame (rule 51). */
 const GLOSS_POINT_STEP = 2;
 const GLOSS_LIGHT_STEP = 1 / 256;
 /** Under a 60 Hz frame, so its jitter never skips one: a faster display, or jest's 1 ms frames, poses a gloss no oftener. */
@@ -54,7 +54,7 @@ export function nextGlossLight(shown: GlossLight, lamp: GlossLight): GlossLight 
 export function nextStillLight(shown: GlossLight, lamp: Pick<Lamp, "x" | "ly" | "level" | "r" | "t">): GlossLight | null {
   "worklet";
   if (lamp.t - shown.t < GLOSS_FRAME_S) return null;
-  return withinStep(shown, lamp.x, lamp.ly, lamp.level, lamp.r) ? null : { lx: lamp.x, ly: lamp.ly, level: lamp.level, r: lamp.r, t: lamp.t };
+  return withinStep(shown, lamp.x, lamp.ly, lamp.level, lamp.r) ? null : glossLightOf({ ...lamp, lx: lamp.x });
 }
 
 const clamp01 = (v: number) => {

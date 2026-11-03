@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useMemo } from "
 import { makeMutable, startMapper, stopMapper, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { OpponentSide } from "@/components/seatLayout";
 import { E2E_FAST } from "@/lib/e2eConfig";
-import { designRect, sameRect, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
+import { designRect, sameRect, scopeOf, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
 import type { GlossLight } from "./cardGloss";
 
 /**
@@ -40,7 +40,7 @@ export function useCardTable(): CardTable | null {
 
 /** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway. */
 export function glossLightFor(table: CardTable, rectKey: string): SharedValue<GlossLight> {
-  return rectKey.startsWith("fan:") ? table.stillLight : table.glossLight;
+  return scopeOf(rectKey) === "fan" ? table.stillLight : table.glossLight;
 }
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;

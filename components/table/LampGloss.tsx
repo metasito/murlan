@@ -7,7 +7,7 @@ import { a11yHidden } from "@/lib/a11y";
 import type { CardBackId } from "@/lib/cosmetics";
 import { cardRadius } from "@/components/cardFaceModel";
 import { cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLight } from "./cardGloss";
-import type { CardScope } from "./cardRects";
+import { scopeOf, type CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
 import { levelShade } from "./rail";
 import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
@@ -123,8 +123,8 @@ const LIT_SCOPES: readonly CardScope[] = ["hand", "fan", "pile"];
 /** The lamp's level over a hand, fan or pile card, a play still flying to the pile included; a deal or exchange flight (`deal`, `leg`) stays bright, as the mockup's `#fly` above its `#shade`. */
 export function LevelShade({ rectKey, rects, width, height }: Props) {
   const table = useCardTable();
-  if (!table || !rectKey || !rects || !LIT_SCOPES.includes(rectKey.split(":")[0] as CardScope)) return null;
-  return <Shade light={table.glossLight} width={width} height={height} />;
+  if (!table || !rectKey || !rects || !LIT_SCOPES.includes(scopeOf(rectKey))) return null;
+  return <Shade light={glossLightFor(table, rectKey)} width={width} height={height} />;
 }
 
 function Shade({ light, width, height }: { light: SharedValue<GlossLight>; width: number; height: number }) {

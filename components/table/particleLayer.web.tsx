@@ -92,11 +92,13 @@ export function animate(
   // Setting the size above cleared the canvas, so an asleep scene must still paint it once.
   let cleared = true;
   let id = requestAnimationFrame(function frame(now) {
-    owed += (now - last) / 1000;
+    const frameS = (now - last) / 1000;
+    owed += frameS;
     const l = lamp.value;
     last = now;
-    if (!cleared && (sceneAsleep(scene, l, reduced) || !stepDue(scene, owed, reduced))) return void (id = requestAnimationFrame(frame));
-    const dt = Math.min(0.05, owed);
+    if (!cleared && (sceneAsleep(scene, l, reduced) || !stepDue(scene, owed, frameS, reduced))) return void (id = requestAnimationFrame(frame));
+    // Held still, the time owed spans the sleep: stepping it all at once would jump the light.
+    const dt = Math.min(0.05, reduced ? frameS : owed);
     owed = 0;
     cleared = false;
     if (stepScene(scene, l, dt, reduced, Math.random)) traceOnset("moment", "moth");

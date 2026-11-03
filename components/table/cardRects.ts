@@ -23,6 +23,11 @@ export type CardRects = Record<string, CardRect>;
 export const CARD_SCOPES = ["hand", "fan", "pile", "deal", "leg"] as const;
 export type CardScope = (typeof CARD_SCOPES)[number];
 
+/** The scope a card's rect key is published under, its prefix before the first `:`. */
+export function scopeOf(rectKey: string): CardScope {
+  return rectKey.split(":")[0] as CardScope;
+}
+
 export interface Point { x: number; y: number }
 
 /** The window's map onto the felt, and the two points the table's own motion turns about. */

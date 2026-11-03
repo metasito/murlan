@@ -2,7 +2,7 @@
 // and rail, lit once per lamp target into one DOM canvas, with no per-frame lighting.
 import { useEffect, useRef } from "react";
 import type { FeltStops } from "@/lib/cosmetics";
-import { DESIGN, LIGHT_ABOVE, lightUniforms, type Pool } from "./lampRig";
+import { DESIGN, LIGHT_ABOVE, lightUniforms, type LampTarget, type Pool } from "./lampRig";
 import { CLOTH_GLSL, clothUniforms } from "./feltShader";
 import { paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 
@@ -64,7 +64,8 @@ function clothRenderer(): ClothRenderer | null {
   return (renderer = { cv, gl, p });
 }
 
-function drawCloth(width: number, height: number, uniforms: Record<string, number | number[]>, px: [number, number]) {
+/** The cloth, `null` on a page with no WebGL (a felt without cloth, for good), `undefined` when the context was lost mid-draw. */
+function drawCloth(width: number, height: number, uniforms: Record<string, number | number[]>, px: [number, number]): HTMLCanvasElement | null | undefined {
   const r = clothRenderer();
   if (!r) return null;
   const { cv, gl, p } = r;
@@ -81,7 +82,7 @@ function drawCloth(width: number, height: number, uniforms: Record<string, numbe
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  return cv;
+  return gl.isContextLost() ? undefined : cv;
 }
 
 let grain: { key: string; cv: HTMLCanvasElement } | undefined;
@@ -102,15 +103,19 @@ function grainLayer(width: number, height: number, ax: number, ay: number): HTML
 }
 
 const MAX_DPR = 2;
-const LAMP_TARGETS = 5;
+/** 16 MB a copy: past it, five cached felts cost more memory than a re-bake costs time. */
+const MAX_CACHED_PIXELS = 4_000_000;
+/** One bake per place the lamp aims; `satisfies` makes a new `LampTarget` a compile error here. */
+const LAMP_TARGETS = Object.keys({ top: 0, bottom: 0, left: 0, right: 0, centre: 0 } satisfies Record<LampTarget, 0>).length;
 
-function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, sx: number, sy: number, dpr: number) {
+/** False when the bake came out incomplete (no 2D context, or a cloth lost mid-draw), which must not be cached. */
+function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, sx: number, sy: number, dpr: number): boolean {
   const ax = dpr * sx;
   const ay = dpr * sy;
   out.width = Math.round(DESIGN.width * ax);
   out.height = Math.round(DESIGN.height * ay);
   const c = out.getContext("2d");
-  if (!c) return;
+  if (!c) return false;
   const lx = tx;
   const ly = ty - LIGHT_ABOVE;
   c.setTransform(ax, 0, 0, ay, 0, 0);
@@ -154,10 +159,12 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, s
   const k = dpr * Math.min(sx, sy);
   const uniforms = { ...clothUniforms(stops, k), uLamp: [lx, ly], uFlare: 0, ...lightUniforms(reach) };
   const cloth = drawCloth(out.width, out.height, uniforms, [ax, ay]);
+  if (cloth === undefined) return false;
   if (cloth) {
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.drawImage(cloth, 0, 0);
   }
+  return true;
 }
 
 type Baked = Map<string, HTMLCanvasElement>;
@@ -167,12 +174,14 @@ function bakeCached(out: HTMLCanvasElement, cache: Baked, stops: FeltStops, pool
   const key = `${stops.join()}|${pool.join()}|${sx},${sy}|${dpr}`;
   const hit = cache.get(key);
   if (hit) {
+    cache.delete(key);
+    cache.set(key, hit);
     out.width = hit.width;
     out.height = hit.height;
     out.getContext("2d")?.drawImage(hit, 0, 0);
     return;
   }
-  bake(out, stops, pool, sx, sy, dpr);
+  if (!bake(out, stops, pool, sx, sy, dpr) || out.width * out.height > MAX_CACHED_PIXELS) return;
   const copy = document.createElement("canvas");
   copy.width = out.width;
   copy.height = out.height;
@@ -193,14 +202,11 @@ export function FeltFallback({
   sy: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const cache = useRef<{ scale: string; baked: Baked }>({ scale: "", baked: new Map() });
+  const cache = useRef<Baked>(new Map());
   const [px, py, reach] = pool;
   useEffect(() => {
-    const scale = `${sx},${sy}`;
-    if (cache.current.scale !== scale) cache.current = { scale, baked: new Map() };
-    if (ref.current) bakeCached(ref.current, cache.current.baked, stops, [px, py, reach], sx, sy);
+    if (ref.current) bakeCached(ref.current, cache.current, stops, [px, py, reach], sx, sy);
   }, [stops, px, py, reach, sx, sy]);
-  useEffect(() => () => void (cache.current = { scale: "", baked: new Map() }), []);
   return (
     <canvas
       ref={ref}
