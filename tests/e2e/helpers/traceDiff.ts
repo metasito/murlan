@@ -117,8 +117,10 @@ export function diffTraces(
   mockup: Trace,
   app: Trace,
   checkpoints: readonly number[],
-  tol: typeof TOLERANCES = TOLERANCES
+  tol: typeof TOLERANCES = TOLERANCES,
+  countsAt: readonly number[] = checkpoints
 ): Failure[] {
+  for (const t of countsAt) if (!checkpoints.includes(t)) throw new Error(`${t} ms is not a checkpoint`);
   const out: Failure[] = [];
   const fail = (field: Field, t: number, m: unknown, a: unknown, message: string) =>
     out.push({ field, t, mockup: m, app: a, message });
@@ -139,7 +141,7 @@ export function diffTraces(
       fail("frames", t, !!m, !!a, `no frame at ${t} ms on the ${m ? "app" : "mockup"} side`);
       continue;
     }
-    for (const field of ["live", "dropped"] as const) {
+    for (const field of countsAt.includes(t) ? (["live", "dropped"] as const) : []) {
       if (offBy(a[field], m[field], tol.countRatio)) fail(field, t, m[field], a[field], `${field} ${a[field]} against ${m[field]}`);
     }
     if (!m.lamp || !a.lamp) {
@@ -336,6 +338,8 @@ export function diffStillAir(app: Trace): Failure[] {
 export interface ParitySpec {
   mode: "determinism" | "parity";
   checkpoints: number[];
+  /** The checkpoints `live` and `dropped` are held at, where not every one: a count still dying out is each side's own draw. */
+  countsAt?: number[];
   fields?: Field[];
   onsets?: string[];
   onsetWindows?: Record<string, readonly [number, number]>;
@@ -351,7 +355,7 @@ export function diffParity(m: ParitySpec, fallback: boolean, mockup: Trace, app:
   const heldOnsets = (t: Trace): Trace =>
     m.onsets || windowed.length ? { ...t, frames: t.frames.map((f) => ({ ...f, onsets: f.onsets.filter(kept) })) } : t;
   return [
-    ...diffTraces(heldOnsets(mockup), heldOnsets(app), m.checkpoints).filter((f) => m.mode === "determinism" || held.has(f.field)),
+    ...diffTraces(heldOnsets(mockup), heldOnsets(app), m.checkpoints, TOLERANCES, m.countsAt).filter((f) => m.mode === "determinism" || held.has(f.field)),
     ...(held.has("flight") ? diffFlight(mockup, app) : []),
     ...(held.has("onset") ? diffOnsetWindows(app, m.onsetWindows ?? {}) : []),
     ...(held.has("moth") ? diffMoth(mockup, app) : []),
