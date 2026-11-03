@@ -26,6 +26,20 @@ export function androidCrash(appId, text) {
   return null;
 }
 
+/**
+ * The app's own tombstone as logcat printed it, from its header to the end of its backtrace, so the run's
+ * log carries the frames: the artifact holding the whole logcat is not always readable from where a run is read.
+ * @returns {string[]}
+ */
+export function androidTombstone(appId, text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const at = lines.findIndex((line) => new RegExp(`>>> ${escape(appId)}(?::\\S+)? <<<`).test(line));
+  if (at === -1) return [];
+  const tail = lines.slice(at, at + 400).filter((line) => /\bDEBUG\b/.test(line));
+  const end = tail.findIndex((line, i) => i > 0 && /\*\*\* \*\*\* \*\*\*/.test(line));
+  return (end === -1 ? tail : tail.slice(0, end)).slice(0, 120);
+}
+
 /** `{ process, line }` of the ActivityManager's ANR of the app in a logcat, or null. */
 export function androidAnr(appId, text) {
   const match = new RegExp(`^.*\\bANR in (${escape(appId)}(?::\\S+)?)(?=\\s|$).*$`, "m").exec(text.replace(/\r/g, ""));
@@ -102,19 +116,20 @@ function main([platform, appId, ...rest]) {
     if (!spec.reads(file)) continue;
     read++;
     const crash = spec.find(appId, readFileSync(file, "latin1"));
-    if (crash) found.push({ file, crash });
+    if (crash) found.push({ file, crash, text: platform === "android" ? androidTombstone(appId, readFileSync(file, "latin1")) : [] });
   }
   if (found.length === 0) {
     console.log(`No native crash of ${appId}: read ${read} report(s) under ${rest.join(", ")}.`);
     return 0;
   }
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "found=true\n");
-  for (const { file, crash } of found) {
+  for (const { file, crash, text } of found) {
     if (copyTo) {
       mkdirSync(copyTo, { recursive: true });
       copyFileSync(file, path.join(copyTo, path.basename(file)));
     }
     console.log(`::error::The app died during this run: ${spec.describe(crash)}. ${spec.after} Report: ${file}.`);
+    if (text.length > 0) console.log(["::group::The tombstone in " + file, ...text, "::endgroup::"].join("\n"));
   }
   return 1;
 }

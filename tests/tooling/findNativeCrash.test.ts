@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { androidAnr, androidCrash, iosCrash } from "../../tools/ci/find-native-crash.mjs";
+import { androidAnr, androidCrash, androidTombstone, iosCrash } from "../../tools/ci/find-native-crash.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = "com.murlan.cardgame";
@@ -122,5 +122,33 @@ describe("the command a device run calls", () => {
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /read 1 report/);
     assert.doesNotMatch(result.stdout, /::error::/);
+  });
+});
+
+describe("the tombstone in the run's log", () => {
+  const backtrace = [
+    "09-21 04:41:02.126  1234  1234 F DEBUG   : backtrace:",
+    "09-21 04:41:02.127  1234  1234 F DEBUG   :       #00 pc 0000000000012345  /data/app/lib/x86_64/libreanimated.so",
+  ];
+  const next = "09-21 04:41:03.000  1234  1234 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***";
+
+  test("runs from our header to the end of its backtrace, and stops at the next tombstone", () => {
+    const text = [tombstone(APP, "signal 11 (SIGSEGV)"), "09-21 04:41:02.126  999  999 I ActivityManager: unrelated", ...backtrace, next, tombstone("com.android.systemui", "signal 6 (SIGABRT)")].join("\n");
+    const lines = androidTombstone(APP, text);
+    assert.match(lines[0], /name: RenderThread {2}>>> com\.murlan\.cardgame <<</);
+    assert.ok(lines.at(-1)!.includes("libreanimated.so"));
+    assert.ok(!lines.some((l) => l.includes("ActivityManager") || l.includes("systemui")));
+  });
+
+  test("reads logcat's -v time form too, the one the device workflows write", () => {
+    const text = `11-03 03:10:01.123 F/DEBUG   ( 1234): pid: 4321, tid: 4400, name: mqt_v_js  >>> ${APP} <<<\n11-03 03:10:01.124 F/DEBUG   ( 1234):       #00 pc 0000abcd  /lib/libhermes.so`;
+    assert.equal(androidTombstone(APP, text).length, 2);
+  });
+
+  test("the finder prints it for a crash it reports", () => {
+    const dir = dirWith({ "logcat.txt": [tombstone(APP, "signal 11 (SIGSEGV)"), ...backtrace].join("\n") });
+    const out = run("android", APP, dir);
+    assert.equal(out.status, 1);
+    assert.match(out.stdout, /::group::The tombstone in [^\n]+\n[^\n]*>>> com\.murlan\.cardgame <<<[\s\S]*libreanimated\.so\n::endgroup::/);
   });
 });
