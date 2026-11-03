@@ -50,16 +50,17 @@ test("no worklet closes over a function the React Compiler hoisted out of it", (
   assert.deepEqual(found, [], 'give each callback inside these worklets its own "worklet" directive');
 });
 
-const probe = (callback: string) => `
-import { useAnimatedReaction, useSharedValue } from "react-native-reanimated";
-export function Probe({ sets }: { sets: number[][] }) {
-  const out = useSharedValue(false);
-  useAnimatedReaction(() => sets.length, () => {
-    out.value = sets.every(${callback});
-  });
-  return null;
-}
-`;
+const probe = (callback: string) =>
+  [
+    'import { useAnimatedReaction, useSharedValue } from "react-native-reanimated";',
+    "export function Probe({ sets }: { sets: number[][] }) {",
+    "  const out = useSharedValue(false);",
+    "  useAnimatedReaction(() => sets.length, () => {",
+    "    out.value = sets.every(" + callback + ");",
+    "  });",
+    "  return null;",
+    "}",
+  ].join("\n");
 
 test("a capture-free callback inside a worklet is caught, and one with its own directive is not", () => {
   assert.deepEqual(remoteCalls(compiled("components/probe.tsx", probe("(s) => s.length === 0"))), ["probeTsx2: _temp"]);
