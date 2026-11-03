@@ -26,11 +26,11 @@ sway, the motes sleep and the particle loop idles, so `docs/WEB-PERF.md`'s "a se
 
 `experiments-knobs.patch` (apply on `1860b52f8`) holds the local-only instruments and every
 experiment:
-- `tests/e2e/perfProbe.spec.ts` plays full rounds through the UI (`driveGameToCompletion`) and
+- `perfProbe.spec.ts` (under `tests/e2e/` once applied) plays full rounds through the UI (`driveGameToCompletion`) and
   records rAF timestamps, long tasks, long animation frames with attribution, heap and socket
   frames; `perfLab.spec.ts` samples 4 s windows of a settled table and the 2.5 s after each play;
   `playwright.probe.config.ts` runs them.
-- `lib/perfKnobs.ts`: `localStorage` knobs (`fixParticles`, `glossStep`, `fixBake`, and the
+- `perfKnobs.ts` (under `lib/` once applied): `localStorage` knobs (`fixParticles`, `glossStep`, `fixBake`, and the
   removals). With every knob off the build is the shipped one.
 
 ## Baseline (shipped), full rounds
