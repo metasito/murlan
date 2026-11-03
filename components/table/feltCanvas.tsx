@@ -73,6 +73,12 @@ function countBuild(counter: "murlanShadowBuilds" | "murlanGlowBuilds") {
   e2e[counter] = (e2e[counter] ?? 0) + 1;
 }
 
+// Out of the hook, so the React Compiler cannot lift its callback out of the worklet (tests/ui-rules/workletHoisting.test.ts).
+function noClusters(sets: readonly (readonly unknown[])[]): boolean {
+  "worklet";
+  return sets.every((s) => s.length === 0);
+}
+
 function countClusterBuild(kind: ShadowPath, members: readonly string[]) {
   "worklet";
   const e2e = globalThis as { murlanShadowClusterBuilds?: Record<string, number> };
@@ -141,7 +147,7 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
     () => {
       const all = rects.value;
       const sets = kinds.map((kind, i) => shadowClusters(kind, all, felt, midX, paints[i].reach));
-      if (drawn.value === empty && sets.every((s) => s.length === 0)) return;
+      if (drawn.value === empty && noClusters(sets)) return;
       const canvas = recorder.beginRecording();
       const built = paths.value;
       const kept: Record<string, SkPath> = {};
