@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # `active_games` at the default fillfactor against fillfactor=70: the move write
 # (activeGameStore.write's upsert, one envelope rewritten per move) as a pgbench custom script,
-# with a real envelope taken from a soak's table. Each setting runs RUNS times on a fresh table;
+# with a real envelope taken from a soak's table. Each setting runs RUNS times, each on a fresh table;
 # reported: tps, and HOT updates over all updates from pg_stat_user_tables.
 # Usage: PGPORT=55432 DB=<db holding a soaked active_games> bash fillfactor.sh
 set -euo pipefail
@@ -15,11 +15,12 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 q() { psql -h localhost -p "$port" -U postgres -d "$db" -v ON_ERROR_STOP=1 -tAqc "$1"; }
 
-# The largest envelope the soak left, so every write moves at least a real table's bytes.
-q "select game_state::text from active_games order by length(game_state::text) desc limit 1" >"$work/envelope.json"
+# The median-sized envelope the soak left.
+q "select game_state::text from active_games order by length(game_state::text)
+  offset (select count(*) / 2 from active_games) limit 1" >"$work/envelope.json"
 [ -s "$work/envelope.json" ] || { echo "fillfactor.sh: $db has no active_games row" >&2; exit 1; }
 envelope=$(sed "s/'/''/g" "$work/envelope.json")
-echo "envelope: $(wc -c <"$work/envelope.json") bytes of text"
+echo "envelope: $(wc -c <"$work/envelope.json") bytes of text, $(q "select pg_column_size(game_state) from active_games order by length(game_state::text) offset (select count(*) / 2 from active_games) limit 1") bytes stored"
 
 # What activeGameStore.write sends, the epoch fence included; `moves` changes per write so no two
 # envelopes are byte-identical.
@@ -34,8 +35,9 @@ ON CONFLICT (room_id) DO UPDATE
   WHERE ff_games.owner_epoch = 1;
 SQL
 
-for setting in default 70; do
-  for run in $(seq "$runs"); do
+# Interleaved, so drift in the machine's load falls on both settings alike.
+for run in $(seq "$runs"); do
+  for setting in default 70; do
     q "drop table if exists ff_games"
     q "create table ff_games (like active_games including all)"
     [ "$setting" = default ] || q "alter table ff_games set (fillfactor=$setting)"
