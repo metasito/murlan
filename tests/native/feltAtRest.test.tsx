@@ -79,6 +79,21 @@ describe('the felt cloth at rest', () => {
     await view.unmount();
   });
 
+  it('keeps the baked cloth through a landing flare', async () => {
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    await frames(160, sway(lamp));
+    lamp.modify((s) => {
+      'worklet';
+      lampControls.flare(s, false);
+      return s;
+    }, true);
+    await frames(3200, sway(lamp));
+    expect(mock.clothBakes).toBe(1);
+    expect(mock.liveCloth).toBe(0);
+    await view.unmount();
+  });
+
   it('goes live while the lamp glides to a new target and bakes once it settles there', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);

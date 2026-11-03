@@ -293,14 +293,17 @@ function bakeRail(k: number): SkImage | null {
   return image;
 }
 
-/** Where the lamp has come to rest, as a key: its glide and flare spent, whatever its sway. `""` while it still moves. */
+/** Where the lamp has come to rest, as a key: its glide spent, whatever its sway or flare. `""` while it still moves. */
 function settledAim(s: Lamp): string {
   "worklet";
-  const near = Math.abs(s.x - s.tx) < 0.5 && Math.abs(s.y - s.ty) < 0.5 && Math.abs(s.r - s.tr) < 0.5;
-  return near && s.f < 0.01 ? `${s.tx},${s.ty},${s.tr}` : "";
+  const near = Math.abs(s.x - s.tx) < 3 && Math.abs(s.y - s.ty) < 3 && Math.abs(s.r - s.tr) < 0.02;
+  return near ? `${s.tx},${s.ty},${s.tr}` : "";
 }
 
 const CACHED_CLOTHS = 3;
+const FLARE_SEEN = 0.005;
+const FLARE_WARM = [255, 199, 115] as const;
+const FLARE_POSITIONS = [0, 0.2, 0.4, 0.6, 0.8, 1];
 
 /** The cloth lit at a lamp's target, in the device pixels the live shader would fill; `null` where no offscreen surface can be made. */
 function bakeCloth(aim: Pool, base: ClothUniforms, ax: number, ay: number): SkImage | null {
@@ -375,6 +378,13 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
 
   const [aim, setAim] = useState("");
+  const [flaring, setFlaring] = useState(false);
+  useAnimatedReaction(
+    () => lamp.value.f > FLARE_SEEN,
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setFlaring, now);
+    }
+  );
   useAnimatedReaction(
     () => settledAim(lamp.value),
     (now, before) => {
@@ -396,6 +406,11 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     uFlare: lamp.value.f,
     ...lightUniforms(lamp.value.r),
   }));
+  // The cloth shader's flare term, added over the baked cloth: the warm core, `pow(1 - t, 2)` of it.
+  const flareColors = useDerivedValue(() =>
+    FLARE_POSITIONS.map((t) => `rgba(${FLARE_WARM.join(",")},${(0.35 * lamp.value.f * (1 - t) * (1 - t)).toFixed(3)})`)
+  );
+  const flareReach = useDerivedValue(() => lightUniforms(lamp.value.r).uPoolR + lamp.value.f * 120);
   const light = useDerivedValue(() => ({ x: lamp.value.lx, y: lamp.value.ly }));
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(lamp.value.f));
   const coat = useDerivedValue(() => RAIL_LIGHT.coat(lamp.value.f));
@@ -447,7 +462,14 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
           <RadialGradient c={light} r={RAIL_LIGHT.coatRadius} colors={coat} />
         </RoundedRect>
         {cloth ? (
-          <Image image={cloth} x={0} y={0} width={width} height={height} />
+          <>
+            <Image image={cloth} x={0} y={0} width={width} height={height} />
+            {flaring && (
+              <Rect x={0} y={0} width={width} height={height} blendMode="plus">
+                <RadialGradient c={light} r={flareReach} colors={flareColors} positions={FLARE_POSITIONS} />
+              </Rect>
+            )}
+          </>
         ) : (
           CLOTH && (
             <Rect x={0} y={0} width={width} height={height}>
