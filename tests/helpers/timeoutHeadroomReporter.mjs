@@ -162,8 +162,10 @@ export default async function* timeoutHeadroom(source, { runTimeout = runTimeout
   }
   if (passed > 0 && judged.length === 0) over.push(`${passed} tests passed and none was judged: the run sets no --test-timeout`);
   const near = judged.filter((j) => j.share > HEADROOM_SHARE / 2).sort((a, b) => b.share - a.share);
-  yield `\nTimeout headroom: ${judged.length} tests and files judged, ${near.length} past half of the ${HEADROOM_SHARE * 100}% of its limit one may spend${near.length > 0 ? ":" : "."}\n`;
-  for (const j of near) yield `  ${j.line}\n`;
-  for (const line of over) yield `timeout headroom: ${line}\n`;
+  yield (
+    `\nTimeout headroom: ${judged.length} tests and files judged, ${near.length} past half of the ${HEADROOM_SHARE * 100}% of its limit one may spend${near.length > 0 ? ":" : "."}\n` +
+    near.map((j) => `  ${j.line}\n`).join("") +
+    over.map((line) => `timeout headroom: ${line}\n`).join("")
+  );
   if (over.length > 0) process.exitCode = 1;
 }
