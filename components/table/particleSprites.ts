@@ -164,6 +164,18 @@ export function sceneAsleep(v: Scene, l: Lamp, still: boolean): boolean {
   return sceneIdle(v) && still && v.air.mothT < 0 && !relit(v.light, l);
 }
 
+/** What an ambient-only scene, whose motes drift slowly, waits between steps. */
+const AMBIENT_STEP_S = 0.033;
+
+/**
+ * Whether a frame steps the scene: always while anything but the motes moves or they hold still, else once `owed` seconds
+ * reach a step, within half of this frame's `frameS` so a jittered frame never stretches the step by one more.
+ */
+export function stepDue(v: Scene, owed: number, frameS: number, still: boolean): boolean {
+  "worklet";
+  return (still ? owed > 0 : owed >= AMBIENT_STEP_S - frameS / 2) || !sceneIdle(v) || v.air.mothT >= 0;
+}
+
 /** Steps the scene `dt` seconds and lays it out into `v.d`; true when a moth sets off. */
 export function stepScene(v: Scene, l: Lamp, dt: number, still: boolean, rng: Rng): boolean {
   "worklet";

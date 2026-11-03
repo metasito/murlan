@@ -81,14 +81,14 @@ const rectAt = (x: number, y: number): CardRect => ({ x, y, w: 58, h: 84, rot: 0
 
 const lightAt = (lx: number, ly: number, level = 1): GlossLight => ({ lx, ly, level, r: 1, t: 0 });
 
-function Table({ light, children }: { light: SharedValue<GlossLight>; children: React.ReactNode }) {
-  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light);
+function Table({ light, still, children }: { light: SharedValue<GlossLight>; still?: SharedValue<GlossLight>; children: React.ReactNode }) {
+  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light, still ?? light);
   return <CardTableProvider value={value}>{children}</CardTableProvider>;
 }
 
 function RiggedTable({ pool, children }: { pool: Pool; children: React.ReactNode }) {
   const rig = useLampRig({ pool, deal: undefined, width: 874, height: 402, landing: useSharedValue(NO_LANDING) });
-  return <Table light={rig.glossLight}>{children}</Table>;
+  return <Table light={rig.glossLight} still={rig.stillLight}>{children}</Table>;
 }
 
 function Published({ id, x }: { id: string; x: SharedValue<number> }) {
@@ -120,6 +120,70 @@ describe('another card moving', () => {
       </Table>
     );
     expect(await glossRunsOver(() => (xs[0].value = 340))).toBe(2);
+  });
+});
+
+describe('an opponent\'s card back', () => {
+  it('mounts the gloss, streak and foil layers', async () => {
+    await render(
+      <Table light={makeMutable(lightAt(437, 140))}>
+        <CardView card={card('3_spades')} faceDown rectKey="fan:top:0" rects={makeMutable<CardRects>({ 'fan:top:0': { ...rectAt(437, 40), w: 40, h: 58, back: true } }) as unknown as OwnedRects} />
+      </Table>
+    );
+    for (const id of ['card-gloss', 'card-gloss-spot', 'card-gloss-streak', 'card-foil-ink', 'card-foil-band']) {
+      expect(screen.queryAllByTestId(id, { includeHiddenElements: true }).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('reads the still light, not the swaying one', async () => {
+    const sway = makeMutable(lightAt(437, 140));
+    const still = makeMutable(lightAt(300, 140));
+    const fan = makeMutable<CardRects>({ 'fan:top:0': { ...rectAt(437, 40), w: 40, h: 58, back: true } }) as unknown as OwnedRects;
+    await render(
+      <Table light={sway} still={still}>
+        <CardView card={card('3_spades')} faceDown rectKey="fan:top:0" rects={fan} />
+      </Table>
+    );
+    const streak = () => JSON.stringify(pose(screen.getAllByTestId('card-gloss-streak', { includeHiddenElements: true })[0]));
+    const at = streak();
+    await act(async () => {
+      sway.value = lightAt(457, 140);
+      jest.advanceTimersByTime(16);
+    });
+    expect(streak()).toBe(at);
+    await act(async () => {
+      still.value = lightAt(320, 140);
+      jest.advanceTimersByTime(16);
+    });
+    expect(streak()).not.toBe(at);
+  });
+});
+
+describe('the lamp rig\'s still light', () => {
+  function Rig({ pool, onRig }: { pool: Pool; onRig: (r: ReturnType<typeof useLampRig>) => void }) {
+    onRig(useLampRig({ pool, deal: undefined, width: 874, height: 402, landing: useSharedValue(NO_LANDING) }));
+    return null;
+  }
+  it('is written when the lamp\'s target moves, and never by a sway frame', async () => {
+    let rig!: ReturnType<typeof useLampRig>;
+    const view = await render(<Rig pool={[437, 200, 1]} onRig={(r) => (rig = r)} />);
+    await act(async () => void jest.advanceTimersByTime(500));
+    const writes: unknown[] = [];
+    let last = rig.stillLight.value;
+    const watch = async (ms: number) => {
+      for (let i = 0; i < ms / 16; i++) {
+        await act(async () => void jest.advanceTimersByTime(16));
+        if (rig.stillLight.value !== last) writes.push((last = rig.stillLight.value));
+      }
+    };
+    const swayed = rig.glossLight.value;
+    await watch(2000);
+    expect(rig.glossLight.value).not.toBe(swayed);
+    expect(writes).toHaveLength(0);
+    await view.rerender(<Rig pool={[150, 300, 1]} onRig={(r) => (rig = r)} />);
+    await watch(3000);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(Math.abs(rig.stillLight.value.lx - 150)).toBeLessThan(2);
   });
 });
 

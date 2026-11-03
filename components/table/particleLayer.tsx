@@ -33,14 +33,11 @@ import { useGreyLayer } from "./greyLayer";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
-import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, sceneIdle, SHEET, SPARK_LEN, SPRITE_R, stepScene, type Scene } from "./particleSprites";
+import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, SHEET, SPARK_LEN, SPRITE_R, stepDue, stepScene, type Scene } from "./particleSprites";
 
 interface Field extends Scene {
   due: number;
 }
-
-// Above any display's refresh, so a device lays out every frame.
-const AIR_TICK_S = 1 / 240;
 
 function bakeSheet(): SkImage | null {
   const surface = Skia.Surface.Make(SHEET.width, SHEET.height);
@@ -80,10 +77,12 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     "worklet";
     const v = field.value;
     const l = lamp.value;
-    v.due += (frame.timeSincePreviousFrame ?? 0) / 1000;
-    if (sceneIdle(v) && v.due < AIR_TICK_S) return;
+    const frameS = (frame.timeSincePreviousFrame ?? 0) / 1000;
+    v.due += frameS;
+    if (!stepDue(v, v.due, frameS, still.value)) return;
     if (sceneAsleep(v, l, still.value)) return;
-    const dt = Math.min(0.05, v.due);
+    // Held still, the time owed spans the sleep: stepping it all at once would jump the light.
+    const dt = Math.min(0.05, still.value ? frameS : v.due);
     v.due = 0;
     if (stepScene(v, l, dt, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
     const p = v.moth;

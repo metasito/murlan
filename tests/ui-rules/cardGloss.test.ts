@@ -2,7 +2,7 @@
 // mockup's own lines (#1260).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { cardGloss, nextGlossLight } from "../../components/table/cardGloss.ts";
+import { cardGloss, nextGlossLight, nextStillLight } from "../../components/table/cardGloss.ts";
 import { CardGloss } from "../../lib/tokens.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
@@ -79,13 +79,29 @@ describe("the light a gloss reads", () => {
   const shown = { lx: 437, ly: 180, level: 0.8, r: 1, t: 0 };
   const aFrameOn = 1 / 60;
   test("holds through the felt's steps of a sway", () => {
-    assert.equal(nextGlossLight(shown, { lx: 437.4, ly: 179.6, level: 0.803, r: 1.003, t: aFrameOn }), null);
+    assert.equal(nextGlossLight(shown, { lx: 438.5, ly: 178.6, level: 0.803, r: 1.003, t: aFrameOn }), null);
+  });
+  test("the still light holds a swayed lamp and follows a moved target, a level or a reach step", () => {
+    const lamp = { x: 437, ly: 180, level: 0.8, r: 1, t: aFrameOn };
+    assert.equal(nextStillLight(shown, lamp), null);
+    assert.equal(nextStillLight(shown, { ...lamp, x: 300, t: 0.008 }), null);
+    for (const moved of [{ x: 300 }, { ly: 120 }, { level: 0.2 }, { r: 1.5 }]) {
+      const next = nextStillLight(shown, { ...lamp, ...moved });
+      const { x, ...rest } = { ...lamp, ...moved };
+      assert.deepEqual(next, { lx: x, ...rest }, JSON.stringify(moved));
+    }
   });
   test("holds any move inside a gloss frame", () => {
     assert.equal(nextGlossLight(shown, { lx: 480, ly: 120, level: 0.2, r: 2, t: 0.008 }), null);
   });
-  test("follows a half-point move, a level step or a reach step, each alone", () => {
-    for (const moved of [{ lx: 437.5 }, { ly: 179.5 }, { level: 0.8 + 1 / 256 }, { r: 1 + 1 / 256 }]) {
+  test("holds a 1.9 pt move and follows a 2 pt one", () => {
+    assert.equal(nextGlossLight(shown, { ...shown, lx: 438.9, t: aFrameOn }), null);
+    assert.equal(nextGlossLight(shown, { ...shown, lx: 439, t: aFrameOn })?.lx, 439);
+    assert.equal(nextGlossLight(shown, { ...shown, ly: 178.1, t: aFrameOn }), null);
+    assert.equal(nextGlossLight(shown, { ...shown, ly: 178, t: aFrameOn })?.ly, 178);
+  });
+  test("follows a 2 pt move, a level step or a reach step, each alone", () => {
+    for (const moved of [{ lx: 439 }, { ly: 178 }, { level: 0.8 + 1 / 256 }, { r: 1 + 1 / 256 }]) {
       const lamp = { ...shown, t: aFrameOn, ...moved };
       assert.deepEqual(nextGlossLight(shown, lamp), lamp, JSON.stringify(moved));
     }

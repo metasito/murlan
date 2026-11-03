@@ -4,7 +4,8 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { makeMutable } from 'react-native-reanimated';
 import { animate } from '@/components/table/particleLayer.web';
 import { createScene } from '@/components/table/particleSprites';
-import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
+import { spawn } from '@/components/table/particles';
+import { DESIGN, restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
 
 const g = globalThis as Record<string, unknown>;
 let frames: ((now: number) => void)[] = [];
@@ -59,5 +60,37 @@ describe('the web particle layer under reduced motion', () => {
     animate(cv, scene, lamp, true, 2, 2);
     runFrame();
     expect(clears).toBe(before + 1);
+  });
+});
+
+describe('the web particle layer at full motion', () => {
+  const drawn = (scene: ReturnType<typeof createScene>, frameCount: number) => {
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const stop = animate(fakeCanvas(), scene, lamp, false, 1, 1)!;
+    runFrame();
+    const before = clears;
+    for (let i = 0; i < frameCount; i++) runFrame();
+    stop();
+    return clears - before;
+  };
+
+  it('draws ambient motes at most every 33 ms', () => {
+    expect(drawn(createScene(Math.random), 60)).toBeLessThanOrEqual(31);
+  });
+
+  it('draws every frame while a burst is live', () => {
+    const scene = createScene(Math.random);
+    spawn(scene.s, { x: 100, y: 100, life: 5, size: 4 });
+    expect(drawn(scene, 30)).toBe(30);
+  });
+
+  it('sizes the canvas at device pixel ratio 1', () => {
+    const dpr = Object.getOwnPropertyDescriptor(g, 'devicePixelRatio');
+    Object.defineProperty(g, 'devicePixelRatio', { value: 3, configurable: true });
+    const cv = fakeCanvas();
+    animate(cv, createScene(Math.random), makeMutable(restingLamp(TABLE_CENTRE)), false, 1, 1)!();
+    if (dpr) Object.defineProperty(g, 'devicePixelRatio', dpr);
+    else delete g.devicePixelRatio;
+    expect(cv.width).toBe(DESIGN.width);
   });
 });

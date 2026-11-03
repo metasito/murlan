@@ -14,7 +14,7 @@ import { startRain } from "./coneRain";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
-import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, SHEET, SPARK_LEN, SPRITE_R, stepScene, type Scene } from "./particleSprites";
+import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, SHEET, SPARK_LEN, SPRITE_R, stepDue, stepScene, type Scene } from "./particleSprites";
 
 function bakeSheet(): HTMLCanvasElement {
   const sheet = document.createElement("canvas");
@@ -83,19 +83,23 @@ export function animate(
 ): (() => void) | undefined {
   const c = cv.getContext("2d");
   if (!c) return;
-  const k = window.devicePixelRatio || 1;
-  cv.width = Math.round(DESIGN.width * sx * k);
-  cv.height = Math.round(DESIGN.height * sy * k);
+  cv.width = Math.round(DESIGN.width * sx);
+  cv.height = Math.round(DESIGN.height * sy);
   const white = bakeSheet();
   const sheets = new Map<string, HTMLCanvasElement>();
   let last = performance.now();
+  let owed = 0;
   // Setting the size above cleared the canvas, so an asleep scene must still paint it once.
   let cleared = true;
   let id = requestAnimationFrame(function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const frameS = (now - last) / 1000;
+    owed += frameS;
     const l = lamp.value;
     last = now;
-    if (!cleared && sceneAsleep(scene, l, reduced)) return void (id = requestAnimationFrame(frame));
+    if (!cleared && (sceneAsleep(scene, l, reduced) || !stepDue(scene, owed, frameS, reduced))) return void (id = requestAnimationFrame(frame));
+    // Held still, the time owed spans the sleep: stepping it all at once would jump the light.
+    const dt = Math.min(0.05, reduced ? frameS : owed);
+    owed = 0;
     cleared = false;
     if (stepScene(scene, l, dt, reduced, Math.random)) traceOnset("moment", "moth");
     c.setTransform(1, 0, 0, 1, 0, 0);
@@ -107,14 +111,14 @@ export function animate(
       const rgb = `${Math.round(draws[d + D.r] * 255)},${Math.round(draws[d + D.g] * 255)},${Math.round(draws[d + D.b] * 255)}`;
       let sheet = sheets.get(rgb);
       if (!sheet) sheets.set(rgb, (sheet = tinted(white, rgb)));
-      c.setTransform(k * sx, 0, 0, k * sy, 0, 0);
+      c.setTransform(sx, 0, 0, sy, 0, 0);
       c.transform(draws[d + D.scos], draws[d + D.ssin], -draws[d + D.ssin], draws[d + D.scos], draws[d + D.tx], draws[d + D.ty]);
       c.globalAlpha = draws[d + D.a];
       c.drawImage(sheet, draws[d + D.x], draws[d + D.y], draws[d + D.w], draws[d + D.h], 0, 0, draws[d + D.w], draws[d + D.h]);
     }
     c.globalAlpha = 1;
     if (scene.moth) {
-      c.setTransform(k * sx, 0, 0, k * sy, 0, 0);
+      c.setTransform(sx, 0, 0, sy, 0, 0);
       drawMoth(c, scene.moth);
     }
     id = requestAnimationFrame(frame);
