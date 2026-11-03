@@ -354,7 +354,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/jest-cache
           key: native-jest-${{ matrix.shard }}-${{ hashFiles('package-lock.json', 'patches/**', 'babel.config.js', 'jest.config.js') }}
-      - run: npm run test:native -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --cacheDirectory="$RUNNER_TEMP/jest-cache"
+      - run: npm run test:native -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --cacheDirectory="$RUNNER_TEMP/jest-cache" --verbose
       # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
