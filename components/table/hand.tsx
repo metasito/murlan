@@ -231,7 +231,7 @@ type CardEntry =
 interface PoseInputs { descent: number; arc: number; tilt: number; press: number; shift: number; lift: number; gone: boolean }
 
 /** The deal under way, on its own clock: `pile` is where it flies from, off the hand zone's centre. */
-export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: { dx: number; dy: number }; onDealt: (x: number, y: number) => void }
+export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: { dx: number; dy: number }; onDealt: (x: number, y: number) => void; onMounted: () => void }
 
 /** The registry apart from the place: a mapper reading it would re-run on its own every write. */
 interface HandRects {

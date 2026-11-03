@@ -537,6 +537,7 @@ export function GameTable({
     fresh: dealFresh,
     entryMs,
     reduceMotion,
+    handless: wentOut || spectating,
   });
   // What the table shows, and what Gioca follows; `canPass` and the clock keep the true turn.
   // The one-way exchange's loser is on move from the deal, but leads once the pills have told why.
@@ -1226,6 +1227,7 @@ export function GameTable({
                     cards={deal.cards}
                     scale={scale}
                     clock={deal.clock}
+                    armed={deal.armed}
                     startMs={deal.startMs}
                     endMs={deal.endMs}
                     onStarted={dealCue}

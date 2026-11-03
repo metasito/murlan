@@ -97,7 +97,7 @@ describe('the deal flies on a pool of backs', () => {
   });
 
   it('gives the next round’s deal a clock of its own, never the landed one', async () => {
-    const hook = await renderHook(({ fresh }: { fresh: boolean }) => useDeal({ layout: LAYOUT, seating: SEATING, fresh, entryMs: 600, reduceMotion: false }), {
+    const hook = await renderHook(({ fresh }: { fresh: boolean }) => useDeal({ layout: LAYOUT, seating: SEATING, fresh, entryMs: 600, reduceMotion: false, handless: false }), {
       initialProps: { fresh: true },
     });
     const first = hook.result.current.clock;
@@ -122,7 +122,7 @@ describe('the deal flies on a pool of backs', () => {
     const onLanded = jest.fn();
     mockFrameCallbacks.length = 0;
     const view = await render(
-      <DealFlights cards={legs} scale={1} clock={clock} startMs={100} endMs={endMs} onStarted={() => {}} onLanded={onLanded} />
+      <DealFlights cards={legs} scale={1} clock={clock} armed={makeMutable(1)} startMs={100} endMs={endMs} onStarted={() => {}} onLanded={onLanded} />
     );
     expect(backs()).toHaveLength(slots.length);
     expect(slots.length * 2).toBeLessThanOrEqual(legs.length);

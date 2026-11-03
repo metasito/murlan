@@ -30,7 +30,7 @@ describe('a cue sent ahead', () => {
 
   it('is taken back when the deal leaves the table before its first card', async () => {
     const view = await render(
-      <DealFlights cards={[]} scale={1} clock={makeMutable(-1)} startMs={500} endMs={3000} onStarted={(at) => event([{ kind: 'deal' }], at)} onLanded={() => {}} />
+      <DealFlights cards={[]} scale={1} clock={makeMutable(-1)} armed={makeMutable(1)} startMs={500} endMs={3000} onStarted={(at) => event([{ kind: 'deal' }], at)} onLanded={() => {}} />
     );
     await frames(32);
     await settle();

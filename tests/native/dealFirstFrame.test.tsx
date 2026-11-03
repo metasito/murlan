@@ -18,7 +18,7 @@ describe('DealFlights', () => {
   it('lands on its first frame when handed a clock already past its end', async () => {
     const onLanded = jest.fn();
     const clock = makeMutable(5_000);
-    const view = await render(<DealFlights cards={[]} scale={1} clock={clock} startMs={0} endMs={1_000} onStarted={() => {}} onLanded={onLanded} />);
+    const view = await render(<DealFlights cards={[]} scale={1} clock={clock} armed={makeMutable(1)} startMs={0} endMs={1_000} onStarted={() => {}} onLanded={onLanded} />);
     expect(onLanded).not.toHaveBeenCalled();
     await act(async () => jest.advanceTimersByTime(FRAME_MS));
     expect(onLanded).toHaveBeenCalledTimes(1);
@@ -30,7 +30,7 @@ describe('DealFlights', () => {
   it('lands once, on the frame its clock crosses the end', async () => {
     const onLanded = jest.fn();
     const clock = makeMutable(-1);
-    const view = await render(<DealFlights cards={[]} scale={1} clock={clock} startMs={0} endMs={200} onStarted={() => {}} onLanded={onLanded} />);
+    const view = await render(<DealFlights cards={[]} scale={1} clock={clock} armed={makeMutable(1)} startMs={0} endMs={200} onStarted={() => {}} onLanded={onLanded} />);
     await act(async () => jest.advanceTimersByTime(FRAME_MS * 6));
     expect(onLanded).not.toHaveBeenCalled();
     await act(async () => jest.advanceTimersByTime(FRAME_MS * 20));

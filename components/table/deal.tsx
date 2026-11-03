@@ -39,6 +39,7 @@ interface Deal {
   counts: number[];
   legs: DealLeg[];
   clock: SharedValue<number>;
+  armed: SharedValue<number>;
   landed: boolean;
 }
 
@@ -53,16 +54,21 @@ export function useDeal({
   fresh,
   entryMs,
   reduceMotion,
+  handless,
 }: {
   layout: TableLayout;
   seating: Seating;
   fresh: boolean;
   entryMs: number;
   reduceMotion: boolean;
+  /** No hand will mount for this deal (a spectator, a viewer already out), so nothing is waited for. */
+  handless: boolean;
 }): {
   cards: DealLeg[];
   arrivalsFor: (seat: number) => DealArrivals | undefined;
   hand: Omit<HandDeal, "onDealt"> | undefined;
+  /** Releases the deal's clock: the hand is on the table, so its frames may begin. */
+  armed: SharedValue<number>;
   dealing: boolean;
   /** The latest deal, kept once it lands: a view keyed by it mounts afresh on each deal, whatever it already held. */
   key: number;
@@ -75,10 +81,11 @@ export function useDeal({
   const { players, viewerSeat } = seating;
   const newDeal = (key: number, offsetMs: number): Deal => {
     const timing = { key, offsetMs, counts: players.map(handCountOf) };
-    return { ...timing, legs: dealLegs(layout, seating, timing), clock: makeMutable(-1), landed: false };
+    return { ...timing, legs: dealLegs(layout, seating, timing), clock: makeMutable(-1), armed: makeMutable(0), landed: false };
   };
   const [last, setLast] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
   const [idleClock] = useState(() => makeMutable(-1));
+  const [idleArmed] = useState(() => makeMutable(0));
   const [dealtFresh, setDealtFresh] = useState(fresh);
   if (fresh !== dealtFresh) {
     setDealtFresh(fresh);
@@ -107,11 +114,18 @@ export function useDeal({
       onLanded();
     });
   }, [dealKey, reduceMotion, onLanded]);
+  const arm = useCallback(() => {
+    deal?.armed.set(1);
+  }, [deal]);
+  useEffect(() => {
+    if (handless) arm();
+  }, [handless, arm]);
   const cards = deal && arrivals ? deal.legs : [];
   return {
     cards,
     arrivalsFor: (seat) => arrivals?.[seat],
-    hand: deal && arrivals ? { offsetMs: deal.offsetMs, clock: deal.clock, pile: pileFromHand(layout) } : undefined,
+    hand: deal && arrivals ? { offsetMs: deal.offsetMs, clock: deal.clock, pile: pileFromHand(layout), onMounted: arm } : undefined,
+    armed: deal?.armed ?? idleArmed,
     dealing: deal !== null,
     key: last?.key ?? 0,
     clock,
@@ -160,7 +174,7 @@ function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: nu
   );
 }
 
-function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, startMs: number, endMs: number, started: (at: number) => void, landed: () => void) {
+function dealStepper(clock: SharedValue<number>, armed: SharedValue<number>, origin: SharedValue<number>, startMs: number, endMs: number, started: (at: number) => void, landed: () => void) {
   return (frame: FrameInfo) => {
     "worklet";
     if (clock.value >= endMs) {
@@ -170,6 +184,7 @@ function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, st
       }
       return;
     }
+    if (armed.value === 0) return;
     if (origin.value < 0) {
       origin.value = frame.timestamp;
       scheduleOnRN(started, frame.timestamp + startMs);
@@ -181,14 +196,16 @@ function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, st
 
 /**
  * The opponents' hands leaving the pile, round-robin, all on the deal's one clock, drawn by as
- * few backs as legs are ever in the air at once. On its first frame it reports `onStarted(at)`,
+ * few backs as legs are ever in the air at once. Its clock holds at -1 until `armed`, set once the
+ * hand has mounted, so the mount's frames fall before the deal's zero. On its first frame it reports `onStarted(at)`,
  * when the first card will leave in `performance.now()` ms, so the cue is sent ahead; `onLanded`
  * when the last lands, and its frame callback goes idle.
  */
-export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, onLanded }: {
+export function DealFlights({ cards, scale, clock, armed, startMs, endMs, onStarted, onLanded }: {
   cards: readonly DealLeg[];
   scale: number;
   clock: SharedValue<number>;
+  armed: SharedValue<number>;
   startMs: number;
   endMs: number;
   onStarted: (at: number) => void;
@@ -196,7 +213,7 @@ export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, on
 }) {
   const origin = useSharedValue(-1);
   const [landed, setLanded] = useState(false);
-  const [step] = useState(() => dealStepper(clock, origin, startMs, endMs, onStarted, () => {
+  const [step] = useState(() => dealStepper(clock, armed, origin, startMs, endMs, onStarted, () => {
     setLanded(true);
     onLanded();
   }));

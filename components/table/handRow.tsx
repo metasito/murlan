@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { SharedValue } from "react-native-reanimated";
 import { A11yStatus } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
@@ -59,6 +59,11 @@ export function HandRow({
     stages: exchange.stages,
     viewerSeat,
   });
+  const onMounted = deal.hand?.onMounted;
+  const handMounted = handOnTable.length > 0;
+  useEffect(() => {
+    if (handMounted) onMounted?.();
+  }, [handMounted, onMounted]);
   // Where the last move put a card. A drag shows its own answer; the discrete
   // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
   // for whoever asked, so the live region below says where it went.
