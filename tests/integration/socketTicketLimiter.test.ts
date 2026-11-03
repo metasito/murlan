@@ -30,5 +30,11 @@ describe("POST /api/auth/socket-ticket is limited per account", { skip: hasDatab
     assert.equal(anas[60], 429, "the sixty-first ticket in a minute was minted");
 
     assert.equal(await mint(bes), 200, "bes was refused on ana's budget: the key is the IP, not the account");
+
+  test("seventy concurrent requests from one account are refused exactly ten times", async () => {
+    const { cookie } = await register(server, "ticket_burst");
+    const statuses = await Promise.all(Array.from({ length: 70 }, () => mint(cookie)));
+    assert.equal(statuses.filter((status) => status === 429).length, 10);
+  });
   });
 });

@@ -267,6 +267,21 @@ describe("a limit while Redis fails", { skip: hasDatabase() ? false : skipMessag
     assert.deepEqual(await sharedCounts(name), [2], "a request counted only here was taken off the cluster's count");
   });
 
+  test("seventy concurrent requests against a limit of sixty, keyed on the address, are refused exactly ten times", async () => {
+    const name = freshName();
+    const app = express();
+    app.get("/", routeLimiter({ name, windowMs: 60_000, defaultMax: 60, message: {} }), (_req, res) => {
+      res.json({});
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => server.once("listening", resolve));
+    servers.push({ close: () => new Promise<void>((resolve) => server.close(() => resolve())) });
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+
+    const statuses = await Promise.all(Array.from({ length: 70 }, async () => (await fetch(url)).status));
+    assert.equal(statuses.filter((status) => status === 429).length, 10);
+  });
+
   test("a stalled event loop is not a slow Redis: the reply already in hand counts, and no limiter stops asking Redis", async () => {
     const stalled = freshName();
     const other = freshName();
