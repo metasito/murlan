@@ -13,7 +13,7 @@ Engines, each started by hand (Docker's daemon was not running, so not `scripts/
   Postgres 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1), its own cluster on localhost:55432, trust auth,
     stock settings but logging_collector on; the same major and port as the baseline.
     Postgres 19 is not in main (#1913/#1927), so every row is Postgres 16.
-  Valkey 9.1.3 (built locally; redis_version 7.2.4 compatibility), 127.0.0.1:46390, no persistence.
+  Valkey 9.1.3 (built locally; redis_version 7.2.4 compatibility), on localhost, no persistence.
     The baseline had no key-value store at all: the cluster ran over Postgres LISTEN/NOTIFY.
 Packages: pg 8.23.1, pg-pool 3.14.0, drizzle-orm 0.45.4, redis 6.3.1, @socket.io/redis-streams-adapter
   0.3.1, socket.io 4.8.4, @prometheus-io/client 0.16.1, zod 4.6.7, express-rate-limit 8.7.2,
@@ -46,7 +46,7 @@ Instruments (the port, sim/repro/):
 =========================================================================================
 Measurements (REPORT.md "Measurements"; results/load-baseline.txt, statements-per-move.txt)
 =========================================================================================
-cmd: PGPORT=55432 REDIS_URL=redis://127.0.0.1:46390/1 bash sim/load.sh <tables> <minutes>
+cmd: PGPORT=55432 REDIS_URL=<disposable store> bash sim/load.sh <tables> <minutes>
 (production pool sizes, one server process, clients in the same process as the baseline's).
 "Accepted" is moves less refusals, per second, as REPORT.md counts it.
 
@@ -127,7 +127,7 @@ depend on the machine; the milliseconds do.
 =========================================================================================
 Server reproductions, in repro-srv.txt's order (sim/repro/srv, one server process per instance)
 =========================================================================================
-cmd: REDIS_URL=redis://127.0.0.1:46390/2 PGLOG=<pg log> node --experimental-strip-types
+cmd: REDIS_URL=<disposable store> PGLOG=<pg log> node --experimental-strip-types
      --no-warnings <script>.ts, from sim/repro/srv/
 
 2a. Connect sweeps the cluster (exp2-connect.ts)                                       FIXED
@@ -243,7 +243,7 @@ AFTER:  positive control, the client's own check (shared/stateOrder.ts supersede
 =========================================================================================
 Database reproductions, in repro-db.txt's order (sim/repro/db)
 =========================================================================================
-cmd: REDIS_URL=redis://127.0.0.1:46390/3 node --experimental-strip-types --no-warnings <script> [args]
+cmd: REDIS_URL=<disposable store> node --experimental-strip-types --no-warnings <script> [args]
 
 P1. A failed BEGIN leaks a pool client; the error path releases without err           FIXED
 Every server transaction now goes through server/store/db.ts transaction() (pool.ts inTransaction,
