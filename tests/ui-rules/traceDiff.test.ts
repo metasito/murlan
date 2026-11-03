@@ -75,6 +75,15 @@ describe("diffTraces", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 320).live = 109))), new Set());
   });
 
+  test("counts are held at the checkpoints named for them, and their peak still everywhere", () => {
+    const low = planted((tr) => (at(tr, 320).live = 89));
+    assert.deepEqual(fieldsOf(low), new Set(["live"]));
+    assert.deepEqual(diffTraces(reference(), low, CHECKPOINTS, TOLERANCES, [0, 160, 480]), []);
+    const high = planted((tr) => (at(tr, 400).live = 111));
+    assert.deepEqual(diffTraces(reference(), high, CHECKPOINTS, TOLERANCES, [0]).map((f) => [f.field, f.t]), [["live", 400]]);
+    assert.throws(() => diffTraces(reference(), reference(), CHECKPOINTS, TOLERANCES, [400]), /400 ms is not a checkpoint/);
+  });
+
   test("a peak 11% high between checkpoints fails on the peak", () => {
     const failures = diffTraces(reference(), planted((tr) => (at(tr, 400).live = 111)), CHECKPOINTS);
     assert.deepEqual(failures.map((f) => [f.field, f.t]), [["live", 400]]);
