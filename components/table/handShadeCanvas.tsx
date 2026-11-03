@@ -7,21 +7,18 @@ import { BlurStyle, Canvas, ClipOp, Picture, Skia, type SkPath, type SkPicture }
 import { useAnimatedReaction, useSharedValue } from "react-native-reanimated";
 import { CardShadow, Colors, withAlpha } from "@/lib/theme";
 import type { CardRect } from "./cardRects";
-import { addOutline, cardShades, shadeCards, shadeShape, shadowFall, shadowPaint, shadowRect, type ShadowPath } from "./cardShadows";
+import { addOutline, CARD_ON_CARD_PATHS, cardShades, shadeCards, shadeShape, shadowPaint, shadowRect } from "./cardShadows";
 import { useCardShadowsOn, type HandShadeProps } from "./feltReady";
 import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
 import { webDeps } from "@/lib/platform";
 
 interface Shade { caster: SkPath; below: SkPath; above: SkPath; back: boolean }
 
-const PAINTS: readonly ShadowPath[] = ["cast", "face", "back"];
+const PAINTS = CARD_ON_CARD_PATHS;
 
-export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
+export function HandShadeCanvas({ cards, ready }: HandShadeProps) {
   const { rects, handOrder, pileOrder, motion, felt } = cards;
   const midX = cards.hand.x;
-  const pileX = cards.pile.x / felt.sx;
-  const pileY = cards.pile.y / felt.sy;
-  const pile = useMemo(() => ({ x: pileX, y: pileY }), [pileX, pileY]);
   const recorder = useMemo(() => Skia.PictureRecorder(), []);
   const builder = useMemo(() => Skia.PathBuilder.Make(), []);
   const blurs = useMemo(
@@ -37,7 +34,7 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
       }),
     [felt.s]
   );
-  const [cast, face, back] = blurs.map(({ paint }) => paint);
+  const [face, back] = blurs.map(({ paint }) => paint);
   useEffect(
     () => () =>
       disposeAfterReactions(() => {
@@ -79,10 +76,10 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
     webDeps([builder, felt, midX])
   );
 
-  // Redrawn as the lamp moves, from paths rebuilt only when a card's outline or the paint order changes.
+  // Redrawn as the table kicks, from paths rebuilt only when a card's outline or the paint order changes.
   useAnimatedReaction(
-    () => [lamp.value.lx, lamp.value.ly, motion.value, version.value] as const,
-    ([lx, ly, m]) => {
+    () => [motion.value, version.value] as const,
+    ([m]) => {
       const all = shades.value;
       const prev = drawn.value;
       if (all.length === 0) {
@@ -91,7 +88,6 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
         if (DISPOSE_PATHS) prev.dispose();
         return;
       }
-      const fall = shadowFall("cast", pile, { x: lx, y: ly });
       const canvas = recorder.beginRecording();
       // The outlines are where the cards are drawn, kicked and shaken; this canvas rides the kick itself.
       canvas.translate(felt.kickAt.x, felt.kickAt.y);
@@ -101,10 +97,6 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
         canvas.save();
         canvas.clipPath(s.below, ClipOp.Intersect, true);
         canvas.clipPath(s.above, ClipOp.Difference, true);
-        canvas.save();
-        canvas.translate(fall.x * felt.s, fall.y * felt.s);
-        canvas.drawPath(s.caster, cast);
-        canvas.restore();
         canvas.translate(0, CardShadow.contact.y * felt.s);
         canvas.drawPath(s.caster, s.back ? back : face);
         canvas.restore();
@@ -112,7 +104,7 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
       drawn.value = recorder.finishRecordingAsPicture();
       if (DISPOSE_PATHS && prev !== empty) prev.dispose();
     },
-    webDeps([recorder, cast, face, back, felt, pile.x, pile.y, empty])
+    webDeps([recorder, face, back, felt, empty])
   );
 
   useEffect(

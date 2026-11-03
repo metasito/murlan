@@ -160,23 +160,24 @@ describe('a card view off the felt', () => {
     await baking.unmount();
   });
 
-  it("casts a hand or pile card's shadow as the Skia card shade does where the web felt is still baking, and no other card's", async () => {
-    const shade = `-3px 7px ${CardShadow.cast.blur}px ${withAlpha(Colors.shadow, CardShadow.cast.alpha)}`;
+  it("gives a card on the web fallback the contact and the tight cast, a lifted one a larger fall (#1966)", async () => {
     const face = card('7', 'clubs');
-    const shadowOf = async (rectKey: string, faceDown = false) => {
+    const shadowOf = async (selected: boolean, rectKey?: string) => {
       const view = await render(
         <CardCastContext.Provider value={{ x: -3, y: 7 }}>
-          <CardView card={face} rectKey={rectKey} faceDown={faceDown} />
+          <CardView card={face} rectKey={rectKey} selected={selected} />
         </CardCastContext.Provider>
       );
-      const shadow = StyleSheet.flatten(screen.getByTestId(faceDown ? 'card-box-back' : 'card-box').props.style).boxShadow as string;
+      const shadow = StyleSheet.flatten(screen.getByTestId('card-box').props.style).boxShadow as string;
       await view.unmount();
       return shadow;
     };
-    expect(await shadowOf(`hand:${face.id}`)).toContain(shade);
-    expect(await shadowOf(`hand:${face.id}`, true)).toContain(shade);
-    expect(await shadowOf(`pile:${face.id}`)).toContain(shade);
-    expect(await shadowOf(`deal:${face.id}`)).toBe(cardShadow('face', { x: -3, y: 7 }).boxShadow);
-    expect(await shadowOf(`deal:${face.id}`)).not.toContain(`${CardShadow.cast.blur}px`);
+    const rest = await shadowOf(false, `hand:${face.id}`);
+    expect(rest).toBe(await shadowOf(false, `deal:${face.id}`));
+    expect(rest).toContain(`-3px 7px ${CardShadow.cast.blur}px ${withAlpha(Colors.shadow, CardShadow.cast.alpha)}`);
+    expect(rest).toContain(`0px ${CardShadow.contact.y}px ${CardShadow.contact.blur}px`);
+    const lifted = await shadowOf(true, `hand:${face.id}`);
+    expect(lifted).toContain(`0px ${CardShadow.lifted.y}px ${CardShadow.lifted.blur}px`);
+    expect(CardShadow.lifted.blur).toBeGreaterThan(CardShadow.cast.blur);
   });
 });

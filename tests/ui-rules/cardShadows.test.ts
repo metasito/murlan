@@ -1,60 +1,65 @@
-// tests/ui-rules/cardShadows.test.ts — the felt's card shadows are the Lantern Table's, read from the
-// mockup's own `.card`, `.card.bkc`, `.bk` and `--shx`/`--shy` (#1259 plan 4, task 12).
+// tests/ui-rules/cardShadows.test.ts — the felt's card shadows: the Lantern Table's, as the owner's
+// ruling of 2026-11-03 (#1966) thins them (#1259 plan 4, task 12).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { addOutline, buildGlow, buildShadow, castOffset, cardShades, handCardZ, handPaintOrder, pileGroupZ, pilePaintOrder, restingCast, shadeCards, shadeShape, SHADE_STEP, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { fileURLToPath } from "node:url";
+import { addOutline, buildGlow, CARD_ON_CARD_PATHS, buildShadow, castOffset, cardShades, handCardZ, handPaintOrder, pileGroupZ, pilePaintOrder, restingCast, shadeCards, shadeShape, SHADE_STEP, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
+import { CARD_ON_CARD_CSS } from "../e2e/helpers/cardOnCardCss.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { CardGlow, CardShadow, Colors, Layer as Layers, Motion } from "../../lib/tokens.ts";
 import { fixtureLine } from "../helpers/lanternFixture.ts";
 
-type Layer = { x: string; y: string; blur: number; rgba: number[] | null; hex: string | null; inset: boolean };
-
-function shadows(rule: string): Layer[] {
-  const css = /box-shadow:([^;}]+)/.exec(fixtureLine(rule))![1];
-  return css.split(/,(?![^(]*\))/).map((layer) => {
-    const inset = layer.includes("inset");
-    const rgba = /rgba\(([^)]*)\)/.exec(layer)?.[1].split(",").map(Number) ?? null;
-    const hex = /#[0-9A-Fa-f]{6}/.exec(layer)?.[0] ?? null;
-    const [x, y, blur] = layer.replace(/rgba\([^)]*\)|#[0-9A-Fa-f]{6}|inset/g, "").trim().split(/\s+/);
-    return { x, y, blur: parseFloat(blur), rgba, hex, inset };
-  });
-}
-
-const cast = (layers: Layer[]) => layers.filter((l) => l.x === "var(--shx)");
-const contact = (layers: Layer[]) => layers.filter((l) => !l.inset && l.x !== "var(--shx)" && l.rgba);
-
-describe("the felt's card shadows are the mockup's", () => {
-  const face = shadows(".card{");
-  const back = shadows(".card.bkc{");
-  const fan = shadows(".bk{");
-
-  test("a face: its lip, its contact, its cast", () => {
-    assert.equal(face[0].hex, Colors.cardLip);
-    assert.deepEqual(contact(face).map((l) => [parseFloat(l.x), parseFloat(l.y), l.blur, l.rgba![3]]), [[0, CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.face]]);
-    assert.deepEqual(cast(face).map((l) => [l.y, l.blur, l.rgba![3]]), [["var(--shy)", CardShadow.cast.blur, CardShadow.cast.alpha]]);
+// The owner's ruling of 2026-11-03 (#1966) overrides the mockup's shadow values: cards lie skin to skin.
+describe("the card shadows are the owner's ruling, not the mockup's", () => {
+  test("a card on a card casts only a contact: at most 0.5 pt down, 1 pt of blur, 0.35 of black", () => {
+    assert.ok(CardShadow.contact.y <= 0.5 && CardShadow.contact.blur <= 1);
+    for (const k of CARD_ON_CARD_PATHS) {
+      const { sigma, alpha } = shadowPaint(k, 1);
+      assert.ok(alpha <= 0.35 && sigma <= 0.5, k);
+      assert.deepEqual(shadowFall(k, { x: 457, y: 222 }, { x: 120, y: 40 }), { x: 0, y: CardShadow.contact.y });
+    }
+    assert.ok(CardShadow.alpha.fan <= 0.35);
   });
 
-  test("a back on the felt: its contact, its cast", () => {
-    assert.deepEqual(contact(back).map((l) => [parseFloat(l.y), l.blur, l.rgba![3]]), [[CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.back]]);
-    assert.deepEqual(cast(back).map((l) => [l.blur, l.rgba![3]]), [[CardShadow.cast.blur, CardShadow.cast.alpha]]);
+  test("no lamp-driven cast reaches a card: the hand shade draws no cast path and reads no lamp fall", () => {
+    assert.ok(!(CARD_ON_CARD_PATHS as readonly string[]).includes("cast"));
+    const src = fs.readFileSync(fileURLToPath(new URL("../../components/table/handShadeCanvas.tsx", import.meta.url)), "utf8");
+    assert.doesNotMatch(src, /shadowFall|"cast"|castOffset|lamp\.value/);
+    assert.match(src, /CARD_ON_CARD_PATHS/);
   });
 
-  test("a seat fan's back: its contact alone", () => {
-    assert.deepEqual(contact(fan).map((l) => [parseFloat(l.y), l.blur, l.rgba![3]]), [[CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.fan]]);
-    assert.equal(cast(fan).length, 0);
+  test("the Skia felt's passes paint the tokens, and the mockup's Skia-mode card-on-card is the contact tokens alone", () => {
+    const felt = fs.readFileSync(fileURLToPath(new URL("../../components/table/feltCanvas.tsx", import.meta.url)), "utf8");
+    assert.match(felt, /shadowPaint\(/);
+    assert.match(felt, /shadowFall\(/);
+    assert.doesNotMatch(felt, /CardShadow\.(cast|contact|fall)\.\w+\s*[*/+-]/);
+    assert.ok(!CARD_ON_CARD_CSS.includes("var(--shx)"), CARD_ON_CARD_CSS);
+    assert.ok(CARD_ON_CARD_CSS.includes(`.card{box-shadow:0 1.5px 0 #D6D0BC,0 .5px ${CardShadow.contact.blur}px rgba(0,0,0,.3)`), CARD_ON_CARD_CSS);
+    assert.ok(CARD_ON_CARD_CSS.includes(`.card.bkc{box-shadow:0 .5px ${CardShadow.contact.blur}px rgba(0,0,0,.35)`), CARD_ON_CARD_CSS);
+  });
+
+  test("on the felt the cast is a third of the old (fall 26, 30, drop 3, blur 10), a lifted card's shadow larger", () => {
+    assert.ok(CardShadow.fall.x >= 26 * 3 - 1 && CardShadow.fall.y >= 30 * 3 - 3 && CardShadow.fall.drop <= 1);
+    assert.ok(CardShadow.cast.blur <= 10 / 3 + 0.5);
+    assert.ok(CardShadow.lifted.blur > CardShadow.cast.blur && CardShadow.lifted.y > castOffset({ x: 457, y: 222 }, { x: 437, y: 360 }).y);
   });
 
   test("every contact and cast is black, and each path paints one of them", () => {
-    for (const l of [...contact(face), ...contact(back), ...contact(fan), ...cast(face), ...cast(back)]) assert.deepEqual(l.rgba!.slice(0, 3), [0, 0, 0]);
     assert.deepEqual(shadowPaint("cast", 1), { sigma: CardShadow.cast.blur / 2, alpha: CardShadow.cast.alpha });
     for (const k of ["face", "back", "fan"] as const) assert.deepEqual(shadowPaint(k, 1), { sigma: CardShadow.contact.blur / 2, alpha: CardShadow.alpha[k] });
+    assert.equal(Colors.shadow, "#000000");
   });
 
-  test("the cast falls away from the light as `--shx`/`--shy` do", () => {
+  test("the mockup carries the ruling's values, and its cast falls away from the light as `--shx`/`--shy` do", () => {
+    for (const [rule, y, blur, a] of [[".card{", CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.face], [".card.bkc{", CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.back], [".bk{", CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.fan]] as const) {
+      const css = /box-shadow:([^;}]+)/.exec(fixtureLine(rule))![1];
+      assert.ok(css.includes(`0 ${y === 0.5 ? ".5" : y}px ${blur}px rgba(0,0,0,${String(a).replace(/^0/, "")})`), `${rule} ${css}`);
+      if (rule !== ".bk{") assert.ok(css.includes(`var(--shx) var(--shy) ${CardShadow.cast.blur}px rgba(0,0,0,${String(CardShadow.cast.alpha).replace(/^0/, "")})`), `${rule} ${css}`);
+    }
     const line = fixtureLine("  stage.style.setProperty('--shx'");
     const [, shx, shy] = /'--shx',\((.+?)\)\.toFixed\(1\)\+'px'\);stage\.style\.setProperty\('--shy',\((.+?)\)\.toFixed/.exec(line)!;
     const pile = { x: 457, y: 222 };
@@ -226,18 +231,16 @@ describe("the shadow paths", () => {
     assert.equal(bounds(rect({ seen: 0 })), null);
   });
 
-  test("where the felt's axes and card scale all differ, each shadow lands and blurs where the mockup's card would", () => {
+  test("where the felt's axes and card scale all differ, each shadow lands and blurs where the ruling puts it", () => {
     const felt = { sx: 1180 / 874, sy: 820 / 402, s: 1.6 };
     const r = rect({ x: 430, y: 200, rot: 12 });
     const pile = { x: 457, y: 222 };
     const light = { x: 300, y: 330 };
-    const [, shx, shy] = /'--shx',\((.+?)\)\.toFixed\(1\)\+'px'\);stage\.style\.setProperty\('--shy',\((.+?)\)\.toFixed/.exec(fixtureLine("  stage.style.setProperty('--shx'"))!;
-    const run = (expr: string) => vm.runInNewContext(expr, { PILE: [pile.x, pile.y], lx: light.x, ly: light.y }) as number;
     const onScreen = (steps: Record<string, number>[], p: { x: number; y: number }) =>
       steps.reduceRight((q, t) => ({ x: q.x * (t.scaleX ?? 1) + (t.translateX ?? 0), y: q.y * (t.scaleY ?? 1) + (t.translateY ?? 0) }), p);
     const b = bounds(r, felt)!;
     for (const path of SHADOW_PATHS) {
-      const css = path === "cast" ? { x: run(shx), y: run(shy), blur: CardShadow.cast.blur } : { x: 0, y: CardShadow.contact.y, blur: CardShadow.contact.blur };
+      const css = path === "cast" ? { x: (pile.x - light.x) / 78, y: 1 + (pile.y - light.y) / 90, blur: CardShadow.cast.blur } : { x: 0, y: CardShadow.contact.y, blur: CardShadow.contact.blur };
       const got = onScreen([{ scaleX: felt.sx }, { scaleY: felt.sy }, ...shadowTransform(shadowFall(path, pile, light), felt)], { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 });
       assert.ok(near(got.x, r.x * felt.sx + css.x * felt.s) && near(got.y, r.y * felt.sy + css.y * felt.s), `${path}: ${JSON.stringify(got)}`);
       assert.ok(near(2 * shadowPaint(path, felt.s).sigma, css.blur * felt.s), path);

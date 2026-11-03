@@ -1,6 +1,7 @@
 // tests/e2e/cardShadowParity.nightly.spec.ts — the felt draws a card's shadow as the Lantern Table's `.card`
 // would for the same card under the same light, and no card view keeps one of its own once Skia has
-// drawn (#1259 plan 4, task 12). The same cards are laid on the mockup's stage, its `--shx`/`--shy`
+// drawn (#1259 plan 4, task 12). The mockup's own shadow rules carry the owner's ruling of 2026-11-03 (#1966):
+// a thin contact, a tight cast. The same cards are laid on the mockup's stage, its `--shx`/`--shy`
 // set from the app's lamp; each side's shadow is what turning it off gives back.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";

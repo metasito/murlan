@@ -13,6 +13,7 @@ import { DEPART_SCRIPT, expectDeparted } from "./lanternDepartures";
 import { cards, offlineSave, resumeOnVirtualClock } from "./offlineSeed";
 import { buildCombination, createDeck } from "../../../lib/game/gameEngine";
 import { BombFx, Motion } from "../../../lib/tokens";
+import { CARD_ON_CARD_SCRIPT } from "./cardOnCardCss";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepThen, stepUntil } from "./virtualClock";
 import {
@@ -77,6 +78,8 @@ interface Moment {
   /** The mockup's chapter, where it is not `key`. */
   chapter?: string;
   mockupScript?: string;
+  /** Run before `mockupScript` in the Skia variant only. */
+  skiaMockupScript?: string;
   /** Run in the mockup before `mockupScript`, from the app's first traced frame. */
   fromApp?: (first: TraceFrame) => string;
   /** Done on each side at `atMs` in chapter time: the app's by Playwright, the mockup's as a script. A side
@@ -433,6 +436,7 @@ const MOMENTS: Moment[] = [
     stripAt: glance(3200, BOMB_CHECKPOINTS),
     // The app's landing is the cards' contact, sampled from the pose (ADR 0008), not the tween's end.
     // The chapter holds the turn until 3300 and hands off anticlockwise; the table hands it on clockwise, to luan, as the bomb settles.
+    skiaMockupScript: CARD_ON_CARD_SCRIPT,
     mockupScript: `const fx = bombFx;
       const beat = () => { window.__parityOnsets.push("moment:bombFx"); fx(); };
       bombFx = () => {};
@@ -949,7 +953,9 @@ export function parityTests(key: string, only?: Variant) {
             regionsAt: moment.fallbackRegionsAt ?? moment.regionsAt,
             regionAt: { ...moment.regionAt, ...moment.fallbackRegionAt },
           }
-        : moment;
+        : moment.skiaMockupScript
+          ? { ...moment, mockupScript: `${moment.skiaMockupScript}\n${moment.mockupScript ?? ""}` }
+          : moment;
     test(`${m.key} with the ${variant} felt (${m.mode} mode)`, async ({ browser, baseURL }) => {
       test.setTimeout(15 * 60_000);
       const decoder = await browser.newPage();

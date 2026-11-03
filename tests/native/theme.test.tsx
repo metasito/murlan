@@ -1,6 +1,6 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import { Platform } from 'react-native';
-import { makeLayeredShadow, makeShadow, Shadow } from '@/lib/theme';
+import { CardShadow, makeLayeredShadow, makeShadow, Shadow } from '@/lib/theme';
 
 // The card tokens take two shadows; every other token takes one, through the
 // same `boxShadow` path.
@@ -49,11 +49,9 @@ describe('Shadow is platform-aware', () => {
   });
 });
 
-// A card with one shadow reads as a sticker on the cloth. It needs the tight
-// dark contact shadow where it meets the felt as well as the soft cast shadow
-// thrown away from it, and lifting the card has to move the two in opposite
-// directions — otherwise the lift reads as the card growing rather than rising.
-describe('a card casts a contact shadow and a cast shadow', () => {
+// Owner's ruling, #1966: cards lie skin to skin, so a card's own shadow is a thin contact line plus a tight
+// cast on the felt; only a lifted card throws a visibly larger one.
+describe('a card casts a thin contact shadow and a tight cast shadow', () => {
   it.each(LAYERED)('%s emits both, and no single-shadow leftovers', (key) => {
     const style = Shadow[key as keyof typeof Shadow];
     expect(layersOf(key)).toHaveLength(2);
@@ -83,21 +81,21 @@ describe('a card casts a contact shadow and a cast shadow', () => {
     }
   });
 
-  it.each(LAYERED)('%s keeps the contact shadow tighter and darker than the cast', (key) => {
-    const [contact, cast] = layersOf(key);
-    expect(contact.offsetY).toBeLessThan(cast.offsetY);
-    expect(contact.radius).toBeLessThan(cast.radius);
-    expect(contact.opacity).toBeGreaterThan(cast.opacity);
+  it.each(LAYERED)('%s takes the contact from the tokens: at most 0.5 pt down, 1 pt of blur, 0.35 of black', (key) => {
+    const [contact] = layersOf(key);
+    expect(contact.offsetY).toBe(CardShadow.contact.y);
+    expect(contact.radius).toBe(CardShadow.contact.blur);
+    expect(contact.offsetY).toBeLessThanOrEqual(0.5);
+    expect(contact.radius).toBeLessThanOrEqual(1);
+    expect(contact.opacity).toBeLessThanOrEqual(0.35);
   });
 
-  it('weakens and spreads the contact shadow as the card leaves the cloth', () => {
-    const [resting] = layersOf('card');
-    const [lifted] = layersOf('cardLifted');
-    expect(lifted.opacity).toBeLessThan(resting.opacity);
-    expect(lifted.radius).toBeGreaterThan(resting.radius);
+  it.each(['card', 'cardBack'])('%s rests on the felt with the tight cast', (key) => {
+    const [, cast] = layersOf(key);
+    expect(cast).toEqual({ offsetY: CardShadow.fall.drop, radius: CardShadow.cast.blur, opacity: CardShadow.cast.alpha });
   });
 
-  it('sends the cast shadow further and softer at the same time', () => {
+  it('keeps the lifted card visibly larger than a resting one, so lifting still reads', () => {
     const [, resting] = layersOf('card');
     const [, lifted] = layersOf('cardLifted');
     expect(lifted.offsetY).toBeGreaterThan(resting.offsetY);
