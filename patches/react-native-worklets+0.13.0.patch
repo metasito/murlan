@@ -1,0 +1,23 @@
+diff --git a/node_modules/react-native-worklets/lib/module/threads.js b/node_modules/react-native-worklets/lib/module/threads.js
+index 215bec9..df7664a 100644
+--- a/node_modules/react-native-worklets/lib/module/threads.js
++++ b/node_modules/react-native-worklets/lib/module/threads.js
+@@ -28,6 +28,18 @@ export function runOnUIAsync(worklet, ...args) {
+ }
+ let runOnUIQueue = [];
+ function enqueueUI(worklet, args, resolve, reject) {
++  // A UI job runs on the next timer turn, as on a device, not a test's animation frame later.
++  if (IS_JEST) {
++    setTimeout(() => {
++      try {
++        const result = worklet(...args);
++        resolve?.(result);
++      } catch (e) {
++        if (reject) reject(e); else throw e;
++      }
++    }, 0);
++    return;
++  }
+   const job = [worklet, args, resolve, reject];
+   runOnUIQueue.push(job);
+   if (runOnUIQueue.length === 1) {
