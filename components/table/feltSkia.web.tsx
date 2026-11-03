@@ -1,7 +1,7 @@
 // CanvasKit stays out of the web first load (docs/BUNDLE.md): the boundary that loads it is its
 // own chunk, mounted a frame after the table has painted, and the fallback holds the felt until
 // Skia has drawn — or for good, where WebGL is drawn on the CPU.
-import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { E2E_FAST } from "@/lib/e2eConfig";
@@ -9,7 +9,17 @@ import { FeltFallback } from "./feltFallback";
 import type { FeltProps } from "./feltReady";
 import { levelShade } from "./rail";
 
-const SkiaFelt = lazy(() => import("./feltSkiaBoundary"));
+const NoSkia = () => null;
+
+/** A piece of the Skia chunk once CanvasKit has loaded, and nothing where it cannot. */
+export function skiaPiece<P>(pick: (m: typeof import("./feltSkiaBoundary")) => ComponentType<P>) {
+  return lazy(async (): Promise<{ default: ComponentType<P> }> => {
+    const m = await import("./feltSkiaBoundary");
+    return { default: (await m.canvasKitLoads()) ? pick(m) : NoSkia };
+  });
+}
+
+const SkiaFelt = skiaPiece((m) => m.default);
 
 const SOFTWARE_GL = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i;
 
@@ -28,7 +38,7 @@ export function drawsOnGpu(): boolean {
   return (onGpu = !SOFTWARE_GL.test(renderer));
 }
 
-/** CanvasKit is fetched from jsDelivr: when that fails, the fallback felt stays and the table plays on. */
+/** When the Skia chunk itself cannot load, the fallback felt stays and the table plays on. */
 export class SkiaLoadFailed extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {

@@ -86,8 +86,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
     worktree is yours to close, not to hand on — outside a review round, which fixes only the Blocking findings its review or CI
     named. File an issue (rule 33's channels) only for what you tried and could
     not finish, and say what you tried.
-35. **File what you measured, not what you concluded.** If two explanations survive, write both
-    and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
+35. **File what you measured, not what you concluded.** If two explanations survive, write both and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
 36. **A defect seen on iOS is closed on an iOS capture, never on a Chromium run** — unless you
     have watched it reproduce in Chromium, and then either proof closes it.
 
@@ -116,3 +115,4 @@ Another agent is working in this repository, on this machine, right now.
 48. **One decision has one copy.** A change that adds a second copy of a constant, rule, policy or mapping, or edits one of two existing copies without merging them, deletes one or routes it through the other in the same change. A rules model under `tests/model/` compared with the engine is not a second copy (ADR 0012).
 49. **A new guard, check or scan lands proven and floored**: it meets rule 6, and it fails when what it inspects is gone, empty or renamed, so it cannot pass by not looking.
 50. **No seam, interface or adapter layer until a second adapter exists.**
+51. **The table costs nothing at rest, and its speed is measured as it is played.** A frame loop, mapper or canvas that redraws when what it draws has not changed is a defect, and so is a full-screen canvas sized above DPR 1 that does not need the detail. A speed number taken under reduced motion, or only at full CPU speed, measures nothing: measure with motion on and at 4x CPU throttle, before and after, in the PR body (`docs/research/2026-11-03-table-perf/REPORT.md`). The owner's ruling, 2026-11-03.
