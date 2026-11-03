@@ -40,6 +40,7 @@ export const SCANS = [
   "tests/server/sessionRevocation.test.ts",
   "tests/server/socketErrorLogging.test.ts",
   "tests/server/socketEvents.test.ts",
+  "tests/server/storeScriptsScan.test.ts",
   "tests/server/storedShapeVersions.test.ts",
   "tests/server/tableOwnershipScan.test.ts",
   "tests/server/tableRuntimeScan.test.ts",

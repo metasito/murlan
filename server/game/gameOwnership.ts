@@ -168,7 +168,7 @@ function connect(): Promise<Client | null> {
       heartbeat = setInterval(() => {
         void next.query("SELECT 1").then(
           () => {
-            for (const [roomId, epoch] of recordsToRenew(next)) refreshTableOwner(roomId, epoch, OWNER_RECORD_TTL_MS);
+            for (const [roomId, epoch] of recordsToRenew(next)) void refreshTableOwner(roomId, epoch, OWNER_RECORD_TTL_MS);
           },
           (err: unknown) => {
             logger.error({ err }, "Game ownership connection stopped answering");

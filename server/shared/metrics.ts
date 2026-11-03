@@ -86,3 +86,45 @@ export function noteStreamRead(stream: Stream, entryId: string): void {
   const at = now();
   lastRead.set(stream, { lagMs: Math.max(0, at - appendedAt), at });
 }
+
+let storeInfo: Readonly<Record<string, string>> | null = null;
+
+/** The store's last `INFO`, or null once it stops answering; its gauges read NaN until it answers again. */
+export function noteStoreInfo(info: Readonly<Record<string, string>> | null): void {
+  storeInfo = info;
+}
+
+for (const [field, name, help] of [
+  ["used_memory", "store_used_memory_bytes", "Memory the key-value store holds"],
+  ["maxmemory", "store_maxmemory_bytes", "The key-value store's memory limit; 0 is none"],
+  ["evicted_keys", "store_evicted_keys", "Keys the key-value store evicted since it started; any is state lost"],
+  ["blocked_clients", "store_blocked_clients", "Connections waiting in a blocking read on the key-value store"],
+  ["rejected_connections", "store_rejected_connections", "Connections the key-value store refused since it started"],
+] as const) {
+  new Gauge({
+    name,
+    help,
+    collect() {
+      this.set(Number(storeInfo?.[field] ?? Number.NaN));
+    },
+  });
+}
+
+new Gauge({
+  name: "store_info",
+  help: "1, labelled with the key-value store's engine, version and eviction policy from its last INFO",
+  labelNames: ["engine", "version", "maxmemory_policy"],
+  collect() {
+    this.reset();
+    if (!storeInfo) return;
+    const engine = storeInfo.server_name ?? "unknown";
+    const version = storeInfo[`${engine}_version`] ?? storeInfo.redis_version ?? "unknown";
+    this.set({ engine, version, maxmemory_policy: storeInfo.maxmemory_policy ?? "unknown" }, 1);
+  },
+});
+
+export const storeMisconfigured = new Counter({
+  name: "store_misconfigured_total",
+  help: "Checks that found the key-value store unlike deploy/runtime.json's, by what differed",
+  labelNames: ["reason"],
+});

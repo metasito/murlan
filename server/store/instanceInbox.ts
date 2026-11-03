@@ -19,29 +19,30 @@ export interface InstanceMessage {
 export type InstanceHandler = (message: InstanceMessage) => void | Promise<void>;
 
 export interface Inbox {
-  /** Rejects at once while Redis is unreachable: there is nobody to hand the message to. */
+  /**
+   * Rejects at once while Redis is unreachable, and once `to` has had no inbox for longer than its
+   * reader takes to make one again: there is nobody to hand the message to. In order per `to`,
+   * however the stream comes and goes between two sends.
+   */
   send(to: string, message: InstanceMessage): Promise<void>;
   /** Only to an inbox its instance still keeps: false, and nothing written, for one that is gone. Rejects like `send`. */
   offer(to: string, message: InstanceMessage): Promise<boolean>;
   on(kind: string, handler: InstanceHandler): void;
-  close(): void;
+  /** Removes this instance's stream, so a send to it rejects at once. Never rejects. */
+  close(): Promise<void>;
 }
 
 const READ_COUNT = 100;
 const RETRY_MS = 250;
-/** How often an instance renews its own inbox, well inside the expiry each renewal sets. */
-const KEEPALIVE_MS = 3_000;
-const BOOT: InstanceMessage = { kind: "boot" };
+const KEEP_ALIVE_MS = 1_000;
+/** Between tries at an inbox that is missing; together they outlast two keep-alive ticks. */
+const RESEND_DELAYS_MS = [50, 100, 200, 400, 800, 800];
+/** How long a send to an instance found gone tries once instead of again. */
+const GONE_FOR_MS = 10_000;
+const INBOX_TTL_MS = CLUSTER_GAP_SECONDS * 1_000;
+const BOOT = JSON.stringify({ kind: "boot" });
 
 const inboxKey = (id: string) => redisKey(`inbox:${id}`);
-
-const SEND = `redis.call("XADD", KEYS[1], ARGV[1], ARGV[2], ARGV[3], "*", "m", ARGV[5])
-redis.call("EXPIRE", KEYS[1], ARGV[4])
-return 1`;
-
-const OFFER = `if not redis.call("XADD", KEYS[1], "NOMKSTREAM", ARGV[1], ARGV[2], ARGV[3], "*", "m", ARGV[5]) then return 0 end
-redis.call("EXPIRE", KEYS[1], ARGV[4])
-return 1`;
 
 /** How each send trims its inbox, exported so a test reads the value it actually gets. */
 export function inboxTrim() {
@@ -51,8 +52,9 @@ export function inboxTrim() {
 /**
  * One instance's addressed stream, `inbox:<instanceId>`. Each message is read once and in
  * order: the reader resumes from the last entry it handed over, across any reconnect, for as
- * long as the stream still holds it. The instance keeps its stream in being from its open to its
- * close, so the stream existing is what `offer` reads as the instance being there.
+ * long as the stream still holds it. The stream is its reader's: made at connect, kept alive while
+ * it runs, gone once it stops; a sender never makes one, so the stream existing is what `offer`
+ * reads as the instance being there.
  */
 export function openInbox({
   id = thisInstance,
@@ -61,6 +63,25 @@ export function openInbox({
 }: { id?: string; url?: string; handlers?: Map<string, InstanceHandler> } = {}): Inbox {
   const writer = openRedis("inbox", { url, offlineQueue: false });
   const reader = openRedis("inbox", { url });
+  const own = inboxKey(id);
+  let closed = false;
+
+  // Pipelined in one write, so the stream is never left without its expiry.
+  const create = () =>
+    Promise.all([writer.xAdd(own, "*", { m: BOOT }, { TRIM: inboxTrim() }), writer.pExpire(own, INBOX_TTL_MS)]);
+
+  // The connection's own listener reports an outage; the next tick or reconnect tries again.
+  async function keepAlive(): Promise<void> {
+    try {
+      if (!(await writer.pExpire(own, INBOX_TTL_MS)) && !closed) await create();
+    } catch {}
+  }
+
+  writer.on("ready", () => {
+    if (!closed) void create().catch(() => {});
+  });
+  const keeper = setInterval(() => void keepAlive(), KEEP_ALIVE_MS);
+  (keeper as unknown as { unref?: () => void }).unref?.();
 
   async function deliver(raw: string | undefined): Promise<void> {
     let message: InstanceMessage;
@@ -104,44 +125,69 @@ export function openInbox({
 
   void read(reader);
 
-  // One script, not a MULTI: node-redis queues a MULTI while offline whatever the client's
-  // offline queue is set to. Not two commands either: an entry added whose expiry failed
-  // would hold no TTL, and the send would reject although delivered.
-  function write(script: string, to: string, message: InstanceMessage): Promise<unknown> {
-    const { strategy, strategyModifier, threshold } = inboxTrim();
-    return writer.eval(script, {
-      keys: [inboxKey(to)],
-      arguments: [strategy, strategyModifier, String(threshold), String(CLUSTER_GAP_SECONDS), JSON.stringify(message)],
-    });
+  const tryOnce = async (to: string, payload: string) =>
+    (await writer.xAddNoMkStream(inboxKey(to), "*", { m: payload }, { TRIM: inboxTrim() })) !== null;
+  const gone = (to: string) => new Error(`instance ${to} has no inbox: it is gone`);
+
+  /** Instances whose inbox stayed missing through every try, and when that was found. */
+  const judgedGone = new Map<string, number>();
+
+  /**
+   * A live instance's inbox is also missing between the store losing its data and the reader
+   * making it again, so a missing one is tried again for a while; within `GONE_FOR_MS` of an
+   * instance being judged gone, each send tries once.
+   */
+  async function deliverTo(to: string, payload: string): Promise<boolean> {
+    if (await tryOnce(to, payload)) return true;
+    const judged = judgedGone.get(to);
+    if (judged !== undefined && performance.now() - judged < GONE_FOR_MS) return false;
+    judgedGone.delete(to);
+    for (const delay of RESEND_DELAYS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      if (await tryOnce(to, payload)) {
+        judgedGone.delete(to);
+        return true;
+      }
+    }
+    judgedGone.set(to, performance.now());
+    return false;
   }
 
-  const own = inboxKey(id);
-  const keep = async () => {
-    if ((await writer.pExpire(own, CLUSTER_GAP_SECONDS * 1_000)) === 0) await write(SEND, id, BOOT);
-  };
-  writer.on("ready", () => void keep().catch((err: unknown) => logger.warn({ err }, "Could not open this instance's inbox")));
-  const keeping = setInterval(() => void keep().catch(() => {}), KEEPALIVE_MS);
-  (keeping as unknown as { unref?: () => void }).unref?.();
+  /**
+   * Each write to an instance waits for the one before it to be answered: one found missing is
+   * tried again, and a later one already written would land ahead of it.
+   */
+  const tails = new Map<string, Promise<unknown>>();
+
+  function inTurn<T>(to: string, write: () => Promise<T>): Promise<T> {
+    const mine = (tails.get(to) ?? Promise.resolve()).catch(() => {}).then(write);
+    tails.set(to, mine);
+    void mine.catch(() => {}).finally(() => {
+      if (tails.get(to) === mine) tails.delete(to);
+    });
+    return mine;
+  }
 
   return {
     async send(to, message) {
       clusterMessages.inc({ channel: "inbox" });
-      await write(SEND, to, message);
+      const payload = JSON.stringify(message);
+      if (!(await inTurn(to, () => deliverTo(to, payload)))) throw gone(to);
     },
     async offer(to, message) {
       clusterMessages.inc({ channel: "inbox" });
-      return Number(await write(OFFER, to, message)) === 1;
+      const payload = JSON.stringify(message);
+      return inTurn(to, () => tryOnce(to, payload));
     },
     on(kind, handler) {
       handlers.set(kind, handler);
     },
-    close() {
-      clearInterval(keeping);
+    async close() {
+      closed = true;
+      clearInterval(keeper);
       reader.destroy();
-      void writer
-        .del(own)
-        .catch(() => {})
-        .finally(() => writer.destroy());
+      await writer.del(own).catch(() => {});
+      writer.destroy();
     },
   };
 }
@@ -168,7 +214,8 @@ export function onInstanceMessage(kind: string, handler: InstanceHandler): void 
   handlers.set(kind, handler);
 }
 
-export function stopInbox(): void {
-  inbox?.close();
+export function stopInbox(): Promise<void> {
+  const closing = inbox?.close() ?? Promise.resolve();
   inbox = null;
+  return closing;
 }

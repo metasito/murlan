@@ -221,6 +221,31 @@ describe("a limit while Redis fails", { skip: hasDatabase() ? false : skipMessag
     assert.deepEqual(left, [], "the take-back created a key of its own");
   });
 
+  test("a script cache flushed between two requests still counts both and takes each success back", async () => {
+    const name = freshName();
+    const send = await instance(name, 5, {
+      skipSuccessfulRequests: true,
+      handle: async (req) => (req.headers["x-outcome"] === "refused" ? 400 : 200),
+    });
+    assert.equal(await send(), 200);
+    // As above: the next request lands after the take-back.
+    assert.equal(await send("ana", { "x-outcome": "refused" }), 400);
+    assert.deepEqual(await sharedCounts(name), [1]);
+
+    const redis = createClient({ url: realRedis });
+    await redis.connect();
+    try {
+      await redis.scriptFlush();
+    } finally {
+      redis.destroy();
+    }
+    assert.equal(await send(), 200);
+    assert.equal(await send("ana", { "x-outcome": "refused" }), 400);
+    const keys = await sharedKeys(scoped, name);
+    assert.deepEqual(keys.map((k) => k.count), [2], "a request after the flush went uncounted, or its success was not taken back");
+    assert.ok(keys[0].ttl > 0, "the count lost its expiry");
+  });
+
   test("a request Redis never counted takes nothing back from Redis once it is back", { timeout: 30_000 }, async () => {
     const name = freshName();
     const send = await instance(name, 5, {

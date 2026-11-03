@@ -1,8 +1,8 @@
 /**
- * Local end-to-end stack: an empty Postgres and a Redis in Docker for the server to use.
+ * Local end-to-end stack: an empty Postgres and a Valkey in Docker for the server to use.
  *
  * Usage:
- *   node scripts/dev-stack.mjs up     start Postgres and Redis
+ *   node scripts/dev-stack.mjs up     start Postgres and Valkey
  *   node scripts/dev-stack.mjs down   stop and remove the containers
  *   node scripts/dev-stack.mjs env    print the env vars for the server
  *
@@ -28,10 +28,12 @@ const NAME = "murlan-dev-pg";
 // mirror of the Docker Official Images serves the same digest with neither. Every workflow's
 // Postgres service repeats this (tests/tooling/postgresImage.test.ts).
 const IMAGE = "mirror.gcr.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea";
-const REDIS_NAME = "murlan-dev-redis";
-// The same mirror, for the same reasons; every workflow's Redis service repeats this
+const VALKEY_NAME = "murlan-dev-valkey";
+// The Redis 7 container this stack ran before Valkey; left running it holds REDIS_BASE_PORT.
+const RETIRED_NAMES = ["murlan-dev-redis"];
+// The same mirror, for the same reasons; every workflow's Valkey service repeats this
 // (tests/tooling/redisImage.test.ts).
-const REDIS_IMAGE = "mirror.gcr.io/library/redis:7-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f";
+const VALKEY_IMAGE = "mirror.gcr.io/valkey/valkey:9.1.3-alpine@sha256:bf09d58e96d6b4524a15396b65b242bbe18beebbcc15a04d8ee75ddac62fae0b";
 const REDIS_BASE_PORT = 46379;
 const redisUrlFor = (port) => `redis://127.0.0.1:${port}/0`;
 // Below 49152: Windows carves its dynamic port reservations (Hyper-V, WSL) out of 49152-65535 only.
@@ -175,25 +177,26 @@ function redisReachableOn(port) {
 }
 
 function startRedis() {
-  const running = publishedPort(REDIS_NAME, "6379");
+  for (const name of RETIRED_NAMES) docker(["rm", "-f", name]);
+  const running = publishedPort(VALKEY_NAME, "6379");
   if (running !== null) {
-    if (!redisReachableOn(running)) throw new Error(`${REDIS_NAME} is running on ${running} but Redis does not answer there`);
+    if (!redisReachableOn(running)) throw new Error(`${VALKEY_NAME} is running on ${running} but Redis does not answer there`);
     return running;
   }
-  docker(["rm", "-f", REDIS_NAME]);
+  docker(["rm", "-f", VALKEY_NAME]);
   pullImage({
-    present: () => docker(["image", "inspect", REDIS_IMAGE]).status === 0,
-    pull: () => docker(["pull", "-q", REDIS_IMAGE]),
+    present: () => docker(["image", "inspect", VALKEY_IMAGE]).status === 0,
+    pull: () => docker(["pull", "-q", VALKEY_IMAGE]),
     sleep: sleepSync,
   });
   return startOnFreePort({
     start: REDIS_BASE_PORT,
     canBind,
-    discard: () => docker(["rm", "-f", REDIS_NAME]),
+    discard: () => docker(["rm", "-f", VALKEY_NAME]),
     verify: redisReachableOn,
     run: (p) => {
-      const r = docker(["run", "-d", "--name", REDIS_NAME, "-p", `127.0.0.1:${p}:6379`, REDIS_IMAGE]);
-      if (r.status !== 0) docker(["rm", "-f", REDIS_NAME]);
+      const r = docker(["run", "-d", "--name", VALKEY_NAME, "-p", `127.0.0.1:${p}:6379`, VALKEY_IMAGE]);
+      if (r.status !== 0) docker(["rm", "-f", VALKEY_NAME]);
       return { status: r.status, stderr: r.stderr };
     },
   });
@@ -207,9 +210,9 @@ try {
     if (port === null) {
       throw new Error(`${NAME} is not running — start it with \`node scripts/dev-stack.mjs up\``);
     }
-    const redisPort = publishedPort(REDIS_NAME, "6379");
+    const redisPort = publishedPort(VALKEY_NAME, "6379");
     if (redisPort === null) {
-      throw new Error(`${REDIS_NAME} is not running — start it with \`node scripts/dev-stack.mjs up\``);
+      throw new Error(`${VALKEY_NAME} is not running — start it with \`node scripts/dev-stack.mjs up\``);
     }
     console.log(`DATABASE_URL=${urlFor(port)}`);
     console.log(`REDIS_URL=${redisUrlFor(redisPort)}`);
@@ -219,7 +222,7 @@ try {
 
   if (cmd === "down") {
     docker(["rm", "-f", NAME]);
-    docker(["rm", "-f", REDIS_NAME]);
+    for (const name of [VALKEY_NAME, ...RETIRED_NAMES]) docker(["rm", "-f", name]);
     console.log("stopped");
     process.exit(0);
   }

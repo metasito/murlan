@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { register } from "@prometheus-io/client";
-import { noteStreamRead } from "../../server/shared/metrics.ts";
+import { noteStoreInfo, noteStreamRead } from "../../server/shared/metrics.ts";
 import "../../server/http/rateLimit.ts";
 import { createPool } from "../../server/store/pool.ts";
 import recorded from "../fixtures/metricsExposition.json" with { type: "json" };
@@ -35,10 +35,12 @@ test("/metrics exposes the recorded names, types and labels", async () => {
   try {
     noteStreamRead("adapter", `${Date.now()}-0`);
     noteStreamRead("inbox", `${Date.now()}-0`);
+    noteStoreInfo({ server_name: "valkey", valkey_version: "9.1.3", maxmemory_policy: "noeviction", used_memory: "1" });
     for (const [name, label] of [
       ["redis_reconnects_total", "use"],
       ["cluster_messages_total", "channel"],
       ["limiter_fallbacks_total", "limiter"],
+      ["store_misconfigured_total", "reason"],
     ] as const) {
       (register.getSingleMetric(name) as unknown as { inc(labels: Record<string, string>): void }).inc({ [label]: "x" });
     }

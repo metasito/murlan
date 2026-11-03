@@ -121,9 +121,12 @@ describe("an intent for a table another instance owns", { skip: hasDatabase() ? 
     const adapterBefore = await Promise.all(ports.map(adapterMessages));
 
     const heard = waitFor(host, "game:reaction");
+    const echoed = waitFor(guest, "game:reaction");
     const reply = await ackUnchecked(guest, "game:reaction", [{ emoji: "👍" }], LOCAL_ROUND_TRIP_MS);
     assert.deepEqual(reply, { ok: true });
     assert.ok(await heard, "the owner never applied the reaction");
+    // The answer and the reaction reach the asker as two messages; the count is read once both have.
+    assert.ok(await echoed, "the reaction never came back to the asker");
 
     const [owner, asker, bystanderInbox] = (await Promise.all(instances.map(inboxLength))).map((n, i) => n - inboxesBefore[i]!);
     assert.equal(owner, 1, "the owner's inbox did not get the intent, once");

@@ -7,8 +7,9 @@ each line.
 ## Production — breaking any of these takes it down
 
 The host is being chosen (#1107; ADR-0006 retired Replit). `deploy/runtime.json` is the contract
-any host must meet — Node, Postgres and Redis majors, SIGTERM grace, proxy hops, connections per
-instance, the cluster's design peak — and the server and tests read it.
+any host must meet — Node and Postgres majors, the key-value store's engine (Valkey), major and
+eviction policy, SIGTERM grace, proxy hops, connections per instance, the cluster's design peak —
+and the server and tests read it.
 
 - **Boot fails fast without its env** (`server/http/bootEnv.ts`): `SESSION_SECRET`,
   `DATABASE_URL` and `REDIS_URL` always; in production also `PUBLIC_HOST`, `METRICS_TOKEN`, and a
@@ -57,6 +58,8 @@ Verify against source before changing any.
   watch that replaces a half-open link (`tests/integration/redisBlackhole.test.ts`). Losing Redis
   stops cross-instance traffic only; a table on one instance plays on
   (`tests/integration/redisDegraded.test.ts`).
+- **Lua reaches the store from `server/http/rateLimit.ts` only** (`tests/server/storeScriptsScan.test.ts`):
+  everything else is one of Valkey's own commands (`DELIFEQ`, `SET … IFEQ`, `XADD … NOMKSTREAM`).
 - **Every transaction goes through `transaction()` (`server/store/db.ts`), never drizzle's own.**
   Drizzle's leaves a client whose `BEGIN` failed checked out for good, so two such failures wedged
   a two-slot pool (`tests/server/transactionScan.test.ts`).

@@ -233,7 +233,7 @@ export async function startTestServer(
           await ioClosed;
           cancelRevocationRetries();
           stopHealth();
-          stopInbox();
+          void stopInbox();
           closeTableOwners();
           closePresence();
           closeRedis();
@@ -261,7 +261,7 @@ export async function startTestServer(
     await (await closeDatabase()).ended;
     cancelRevocationRetries();
     stopHealth();
-    stopInbox();
+    void stopInbox();
     closeTableOwners();
     closePresence();
     closeRedis();
