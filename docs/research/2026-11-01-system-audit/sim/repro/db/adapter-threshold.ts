@@ -41,12 +41,11 @@ const send = async (n: number) => {
   while (got.length === before && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
   return got.length > before ? `delivered (${got.at(-1)} B)` : "LOST";
 };
-log(`positive control, a local emit on the receiver reaches its own client: ${await (async () => {
-  const before = got.length;
-  receiver.io.emit("probe", "x".repeat(10));
-  await new Promise((r) => setTimeout(r, 300));
-  return got.length > before ? "yes" : "NO";
-})()}`);
+const controlBefore = got.length;
+receiver.io.emit("probe", "x".repeat(10));
+await new Promise((r) => setTimeout(r, 300));
+if (got.length === controlBefore) throw new Error("positive control: a local emit on the receiver never reached its own client");
+log("positive control, a local emit on the receiver reaches its own client: yes");
 for (const n of sizes) log(`broadcast of a ${n} B string from the other server: ${await send(n)}`);
 
 client.close();

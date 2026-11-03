@@ -93,6 +93,7 @@ try {
   log(`  tap heard FETCH_SOCKETS ${control.filter((h) => h.type === "FETCH_SOCKETS").length}, replies ${controlReplies.length}, sockets in replies ${perConnect(control).socketsInReplies}`);
   log(`  the replies carry a session credential (what a sweep would put on the channel): ${controlCarries.length > 0 ? "yes" : "no"} (values not printed)`);
   if (controlReplies.length < 2) throw new Error("the tap did not hear both instances answer the control FETCH_SOCKETS");
+  if (controlCarries.length === 0) throw new Error("the credential scan did not find the session credential the control replies carry: its \"none\" below would be blind");
   controlSocket.close();
   await sleep(1_500);
   const afterControl = tap.mark();
