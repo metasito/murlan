@@ -59,7 +59,7 @@ afterEach(() => {
 });
 
 describe('the lamp gloss on the table', () => {
-  it('lights a hand card, a seat back and a pile card from their own registry entries', async () => {
+  it('lights a hand card and a pile card, and no seat back, from their own registry entries', async () => {
     const view = await throwPair(3);
     await frames(2000);
     const opts = { includeHiddenElements: true };
@@ -70,7 +70,7 @@ describe('the lamp gloss on the table', () => {
     };
     const lit = Object.fromEntries(Object.entries(kinds).map(([k, n]) => [k, n && glossIn(n) ? (pose(glossIn(n)).opacity ?? 0) > 0 : 'no gloss']));
     await view.unmount();
-    expect(lit).toEqual({ hand: true, seat: true, pile: true });
+    expect(lit).toEqual({ hand: true, seat: 'no gloss', pile: true });
   }, 120_000);
 });
 
@@ -123,6 +123,19 @@ describe('another card moving', () => {
   });
 });
 
+describe('an opponent\'s card back', () => {
+  it('mounts no gloss, streak or foil layer', async () => {
+    await render(
+      <Table light={makeMutable(lightAt(437, 140))}>
+        <CardView card={card('3_spades')} faceDown rectKey="fan:top:0" rects={makeMutable<CardRects>({ 'fan:top:0': { ...rectAt(437, 40), w: 40, h: 58, back: true } }) as unknown as OwnedRects} />
+      </Table>
+    );
+    for (const id of ['card-gloss', 'card-gloss-spot', 'card-gloss-streak', 'card-foil-ink', 'card-foil-band']) {
+      expect(screen.queryAllByTestId(id, { includeHiddenElements: true })).toHaveLength(0);
+    }
+  });
+});
+
 describe('moving the lamp', () => {
   const owned = (id: string, r: CardRect) => makeMutable<CardRects>({ [id]: r }) as unknown as OwnedRects;
   const threeCards = (
@@ -137,7 +150,7 @@ describe('moving the lamp', () => {
   it('moves every gloss and re-renders no card', async () => {
     const light = makeMutable(lightAt(437, 140));
     await render(<Table light={light}>{threeCards}</Table>);
-    expect(glossPoses()).toHaveLength(3);
+    expect(glossPoses()).toHaveLength(2);
     const before = mockCardRenders.n;
     const seen = new Set<string>();
     for (let i = 0; i < 10; i++) {
@@ -157,7 +170,7 @@ describe('moving the lamp', () => {
     const resting = glossPoses();
     await view.rerender(<RiggedTable pool={[150, 300, 1]}>{threeCards}</RiggedTable>);
     await act(async () => void jest.advanceTimersByTime(3000));
-    expect(glossPoses().map((p, i) => p === resting[i])).toEqual([false, false, false]);
+    expect(glossPoses().map((p, i) => p === resting[i])).toEqual([false, false]);
   });
 
   it('poses each gloss at most once a gloss frame while the rig glides to a new pool', async () => {
@@ -166,7 +179,7 @@ describe('moving the lamp', () => {
     const before = mockGlossRuns.n;
     await view.rerender(<RiggedTable pool={[150, 300, 1]}>{threeCards}</RiggedTable>);
     await act(async () => void jest.advanceTimersByTime(1000));
-    const posesPerCard = (mockGlossRuns.n - before) / 6;
+    const posesPerCard = (mockGlossRuns.n - before) / 4;
     expect(posesPerCard).toBeGreaterThan(10);
     expect(posesPerCard).toBeLessThanOrEqual(Math.ceil(1 / GLOSS_FRAME_S));
   });

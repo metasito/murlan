@@ -56,7 +56,7 @@ describe('the foil glint', () => {
   it.each(CARD_BACK_IDS)('masks the %s back with its own foil, in its own colour', async (id) => {
     await render(
       <Table light={makeMutable(lightAt(437, 140))}>
-        <CardView card={CARD} faceDown backId={id} rectKey="fan:top:0" rects={owned('fan:top:0', backAt(437, 300))} />
+        <CardView card={CARD} faceDown backId={id} rectKey="pile:top0" rects={owned('pile:top0', backAt(437, 300))} />
       </Table>
     );
     const glint = screen.getByTestId('card-foil-glint', opts);
@@ -72,7 +72,7 @@ describe('the foil glint', () => {
   it('costs a back no more host views than its mask, ink and band need', async () => {
     await render(
       <Table light={makeMutable(lightAt(437, 140))}>
-        <CardView card={CARD} faceDown rectKey="fan:top:0" rects={owned('fan:top:0', backAt(437, 300))} />
+        <CardView card={CARD} faceDown rectKey="pile:top0" rects={owned('pile:top0', backAt(437, 300))} />
       </Table>
     );
     const glint = screen.getByTestId('card-foil-glint', opts);
@@ -94,8 +94,8 @@ describe('the foil glint', () => {
     const light = makeMutable(lightAt(437, 140));
     await render(
       <Table light={light}>
-        <CardView card={CARD} faceDown rectKey="fan:top:0" rects={owned('fan:top:0', backAt(437, 40))} />
-        <CardView card={CARD} faceDown rectKey="fan:left:0" rects={owned('fan:left:0', backAt(120, 200, 90))} />
+        <CardView card={CARD} faceDown rectKey="pile:top0" rects={owned('pile:top0', backAt(437, 40))} />
+        <CardView card={CARD} faceDown rectKey="pile:left0" rects={owned('pile:left0', backAt(120, 200, 90))} />
       </Table>
     );
     const bandPoses = () => screen.getAllByTestId('card-foil-band', opts).map((n) => JSON.stringify(pose(n)));

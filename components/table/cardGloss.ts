@@ -22,8 +22,8 @@ export interface Gloss {
 /** The lamp as a gloss reads it. */
 export type GlossLight = Pick<Lamp, "lx" | "ly" | "level" | "r" | "t">;
 
-/** Steps no soft gloss shows: the lamp sways at the felt's 0.01 pt, and every gloss following that is two mappers a card a frame. */
-const GLOSS_POINT_STEP = 0.5;
+/** Steps no soft gloss shows: the 20 pt sway crossed 0.5 pt 20-35 times a second, and at 4x throttle 2 pt lifts a settled table from 15.3 to 23.4 fps. */
+const GLOSS_POINT_STEP = 2;
 const GLOSS_LIGHT_STEP = 1 / 256;
 /** Under a 60 Hz frame, so its jitter never skips one: a faster display, or jest's 1 ms frames, poses a gloss no oftener. */
 export const GLOSS_FRAME_S = 0.012;
