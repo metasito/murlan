@@ -118,6 +118,7 @@ async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport
 
 async function record(page: Page, ms: number): Promise<FrameReport> {
   const recording = await startRecording(page);
+  // fixed wait on purpose: the window is the measurement
   await page.waitForTimeout(ms);
   return recording.stop();
 }
@@ -127,6 +128,7 @@ async function waitForViewerTurn(page: Page): Promise<void> {
   await page
     .locator(`${TABLE}[${TABLE_STATE}^="${YOUR_TURN_PREFIX}"]`)
     .waitFor({ timeout: 120_000 });
+  // fixed wait on purpose: the turn's own entrance has to finish before ambient motion is all that runs
   await page.waitForTimeout(1_000);
 }
 
