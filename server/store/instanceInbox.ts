@@ -49,6 +49,33 @@ export function inboxTrim() {
   return { strategy: "MAXLEN", strategyModifier: "~", threshold: streamMaxLen() } as const;
 }
 
+/** Instances whose inbox stayed missing through every try, each gone for `forMs` from then. */
+export function judgedGone(forMs: number, now: () => number = () => performance.now()) {
+  /** Oldest judgement first: `judge` re-inserts, so the sweep stops at the first one still in its window. */
+  const judgedAt = new Map<string, number>();
+  return {
+    judge(peer: string): void {
+      const at = now();
+      judgedAt.delete(peer);
+      judgedAt.set(peer, at);
+      for (const [p, t] of judgedAt) {
+        if (at - t < forMs) break;
+        judgedAt.delete(p);
+      }
+    },
+    isGone: (peer: string): boolean => {
+      const at = judgedAt.get(peer);
+      return at !== undefined && now() - at < forMs;
+    },
+    forget(peer: string): void {
+      judgedAt.delete(peer);
+    },
+    get size(): number {
+      return judgedAt.size;
+    },
+  };
+}
+
 /**
  * One instance's addressed stream, `inbox:<instanceId>`. Each message is read once and in
  * order: the reader resumes from the last entry it handed over, across any reconnect, for as
@@ -129,8 +156,7 @@ export function openInbox({
     (await writer.xAddNoMkStream(inboxKey(to), "*", { m: payload }, { TRIM: inboxTrim() })) !== null;
   const gone = (to: string) => new Error(`instance ${to} has no inbox: it is gone`);
 
-  /** Instances whose inbox stayed missing through every try, and when that was found. */
-  const judgedGone = new Map<string, number>();
+  const judged = judgedGone(GONE_FOR_MS);
 
   /**
    * A live instance's inbox is also missing between the store losing its data and the reader
@@ -139,17 +165,15 @@ export function openInbox({
    */
   async function deliverTo(to: string, payload: string): Promise<boolean> {
     if (await tryOnce(to, payload)) return true;
-    const judged = judgedGone.get(to);
-    if (judged !== undefined && performance.now() - judged < GONE_FOR_MS) return false;
-    judgedGone.delete(to);
+    if (judged.isGone(to)) return false;
     for (const delay of RESEND_DELAYS_MS) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       if (await tryOnce(to, payload)) {
-        judgedGone.delete(to);
+        judged.forget(to);
         return true;
       }
     }
-    judgedGone.set(to, performance.now());
+    judged.judge(to);
     return false;
   }
 
