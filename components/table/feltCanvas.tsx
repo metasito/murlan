@@ -39,6 +39,7 @@ import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
 import { useCardShadowsOn } from "./feltReady";
 import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
+import { webDeps } from "@/lib/platform";
 
 export interface FeltCanvasProps {
   lamp: SharedValue<Lamp>;
@@ -166,7 +167,7 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
       if (last !== empty) last.dispose();
       for (const id of Object.keys(built)) if (kept[id] !== built[id]) built[id].dispose();
     },
-    [recorder, builder, paints, kinds, rects, felt, midX, empty, paths, e2e]
+    webDeps([recorder, builder, paints, kinds, rects, felt, midX, empty, paths, e2e])
   );
   useEffect(
     () => () =>
@@ -241,7 +242,7 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
       if (e2e) countBuild("murlanGlowBuilds");
       if (DISPOSE_PATHS && last !== empty) last.dispose();
     },
-    [recorder, builder, paint, empty, felt, midX, e2e]
+    webDeps([recorder, builder, paint, empty, felt, midX, e2e])
   );
   useEffect(
     () => () =>

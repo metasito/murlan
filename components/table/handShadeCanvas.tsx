@@ -10,6 +10,7 @@ import type { CardRect } from "./cardRects";
 import { addOutline, cardShades, shadeCards, shadeShape, shadowFall, shadowPaint, shadowRect, type ShadowPath } from "./cardShadows";
 import { useCardShadowsOn, type HandShadeProps } from "./feltReady";
 import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
+import { webDeps } from "@/lib/platform";
 
 interface Shade { caster: SkPath; below: SkPath; above: SkPath; back: boolean }
 
@@ -73,7 +74,7 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
       version.value += 1;
       if (DISPOSE_PATHS) for (const s of old) for (const path of [s.caster, s.below, s.above]) path.dispose();
     },
-    [builder, felt, midX]
+    webDeps([builder, felt, midX])
   );
 
   // Redrawn as the lamp moves, from paths rebuilt only when a card's outline or the paint order changes.
@@ -109,7 +110,7 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
       drawn.value = recorder.finishRecordingAsPicture();
       if (DISPOSE_PATHS && prev !== empty) prev.dispose();
     },
-    [recorder, cast, face, back, felt, pile.x, pile.y, empty]
+    webDeps([recorder, cast, face, back, felt, pile.x, pile.y, empty])
   );
 
   useEffect(
