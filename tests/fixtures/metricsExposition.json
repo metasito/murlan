@@ -146,5 +146,33 @@
         "reason"
       ]
     }
+  },
+  "round_results_pending": {
+    "type": "gauge",
+    "help": "Finished rounds whose result has not yet landed in the database, across the tables this instance owns",
+    "samples": {
+      "round_results_pending": []
+    }
+  },
+  "round_results_pending_age_seconds": {
+    "type": "gauge",
+    "help": "How long the oldest unlanded round result has waited; 0 when none is pending",
+    "samples": {
+      "round_results_pending_age_seconds": []
+    }
+  },
+  "coalesced_writes_total": {
+    "type": "counter",
+    "help": "Table snapshots replaced by a newer one before they were written",
+    "samples": {
+      "coalesced_writes_total": []
+    }
+  },
+  "telemetry_rows_dropped_total": {
+    "type": "counter",
+    "help": "Diagnostic rows lost: pushed out of a full queue, refused by the database, or for a deleted account",
+    "samples": {
+      "telemetry_rows_dropped_total": []
+    }
   }
 }
