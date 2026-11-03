@@ -101,8 +101,10 @@ function grainLayer(width: number, height: number, ax: number, ay: number): HTML
   return cv;
 }
 
-function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, sx: number, sy: number) {
-  const dpr = window.devicePixelRatio || 1;
+const MAX_DPR = 2;
+const LAMP_TARGETS = 5;
+
+function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, sx: number, sy: number, dpr: number) {
   const ax = dpr * sx;
   const ay = dpr * sy;
   out.width = Math.round(DESIGN.width * ax);
@@ -158,6 +160,27 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, s
   }
 }
 
+type Baked = Map<string, HTMLCanvasElement>;
+
+function bakeCached(out: HTMLCanvasElement, cache: Baked, stops: FeltStops, pool: Pool, sx: number, sy: number) {
+  const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+  const key = `${stops.join()}|${pool.join()}|${sx},${sy}|${dpr}`;
+  const hit = cache.get(key);
+  if (hit) {
+    out.width = hit.width;
+    out.height = hit.height;
+    out.getContext("2d")?.drawImage(hit, 0, 0);
+    return;
+  }
+  bake(out, stops, pool, sx, sy, dpr);
+  const copy = document.createElement("canvas");
+  copy.width = out.width;
+  copy.height = out.height;
+  copy.getContext("2d")?.drawImage(out, 0, 0);
+  if (cache.size >= LAMP_TARGETS) cache.delete(cache.keys().next().value!);
+  cache.set(key, copy);
+}
+
 export function FeltFallback({
   stops,
   pool,
@@ -170,10 +193,14 @@ export function FeltFallback({
   sy: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const cache = useRef<{ scale: string; baked: Baked }>({ scale: "", baked: new Map() });
   const [px, py, reach] = pool;
   useEffect(() => {
-    if (ref.current) bake(ref.current, stops, [px, py, reach], sx, sy);
+    const scale = `${sx},${sy}`;
+    if (cache.current.scale !== scale) cache.current = { scale, baked: new Map() };
+    if (ref.current) bakeCached(ref.current, cache.current.baked, stops, [px, py, reach], sx, sy);
   }, [stops, px, py, reach, sx, sy]);
+  useEffect(() => () => void (cache.current = { scale: "", baked: new Map() }), []);
   return (
     <canvas
       ref={ref}
