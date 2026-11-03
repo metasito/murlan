@@ -20,15 +20,16 @@ test("every CI job caps its own run time", () => {
   assert.deepEqual(all.filter((j) => j.minutes === undefined).map((j) => j.job), [], "a hung job without a cap runs for GitHub's 6-hour default");
 });
 
-test("both device compiles are capped at the budget rule 46 gives them", () => {
-  const rule = /^46\. [^\n]*`Android compiles` and `iOS compiles`[^\n]*`timeout-minutes: (\d+)`/m.exec(readFileSync(rulesPath, "utf8"));
-  assert.ok(rule, "rule 46 no longer names the device compiles' budget as `timeout-minutes: N`");
+test("each device compile is capped at the budget rule 46 gives it", () => {
+  const rules = readFileSync(rulesPath, "utf8");
+  const rule = /^46\. [^\n]*`Android compiles` `timeout-minutes: (\d+)`[^\n]*`iOS compiles` `timeout-minutes: (\d+)`/m.exec(rules);
+  assert.ok(rule, "rule 46 no longer names each device compile's budget as `timeout-minutes: N`");
   const caps = jobs().filter((j) => j.job === "ci.yml:android-build" || j.job === "ci.yml:ios-build");
   assert.deepEqual(
     caps.map((j) => [j.job, j.minutes]),
     [
       ["ci.yml:android-build", Number(rule[1])],
-      ["ci.yml:ios-build", Number(rule[1])],
+      ["ci.yml:ios-build", Number(rule[2])],
     ],
   );
 });
