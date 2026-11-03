@@ -1,67 +1,121 @@
-// Ordering: game:state carries turn and lastMove.seq, but the client applies any state without
-// comparing either; across instances two states for one table can arrive out of order. The live
-// game path is awkward to reorder (one client, one owning instance), so this is a labelled trace
-// plus a transport-level demonstration that the adapter's carrier (pg_notify over several pool
-// connections) does not preserve call order.
-import pg from "pg";
-import { DB_URL, out, sleep } from "./lib.ts";
+// Ordering: the audit found the client applied any game:state without comparing its sequence, and
+// showed the Postgres adapter's carrier (pg_notify over several connections) delivering seq 11
+// before seq 10. D7 gave every state (roomId, epoch, seq) and the client a check
+// (shared/stateOrder.ts, called from OnlineGameContext). This plays a round with the second seat on
+// another instance, so each of its states crosses the cluster, and runs every state that seat
+// received through the client's own check, in arrival order.
+import {
+  bootInstance, connect, killInstance, out, RedisTap, register, resetData, sleep, waitForPeers, type Client,
+} from "./lib.ts";
+import { orderOf, supersedes } from "../../../../../../shared/stateOrder.ts";
+import { getAllValidPlays, getValidGivebackCards, tableDemand, type Move } from "../../../../../../lib/game/gameEngine.ts";
+import type { StateOrder, WireGameState, WireRoomState } from "../../../../../../shared/protocol.ts";
 
 const { log, save } = out("exp-ordering.txt");
 
+function pickMove(s: WireGameState, seat: number): Move | null {
+  const ex = s.exchangePhase;
+  if (ex?.kind === "open") {
+    if (ex.winnerIdx !== seat) return null;
+    const [c] = getValidGivebackCards((s.players[seat]?.hand ?? []) as never, ex.cardFromLoser.id);
+    return c ? { kind: "giveback", cardId: c.id } : null;
+  }
+  if (s.currentTurnIndex !== seat) return null;
+  const hand = s.players[seat]?.hand ?? [];
+  if (hand.length === 0) return null;
+  const plays = getAllValidPlays(hand as never, tableDemand(s as never));
+  return plays.length === 0 ? { kind: "pass" } : { kind: "play", cardIds: plays[0]!.cards.map((c) => c.id) };
+}
+
+function emitMove(socket: Client, move: Move, turn: string): Promise<void> {
+  const payload = move.kind === "play" ? { cardIds: move.cardIds, turn } : move.kind === "pass" ? { turn } : { cardId: move.cardId, turn };
+  const event = move.kind === "play" ? "game:play" : move.kind === "pass" ? "game:pass" : "game:exchange_give_card";
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 6_000);
+    socket.emit(event, payload, () => { clearTimeout(timer); resolve(); });
+  });
+}
+
+/** What the client does with states in arrival order: how many it takes, and how many it refuses. */
+function applyInOrder(orders: (StateOrder | null)[]) {
+  let last: StateOrder | null = null;
+  let applied = 0;
+  let refused = 0;
+  for (const o of orders) {
+    if (supersedes(o, last)) {
+      applied += 1;
+      last = o;
+    } else refused += 1;
+  }
+  return { applied, refused };
+}
+
+const tap = new RedisTap();
+const instances: Awaited<ReturnType<typeof bootInstance>>[] = [];
 try {
   log("# ordering claim");
-  log("\n## Facts read from code (trace):");
-  log("- game:state DOES carry a sequence: server/game/gamePersistence.ts sanitizeStateForPlayer sets");
-  log("  turn = turnOf(state) = String(state.lastMove.seq) (lib/game/moves.ts). So 'no sequence field'");
-  log("  in the report is WRONG; 'no sequence CHECK' is right.");
-  log("- The client never compares it: context/OnlineGameContext.tsx onGameState (~448-478) parses the");
-  log("  state and assigns gameStateRef.current = state unconditionally. The only 'seq' in that file is");
-  log("  errorSeqRef, an unrelated error-dedup counter. No branch reads state.turn or lastMove.seq to");
-  log("  reject or reorder an older state.");
-  log("- Carrier: each game:state is io.to(userRoom).emit -> adapter.broadcast -> one pg_notify on one");
-  log("  of the adapter pool's publisher connections (socketOutbox.ts, @socket.io/postgres-adapter).");
-  log("  pg_notify delivers on COMMIT, and commit order across different connections is not call order,");
-  log("  so a remote recipient can receive state N+1 before N. A LOCAL recipient is served in order");
-  log("  (publishState calls emit per uid synchronously before the next move).");
-  log("- The one self-correction (sendGameStateTo's retry) re-derives live state, so it never rewinds a");
-  log("  client on its own; the reorder window is two genuinely distinct states racing across connections.");
+  log("\n## positive control: the client's own check (shared/stateOrder.ts) on an inverted pair");
+  const ten: StateOrder = { roomId: "r", epoch: 1, seq: 10 };
+  const eleven: StateOrder = { roomId: "r", epoch: 1, seq: 11 };
+  const control = applyInOrder([eleven, ten]);
+  log(`  arrival 11 then 10: applied ${control.applied}, refused ${control.refused} (the audit's client applied both, ending on 10)`);
+  log(`  a newer epoch wins over a higher seq: ${supersedes({ roomId: "r", epoch: 2, seq: 1 }, { roomId: "r", epoch: 1, seq: 99 })}`);
+  if (control.refused !== 1) throw new Error("positive control failed: the check took a stale state");
 
-  log("\n## Induced transport-level demonstration (labelled: not the full game path)");
-  log("Two Postgres connections stand in for two of A's adapter publisher connections. Connection c1");
-  log("sends the NOTIFY for move seq=N but commits slowly; c2 sends seq=N+1 and commits first. A LISTEN");
-  log("client (as A's adapter subscriber on another instance) records arrival order.");
-  const chan = "repro_order_demo";
-  const listener = new pg.Client({ connectionString: `${DB_URL}?application_name=order_tap` });
-  await listener.connect();
-  const arrivals: { seq: number; at: number }[] = [];
-  listener.on("notification", (n) => arrivals.push({ seq: JSON.parse(n.payload ?? "{}").seq, at: Date.now() }));
-  await listener.query(`LISTEN ${chan}`);
-
-  const c1 = new pg.Client({ connectionString: `${DB_URL}?application_name=pub1` });
-  const c2 = new pg.Client({ connectionString: `${DB_URL}?application_name=pub2` });
-  await c1.connect();
-  await c2.connect();
-
-  // c1 begins, queues the NOTIFY for the EARLIER move, but holds the transaction open (its connection
-  // is the slow one). c2 sends the LATER move and commits immediately.
-  await c1.query("BEGIN");
-  await c1.query("SELECT pg_notify($1,$2)", [chan, JSON.stringify({ seq: 10, move: "earlier" })]);
-  await c2.query("SELECT pg_notify($1,$2)", [chan, JSON.stringify({ seq: 11, move: "later" })]); // autocommit
-  await sleep(300); // let seq 11 be delivered
-  await c1.query("COMMIT"); // seq 10 delivered only now
-  await sleep(300);
-
-  log(`  LISTEN arrival order: ${arrivals.map((a) => a.seq).join(" then ")}`);
-  const inverted = arrivals.length === 2 && arrivals[0].seq === 11 && arrivals[1].seq === 10;
-  log(`  the later state (seq 11) arrived before the earlier (seq 10): ${inverted ? "YES" : "no"}`);
-  log(`  With no client-side seq check (traced above), the client would apply 11, then be rewound to 10.`);
-
-  await listener.end();
-  await c1.end();
-  await c2.end();
+  await resetData();
+  await tap.start();
+  instances.push(await bootInstance("srvA", 5581), await bootInstance("srvB", 5582));
+  const [A, B] = instances as [typeof instances[0], typeof instances[0]];
+  await waitForPeers(tap);
+  const tag = Date.now().toString(36);
+  const a = await register(A.url, `oa${tag}`);
+  const b = await register(B.url, `ob${tag}`);
+  const s0 = await connect(A.url, a.cookie, "web");
+  const s1 = await connect(B.url, b.cookie, "web");
+  const seats: { socket: Client; state: WireGameState | null; arrivals: (StateOrder | null)[] }[] = [
+    { socket: s0, state: null, arrivals: [] },
+    { socket: s1, state: null, arrivals: [] },
+  ];
+  for (const seat of seats) seat.socket.on("game:state", (st: WireGameState, ack?: () => void) => { seat.arrivals.push(orderOf(st)); seat.state = st; ack?.(); });
+  const room = await new Promise<WireRoomState>((resolve) => { s0.once("room:state", resolve); s0.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 }); });
+  await new Promise<void>((resolve) => { s1.once("room:state", () => resolve()); s1.emit("room:join", { code: room.code }); });
+  s0.emit("room:start");
+  const mark = tap.mark();
+  let over = false;
+  for (const seat of seats) seat.socket.on("game:round_over", () => (over = true));
+  const deadline = Date.now() + 60_000;
+  while (!over && Date.now() < deadline) {
+    let acted = false;
+    for (let i = 0; i < 2 && !over; i++) {
+      const st = seats[i]!.state;
+      if (!st || st.roundOver) continue;
+      const move = pickMove(st, st.viewerSeatIndex ?? i);
+      if (!move) continue;
+      acted = true;
+      await emitMove(seats[i]!.socket, move, st.turn);
+    }
+    if (!acted) await sleep(20);
+  }
+  await sleep(1_000);
+  const crossed = tap.since(mark).filter((h) => h.via === "inbox").length;
+  log(`\n## live round, seat 0 on A (the owner), seat 1 on B: round over ${over}`);
+  for (const [i, seat] of seats.entries()) {
+    const orders = seat.arrivals;
+    const missing = orders.filter((o) => o === null).length;
+    let inversions = 0;
+    for (let k = 1; k < orders.length; k++) if (orders[k] && orders[k - 1] && !supersedes(orders[k]!, orders[k - 1]!)) inversions += 1;
+    const r = applyInOrder(orders);
+    log(`  seat ${i} (${i === 0 ? "A, local" : "B, remote"}): ${orders.length} states, ${missing} without (roomId, epoch, seq), ${inversions} arrived out of order; the client's check applied ${r.applied}, refused ${r.refused}`);
+  }
+  log(`  inbox messages while the round played (states and intents crossing to and from B): ${crossed}`);
+  log("  carrier: one inbox stream per instance, read in order by its one reader; sends to one instance wait for the one before (server/store/instanceInbox.ts inTurn)");
+  s0.close();
+  s1.close();
 } catch (err) {
   log("FAILED", String((err as Error).stack ?? err));
 } finally {
+  for (const i of instances) await killInstance(i);
+  await tap.stop();
   save();
   process.exit(0);
 }

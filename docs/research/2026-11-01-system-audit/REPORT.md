@@ -11,6 +11,14 @@ production major) on this machine. A label says how each claim is known:
 - **read**: seen in the code at the cited line;
 - **inferred**: a calculation or library behaviour not reproduced here.
 
+**After (#1897).** The fixes landed as tickets #1882-#1896 and every script here was rerun at
+`main` `9818c63` on 2026-11-03, on Postgres 16 and Valkey 9.1, on a different machine (Linux, 4
+vCPU): [sim/results/after.txt](sim/results/after.txt) holds each claim with its BEFORE, AFTER and
+verdict. Each finding below carries a one-line status; the Measurements table an "after" column.
+Every finding and pool finding is fixed; one row of the plan does not move: four of D17's metrics
+(rounds pending and their age, coalesced writes, telemetry rows dropped) are not exported
+(#1944).
+
 ## Verdict
 
 The design is sound where it matters most: the server decides every outcome, a live table lives in
@@ -23,39 +31,46 @@ the player waits on is indexed and bounded. Single-move latency is low (P50 9 ms
    near 3,400 a second for the whole database however many connections send it, while plain
    queries scale past 100,000 (measured). That is about 650 moves a second cluster-wide, so this
    is the first ceiling the system hits, well before CPU or the query pool, and more instances do
-   not raise it.
+   not raise it. *After:* the cluster runs over Valkey streams and inboxes, local recipients take
+   no hop, and a move costs 0 `pg_notify` (measured).
 2. **The connect path scans the whole cluster.** Every connection, and every reconnect after a
    deploy, runs two full `io.fetchSockets()` sweeps to find a few friends (read). A reconnect herd
-   costs O(N²).
+   costs O(N²). *After:* presence lives in Redis; a connect publishes no `FETCH_SOCKETS` and a
+   herd costs one message a connect (measured).
 3. **Slow work sits on paths it need not.** The session store writes on every signed-in HTTP
    request, static files included (measured on API requests; static files read from the
    middleware order); the move that ends a
    round waits on three database calls before its ack (read); round results are written seat by
-   seat, sequentially, with no retry if the process dies (read).
+   seat, sequentially, with no retry if the process dies (read). *After:* no static file reads
+   the session, nothing touches it, the move is acked on apply and a round's results land in one
+   transaction that a kill at +0 ms does not lose (measured).
 4. **Connections fail quietly.** A transaction whose `begin` fails leaks its pool connection for
    good, and a silently dropped adapter connection is never noticed, so an instance can go deaf to
-   its peers while `/health` says it is fine (read).
+   its peers while `/health` says it is fine (read). *After:* both reproduce no longer: a failed
+   `begin` releases its client with the error, and a half-open link is replaced in about 6 s
+   (measured).
 
 Account deletion and the admin page are the two places where data volume, not traffic, breaks a
-query: both scan tables that grow without an index serving them (measured).
+query: both scan tables that grow without an index serving them (measured). *After:* both are
+index scans; only the 30-day funnel still reads its whole window, on the admin pool.
 
 ## Findings, ranked
 
-| # | Finding | Severity | Known by |
-| --- | --- | --- | --- |
-| 1 | Every emit is a `pg_notify`, even to a socket on the same process | High | measured |
-| 2 | Connect and restore sweep every socket in the cluster | High | read |
-| 3 | Session touch on every request, static files included | High (cheap fix) | measured |
-| 4 | Account deletion scans unindexed tables inside a 5 s budget | High (correctness) | measured |
-| 5 | Round-ending move's ack waits on the database; results not durable | Medium | read |
-| 6 | Ticket limiter is per IP; reconnect herd has no first-attempt jitter | Medium | measured + read |
-| 7 | Admin snapshot scans `round_history` and `events`, holds 4 of 10 connections | Medium | measured |
-| 8 | Per-instance rate limits multiply with instances | Medium | read |
-| 9 | Friend lists select whole `users` rows, password hash included | Low | read |
-| 10 | Quick match reads every waiting room, no `LIMIT`, mode filtered in JS | Low | measured |
-| 11 | Orphan sweep loads every `active_games` envelope every 5 minutes | Low | read |
-| 12 | Per-move persist is uncoalesced | Low | measured |
-| 13 | Telemetry inserts one row per event; friend notices one `NOTIFY` per friend | Low | read |
+| # | Finding | Severity | Known by | After (#1897) |
+| --- | --- | --- | --- | --- |
+| 1 | Every emit is a `pg_notify`, even to a socket on the same process | High | measured | Fixed: 0 `pg_notify` and 0 cluster messages per move on one instance |
+| 2 | Connect and restore sweep every socket in the cluster | High | read | Fixed: 0 `FETCH_SOCKETS` per connect; a herd costs one message a connect |
+| 3 | Session touch on every request, static files included | High (cheap fix) | measured | Fixed: 0 session statements per static file, no touch anywhere |
+| 4 | Account deletion scans unindexed tables inside a 5 s budget | High (correctness) | measured | Fixed: `DELETE FROM users` 279 ms to 8.3 ms, all index scans |
+| 5 | Round-ending move's ack waits on the database; results not durable | Medium | read | Fixed: acked on apply; a kill at +0 ms keeps every result row |
+| 6 | Ticket limiter is per IP; reconnect herd has no first-attempt jitter | Medium | measured + read | Fixed: per user, 0 of 120 refused; full jitter, no comb |
+| 7 | Admin snapshot scans `round_history` and `events`, holds 4 of 10 connections | Medium | measured | Fixed: 2.4 s to 83 ms on its own pool; the funnel is indexed, still 0.37 s |
+| 8 | Per-instance rate limits multiply with instances | Medium | read | Fixed: one limit across two instances, measured |
+| 9 | Friend lists select whole `users` rows, password hash included | Low | read | Fixed: three columns |
+| 10 | Quick match reads every waiting room, no `LIMIT`, mode filtered in JS | Low | measured | Fixed (read): predicates in SQL, paged |
+| 11 | Orphan sweep loads every `active_games` envelope every 5 minutes | Low | read | Fixed: 119 kB instead of 3.0 MB per 1,000 tables |
+| 12 | Per-move persist is uncoalesced | Low | measured | Fixed: 0.15 to 0.93 writes per move; its metric is missing |
+| 13 | Telemetry inserts one row per event; friend notices one `NOTIFY` per friend | Low | read | Fixed: one batched insert; an offline friend costs nothing |
 
 Pool and lifecycle findings follow in their own section.
 
@@ -87,7 +102,8 @@ Pool and lifecycle findings follow in their own section.
   instead of one per recipient; fold `turn_deadline` into `game:state`. On one instance this takes
   NOTIFY per move from about 5 to 0. Before horizontal scale, move the adapter to Redis or
   Postgres-free streams.
-- **Proof after the fix.** `sim/load.sh` again: NOTIFY per move and commits per move.
+- **Proof after the fix.** `sim/load.sh` again: NOTIFY per move and commits per move. *After:*
+  0.00 `pg_notify` and 1.86 commits per move on one table, 0.45 at 96 (`sim/results/after.txt`).
 
 ### 2. Connect and restore sweep every socket in the cluster
 
@@ -226,16 +242,16 @@ otherwise).
 Fifteen per instance, as `deploy/runtime.json` says. No pool sets `application_name`,
 `idle_in_transaction_session_timeout` or a maximum connection lifetime.
 
-| # | Finding | Severity |
-| --- | --- | --- |
-| P1 | A failed `begin` leaks an app-pool connection for good | High |
-| P2 | Half-open adapter connections are never detected | High |
-| P3 | Nothing caps instances against the connection budget; boot DDL races and times out | Medium-high |
-| P4 | Ownership reclaim can dispose every table of a healthy process | Medium |
-| P5 | A deploy holds table locks until the last shutdown step | Medium |
-| P6 | Forwarding reads "no answer" as "no owner"; timeouts out of order with the client's retries | Medium |
-| P7 | `/health` runs through the app pool, so saturation looks like death | Medium |
-| P8 | Pool hygiene: no idle-in-transaction timeout, no keep-alive, no lifetime, no name | Low-medium |
+| # | Finding | Severity | After (#1897) |
+| --- | --- | --- | --- |
+| P1 | A failed `begin` leaks an app-pool connection for good | High | Fixed: 0 of 20 leaked (drizzle's own: 20 of 20) |
+| P2 | Half-open adapter connections are never detected | High | Fixed: detected and reconnected in 6.1 s, nothing lost |
+| P3 | Nothing caps instances against the connection budget; boot DDL races and times out | Medium-high | Fixed: 0 failed boots; a 10 M-row index builds |
+| P4 | Ownership reclaim can dispose every table of a healthy process | Medium | Fixed: 0 of 3 disposed; connect gives up at 3 s |
+| P5 | A deploy holds table locks until the last shutdown step | Medium | Fixed: handed off in 36 ms, before `io.close` |
+| P6 | Forwarding reads "no answer" as "no owner"; timeouts out of order with the client's retries | Medium | Fixed: answers in 3.1 s, not 15.8 s |
+| P7 | `/health` runs through the app pool, so saturation looks like death | Medium | Fixed: 200 in 5 ms with the app pool full |
+| P8 | Pool hygiene: no idle-in-transaction timeout, no keep-alive, no lifetime, no name | Low-medium | Fixed: every pool named, timed out, kept alive |
 
 - **P1, read and verified.** drizzle's `transaction()` (`drizzle-orm/node-postgres/session.js`,
   0.45.2) runs `client.connect()` and `begin` outside its `try/finally`, so a `begin` that rejects
@@ -315,24 +331,29 @@ design first (CLAUDE.md, working agreement).
 Finding 8 (a shared rate-limit store) was first left to wait for a second instance; D16 fixes it
 now, in Redis rather than a Postgres table.
 
-After the six PRs, `sim/load.sh` and `sim/explain.sql` rerun against the same seed, and this
-report gains an "after" column.
+The plan landed as sixteen tickets rather than six PRs (#1882-#1897, decided in
+[TICKETS.md](TICKETS.md)); `sim/load.sh`, `sim/explain.sql` and every reproduction were rerun
+against the same seed, and the "after" column below and `sim/results/after.txt` hold the result.
 
 ## Measurements
 
-| Run | Result |
-| --- | --- |
-| 1 table, 20 s, every statement logged | 21 moves/s; 5.2 NOTIFY, 1.0 state write, 10.8 commits per move |
-| 8 tables, 1 min | 54 accepted moves/s, P50 9 ms, P99 27 ms |
-| 32 tables, 1 min | 197 accepted moves/s, P50 29 ms, P99 71 ms |
-| 96 tables, 1 min | 156 accepted moves/s, P50 46 ms, P99 268 ms; 61 % of sent moves refused |
-| pgbench NOTIFY, 1 / 3 / 8 / 16 connections | 2,808 / 3,426 / 3,491 / 3,422 a second |
-| pgbench `SELECT 1`, same | 21,777 / 54,378 / 104,943 / 179,564 a second |
+| Run | Result | After (#1897, `9818c63`) |
+| --- | --- | --- |
+| 1 table, 20 s, every statement logged | 21 moves/s; 5.2 NOTIFY, 1.0 state write, 10.8 commits per move | 24 s: 18 moves/s; 0 NOTIFY, 0.76 state writes, 1.86 commits per move |
+| 8 tables, 1 min | 54 accepted moves/s, P50 9 ms, P99 27 ms | 52 accepted moves/s, P50 6.3 ms, P99 28 ms |
+| 32 tables, 1 min | 197 accepted moves/s, P50 29 ms, P99 71 ms | 193 accepted moves/s, P50 24 ms, P99 47 ms |
+| 96 tables, 1 min | 156 accepted moves/s, P50 46 ms, P99 268 ms; 61 % of sent moves refused | 587 accepted moves/s, P50 66 ms, P99 123 ms; 1.5 % refused |
+| pgbench NOTIFY, 1 / 3 / 8 / 16 connections | 2,808 / 3,426 / 3,491 / 3,422 a second | no longer the cluster's channel |
+| pgbench `SELECT 1`, same | 21,777 / 54,378 / 104,943 / 179,564 a second | not rerun |
+| Valkey `XADD` of 2 kB, 1 / 3 / 8 / 16 clients | — | 19,350 / 58,480 / 81,633 / 75,472 a second |
+| Cluster messages per move | 5.2 (every NOTIFY) | 0 on one instance; 2.04 with one of two seats on another instance |
 
 The soak client plays without thinking time and in bursts, so the server's per-player limit of
 60 moves a minute (`server/socket/socketGameplay.ts:31`, not configurable) refused most of the
 96-table load. These runs are bound by that limit and do not locate the system's ceiling; the
-pgbench rows do, for NOTIFY. Per-move database counts come from the statement log only:
+pgbench rows did, for NOTIFY, until the cluster left it. After, the soak's refusals fell to 1.5 %
+with the limit unchanged, so the 96-table "after" row is a heavier load than its baseline, and the
+ceiling is the store's `XADD` rate over 2.04 messages a move. Per-move database counts come from the statement log only:
 `pg_stat_database` counters lag on backends that never go idle, so they undercount under load.
 Clients and server share one process and one machine, so latency includes client CPU. Treat the
 soak rows as before-and-after numbers, not as capacity.
