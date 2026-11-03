@@ -1,5 +1,5 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 /** One window counting down: `since` is when it last started running, null while held or ended. */
 export interface Countdown {
@@ -56,10 +56,7 @@ export function useCountdown(o: {
   const expires = onExpire !== undefined;
   const key = `${resetKey}|${seconds}`;
   const state = useRef<Countdown | undefined>(undefined);
-  const onExpireRef = useRef(onExpire);
-  useEffect(() => {
-    onExpireRef.current = onExpire;
-  });
+  const expire = useEffectEvent(() => onExpire?.());
 
   // A layout effect, so the window has stepped before any reader's passive effect asks it.
   useLayoutEffect(() => {
@@ -71,7 +68,7 @@ export function useCountdown(o: {
     };
     let id: ReturnType<typeof setTimeout> | undefined;
     const settle = ({ ended, ms }: { ended: boolean; ms: number }) => {
-      if (ended) onExpireRef.current?.();
+      if (ended) expire();
       else if (counting && expires && !state.current?.expired) id = setTimeout(() => settle(step(true)), ms);
     };
     settle(step(counting));
