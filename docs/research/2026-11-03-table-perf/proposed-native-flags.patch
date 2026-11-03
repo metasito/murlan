@@ -1,0 +1,26 @@
+PROPOSED, NOT MEASURED (no device here). Two config-only changes for the native iOS build.
+
+1) Unlock ProMotion. Without this key iOS caps CADisplayLink (Reanimated, Skia, RN) at 60 Hz on
+   an iPhone 16 Pro, while the system UI runs at 120 Hz.
+
+--- a/app.json
++++ b/app.json
+@@ "ios": {
+     "infoPlist": {
++      "CADisableMinimumFrameDurationOnPhone": true,
+       "NSAppTransportSecurity": {
+
+2) Reanimated 4 static feature flags (package.json, read at native build time). With the default
+   (false), each animated prop update goes through a ShadowTree commit; the table updates ~139
+   per-card gloss/shade layers plus flights every frame. Needs a device A/B (bench `restCost`,
+   `throws`) and a check of the gesture-handler Pressable caveat in Reanimated's docs.
+
+--- a/package.json
++++ b/package.json
+@@
++  "reanimated": {
++    "staticFeatureFlags": {
++      "IOS_SYNCHRONOUSLY_UPDATE_UI_PROPS": true,
++      "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true
++    }
++  },
