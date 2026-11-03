@@ -1,4 +1,4 @@
-// Fails a device run whose app died of a native crash, or on Android of an ANR.
+// Fails a device run whose app died of a native crash, or on Android of an uncaught Java exception or an ANR.
 //
 //   node tools/ci/find-native-crash.mjs <android|ios> <app id> [--copy-to <dir>] <path>...
 //
@@ -38,6 +38,29 @@ export function androidTombstone(appId, text) {
   const tail = lines.slice(at, at + 400).filter((line) => /\bDEBUG\b/.test(line));
   const end = tail.findIndex((line, i) => i > 0 && /\*\*\* \*\*\* \*\*\*/.test(line));
   return (end === -1 ? tail : tail.slice(0, end)).slice(0, 120);
+}
+
+/** The AndroidRuntime lines of an uncaught Java exception that killed the app's own process, or []. */
+export function androidJavaCrashLines(appId, text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!/AndroidRuntime.*FATAL EXCEPTION/.test(lines[i])) continue;
+    const process = lines.slice(i + 1, i + 3).join("\n").match(/Process: (\S+?),/)?.[1];
+    if (process !== appId && !process?.startsWith(`${appId}:`)) continue;
+    return lines.slice(i, i + 200).filter((line) => /AndroidRuntime/.test(line)).slice(0, 60);
+  }
+  return [];
+}
+
+/** `{ process, thread, signal }` of an uncaught Java exception in the app's own process, or null. */
+export function androidJavaCrash(appId, text) {
+  const lines = androidJavaCrashLines(appId, text);
+  if (lines.length === 0) return null;
+  return {
+    process: lines.join("\n").match(/Process: (\S+?),/)?.[1] ?? appId,
+    thread: lines[0].match(/FATAL EXCEPTION: (.+?)\s*$/)?.[1] ?? "a thread",
+    signal: `an uncaught exception (${lines[2]?.replace(/^.*AndroidRuntime[^:]*:\s*/, "") ?? "unknown"})`,
+  };
 }
 
 /** `{ process, line }` of the ActivityManager's ANR of the app in a logcat, or null. */
@@ -98,8 +121,8 @@ export function iosCrashDetail(text) {
 const PLATFORMS = {
   android: {
     reads: (file) => !/\.(png|jpe?g|gif|mp4|webm|zip)$/i.test(file),
-    find: (appId, text) => androidCrash(appId, text) ?? androidAnr(appId, text),
-    detail: androidTombstone,
+    find: (appId, text) => androidCrash(appId, text) ?? androidJavaCrash(appId, text) ?? androidAnr(appId, text),
+    detail: (appId, text) => (androidCrash(appId, text) ? androidTombstone(appId, text) : androidJavaCrashLines(appId, text)),
     describe: (c) => (c.line ? `${c.process} was not responding and was killed (${c.line})` : `${c.thread} in ${c.process} died of ${c.signal}`),
     after:
       "Maestro asserts against a stale hierarchy afterwards, so the step that failed is not where the problem is - read the screenshot beside it.",

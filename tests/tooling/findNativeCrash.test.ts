@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { androidAnr, androidCrash, androidTombstone, iosCrash, iosCrashDetail } from "../../tools/ci/find-native-crash.mjs";
+import { androidAnr, androidCrash, androidJavaCrash, androidJavaCrashLines, androidTombstone, iosCrash, iosCrashDetail } from "../../tools/ci/find-native-crash.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = "com.murlan.cardgame";
@@ -179,5 +179,37 @@ describe("what an iOS report says", () => {
 
   test("a legacy report or a bare header says nothing more", () => {
     assert.deepEqual(iosCrashDetail("Identifier: com.murlan.cardgame\nException Type: EXC_CRASH"), []);
+  });
+});
+
+describe("an uncaught Java exception", () => {
+  const fatal = (pkg: string) =>
+    [
+      "11-03 03:10:01.120 E/AndroidRuntime( 4321): FATAL EXCEPTION: mqt_v_js",
+      `11-03 03:10:01.121 E/AndroidRuntime( 4321): Process: ${pkg}, PID: 4321`,
+      "11-03 03:10:01.122 E/AndroidRuntime( 4321): com.facebook.react.common.JavascriptException: TypeError: boom, stack:",
+      "11-03 03:10:01.123 I/ActivityManager(  520): unrelated",
+      "11-03 03:10:01.124 E/AndroidRuntime( 4321): 	at com.facebook.react.modules.core.ExceptionsManagerModule.reportException",
+    ].join("\n");
+
+  test("in our process is a crash, named by thread and exception, with its lines to print", () => {
+    assert.deepEqual(androidJavaCrash(APP, fatal(APP)), {
+      process: APP,
+      thread: "mqt_v_js",
+      signal: "an uncaught exception (com.facebook.react.common.JavascriptException: TypeError: boom, stack:)",
+    });
+    assert.equal(androidJavaCrashLines(APP, fatal(APP)).length, 4);
+  });
+
+  test("in another process, or one whose name only starts with ours, is not", () => {
+    assert.equal(androidJavaCrash(APP, fatal("com.android.systemui")), null);
+    assert.equal(androidJavaCrash(APP, fatal(`${APP}x`)), null);
+  });
+
+  test("fails the run and prints the exception", () => {
+    const out = run("android", APP, dirWith({ "logcat.txt": fatal(APP) }));
+    assert.equal(out.status, 1);
+    assert.match(out.stdout, /::error::The app died during this run: mqt_v_js in com\.murlan\.cardgame died of an uncaught exception/);
+    assert.match(out.stdout, /::group::What [^\n]+ says\n[\s\S]*JavascriptException: TypeError: boom[\s\S]*::endgroup::/);
   });
 });

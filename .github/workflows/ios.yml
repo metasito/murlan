@@ -425,7 +425,7 @@ jobs:
         if: failure()
         run: |
           xcrun simctl spawn "$SIMULATOR_UDID" log show --last 30m --style compact --predicate 'process == "Murlan"' > "$RUNNER_TEMP/app-log.txt" 2>&1 || :
-          grep -iE "terminat|JSError|\[Worklets\]|exception|ReactNativeJS|error" "$RUNNER_TEMP/app-log.txt" | tail -80 || :
+          grep -iE "terminat|JSError|\[Worklets\]|exception|com\.facebook\.react\.log" "$RUNNER_TEMP/app-log.txt" | grep -v "com.apple.dt.xctest" | tail -80 || :
 
       - name: Upload crash reports
         if: always()
