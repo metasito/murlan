@@ -74,10 +74,32 @@ export function iosCrash(appId, text) {
   };
 }
 
+/**
+ * What an iOS `.ips` says about why the app died: the abort's own message (`asi`, where React Native
+ * writes an unhandled JS exception), the exception's backtrace, and the crashed thread's top frames.
+ * @returns {string[]}
+ */
+export function iosCrashDetail(text) {
+  const newline = text.indexOf("\n");
+  const body = newline === -1 ? null : parse(text.slice(newline + 1));
+  if (!body) return [];
+  const images = body.usedImages ?? [];
+  const frame = (f) => `  ${images[f.imageIndex]?.name ?? "?"}  ${f.symbol ?? `+${f.imageOffset}`}`;
+  const asi = Object.entries(body.asi ?? {}).flatMap(([image, messages]) => [].concat(messages).map((m) => `asi ${image}: ${m}`));
+  const thrown = (body.lastExceptionBacktrace ?? []).slice(0, 25).map(frame);
+  const crashed = (body.threads ?? []).find((t) => t.triggered);
+  return [
+    ...asi,
+    ...(thrown.length > 0 ? ["last exception backtrace:", ...thrown] : []),
+    ...(crashed ? [`crashed thread ${crashed.name ?? crashed.queue ?? ""}:`, ...(crashed.frames ?? []).slice(0, 25).map(frame)] : []),
+  ];
+}
+
 const PLATFORMS = {
   android: {
     reads: (file) => !/\.(png|jpe?g|gif|mp4|webm|zip)$/i.test(file),
     find: (appId, text) => androidCrash(appId, text) ?? androidAnr(appId, text),
+    detail: androidTombstone,
     describe: (c) => (c.line ? `${c.process} was not responding and was killed (${c.line})` : `${c.thread} in ${c.process} died of ${c.signal}`),
     after:
       "Maestro asserts against a stale hierarchy afterwards, so the step that failed is not where the problem is - read the screenshot beside it.",
@@ -85,6 +107,7 @@ const PLATFORMS = {
   ios: {
     reads: (file) => /\.(ips|crash)$/i.test(file),
     find: iosCrash,
+    detail: (_appId, text) => iosCrashDetail(text),
     describe: (c) => `${c.process} died of ${c.signal}`,
     after: "The report is in this shard's crash-reports-ios-<shard> artifact.",
   },
@@ -116,7 +139,7 @@ function main([platform, appId, ...rest]) {
     if (!spec.reads(file)) continue;
     read++;
     const crash = spec.find(appId, readFileSync(file, "latin1"));
-    if (crash) found.push({ file, crash, text: platform === "android" ? androidTombstone(appId, readFileSync(file, "latin1")) : [] });
+    if (crash) found.push({ file, crash, text: spec.detail(appId, readFileSync(file, "latin1")) });
   }
   if (found.length === 0) {
     console.log(`No native crash of ${appId}: read ${read} report(s) under ${rest.join(", ")}.`);
@@ -129,7 +152,7 @@ function main([platform, appId, ...rest]) {
       copyFileSync(file, path.join(copyTo, path.basename(file)));
     }
     console.log(`::error::The app died during this run: ${spec.describe(crash)}. ${spec.after} Report: ${file}.`);
-    if (text.length > 0) console.log(["::group::The tombstone in " + file, ...text, "::endgroup::"].join("\n"));
+    if (text.length > 0) console.log([`::group::What ${file} says`, ...text, "::endgroup::"].join("\n"));
   }
   return 1;
 }

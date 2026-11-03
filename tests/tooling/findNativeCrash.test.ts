@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { androidAnr, androidCrash, androidTombstone, iosCrash } from "../../tools/ci/find-native-crash.mjs";
+import { androidAnr, androidCrash, androidTombstone, iosCrash, iosCrashDetail } from "../../tools/ci/find-native-crash.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = "com.murlan.cardgame";
@@ -149,6 +149,35 @@ describe("the tombstone in the run's log", () => {
     const dir = dirWith({ "logcat.txt": [tombstone(APP, "signal 11 (SIGSEGV)"), ...backtrace].join("\n") });
     const out = run("android", APP, dir);
     assert.equal(out.status, 1);
-    assert.match(out.stdout, /::group::The tombstone in [^\n]+\n[^\n]*>>> com\.murlan\.cardgame <<<[\s\S]*libreanimated\.so\n::endgroup::/);
+    assert.match(out.stdout, /::group::What [^\n]+ says\n[^\n]*>>> com\.murlan\.cardgame <<<[\s\S]*libreanimated\.so\n::endgroup::/);
+  });
+});
+
+describe("what an iOS report says", () => {
+  const report = (body: object) => JSON.stringify({ bundleID: APP, name: "Murlan" }) + "\n" + JSON.stringify(body);
+
+  test("the abort's message, the exception's backtrace and the crashed thread's frames, by image", () => {
+    const lines = iosCrashDetail(
+      report({
+        procName: "Murlan",
+        exception: { type: "EXC_CRASH", signal: "SIGABRT" },
+        asi: { CoreFoundation: ["*** Terminating app due to uncaught exception 'RCTFatalException: Unhandled JS Exception: boom'"] },
+        usedImages: [{ name: "Murlan" }, { name: "libsystem_kernel.dylib" }],
+        lastExceptionBacktrace: [{ imageIndex: 0, symbol: "RCTFatal" }],
+        threads: [{ name: "idle", frames: [] }, { triggered: true, queue: "com.facebook.react.ExceptionsManagerQueue", frames: [{ imageIndex: 1, symbol: "__pthread_kill" }, { imageIndex: 0, imageOffset: 4096 }] }],
+      })
+    );
+    assert.deepEqual(lines, [
+      "asi CoreFoundation: *** Terminating app due to uncaught exception 'RCTFatalException: Unhandled JS Exception: boom'",
+      "last exception backtrace:",
+      "  Murlan  RCTFatal",
+      "crashed thread com.facebook.react.ExceptionsManagerQueue:",
+      "  libsystem_kernel.dylib  __pthread_kill",
+      "  Murlan  +4096",
+    ]);
+  });
+
+  test("a legacy report or a bare header says nothing more", () => {
+    assert.deepEqual(iosCrashDetail("Identifier: com.murlan.cardgame\nException Type: EXC_CRASH"), []);
   });
 });
