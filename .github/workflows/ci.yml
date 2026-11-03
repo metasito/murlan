@@ -650,6 +650,8 @@ jobs:
           if /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes' "$app/Info.plist" 2>/dev/null | grep -qw audio; then
             echo "::error::UIBackgroundModes carries audio."; exit 1
           fi
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' "$app/Info.plist")" = true ] ||
+            { echo "::error::Info.plist lacks CADisableMinimumFrameDurationOnPhone: iOS caps the app at 60 Hz."; exit 1; }
           [ -f "$app/main.jsbundle" ] || { echo "::error::The Release .app embeds no main.jsbundle."; exit 1; }
           node scripts/e2eBuildMark.mjs --absent "$app" --mark diagnostics
           node scripts/e2eBuildMark.mjs --absent "$app"
