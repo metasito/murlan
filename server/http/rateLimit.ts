@@ -222,7 +222,7 @@ class SharedStore implements Store {
       const { totalHits, resetTime } = await this.#memory.increment(key);
       return { totalHits, resetTime };
     });
-    this.#localTail = taken;
+    this.#localTail = taken.catch(() => {});
     return taken;
   }
 

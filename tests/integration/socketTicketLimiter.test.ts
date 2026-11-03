@@ -5,6 +5,7 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
+import { register as metrics } from "@prometheus-io/client";
 
 describe("POST /api/auth/socket-ticket is limited per account", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -30,11 +31,13 @@ describe("POST /api/auth/socket-ticket is limited per account", { skip: hasDatab
     assert.equal(anas[60], 429, "the sixty-first ticket in a minute was minted");
 
     assert.equal(await mint(bes), 200, "bes was refused on ana's budget: the key is the IP, not the account");
+  });
 
   test("seventy concurrent requests from one account are refused exactly ten times", async () => {
     const { cookie } = await register(server, "ticket_burst");
+    const fallbacks = async () => (await metrics.getSingleMetric("limiter_fallbacks_total")!.get()).values.reduce((sum, v) => sum + v.value, 0);
+    const before = await fallbacks();
     const statuses = await Promise.all(Array.from({ length: 70 }, () => mint(cookie)));
-    assert.equal(statuses.filter((status) => status === 429).length, 10);
-  });
+    assert.equal(statuses.filter((status) => status === 429).length, 10, `${(await fallbacks()) - before} requests fell back to the local count`);
   });
 });

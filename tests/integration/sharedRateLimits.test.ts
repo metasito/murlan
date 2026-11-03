@@ -278,8 +278,9 @@ describe("a limit while Redis fails", { skip: hasDatabase() ? false : skipMessag
     servers.push({ close: () => new Promise<void>((resolve) => server.close(() => resolve())) });
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
 
+    const fallbacksBefore = await fallbacks();
     const statuses = await Promise.all(Array.from({ length: 70 }, async () => (await fetch(url)).status));
-    assert.equal(statuses.filter((status) => status === 429).length, 10);
+    assert.equal(statuses.filter((status) => status === 429).length, 10, `${(await fallbacks()) - fallbacksBefore} requests fell back to the local count`);
   });
 
   test("a stalled event loop is not a slow Redis: the reply already in hand counts, and no limiter stops asking Redis", async () => {
