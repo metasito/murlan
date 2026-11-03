@@ -10,7 +10,7 @@ import { cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLight } from
 import type { CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
 import { levelShade } from "./rail";
-import { useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
+import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
 
 export const GLOSS_SPOT_ART = () => require("../../assets/images/cards/gloss_spot.webp") as number;
 
@@ -32,7 +32,8 @@ export function LampGloss({ rectKey, rects, width, height }: Props) {
 }
 
 function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTable; rectKey: string; rects: OwnedRects }) {
-  const { glossLight: light, felt } = table;
+  const { felt } = table;
+  const light = glossLightFor(table, rectKey);
   const s = felt.s;
   const radius = CardGloss.spot.radius * s;
   const diag = Math.hypot(width, height);
@@ -86,7 +87,8 @@ export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }
 }
 
 function Glint({ table, rectKey, rects, width, height, color }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string }) {
-  const { glossLight: light, felt } = table;
+  const { felt } = table;
+  const light = glossLightFor(table, rectKey);
   const s = felt.s;
   const diag = Math.hypot(width, height);
   const bandW = 2 * diag;

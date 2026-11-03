@@ -24,8 +24,8 @@ const card = (id: string): Card => ({ id, rank: id.split('_')[0] as Card['rank']
 const rect: CardRect = { x: 437, y: 300, w: 58, h: 84, rot: 0, back: false, lift: 0, glow: 0, seen: 1 };
 const owned = (id: string) => makeMutable<CardRects>({ [id]: rect }) as unknown as OwnedRects;
 
-function Table({ light, children }: { light: SharedValue<GlossLight>; children: React.ReactNode }) {
-  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light);
+function Table({ light, still, children }: { light: SharedValue<GlossLight>; still?: SharedValue<GlossLight>; children: React.ReactNode }) {
+  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light, still ?? light);
   return <CardTableProvider value={value}>{children}</CardTableProvider>;
 }
 
