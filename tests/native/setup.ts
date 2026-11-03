@@ -170,7 +170,12 @@ afterEach(() => {
 // one from before the first one.
 const testingLibrary = require('@testing-library/react-native') as {
   screen: { toJSON: () => unknown };
+  configure: (options: { asyncUtilTimeout: number }) => void;
 };
+
+// The library's 1 s default for waitFor/findBy is a boot on a loaded CI runner (run 41726009844):
+// a wait that ends on its condition costs nothing longer, and this stays far under a test's own limit.
+testingLibrary.configure({ asyncUtilTimeout: 10_000 });
 
 // A fake-timer test that fails before restoring leaves the next one on a clock nothing advances.
 // Declared below the testing library's `require` so its cleanup unmounts under the clock the tree
