@@ -61,6 +61,7 @@ describe('the lamp level on the cards', () => {
   });
 
   it('renders nothing at lamp level 1', async () => {
+    jest.useFakeTimers();
     const light = makeMutable<GlossLight>({ lx: 437, ly: 140, level: 1, r: 1, t: 0 });
     await render(
       <Table light={light}>
@@ -73,8 +74,10 @@ describe('the lamp level on the cards', () => {
     expect(shade().display).toBe('none');
     await act(async () => {
       light.value = { ...light.value, level: 0.75 };
+      jest.advanceTimersByTime(16);
     });
     expect(shade().display).toBe('flex');
+    jest.useRealTimers();
   });
 
   it('shades a play in flight to the pile as the play it lands on', async () => {

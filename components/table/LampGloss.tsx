@@ -14,8 +14,6 @@ import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./
 
 export const GLOSS_SPOT_ART = () => require("../../assets/images/cards/gloss_spot.webp") as number;
 
-const AnimatedGradient = Animated.createAnimatedComponent(LinearGradient);
-
 const STREAK = [withAlpha(CardGloss.streak.color, 0), CardGloss.streak.color, withAlpha(CardGloss.streak.color, 0)] as const;
 
 interface Props {
@@ -62,12 +60,9 @@ function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTabl
         source={GLOSS_SPOT_ART()}
         style={[styles.layer, { left: -radius, top: -radius, width: 2 * radius, height: 2 * radius }, spotStyle]}
       />
-      <AnimatedGradient
-        testID="card-gloss-streak"
-        pointerEvents="none"
-        colors={STREAK}
-        style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, streakStyle]}
-      />
+      <Animated.View testID="card-gloss-streak" pointerEvents="none" style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, streakStyle]}>
+        <LinearGradient colors={STREAK} style={StyleSheet.absoluteFill} />
+      </Animated.View>
     </View>
   );
 }
@@ -116,12 +111,9 @@ function Glint({ table, rectKey, rects, width, height, color }: Omit<Props, "rec
   return (
     <>
       <Animated.View testID="card-foil-ink" pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color }, inkStyle]} />
-      <AnimatedGradient
-        testID="card-foil-band"
-        pointerEvents="none"
-        colors={[withAlpha(color, 0), color, withAlpha(color, 0)]}
-        style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, bandStyle]}
-      />
+      <Animated.View testID="card-foil-band" pointerEvents="none" style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, bandStyle]}>
+        <LinearGradient colors={[withAlpha(color, 0), color, withAlpha(color, 0)]} style={StyleSheet.absoluteFill} />
+      </Animated.View>
     </>
   );
 }

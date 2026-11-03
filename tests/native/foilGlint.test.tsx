@@ -76,7 +76,7 @@ describe('the foil glint', () => {
       </Table>
     );
     const glint = screen.getByTestId('card-foil-glint', opts);
-    expect(glint.queryAll((c) => typeof c.type === 'string').length).toBe(Platform.select({ ios: 5, default: 6 }));
+    expect(glint.queryAll((c) => typeof c.type === 'string').length).toBe(Platform.select({ ios: 6, default: 7 }));
   });
 
   it('draws nothing on a face-up card or off the table', async () => {
