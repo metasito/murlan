@@ -17,16 +17,26 @@ up to 54 cards.
 npm run perf:web
 ```
 
-Roughly a minute. It is **not** part of `npm run test:e2e` — the default suite
-ignores the file, and this runs from its own config
-(`tests/e2e/playwright.perf.config.ts`).
+About seven minutes, mostly the full round. It is **not** part of `npm run test:e2e` — the default
+suite ignores the file, and this runs from its own config (`tests/e2e/playwright.perf.config.ts`).
+`PERF_URL=http://127.0.0.1:<port>` measures a server you started by hand instead of the e2e build:
+point it at a production export (`npx expo export --platform web`, no `EXPO_PUBLIC_E2E_FAST`), so
+the bots think at the pace a player sees. The numbers below were taken that way.
 
-It prints five lines:
+Every case runs with **motion on** (`reducedMotion: "no-preference"`) at **device pixel ratio 3**
+(`test.use` in the spec), in a 874x402 landscape phone viewport. Under reduced motion the lamp does
+not sway, the motes sleep and the particle loop idles, so a number taken there measures a table
+nobody plays (rule 51). The two `-4x` cases also set CDP's CPU throttle to 4x, Lighthouse's mobile
+preset; a desktop at full speed hides what a phone pays.
+
+It prints seven lines:
 
 ```
 [web-perf] deal {...}
 [web-perf] idle {...}
 [web-perf] drag {...}
+[web-perf] idle-4x {...}
+[web-perf] round-4x {...}
 [web-perf] online-idle {...}
 [web-perf] throttled-load {...}
 ```
@@ -36,8 +46,13 @@ the burst worth measuring: every card in the hand animates in at once. `idle`
 records a settled table as the control — the difference between the two is the
 cost of the animation rather than the cost of the page.
 
+`idle-4x` is a settled table on the viewer's own turn, at 4x CPU: nothing runs but ambient motion.
+`round-4x` records one whole four-player round at 4x, from the click to the result screen — the
+deal, every throw, the bots' replies and the pauses between — so its `frames` are in the thousands
+and its `transformed` and `domNodes` are sampled on the result screen.
+
 `drag` records a card being dragged the width of the fan: the other burst, and
-the only one whose dropped frames land under the finger that caused them. Its
+the only one whose dropped frames land under the finger that caused it. Its
 window is sized to the drag and starts *after* the hold, because the hold is a
 stationary finger — 800ms of it inside the window is 800ms of idle table
 averaged into the drag's own p50, which is how the first version of this
@@ -49,13 +64,14 @@ refuses to publish a number unless the hand's order actually changed.
 | Field | Means |
 |---|---|
 | `frames` | presented frames observed. Under ~30 for `deal` means nothing was measured. |
+| `fps` | `frames` over the window's length. 60 is the display's rate. |
 | `p50`, `p95`, `worst` | milliseconds between presented frames. **16.7 is one frame at 60fps.** |
 | `janky` | frames that took longer than two 60fps frames to arrive |
 | `longTasks`, `longTaskMs` | main-thread tasks over 50ms, via `PerformanceObserver` |
 | `transformed` | elements carrying a non-identity transform when sampled |
 | `domNodes` | elements in the document |
 
-`online-idle` is `idle` on a two-seat online table, under reduced motion (the helper sets it).
+`online-idle` is `idle` on a two-seat online table, motion on.
 `throttled-load` opens home under Lighthouse's mobile throttling (4x CPU, 150ms RTT, 1.6 Mbps)
 and reports `fcp`, `lcp` and `tbt` (the sum of every long task's time past 50ms) in milliseconds.
 
@@ -63,23 +79,33 @@ Server capacity is `npm run soak -- --tables 8 --minutes 1`: moves/sec and broad
 
 ## The baseline
 
-Desktop Chromium via Playwright, offline game, 4 players (online: 2 seats), `eb0d4825`
-(#1085), 2026-09-17. Before #94's visual work (`ef03d0c`) the deal had 1 janky frame and 179
-transformed nodes.
+Production web export of `12aae41c` (main after #1968), Chromium via Playwright, headless, DPR 3, motion on, 874x402
+(online: 844x390, 2 seats), 2026-11-03, one run, on a shared machine at load average 8 to 12, so
+read the figures to the nearest 5fps. Not a phone: it is a software-rendered desktop browser, 4x slower where marked.
 
-| | frames | p50 | p95 | worst | janky | longTasks | transformed | domNodes |
-|---|---|---|---|---|---|---|---|---|
-| **deal** | 149 | 16.7 | **33.4** | 33.5 | **9** | 0 | 229 | 817 |
-| **idle** | 121 | 16.7 | 16.7 | 16.8 | 0 | 0 | 229 | 817 |
-| **drag** | 86 | 16.7 | 16.8 | 16.8 | 0 | 0 | 193 | 714 |
-| **online-idle** | 121 | 16.7 | 16.7 | 16.8 | 0 | 0 | 161 | 752 |
+| | CPU | frames | fps | p50 | p95 | worst | janky | longTasks | longTaskMs | transformed | domNodes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **deal** | 1x | 168 | 53.9 | 16.7 | 33.3 | 133.4 | 3 | 1 | 124 | 157 | 958 |
+| **idle** | 1x | 103 | 49.8 | 16.7 | 33.4 | 133.3 | 3 | 1 | 129 | 169 | 1055 |
+| **drag** | 1x | 87 | 60.0 | 16.7 | 16.8 | 16.8 | 0 | 0 | 0 | 141 | 885 |
+| **online-idle** | 1x | 101 | 47.0 | 16.7 | 50.0 | 66.7 | 8 | 1 | 58 | 108 | 902 |
+| **idle-4x** | 4x | 213 | 50.9 | 16.7 | 33.4 | 66.6 | 7 | 0 | 0 | 146 | 920 |
+| **round-4x** | 4x | 9076 | 27.2 | 33.3 | 83.3 | 350.0 | 3121 | 410 | 28587 | 57 | 428 |
 
 | | fcp | lcp | tbt |
 |---|---|---|---|
-| **throttled-load** | 6600 | 6724 | 861 |
+| **throttled-load** | 8540 | 8616 | 2067 |
 
-Read it as: a settled table and a drag hold 60fps with no long task; the deal now drops
-**nine frames**, up from one before #94. A throttled phone waits 6.7s for its largest paint.
+Read it as: a settled table holds about 50fps with motion on, even at 4x CPU, but **a whole round
+at 4x runs at 27fps, a third of its frames janky, with 410 long tasks totalling 28.6s.** The
+settled table is not where a phone hurts; the throws, replies and result are. A drag still holds
+60fps at 1x.
+
+The table before this re-recording (`eb0d4825`, 2026-09-17) was desktop, 1280x720, DPR 1 and never
+throttled: deal 9 janky, idle 0, drag 0, and its online case ran under reduced motion. Its "a settled
+table holds 60fps" was true of that table and of no phone. The research measured the same settled
+table at 57.8fps at 1x and 17.3fps at 4x before #1968
+(`docs/research/2026-11-03-table-perf/REPORT.md`); the 50.9fps above is after it.
 
 **A drag has headroom to spare.** Every frame arrives on time, so a
 change that removes work from the gesture cannot show up here — the saving is
@@ -89,11 +115,11 @@ evidence the work was free.
 
 Two things worth carrying forward:
 
-- **`transformed` is already 229 on a settled table**, against #95's ~100
+- **`transformed` is 146 on a settled table**, against #95's ~100
   ceiling. The two are not the same measurement — a *static* transform counts
   here, and #95's number is about components *concurrently animating* — but it
-  says the budget is not empty before the visual work starts, and it is the
-  cheapest proxy available for how many nodes a frame has to touch.
+  says the budget is not empty, and it is the cheapest proxy available for how
+  many nodes a frame has to touch.
 - **`worst` is the number that moves first.** p50 stays at 16.7 long after the
   experience has stopped feeling smooth; a dropped frame shows up in `worst` and
   `janky` while the median is still perfect.
@@ -103,10 +129,13 @@ Two things worth carrying forward:
 There is no threshold in the test, deliberately. Compare against the table above
 by hand, and treat as a regression:
 
-- `janky` on `deal` rising above single figures, or any `janky` on `idle`
+- `fps` on `idle-4x` falling below ~45, or on `round-4x` below ~25
+- `janky` on `deal` rising above single figures
 - any `janky` at all on `drag`, or its `p95` leaving ~16.7
-- `longTasks` becoming non-zero
-- `p95` on `idle` leaving ~16.8
+- `longTasks` on `idle-4x` becoming non-zero, or `longTaskMs` on `round-4x` rising
+
+A change to the table is measured the way rule 51 says: this check, before and after, in the same
+session, alternating, with the load average beside the figures.
 
 Re-record and update this table whenever the baseline legitimately moves, in the
 same commit that moves it, so the number and its cause travel together.
@@ -132,7 +161,7 @@ rendered.
 
 > [!IMPORTANT]
 > **A desktop CI runner will never show what a mid-range Android phone does.**
-> The baseline above is desktop Chromium and nothing else.
+> The baseline above is desktop Chromium, throttled in software, and nothing else.
 
 Getting the number that actually matters needs a person with a handset:
 
