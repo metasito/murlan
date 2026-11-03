@@ -541,7 +541,7 @@ jobs:
     needs: scope
     if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
-    timeout-minutes: 48
+    timeout-minutes: 30
     env:
       CCACHE_DIR: /Users/runner/Library/Caches/ccache
       CCACHE_MAXSIZE: 3G
@@ -553,13 +553,14 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install ccache
-      # The C++ of the third-party pods is nearly all of the compile; a restore-keys hit after a
-      # dependency change still reuses every object whose preprocessed source did not move.
+      # Keyed per run because a cache is never rewritten once its key exists: a key that named only
+      # the dependencies kept the first run's contents for good, an empty cache included.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /Users/runner/Library/Caches/ccache
-          key: ${{ runner.os }}-${{ runner.arch }}-ccache-${{ hashFiles('package-lock.json', 'patches/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ccache-${{ hashFiles('package-lock.json', 'patches/**') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ccache-${{ hashFiles('package-lock.json', 'patches/**') }}-
             ${{ runner.os }}-${{ runner.arch }}-ccache-
       - name: Each Skia Metal layer follows its own opaque
         run: |
