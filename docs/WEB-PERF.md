@@ -145,6 +145,6 @@ Getting the number that actually matters needs a person with a handset:
 Until that row exists, every "is this fast enough on a phone?" answer is still a
 guess — a better-informed one than before, but a guess.
 
-The app is on **Expo SDK 57**, which brings React 19.2's Chrome Performance
+The app is on **Expo SDK 58**, whose React 19.3 carries 19.2's Chrome Performance
 Tracks — the closest thing to a first-party answer, and worth recording in that
 trace (`tests/tooling/webPerfDoc.test.ts` keeps this sentence on `package.json`'s SDK).
