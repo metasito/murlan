@@ -541,10 +541,27 @@ jobs:
     needs: scope
     if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
+    env:
+      CCACHE_DIR: /Users/runner/Library/Caches/ccache
+      CCACHE_MAXSIZE: 3G
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
+      - name: Install ccache
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install ccache
+      # Keyed per run because a cache is never rewritten once its key exists: a key that named only
+      # the dependencies kept the first run's contents for good, an empty cache included.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /Users/runner/Library/Caches/ccache
+          key: ${{ runner.os }}-${{ runner.arch }}-ccache-${{ hashFiles('package-lock.json', 'patches/**') }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ccache-${{ hashFiles('package-lock.json', 'patches/**') }}-
+            ${{ runner.os }}-${{ runner.arch }}-ccache-
       - name: Each Skia Metal layer follows its own opaque
         run: |
           lib=node_modules/@shopify/react-native-skia/apple
@@ -594,6 +611,19 @@ jobs:
           workspace=$(ls -d ios/*.xcworkspace | head -1)
           scheme=$(basename "$workspace" .xcworkspace)
           echo "Building scheme $scheme"
+          # React Native's USE_CCACHE wrappers find ccache through $CCACHE_BINARY, which never reaches
+          # Xcode's compile tasks, so they ran plain clang; these name every path outright.
+          wrap="$RUNNER_TEMP/ccache-bin"
+          mkdir -p "$wrap"
+          for tool in clang clang++; do
+            printf '#!/bin/sh\nexport CCACHE_DIR=%s CCACHE_MAXSIZE=%s CCACHE_CONFIGPATH=%s\nexec %s %s "$@"\n' \
+              "$CCACHE_DIR" "$CCACHE_MAXSIZE" "$PWD/node_modules/react-native/scripts/xcode/ccache.conf" \
+              "$(command -v ccache)" "$(xcrun -f "$tool")" > "$wrap/$tool"
+            chmod +x "$wrap/$tool"
+          done
+          ccache --zero-stats
+          # `-sdk iphonesimulator` alone resolves to "Any iOS Simulator Device", which builds arm64
+          # and x86_64 whatever ONLY_ACTIVE_ARCH says.
           xcodebuild \
             -workspace "$workspace" \
             -scheme "$scheme" \
@@ -601,9 +631,17 @@ jobs:
             -sdk iphonesimulator \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             ONLY_ACTIVE_ARCH=YES \
+            ARCHS=arm64 \
+            CC="$wrap/clang" \
+            CXX="$wrap/clang++" \
+            LD="$wrap/clang" \
+            LDPLUSPLUS="$wrap/clang++" \
             COMPILER_INDEX_STORE_ENABLE=NO \
             CODE_SIGNING_ALLOWED=NO \
             build
+          ccache --show-stats
+          ccache --print-stats | grep -qE '^(direct|preprocessed)_cache_(hit|miss)\s+[1-9]' ||
+            echo "::warning::ccache saw no compile: the next run starts cold again."
       - name: The release declares no background audio, and nothing was downloaded
         run: |
           app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
