@@ -146,7 +146,7 @@ describe("the cluster's count of its peers", { skip: hasDatabase() ? false : ski
     const c = cluster("count_blip");
     after(() => c.stop());
 
-    test("nobody is told it is alone, during it or right after", { timeout: 60_000 }, async () => {
+    test("nobody is told it is alone, during it or right after", { timeout: 90_000 }, async () => {
       const proxy = await c.link();
       const a = c.boot("a", proxy);
       const b = c.boot("b");

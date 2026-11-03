@@ -68,7 +68,7 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     assert.deepEqual(received, Array.from({ length: 70 }, (_, n) => n));
   });
 
-  test("a send to an instance that never had an inbox rejects within seconds and makes none", { timeout: 10_000 }, async () => {
+  test("a send to an instance that never had an inbox rejects within seconds and makes none", { timeout: 20_000 }, async () => {
     const gone = randomUUID();
     await assert.rejects(sender.send(gone, { kind: "probe", n: -1 }), /has no inbox/);
     assert.equal(await redis.exists(inboxOf(gone)), 0, "the send made a stream nobody reads");

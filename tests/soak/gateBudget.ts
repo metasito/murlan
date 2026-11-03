@@ -3,9 +3,11 @@
 // `opts.minutes * 60_000` is the one deadline in this path `DEADLINE_SCALE` does not
 // multiply, and every wait around it is one it does. A budget shared between the two
 // is one a slow runner can spend the window's share of, so the timeout is derived
-// from the window instead, with the stall allowance beside it scaled.
+// from the window instead, with the stall allowance beside it scaled, and the two
+// are what a passing test may spend of it (tests/helpers/timeoutHeadroom.mjs).
 import { readFileSync } from "node:fs";
 import { DEADLINE_SCALE, SLOW_RUNNER_SCALE } from "../helpers/client.ts";
+import { HEADROOM_SHARE } from "../helpers/timeoutHeadroom.mjs";
 
 /** `settle`'s cap, so the reserve kept for it and the cap it waits to are one number. */
 export const SETTLE_CAP_MS = 4_000;
@@ -96,7 +98,7 @@ export function gateBudget(
     };
   }
 
-  return { timeoutMs: playMs + stallMs * scale, playMinutes: playMs / 60_000, unfit };
+  return { timeoutMs: (playMs + stallMs * scale) / HEADROOM_SHARE, playMinutes: playMs / 60_000, unfit };
 }
 
 /** The shipped configuration — refused, not returned beside an objection a caller can skip. */

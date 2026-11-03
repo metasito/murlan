@@ -181,7 +181,7 @@ test("the scan matches a hand-built node_modules join, spread across lines, and 
   );
 });
 
-test("no file outside the ignore list hand-builds a node_modules path", () => {
+test("no file outside the ignore list hand-builds a node_modules path", { timeout: 150_000 }, () => {
   for (const f of IGNORE_LIST) assert.ok(existsSync(path.join(repoRoot, f)), `${f} is on the ignore list but does not exist`);
   const files = sourceFiles(".")
     .map((f) => f.slice(2))

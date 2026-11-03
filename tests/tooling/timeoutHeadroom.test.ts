@@ -63,6 +63,26 @@ describe("node:test's reporter", () => {
     assert.equal(fits.failed, false, fits.out);
   });
 
+  test("reads a timeout the file computes from its imports and top-level constants, as the file computes it", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "timeout-headroom-"));
+    try {
+      writeFileSync(path.join(dir, "owner.ts"), "export const BASE_MS: number = 1_500;\nexport const budget = () => ({ ms: 2 * BASE_MS });\n");
+      const file = path.join(dir, "a.test.ts");
+      const source = [
+        'import { test } from "node:test";',
+        'import { BASE_MS, budget } from "./owner.ts";',
+        "const B = budget();",
+        "test('x', { timeout: BASE_MS + 500 }, () => {});",
+        "test('y', { timeout: B.ms * Math.max(1, 2) }, () => {});",
+        "function local() { return 1; }",
+        "test('z', { timeout: local() }, () => {});",
+      ].join("\n");
+      assert.deepEqual([...declaredTimeouts(source, file, ts)], [["4:1", 2_000], ["5:1", 6_000], ["7:1", "unreadable"]]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("fails a timeout it cannot read rather than judging it against another", async () => {
     const r = await report([pass({ ms: 1, line: 1, column: 1 })], { read: () => 'test("x", { timeout: LIMIT }, () => {});\n' });
     assert.equal(r.failed, true);
@@ -146,7 +166,7 @@ describe("jest's environment", () => {
       );
       writeFileSync(path.join(dir, "all.test.js"), `describe("all", () => { beforeAll(${wait}, ${LIMIT_MS}); test("under it", () => {}); });\n`);
       const config = { rootDir: dir, testEnvironment: ENVIRONMENT, transform: {}, testMatch: ["**/*.test.js"], cacheDirectory: path.join(dir, ".cache") };
-      const run = spawnSync(process.execPath, [path.join(repoRoot, "node_modules", "jest", "bin", "jest.js"), "--config", JSON.stringify(config), "--json", "--maxWorkers=2"], {
+      const run = spawnSync(process.execPath, [createRequire(import.meta.url).resolve("jest/bin/jest"), "--config", JSON.stringify(config), "--json", "--maxWorkers=2"], {
         cwd: dir,
         encoding: "utf8",
       });

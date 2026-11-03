@@ -90,5 +90,5 @@ describe('the first round, offline', () => {
     await steps(BOT_THINK_MS + 100);
     expect(view.plays()).toBe(1);
     await view.unmount();
-  }, 30_000);
+  });
 });

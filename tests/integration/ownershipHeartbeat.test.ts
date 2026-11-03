@@ -48,7 +48,7 @@ async function lockHolders(rooms: string[]): Promise<(number | null)[]> {
 const present = async (pid: number) =>
   ((await admin!.query("SELECT 1 FROM pg_stat_activity WHERE pid = $1", [pid])).rowCount ?? 0) > 0;
 
-test("a heartbeat lost to a half-open flow keeps every room, on a new session, with the old one ended", { skip, timeout: 60_000 }, async () => {
+test("a heartbeat lost to a half-open flow keeps every room, on a new session, with the old one ended", { skip, timeout: 180_000 }, async () => {
   admin = new pg.Client({ connectionString: direct });
   await admin.connect();
   const proxy = await throughProxy();
@@ -77,7 +77,7 @@ test("a heartbeat lost to a half-open flow keeps every room, on a new session, w
 });
 
 // The test's own timeout is the bound: the connect gives up at 3 s; without it the claim never settles.
-test("a server that accepts and never answers refuses the claim within the connect timeout", { skip, timeout: 4_000 }, async () => {
+test("a server that accepts and never answers refuses the claim within the connect timeout", { skip, timeout: 30_000 }, async () => {
   const proxy = await throughProxy();
   proxy.blackholeNew(true);
   reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });

@@ -38,7 +38,7 @@ describe("a soak seed reproduces the first deal", {
     return (deal as Extract<SoakLogEntry, { kind: "deal" }>).hands;
   };
 
-  test("two runs of one seed deal the same hands, and another seed does not", { timeout: 90_000 }, async () => {
+  test("two runs of one seed deal the same hands, and another seed does not", { timeout: 150_000 }, async () => {
     const first = await firstDeal(1816);
     assert.equal(first.flat().length, 54, "a four-handed deal places the whole deck");
     assert.deepEqual(await firstDeal(1816), first);

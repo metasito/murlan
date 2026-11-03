@@ -4,10 +4,10 @@ import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer
 import { register } from "../helpers/client.ts";
 
 /**
- * Ten seconds against the harness's two-minute keep-alive — outside any honest
+ * Thirty seconds against the harness's two-minute keep-alive — outside any honest
  * teardown, well inside a wait for one.
  */
-test("stop() does not wait out a response nobody read", { timeout: 10_000 }, async (t) => {
+test("stop() does not wait out a response nobody read", { timeout: 30_000 }, async (t) => {
   if (!hasDatabase()) {
     t.skip(skipMessage());
     return;

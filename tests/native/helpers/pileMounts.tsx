@@ -151,6 +151,6 @@ export function fourTricks(name: string, preference: 'on' | 'off') {
       expect(frames.all.size).toBeGreaterThan(4);
       expect([...frames.all].filter((f) => f.isActive && f.callbackId !== -1)).toEqual([]);
       await view.unmount();
-    }, 120_000);
+    }, 150_000);
   });
 }

@@ -200,7 +200,7 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     proxy.refuse(false);
   });
 
-  test("a clear whose link reconnects between its WATCH and its EXEC is tried again, not dropped", async () => {
+  test("a clear whose link reconnects between its WATCH and its EXEC is tried again, not dropped", { timeout: 180_000 }, async () => {
     const c = cluster();
     const link = await startProxy(targetOf(redisUrl, 6379));
     let cut = false;

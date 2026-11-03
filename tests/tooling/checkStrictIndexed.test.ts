@@ -36,7 +36,7 @@ describe("noUncheckedIndexedAccess ratchet", () => {
     assert.equal(config.files, undefined);
   });
 
-  test("the real config passes today", () => {
+  test("the real config passes today", { timeout: 360_000 }, () => {
     const { ok, message } = runStrictIndexedCheck();
     assert.equal(ok, true, message);
   });

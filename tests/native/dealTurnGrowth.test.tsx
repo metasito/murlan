@@ -48,5 +48,5 @@ describe('the landed cards grow into the turn size', () => {
     expect(registry()[id].w / last[id].w).toBeCloseTo(HAND_SCALE_ON_TURN / HAND_SCALE, 2);
     await view.unmount();
     delete process.env.EXPO_PUBLIC_E2E_FAST;
-  }, 20_000);
+  });
 });

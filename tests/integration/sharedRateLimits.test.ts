@@ -165,7 +165,7 @@ describe("a limit while Redis fails", { skip: hasDatabase() ? false : skipMessag
   }
 
   for (const outage of ["stopped", "half-open"] as const) {
-    test(`with Redis ${outage}, each instance's own count still limits, no caller is locked out, and Redis counts again once back`, { timeout: 60_000 }, async () => {
+    test(`with Redis ${outage}, each instance's own count still limits, no caller is locked out, and Redis counts again once back`, { timeout: 90_000 }, async () => {
       assert.ok(await redisReady(), "the limiters' Redis connection never came back");
       const name = freshName();
       const send = await instance(name, 3);
@@ -316,7 +316,7 @@ describe("a limit while Redis fails", { skip: hasDatabase() ? false : skipMessag
     assert.equal(await fallbacks(), fallbacksBefore);
   });
 
-  test("a fake clock dated ahead leaves no limiter skipping Redis once it is gone", { timeout: 60_000 }, async () => {
+  test("a fake clock dated ahead leaves no limiter skipping Redis once it is gone", { timeout: 90_000 }, async () => {
     assert.ok(await redisReady(), "the limiters' Redis connection never came back");
     const send = await instance(freshName(), 1_000);
     const restore = installClock({ ...realClock, now: () => realClock.now() + 86_400_000 });

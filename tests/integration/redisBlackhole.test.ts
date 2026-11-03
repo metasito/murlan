@@ -53,7 +53,7 @@ describe("a half-open Redis link", { skip: hasDatabase() ? false : skipMessage()
     await dropSchema(baseUrl, schema);
   });
 
-  test("is replaced within 15 s, and the other instance's broadcast reaches it again", { timeout: 60_000 }, async () => {
+  test("is replaced within 15 s, and the other instance's broadcast reaches it again", { timeout: 90_000 }, async () => {
     const tag = Date.now().toString(36);
     const onA = await connectSocket(`http://127.0.0.1:${ports[0]}`, { cookie: await register(ports[0], `ba${tag}`) });
     const onB = await connectSocket(`http://127.0.0.1:${ports[1]}`, { cookie: await register(ports[1], `bb${tag}`) });

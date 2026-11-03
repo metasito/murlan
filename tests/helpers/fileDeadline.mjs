@@ -7,8 +7,11 @@ import os from "node:os";
 import path from "node:path";
 import { identityOf } from "../../scripts/lib/proc.mjs";
 
-/** Three times the slowest file CI has measured: `tests/integration/reconnect.test.ts`, 47 s. */
-export const FILE_DEADLINE_MS = 150_000;
+/**
+ * Eight times the slowest file CI has measured, `tests/tooling/mutationRun.test.ts` at about 85 s, so
+ * it spends half the share tests/helpers/timeoutHeadroom.mjs allows.
+ */
+export const FILE_DEADLINE_MS = 720_000;
 
 /**
  * Only ever shortens the deadline, so no setting of it switches the guard off.

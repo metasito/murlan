@@ -60,7 +60,7 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
     expect(Math.min(...scales)).toBeLessThan(0.9);
     expect(jest.mocked(dealSpecks).mock.calls).toHaveLength(13);
     await r.unmount();
-  }, 20_000);
+  });
 
   it("lifts and turns each of the viewer's dealt cards by its arc", async () => {
     const actual = jest.requireActual<typeof import('@/components/table/dealPose')>('@/components/table/dealPose');
@@ -86,7 +86,7 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
     } finally {
       jest.mocked(handDealArc).mockImplementation(actual.handDealArc);
     }
-  }, 20_000);
+  });
 
   it('lays the hand in place and lights the lamp when reduced motion comes on mid-deal', async () => {
     const r = await render(table());
@@ -101,7 +101,7 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
     const [lamp, , to] = breathHolds().at(-1)!;
     expect([to, lamp.lvl]).toEqual([null, 1]);
     await r.unmount();
-  }, 20_000);
+  });
 
   it('lays the hand in place under reduced motion, with no breath, lamp rise or specks', async () => {
     await setMotion('on');

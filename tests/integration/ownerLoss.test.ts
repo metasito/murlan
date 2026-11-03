@@ -63,7 +63,7 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
     );
   }
 
-  test("a survivor resumes the table when its owner dies on a bot's turn", { timeout: 90_000 }, async () => {
+  test("a survivor resumes the table when its owner dies on a bot's turn", { timeout: 120_000 }, async () => {
     const { host, guest, room } = await openTable("bot", 3);
     const onBot = new Promise<void>((resolve) => {
       guest.socket.on("game:state", (s: WireGameState) => {
@@ -81,7 +81,7 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
     await waitFor(guest.socket, "game:state", OWNER_BOT_DELAY_MS * 2);
   });
 
-  test("a non-owner shutting down tells the owner its player left", { timeout: 60_000 }, async () => {
+  test("a non-owner shutting down tells the owner its player left", { timeout: 90_000 }, async () => {
     const { host, guest, room } = await openTable("sd", 2);
     const dealt = waitFor(guest.socket, "game:state", 15_000);
     host.socket.emit("room:start");

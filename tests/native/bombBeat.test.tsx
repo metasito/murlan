@@ -155,7 +155,7 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
       ['impactLight', 416],
     ]);
     await r.unmount();
-  }, 20_000);
+  });
 
   it('under reduced motion the sound and pulses stay, and no sparks, flash, lamp kick, aside or shake', async () => {
     setMotionPreference('on');
@@ -188,7 +188,7 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
     expect(xs[1] - xs[0]).toBeCloseTo(xs[2] - xs[1], 1);
     expect((((xs[0] - xs[2]) / 96) * BombFx.asideMs) / scale).toBeCloseTo(-6, 0);
     await r.unmount();
-  }, 20_000);
+  });
 });
 
 describe("the bomb's flash (#1263)", () => {

@@ -64,7 +64,7 @@ test("every file the database-backed tests reach is cut into smaller shards than
   assert.ok(turn.length >= 2, "gameTurn.ts is one shard: the database-backed budget is not applied");
 });
 
-test("every mutant Stryker places lands in exactly one shard, and a shard outgrows the budget only where no cut can split it", async () => {
+test("every mutant Stryker places lands in exactly one shard, and a shard outgrows the budget only where no cut can split it", { timeout: 660_000 }, async () => {
   const files = MUTATE.flatMap((pattern) => globSync(pattern, { cwd: repoRoot })).sort();
   let total = 0;
   for (const file of files) {

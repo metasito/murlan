@@ -80,7 +80,7 @@ describe('an exchange round', () => {
     await frames(choiceOpensAt(false));
     expect(prompt()).not.toBeNull();
     await view.unmount();
-  }, 20_000);
+  });
 
   it('is dealt and opens its exchange on every round at a standing table, not only the first', async () => {
     const view = await render(table(exchange));
@@ -97,7 +97,7 @@ describe('an exchange round', () => {
       expect({ round, dealt, prompt: prompt() !== null }).toEqual({ round, dealt: true, prompt: true });
     }
     await view.unmount();
-  }, 30_000);
+  });
 
   it('deals the next hand to a viewer who ended the last one still holding cards', async () => {
     const view = await render(table({ ...ended, finishingOrder: ['player_1', 'player_2', 'player_0'] }));
@@ -108,7 +108,7 @@ describe('an exchange round', () => {
     await frames(dealEndMs(COUNTS, 0) + 200);
     expect(getAnimatedStyle(screen.getByTestId('hand-card-A_spades')).opacity).toBe(1);
     await view.unmount();
-  }, 20_000);
+  });
 
   it('is not dealt again once a card has been played into it', async () => {
     const tally = emptyRankTally();

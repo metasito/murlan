@@ -60,7 +60,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await eventually(() => !hasActiveGame(roomId), "the table disposed after its host left");
   }
 
-  test("a lone human plus bots deals a second round with the same seats", async () => {
+  test("a lone human plus bots deals a second round with the same seats", { timeout: 150_000 }, async () => {
     const [ivan] = await makeClients(server, ["rematch_solo_ivan"]);
     const room = await setUpRoom([ivan], 4);
 

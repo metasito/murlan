@@ -146,7 +146,7 @@ describe("a graceful shutdown hands its tables to a live peer", { skip: hasDatab
     return { owner, onA, host, guest, room };
   }
 
-  test("a loaded table is unowned for under 500 ms and plays on at the peer, and no rejoin is refused", { timeout: 90_000 }, async () => {
+  test("a loaded table is unowned for under 500 ms and plays on at the peer, and no rejoin is refused", { timeout: 120_000 }, async () => {
     const { owner, host, guest, room } = await openTable("ld", { maxPlayers: 4, fillWithBots: true });
     const states: { at: number; turn: string }[] = [];
     guest.socket.on("game:state", (s: WireGameState) => states.push({ at: performance.now(), turn: s.turn }));

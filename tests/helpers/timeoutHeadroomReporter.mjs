@@ -3,9 +3,10 @@
 // suite has a limit only when it names one; node gives it none from --test-timeout. A file's limit is
 // tests/helpers/fileDeadline.mjs's, when the run imports it: the only one a test that blocks its
 // event loop answers to.
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { deadlineMs } from "./fileDeadline.mjs";
 import { HEADROOM_SHARE, headroomMessage, overHeadroom } from "./timeoutHeadroom.mjs";
 
@@ -26,14 +27,69 @@ export function runTimeoutMs(execArgv = process.execArgv) {
   return set === undefined ? Infinity : Number(set);
 }
 
-/** @param {string[]} execArgv */
+/**
+ * @param {string[]} execArgv
+ * @param {Record<string, string | undefined>} env
+ */
 export function fileLimitMs(execArgv = process.execArgv, env = process.env) {
   return values(execArgv, "--import").some((m) => path.resolve(m) === FILE_DEADLINE) ? deadlineMs(env) : Infinity;
 }
 
 /**
+ * A `timeout` that is not a number literal, as the file's own top level computes it: the imports and
+ * top-level constants it names, run in a child so their side effects stay out of this run. Undefined
+ * when it names anything else.
+ * @param {import("typescript").Expression} expression
+ * @param {import("typescript").SourceFile} file
+ * @param {typeof import("typescript")} ts
+ */
+export function evaluateTimeout(expression, file, ts) {
+  /** @type {Map<string, import("typescript").Statement>} */
+  const topLevel = new Map();
+  for (const statement of file.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      const clause = statement.importClause;
+      const bindings = clause?.namedBindings;
+      for (const id of [clause?.name, ...(bindings && ts.isNamedImports(bindings) ? bindings.elements.map((e) => e.name) : [bindings?.name])]) {
+        if (id) topLevel.set(id.text, statement);
+      }
+    } else if (ts.isVariableStatement(statement)) {
+      for (const d of statement.declarationList.declarations) if (ts.isIdentifier(d.name)) topLevel.set(d.name.text, statement);
+    }
+  }
+  const needed = new Set();
+  /** @param {import("typescript").Node} node */
+  const named = (node) => {
+    if (ts.isIdentifier(node)) {
+      const statement = topLevel.get(node.text);
+      if (!statement) return node.text in globalThis;
+      if (needed.has(statement)) return true;
+      needed.add(statement);
+      return ts.isImportDeclaration(statement) || statement.declarationList.declarations.every((d) => !d.initializer || named(d.initializer));
+    }
+    if (ts.isPropertyAccessExpression(node)) return named(node.expression);
+    let ok = true;
+    ts.forEachChild(node, (child) => void (ok &&= named(child)));
+    return ok;
+  };
+  if (!named(expression)) return undefined;
+  const lines = file.statements
+    .filter((s) => needed.has(s))
+    .map((s) => {
+      const text = s.getText(file);
+      if (!ts.isImportDeclaration(s) || !ts.isStringLiteral(s.moduleSpecifier) || !s.moduleSpecifier.text.startsWith(".")) return text;
+      const absolute = new URL(s.moduleSpecifier.text, pathToFileURL(file.fileName)).href;
+      return text.replace(s.moduleSpecifier.getText(file), JSON.stringify(absolute));
+    });
+  const script = `${lines.join("\n")}\nprocess.stdout.write(JSON.stringify(${expression.getText(file)}));\nprocess.exit(0);\n`;
+  const run = spawnSync(process.execPath, ["--no-warnings", "--input-type=module-typescript", "-e", script], { cwd: REPO_ROOT, encoding: "utf8", timeout: 30_000 });
+  const value = run.status === 0 ? Number(run.stdout) : NaN;
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/**
  * Each `test`/`it`/`describe`/`suite` call's own `timeout` option, keyed `line:column` of the call's
- * name as node reports it, `"unreadable"` where it is not a number literal.
+ * name as node reports it, `"unreadable"` where `evaluateTimeout` cannot compute it.
  * @param {string} source
  * @param {string} fileName
  * @param {typeof import("typescript")} ts
@@ -50,8 +106,9 @@ export function declaredTimeouts(source, fileName, ts) {
       const timeout = options?.properties.find((p) => p.name && ts.isIdentifier(p.name) && p.name.text === "timeout");
       if (name && timeout) {
         const { line, character } = file.getLineAndCharacterOfPosition(name.getStart(file));
-        const value = ts.isPropertyAssignment(timeout) && ts.isNumericLiteral(timeout.initializer) ? Number(timeout.initializer.text) : UNREADABLE;
-        found.set(`${line + 1}:${character + 1}`, value);
+        const initializer = ts.isPropertyAssignment(timeout) ? timeout.initializer : undefined;
+        const value = !initializer ? undefined : ts.isNumericLiteral(initializer) ? Number(initializer.text) : evaluateTimeout(initializer, file, ts);
+        found.set(`${line + 1}:${character + 1}`, value ?? UNREADABLE);
       }
     }
     ts.forEachChild(node, visit);

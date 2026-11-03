@@ -191,7 +191,7 @@ describe("the owner epoch", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(await redis.get(tableOwnerKey(roomId)), "another-instance:2");
   });
 
-  test("an owner record expires unless the ownership heartbeat renews it", { timeout: 40_000 }, async () => {
+  test("an owner record expires unless the ownership heartbeat renews it", { timeout: 120_000 }, async () => {
     const roomId = newRoom("ttl");
     assert.equal(await claimRoom(roomId), true);
     await rehydrateGame(server.rt, roomId, null);

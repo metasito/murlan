@@ -43,7 +43,7 @@ function remoteCalls(code: string): string[] {
   );
 }
 
-test("no worklet closes over a function the React Compiler hoisted out of it", () => {
+test("no worklet closes over a function the React Compiler hoisted out of it", { timeout: 240_000 }, () => {
   const scanned = sourcesUnder(repoRoot, ["app", "components", "context", "lib"]).filter(
     ([rel, src]) => !/\.web\.tsx?$|\.d\.ts$/.test(rel) && UI_CODE.test(src),
   );

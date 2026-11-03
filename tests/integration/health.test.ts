@@ -61,7 +61,7 @@ describe("the probes on one instance", { skip: hasDatabase() ? false : skipMessa
     }
   });
 
-  test("a loop blocked for 300 ms over and over is not ready, and is again once free", { timeout: 30_000 }, async () => {
+  test("a loop blocked for 300 ms over and over is not ready, and is again once free", { timeout: 90_000 }, async () => {
     const blocker = setInterval(() => {
       const end = performance.now() + 300;
       while (performance.now() < end);
@@ -165,7 +165,7 @@ describe("the probes with a dependency gone", { skip: hasDatabase() ? false : sk
     await dropSchema(baseUrl, schema);
   });
 
-  test("a blackholed Redis, then a blackholed Postgres, leave it ready and named down", { timeout: 30_000 }, async () => {
+  test("a blackholed Redis, then a blackholed Postgres, leave it ready and named down", { timeout: 90_000 }, async () => {
     await eventually(async () => {
       const r = await timed(`${url}/health/ready`);
       return r.status === 200 && json(r.text).redis === "connected" && json(r.text).db === "connected";

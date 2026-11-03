@@ -339,7 +339,7 @@ describe(
       await dropSchema(baseUrl, schema);
     });
 
-    test("the reclaim, the end-match vote and the abandonment all survive the restart", async () => {
+    test("the reclaim, the end-match vote and the abandonment all survive the restart", { timeout: 150_000 }, async () => {
       const [a, b, c] = clients;
 
       // Three seats, not two: a vacate that leaves one human disposes the
