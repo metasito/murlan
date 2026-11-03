@@ -89,7 +89,7 @@ async function readStreams(): Promise<Map<string, Sizes>> {
       for (const raw of keys) {
         const key = String(raw);
         const kind = key.includes(":inbox:") ? "inbox" : key.includes("socket.io") ? "adapter" : key;
-        const sizes = out.get(kind) ?? { entries: 0, bytes: [], memory: 0, kinds: new Map() };
+        const sizes: Sizes = out.get(kind) ?? { entries: 0, bytes: [], memory: 0, kinds: new Map() };
         out.set(kind, sizes);
         sizes.memory += Number(await redis.sendCommand(["MEMORY", "USAGE", key, "SAMPLES", "0"]));
         let start = "-";
