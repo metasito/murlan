@@ -167,10 +167,12 @@ export function markBooted(): void {
   booted = true;
 }
 
-/** Stops the background probes and the loop's sampling; the next `mountHealth` starts both again. */
+/** Stops the background probes, their Redis link and the loop's sampling; the next `mountHealth` starts them again. */
 export function stopHealth(): void {
   if (refresher) clearInterval(refresher);
   if (storePoller) clearInterval(storePoller);
   refresher = storePoller = null;
+  redis?.destroy();
+  redis = null;
   stopWatchingEventLoop();
 }
