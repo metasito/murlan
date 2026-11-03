@@ -541,7 +541,7 @@ jobs:
     needs: scope
     if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       CCACHE_DIR: /Users/runner/Library/Caches/ccache
       CCACHE_MAXSIZE: 3G
