@@ -104,8 +104,8 @@ export default async function* timeoutHeadroom(source, { runTimeout = runTimeout
     else judge(where, data.details.type === "suite" ? "This suite" : "This test", data.details.duration_ms, limit);
   }
   if (passed > 0 && judged.length === 0) over.push(`${passed} tests passed and none was judged: the run sets no --test-timeout`);
-  const closest = judged.sort((a, b) => b.share - a.share).slice(0, 10);
-  if (closest.length > 0) yield `\nTimeout headroom, the ${closest.length} closest to their limits:\n${closest.map((j) => `  ${j.line}`).join("\n")}\n`;
+  const near = judged.filter((j) => j.share > HEADROOM_SHARE / 2).sort((a, b) => b.share - a.share);
+  if (near.length > 0) yield `\nTimeout headroom, past half of the ${HEADROOM_SHARE * 100}% a test may spend:\n${near.map((j) => `  ${j.line}`).join("\n")}\n`;
   for (const line of over) yield `timeout headroom: ${line}\n`;
   if (over.length > 0) process.exitCode = 1;
 }

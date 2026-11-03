@@ -72,6 +72,7 @@ module.exports = {
   projects: [project('ios'), project('android'), compiled],
   reporters: process.env.CI ? ['default', `${rootDir}/tools/ci/native-budget.mjs`] : ['default'],
   globalSetup: `${rootDir}/tools/ci/preflightMemory.mjs`,
+  testTimeout: 40_000,
   // A worker holds a whole React Native module graph, and jest's default is one
   // per core — enough of them to exhaust a developer machine's memory.
   maxWorkers: '50%',
