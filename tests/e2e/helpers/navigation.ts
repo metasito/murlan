@@ -104,8 +104,12 @@ export async function dismissStartAnnouncement(page: Page): Promise<void> {
  * that writes to a database shared with every other spec and every earlier
  * run, so a fixed name passes once and 409s forever after.
  */
+let usernameCount = 0;
+// Names minted in one loop share a millisecond: the count keeps a worker's apart, the random tail other workers'.
 export function uniqueUsername(prefix: string): string {
-  return `${prefix}${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`;
+  usernameCount += 1;
+  const tail = Math.floor(Math.random() * 36 ** 4).toString(36).padStart(4, "0");
+  return `${prefix}${Date.now().toString(36).slice(-6)}${usernameCount.toString(36)}${tail}`;
 }
 
 /** Registers a brand-new account through the UI and lands back on the home screen. */
