@@ -1,5 +1,5 @@
-// jest-expo's native environment, failing a test or hook that finished over its share of its own
-// timeout (tests/helpers/timeoutHeadroom.mjs).
+// jest-expo's native environment, warning, as a CI annotation, about a test or hook that finished over
+// its share of its own timeout (tests/helpers/timeoutHeadroom.mjs). It never fails the test.
 import { createRequire } from "node:module";
 import { performance } from "node:perf_hooks";
 import { headroomMessage, overHeadroom } from "../../helpers/timeoutHeadroom.mjs";
@@ -7,7 +7,7 @@ import { headroomMessage, overHeadroom } from "../../helpers/timeoutHeadroom.mjs
 const NativeEnvironment = createRequire(import.meta.url)("jest-expo/src/preset/nativeEnvironment.js");
 
 /** @param {string} message */
-const failure = (message) => Object.assign(new Error(message), { stack: message });
+const warn = (message) => void process.stderr.write(`::warning::timeout headroom: ${message}\n`);
 
 /** @param {{ name: string, parent?: unknown }} block */
 const fullName = (block) => {
@@ -33,15 +33,15 @@ export default class TimeoutHeadroomEnvironment extends NativeEnvironment {
       case "test_fn_success": {
         const spent = performance.now() - (this.started.get(event.test) ?? Infinity);
         const limit = event.test.timeout || state.testTimeout;
-        if (overHeadroom(spent, limit)) event.test.errors.push(failure(headroomMessage("This test", spent, limit)));
+        if (overHeadroom(spent, limit)) warn(`"${fullName(event.test)}": ${headroomMessage("This test", spent, limit)}`);
         break;
       }
       case "hook_success": {
         const spent = performance.now() - (this.started.get(event.hook) ?? Infinity);
         const limit = event.hook.timeout || state.testTimeout;
         if (!overHeadroom(spent, limit)) break;
-        if (event.test) event.test.errors.push(failure(headroomMessage(`Its ${event.hook.type} hook`, spent, limit)));
-        else state.unhandledErrors.push(failure(headroomMessage(`The ${event.hook.type} hook of "${fullName(event.describeBlock)}"`, spent, limit)));
+        if (event.test) warn(`"${fullName(event.test)}": ${headroomMessage(`Its ${event.hook.type} hook`, spent, limit)}`);
+        else warn(headroomMessage(`The ${event.hook.type} hook of "${fullName(event.describeBlock)}"`, spent, limit));
         break;
       }
     }

@@ -1,8 +1,9 @@
-// A node:test reporter failing the run when a test that passed spent over its share of its own time
-// limit (tests/helpers/timeoutHeadroom.mjs): its `timeout` option, else the run's --test-timeout. A
-// suite has a limit only when it names one; node gives it none from --test-timeout. A file's limit is
-// tests/helpers/fileDeadline.mjs's, when the run imports it: the only one a test that blocks its
-// event loop answers to.
+// A node:test reporter warning, as a CI annotation, when a test that passed spent over its share of its
+// own time limit (tests/helpers/timeoutHeadroom.mjs). It fails the run only when it cannot judge: a
+// timeout it cannot compute, or a run with no limit at all. A test's limit is its `timeout` option,
+// else the run's --test-timeout. A suite has a limit only when it names one; node gives it none from
+// --test-timeout. A file's limit is tests/helpers/fileDeadline.mjs's, when the run imports it: the only
+// one a test that blocks its event loop answers to.
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -143,6 +144,8 @@ export default async function* timeoutHeadroom(source, { runTimeout = runTimeout
     return declared.get(data.file)?.get(`${data.line}:${data.column}`) ?? (data.details.type === "suite" ? Infinity : runTimeout);
   };
   const over = [];
+  /** @type {string[]} */
+  const broken = [];
   /** @type {{ share: number, line: string }[]} */
   const judged = [];
   let passed = 0;
@@ -157,15 +160,16 @@ export default async function* timeoutHeadroom(source, { runTimeout = runTimeout
     if (data.details.type !== "suite") passed++;
     const limit = await limitOf(data);
     const where = `${relative(data.file)}:${data.line} "${data.name}"`;
-    if (limit === UNREADABLE) over.push(`${where}: its timeout is not computed from the file's imports and top-level constants alone, so ${HEADROOM_SHARE * 100}% of it cannot be judged`);
+    if (limit === UNREADABLE) broken.push(`${where}: its timeout is not computed from the file's imports and top-level constants alone, so ${HEADROOM_SHARE * 100}% of it cannot be judged`);
     else judge(where, data.details.type === "suite" ? "This suite" : "This test", data.details.duration_ms, limit);
   }
-  if (passed > 0 && judged.length === 0) over.push(`${passed} tests passed and none was judged: the run sets no --test-timeout`);
+  if (passed > 0 && judged.length === 0) broken.push(`${passed} tests passed and none was judged: the run sets no --test-timeout`);
   const near = judged.filter((j) => j.share > HEADROOM_SHARE / 2).sort((a, b) => b.share - a.share);
   yield (
     `\nTimeout headroom: ${judged.length} tests and files judged, ${near.length} past half of the ${HEADROOM_SHARE * 100}% of its limit one may spend${near.length > 0 ? ":" : "."}\n` +
     near.map((j) => `  ${j.line}\n`).join("") +
-    over.map((line) => `timeout headroom: ${line}\n`).join("")
+    over.map((line) => `::warning::timeout headroom: ${line}\n`).join("") +
+    broken.map((line) => `timeout headroom: ${line}\n`).join("")
   );
-  if (over.length > 0) process.exitCode = 1;
+  if (broken.length > 0) process.exitCode = 1;
 }

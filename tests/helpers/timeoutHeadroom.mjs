@@ -2,7 +2,8 @@
 // applies it to jest's tests and hooks, tests/helpers/timeoutHeadroomReporter.mjs to node:test's tests.
 
 /**
- * A test that spends more than this share of its own time limit fails, though it finished. CI's
+ * A test that spends more than this share of its own time limit is reported as a CI warning, never a
+ * failure: rule 46 lets time turn a check red only at a limit. CI's
  * runners run a test several times slower than a developer's machine, and one runner several times
  * slower than the next (run 41610488122: a native test that takes 1.4 s locally crossed jest's 5 s),
  * so a test that sits inside its limit only on a quiet day is caught on the run that makes it slow.

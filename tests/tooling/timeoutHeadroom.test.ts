@@ -32,7 +32,8 @@ async function report(events: Event[], options: Parameters<typeof timeoutHeadroo
   for await (const chunk of timeoutHeadroom(events, { runTimeout: 30_000, fileLimit: Infinity, read: () => "", ...options })) out += chunk;
   const failed = process.exitCode === 1;
   process.exitCode = was;
-  return { out, failed, over: out.split("\n").filter((l) => l.startsWith("timeout headroom:")) };
+  const lines = out.split("\n");
+  return { out, failed, over: lines.filter((l) => l.startsWith("::warning::timeout headroom:")), broken: lines.filter((l) => l.startsWith("timeout headroom:")) };
 }
 
 describe("the share of its limit a passing test may spend", () => {
@@ -47,7 +48,7 @@ describe("the share of its limit a passing test may spend", () => {
 describe("node:test's reporter", () => {
   test("judges a test against the run's --test-timeout, and a suite only against a limit it names", async () => {
     const r = await report([pass({ ms: 7_000, name: "near" }), pass({ ms: 8_000, name: "slow" }), pass({ ms: 60_000, name: "s" }, "suite")]);
-    assert.equal(r.failed, true);
+    assert.equal(r.failed, false, "a slow test that passed is a warning, never a failure (rule 46)");
     assert.equal(r.over.length, 1, r.out);
     assert.match(r.over[0], /a\.test\.ts:3 "slow": This test took 8000 ms, over 25% of its 30000 ms time limit/);
     assert.match(r.out, /Timeout headroom: 2 tests and files judged, 2 past half of the 25% of its limit one may spend:\n {2}27% of 30 s .*"slow"\n {2}23% of 30 s .*"near"\n/);
@@ -87,7 +88,7 @@ describe("node:test's reporter", () => {
   test("fails a timeout it cannot read rather than judging it against another", async () => {
     const r = await report([pass({ ms: 1, line: 1, column: 1 })], { read: () => 'test("x", { timeout: LIMIT }, () => {});\n' });
     assert.equal(r.failed, true);
-    assert.match(r.over[0] ?? "", /its timeout is not computed from the file's imports and top-level constants alone/);
+    assert.match(r.broken[0] ?? "", /its timeout is not computed from the file's imports and top-level constants alone/);
   });
 
   test("judges a file against the file deadline, and only a run that imports it has one", async () => {
@@ -100,7 +101,8 @@ describe("node:test's reporter", () => {
 
   test("fails a run whose tests passed with no limit to judge them by, and passes one that skipped them all", async () => {
     const unlimited = await report([pass({ ms: 1 })], { runTimeout: Infinity });
-    assert.match(unlimited.over[0] ?? "", /none was judged: the run sets no --test-timeout/);
+    assert.equal(unlimited.failed, true);
+    assert.match(unlimited.broken[0] ?? "", /none was judged: the run sets no --test-timeout/);
     const skipped = await report([pass({ ms: 1, skip: true })], { runTimeout: Infinity });
     assert.equal(skipped.failed, false, skipped.out);
   });
@@ -120,7 +122,7 @@ describe("node:test's reporter", () => {
     assert.deepEqual([...declaredTimeouts(source, "x.ts", ts)], [["1:1", 1], ["2:6", 2], ["3:34", 3]]);
   });
 
-  test("runs in npm test and loop:test, and fails a slow test node really ran, by name", () => {
+  test("runs in npm test and loop:test, and warns of a slow test node really ran, by name, without failing it", () => {
     for (const name of ["test", "loop:test"]) assert.ok(scripts[name].split(" ").includes(REPORTER), `${name} runs no timeout headroom reporter`);
     const dir = mkdtempSync(path.join(tmpdir(), "timeout-headroom-"));
     try {
@@ -138,8 +140,8 @@ describe("node:test's reporter", () => {
         env,
         encoding: "utf8",
       });
-      assert.equal(run.status, 1, run.stdout + run.stderr);
-      const over = run.stdout.split("\n").filter((l) => l.startsWith("timeout headroom:"));
+      assert.equal(run.status, 0, run.stdout + run.stderr);
+      const over = run.stdout.split("\n").filter((l) => l.startsWith("::warning::timeout headroom:"));
       assert.equal(over.length, 2, run.stdout);
       assert.match(over[0], new RegExp(`planted\\.test\\.mjs:3 "slow": This test took \\d+ ms, over 25% of its ${LIMIT_MS} ms`));
       assert.match(over[1], new RegExp(`planted\\.test\\.mjs:4 "inner": This test took \\d+ ms, over 25% of its ${LIMIT_MS} ms`));
@@ -156,7 +158,7 @@ describe("jest's environment", () => {
     for (const project of config.projects) assert.equal(project.testEnvironment, ENVIRONMENT.split(path.sep).join("/"), `${project.displayName} runs without it`);
   });
 
-  test("fails a slow test, and a slow hook of either kind, that jest itself let pass", () => {
+  test("warns of a slow test, and a slow hook of either kind, without failing them", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "timeout-headroom-"));
     const wait = `() => new Promise((r) => setTimeout(r, ${SLOW_MS}))`;
     try {
@@ -173,13 +175,13 @@ describe("jest's environment", () => {
       });
       const results = JSON.parse(run.stdout) as { testResults: { name: string; message: string; assertionResults: { title: string; status: string; failureMessages: string[] }[] }[] };
       const byTitle = Object.fromEntries(results.testResults.flatMap((f) => f.assertionResults.map((a) => [a.title, a])));
-      assert.equal(byTitle.fast?.status, "passed", run.stderr);
-      assert.equal(byTitle.slow?.status, "failed", run.stderr);
-      assert.match(byTitle.slow.failureMessages.join("\n"), new RegExp(`This test took \\d+ ms, over 25% of its ${LIMIT_MS} ms`));
-      assert.match(byTitle["after a slow beforeEach"]?.failureMessages.join("\n") ?? "", /Its beforeEach hook took \d+ ms/);
-      const all = results.testResults.find((f) => f.name.endsWith("all.test.js"));
-      assert.match(all?.message ?? "", /The beforeAll hook of "all" took \d+ ms/, run.stderr);
-      assert.equal(run.status, 1);
+      for (const title of ["fast", "slow", "after a slow beforeEach", "under it"]) assert.equal(byTitle[title]?.status, "passed", run.stderr);
+      const warned = run.stderr.split("\n").filter((l) => l.includes("::warning::timeout headroom:"));
+      assert.equal(warned.length, 3, run.stderr);
+      assert.ok(warned.some((l) => new RegExp(`"slow": This test took \\d+ ms, over 25% of its ${LIMIT_MS} ms`).test(l)), run.stderr);
+      assert.ok(warned.some((l) => /"each › after a slow beforeEach": Its beforeEach hook took \d+ ms/.test(l)), run.stderr);
+      assert.ok(warned.some((l) => /The beforeAll hook of "all" took \d+ ms/.test(l)), run.stderr);
+      assert.equal(run.status, 0, run.stderr);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

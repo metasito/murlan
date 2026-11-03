@@ -77,7 +77,7 @@ test("a heartbeat lost to a half-open flow keeps every room, on a new session, w
 });
 
 // The test's own timeout is the bound: the connect gives up at 3 s; without it the claim never settles.
-test("a server that accepts and never answers refuses the claim within the connect timeout", { skip, timeout: 30_000 }, async () => {
+test("a server that accepts and never answers refuses the claim within the connect timeout", { skip, timeout: 4_000 }, async () => {
   const proxy = await throughProxy();
   proxy.blackholeNew(true);
   reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore });
