@@ -157,12 +157,13 @@ export default async function* timeoutHeadroom(source, { runTimeout = runTimeout
     if (data.details.type !== "suite") passed++;
     const limit = await limitOf(data);
     const where = `${relative(data.file)}:${data.line} "${data.name}"`;
-    if (limit === UNREADABLE) over.push(`${where}: its timeout is not a number literal, so ${HEADROOM_SHARE * 100}% of it cannot be judged`);
+    if (limit === UNREADABLE) over.push(`${where}: its timeout is not computed from the file's imports and top-level constants alone, so ${HEADROOM_SHARE * 100}% of it cannot be judged`);
     else judge(where, data.details.type === "suite" ? "This suite" : "This test", data.details.duration_ms, limit);
   }
   if (passed > 0 && judged.length === 0) over.push(`${passed} tests passed and none was judged: the run sets no --test-timeout`);
   const near = judged.filter((j) => j.share > HEADROOM_SHARE / 2).sort((a, b) => b.share - a.share);
-  if (near.length > 0) yield `\nTimeout headroom, past half of the ${HEADROOM_SHARE * 100}% a test may spend:\n${near.map((j) => `  ${j.line}`).join("\n")}\n`;
+  yield `\nTimeout headroom: ${judged.length} tests and files judged, ${near.length} past half of the ${HEADROOM_SHARE * 100}% of its limit one may spend${near.length > 0 ? ":" : "."}\n`;
+  for (const j of near) yield `  ${j.line}\n`;
   for (const line of over) yield `timeout headroom: ${line}\n`;
   if (over.length > 0) process.exitCode = 1;
 }

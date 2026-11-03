@@ -50,6 +50,7 @@ describe("node:test's reporter", () => {
     assert.equal(r.failed, true);
     assert.equal(r.over.length, 1, r.out);
     assert.match(r.over[0], /a\.test\.ts:3 "slow": This test took 8000 ms, over 25% of its 30000 ms time limit/);
+    assert.match(r.out, /Timeout headroom: 2 tests and files judged, 2 past half of the 25% of its limit one may spend:\n {2}27% of 30 s .*"slow"\n {2}23% of 30 s .*"near"\n/);
   });
 
   test("judges a test against its own timeout option, read off the call node names", async () => {
@@ -86,7 +87,7 @@ describe("node:test's reporter", () => {
   test("fails a timeout it cannot read rather than judging it against another", async () => {
     const r = await report([pass({ ms: 1, line: 1, column: 1 })], { read: () => 'test("x", { timeout: LIMIT }, () => {});\n' });
     assert.equal(r.failed, true);
-    assert.match(r.over[0] ?? "", /its timeout is not a number literal/);
+    assert.match(r.over[0] ?? "", /its timeout is not computed from the file's imports and top-level constants alone/);
   });
 
   test("judges a file against the file deadline, and only a run that imports it has one", async () => {
