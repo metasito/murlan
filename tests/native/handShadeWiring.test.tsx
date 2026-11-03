@@ -78,7 +78,7 @@ describe('the hand shade', () => {
       .map(({ key }) => key);
     expect(stacked.length).toBeGreaterThan(1);
     expect(props.cards.handOrder.value).toEqual(stacked);
-  }, 60_000);
+  });
 
   it('reads the pile in the order its card views stack', async () => {
     await throwPair(3);
@@ -89,5 +89,5 @@ describe('the hand shade', () => {
     expect(pileOrder()).toEqual(shown());
     await frames(2000);
     expect(pileOrder()).toEqual(shown());
-  }, 60_000);
+  });
 });

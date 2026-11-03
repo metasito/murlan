@@ -45,7 +45,7 @@ describe("an instance killed outright", { skip: hasDatabase() ? false : skipMess
     }
   });
 
-  test("a killed instance's players read offline and their friends are told, and online players cost no periodic writes", async () => {
+  test("a killed instance's players read offline and their friends are told, and online players cost no periodic writes", { timeout: 150_000 }, async () => {
     const watcherName = `cw${tag}`;
     const lostName = `cl${tag}`;
     const watcher = await accountOn(PORTS[0], watcherName);

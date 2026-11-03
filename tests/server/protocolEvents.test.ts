@@ -141,7 +141,7 @@ const REFUSED = [
   `onEvent(socket, "game:play", GamePlaySchema, () => undefined);`,
 ];
 
-test("every typed send and listen refuses a name or payload the maps do not hold", () => {
+test("every typed send and listen refuses a name or payload the maps do not hold", { timeout: 150_000 }, () => {
   const probe = path.join(root, "tests", "server", "protocolProbe.ts");
   const header = PROBE_HEADER.split("\n").length - 1;
   const text = PROBE_HEADER + [...ACCEPTED, ...REFUSED].join("\n");

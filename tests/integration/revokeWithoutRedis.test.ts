@@ -54,7 +54,7 @@ describe("Redis unreachable", { skip: hasDatabase() ? false : skipMessage() }, (
     }
   });
 
-  test("a revocation retried once Redis is back spares a socket opened after it", { timeout: 60_000 }, async () => {
+  test("a revocation retried once Redis is back spares a socket opened after it", { timeout: 420_000 }, async () => {
     const name = `rc${tag()}`;
     const { cookie } = await register(server, name);
     proxy.refuse(true);

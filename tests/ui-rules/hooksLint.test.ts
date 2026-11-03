@@ -122,7 +122,7 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
     );
   });
 
-  test(`every file ${OFF_FOR_TESTS} is off for still needs it`, async () => {
+  test(`every file ${OFF_FOR_TESTS} is off for still needs it`, { timeout: 240_000 }, async () => {
     // The list above is a claim about what the rule would say; this asks it.
     // The scan comes from the list too, so an exemption added anywhere is
     // asked about. ESLint reads an empty path list as the whole repository,

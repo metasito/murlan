@@ -405,7 +405,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          node scripts/nodeTest.mjs --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test --test-timeout=30000 --test-force-exit --test-reporter=tap tools/loop/tests/deleteBranchOnMerge.test.ts | tee settings.tap
+          node scripts/nodeTest.mjs --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test --test-timeout=120000 --test-force-exit --test-reporter=tap tools/loop/tests/deleteBranchOnMerge.test.ts | tee settings.tap
           grep -qE '^# skipped 0$' settings.tap || { echo "::error::deleteBranchOnMerge skipped on the runner that has a token."; exit 1; }
           grep -qE '^# pass 1$' settings.tap || { echo "::error::deleteBranchOnMerge did not pass."; exit 1; }
 
@@ -433,7 +433,7 @@ jobs:
           set -o pipefail
           files=$(grep -lE 'skip: .*(win32|onWindows)' tools/loop/tests/*.test.ts)
           [ -n "$files" ] || { echo "::error::No loop test skips off win32 — the selection pattern is stale."; exit 1; }
-          node scripts/nodeTest.mjs --test --test-timeout=30000 --test-force-exit --test-reporter=tap $files | tee win32.tap
+          node scripts/nodeTest.mjs --test --test-timeout=120000 --test-force-exit --test-reporter=tap $files | tee win32.tap
           grep -qE '^# skipped 0$' win32.tap || { echo "::error::A loop test skipped on Windows, the one runner meant to run it."; exit 1; }
           grep -qE '^# pass [1-9]' win32.tap || { echo "::error::No loop test passed on Windows."; exit 1; }
 

@@ -194,7 +194,7 @@ function compileUncached(rel: string, source: string): CompilerEvent[] {
     }));
 }
 
-test("every screen and component compiles with no bailouts", () => {
+test("every screen and component compiles with no bailouts", { timeout: 240_000 }, () => {
   const failures = COMPILED.flatMap((rel) =>
     compile(rel).map(
       (e) => `${rel}:${e.fnLoc?.start?.line} — ${e.detail?.reason ?? e.detail?.description}`

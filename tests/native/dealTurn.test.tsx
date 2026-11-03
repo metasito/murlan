@@ -71,7 +71,7 @@ describe("the viewer's turn waits for the deal to land", () => {
     await advance(Motion.handResize + 32);
     expect(handCardScale()).toBeCloseTo(1, 2);
     await view.unmount();
-  }, 20_000);
+  });
 
   it('with reduce motion on, the fan takes its turn size without travelling', async () => {
     await setMotion('on');
@@ -84,5 +84,5 @@ describe("the viewer's turn waits for the deal to land", () => {
     await advance(16);
     expect(handCardScale()).toBeCloseTo(1, 2);
     await view.unmount();
-  }, 20_000);
+  });
 });

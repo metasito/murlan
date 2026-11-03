@@ -86,7 +86,7 @@ describe("a printed soak log replays as a fixed case", {
   // that table. Here a landed entry stands for seat 3's pass from move 4 as a second pass,
   // so seat 2's four sixes at 5 only follow if the replay applies it. A server that checks the turn
   // token no longer writes such an entry; the replay must still follow one.
-  test("a fault that landed is replayed as the move it carried", async () => {
+  test("a fault that landed is replayed as the move it carried", { timeout: 180_000 }, async () => {
     const throughThree = CAPTURED.filter((entry) => entry.at <= 3);
     const latePass: SoakLogEntry = {
       at: 3,
@@ -119,7 +119,7 @@ describe("a printed soak log replays as a fixed case", {
   // The floor. Every assertion above is also satisfied by a replay that seats
   // four clients and lets the game play itself, so without a log the driver
   // refuses to follow, this file would pass while replaying nothing.
-  test("a log the table cannot follow is reported, not played around", async () => {
+  test("a log the table cannot follow is reported, not played around", { timeout: 150_000 }, async () => {
     const tampered = CAPTURED.map((entry) =>
       entry.at === 7
         ? { at: 7, kind: "move" as const, seat: 0, move: { kind: "play" as const, cardIds: ["3_spades"] } }

@@ -56,5 +56,5 @@ describe('the viewer opening the first round', () => {
     await steps(dealEndMs([13, 13], Motion.duration.reveal) + 200);
     expect({ notYourTurn: notYourTurn(), dealing: onDealing.mock.calls.at(-1) }).toEqual({ notYourTurn: false, dealing: [false] });
     await view.unmount();
-  }, 20_000);
+  });
 });

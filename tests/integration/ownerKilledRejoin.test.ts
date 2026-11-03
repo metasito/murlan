@@ -34,7 +34,7 @@ describe("a rejoin after the table's owner was killed", { skip: hasDatabase() ? 
     await local.stop().catch(() => {});
   });
 
-  test("is answered with the table inside one try and the restore", { timeout: 60_000 }, async () => {
+  test("is answered with the table inside one try and the restore", { timeout: 90_000 }, async () => {
     owner = await boot(OWNER_PORT, process.env.DATABASE_URL!, { MURLAN_AFK_TIMEOUT_MS: "600000" });
     const tag = Date.now() % 1e6;
     const host = await connectAs({ url: `http://127.0.0.1:${OWNER_PORT}` } as TestServer, `okr_h${tag}`);

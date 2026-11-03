@@ -44,6 +44,7 @@ const project = (platform) => ({
   // request to the plain (mockable) implementation instead — without it,
   // requiring react-native-reanimated throws before any test runs.
   resolver: require.resolve('react-native-reanimated/jest/resolver'),
+  testEnvironment: `${rootDir}/tests/native/harness/timeoutHeadroomEnvironment.mjs`,
   // jest-expo stubs `react-native/asset-registry`, but react-native's index and its Image resolvers
   // require the private module behind that entry point directly, and so meet the real, empty registry.
   moduleNameMapper: { '(^|/)private/assets/AssetRegistry$': `${rootDir}/tests/native/harness/assetRegistry.ts` },
@@ -71,6 +72,10 @@ module.exports = {
   projects: [project('ios'), project('android'), compiled],
   reporters: process.env.CI ? ['default', `${rootDir}/tools/ci/native-budget.mjs`] : ['default'],
   globalSetup: `${rootDir}/tools/ci/preflightMemory.mjs`,
+  // Eight times the slowest test and hook measured on the default (tests/helpers/timeoutHeadroom.mjs):
+  // 4.3 s on CI's cold transform cache, 8.6 s in ten local runs at CI's two workers. A test that needs
+  // more names its own.
+  testTimeout: 80_000,
   // A worker holds a whole React Native module graph, and jest's default is one
   // per core — enough of them to exhaust a developer machine's memory.
   maxWorkers: '50%',
