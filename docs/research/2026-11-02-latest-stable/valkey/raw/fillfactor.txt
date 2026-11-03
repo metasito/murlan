@@ -1,0 +1,29 @@
+Postgres 16.15, 127.0.0.1:55432, 2026-11-03, 4 vCPU shared with other sessions' test suites (load average 6-12 during the run).
+Envelope: the median-sized active_games row of the entry-sizes.ts soaks (database murlan_1921), 9,548 bytes of text, 2,782 bytes stored (compressed, TOASTed).
+1,000 rows, pgbench -n -c 8 -j 8 -T 60, a fresh table per run.
+
+RUNS=5 PGPORT=55432 DB=murlan_1921 bash fillfactor.sh   (interleaved: default, 70, default, 70, ...)
+envelope: 9548 bytes of text, 2782 bytes stored
+fillfactor=default run=1 tps=1543.840567 updates=92622 hot=92451 hot_ratio=0.9982 heap_bytes=147456 total_bytes=257884160
+fillfactor=70 run=1 tps=1920.836898 updates=115244 hot=115244 hot_ratio=1.0000 heap_bytes=114688 total_bytes=331014144
+fillfactor=default run=2 tps=2565.107679 updates=153902 hot=153773 hot_ratio=0.9992 heap_bytes=147456 total_bytes=457170944
+fillfactor=70 run=2 tps=2292.662129 updates=137550 hot=137550 hot_ratio=1.0000 heap_bytes=114688 total_bytes=432062464
+fillfactor=default run=3 tps=1586.806808 updates=95200 hot=95014 hot_ratio=0.9980 heap_bytes=147456 total_bytes=300097536
+fillfactor=70 run=3 tps=1581.475073 updates=94866 hot=94866 hot_ratio=1.0000 heap_bytes=114688 total_bytes=299016192
+fillfactor=default run=4 tps=1472.814584 updates=88363 hot=88204 hot_ratio=0.9982 heap_bytes=147456 total_bytes=278806528
+fillfactor=70 run=4 tps=1252.124694 updates=75128 hot=75128 hot_ratio=1.0000 heap_bytes=114688 total_bytes=237576192
+fillfactor=default run=5 tps=1325.293305 updates=79496 hot=79203 hot_ratio=0.9963 heap_bytes=147456 total_bytes=251199488
+fillfactor=70 run=5 tps=1338.698901 updates=80200 hot=80200 hot_ratio=1.0000 heap_bytes=114688 total_bytes=253304832
+
+Discarded: the first run, not interleaved (all default runs, then all 70 runs), under the same
+shared, drifting load. Its order, not the setting, made the difference: interleaving removed it.
+envelope: 9548 bytes of text, 2782 bytes stored
+fillfactor=default run=1 tps=977.608652 updates=59345 hot=58929 hot_ratio=0.9930 heap_bytes=147456 total_bytes=188366848
+fillfactor=default run=2 tps=459.542326 updates=27573 hot=27369 hot_ratio=0.9926 heap_bytes=147456 total_bytes=60448768
+fillfactor=default run=3 tps=955.331067 updates=57276 hot=57131 hot_ratio=0.9975 heap_bytes=147456 total_bytes=129499136
+fillfactor=70 run=1 tps=2466.020808 updates=148285 hot=148285 hot_ratio=1.0000 heap_bytes=114688 total_bytes=465256448
+fillfactor=70 run=2 tps=1343.812830 updates=80627 hot=80627 hot_ratio=1.0000 heap_bytes=114688 total_bytes=193495040
+fillfactor=70 run=3 tps=1749.981948 updates=104961 hot=104961 hot_ratio=1.0000 heap_bytes=114688 total_bytes=259530752
+
+The soaked table itself (murlan_1921.active_games after the four entry-sizes.ts runs, default fillfactor):
+n_tup_upd=42307 n_tup_hot_upd=42104 hot_ratio=0.9952
