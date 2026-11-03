@@ -1,0 +1,590 @@
+diff --git a/components/table/LampGloss.tsx b/components/table/LampGloss.tsx
+index 0a2a8d6e6..76c5e5054 100644
+--- a/components/table/LampGloss.tsx
++++ b/components/table/LampGloss.tsx
+@@ -10,6 +10,7 @@ import { cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLight } from
+ import type { CardScope } from "./cardRects";
+ import { FoilMask } from "./FoilMask";
+ import { levelShade } from "./rail";
++import { knob } from "@/lib/perfKnobs";
+ import { useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
+ 
+ export const GLOSS_SPOT_ART = () => require("../../assets/images/cards/gloss_spot.webp") as number;
+@@ -27,7 +28,7 @@ interface Props {
+ /** The lamp's spot and streak on one card, read from its own rect and the lamp on the UI thread: the card never re-renders for it. */
+ export function LampGloss({ rectKey, rects, width, height }: Props) {
+   const table = useCardTable();
+-  if (!table || !rectKey || !rects) return null;
++  if (knob.noGloss || !table || !rectKey || !rects) return null;
+   return <Lit table={table} rectKey={rectKey} rects={rects} width={width} height={height} />;
+ }
+ 
+@@ -77,7 +78,7 @@ export const FOIL_ART: Record<CardBackId, () => number> = {
+ /** A back's foil glint: the lamp's band over the back's foil ink alone. */
+ export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }) {
+   const table = useCardTable();
+-  if (!table || !props.rectKey || !props.rects) return null;
++  if (knob.noGloss || !table || !props.rectKey || !props.rects) return null;
+   return (
+     <FoilMask art={FOIL_ART[backKey]()}>
+       <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />
+@@ -121,7 +122,7 @@ const LIT_SCOPES: readonly CardScope[] = ["hand", "fan", "pile"];
+ /** The lamp's level over a hand, fan or pile card, a play still flying to the pile included; a deal or exchange flight (`deal`, `leg`) stays bright, as the mockup's `#fly` above its `#shade`. */
+ export function LevelShade({ rectKey, rects, width, height }: Props) {
+   const table = useCardTable();
+-  if (!table || !rectKey || !rects || !LIT_SCOPES.includes(rectKey.split(":")[0] as CardScope)) return null;
++  if (knob.noGloss || !table || !rectKey || !rects || !LIT_SCOPES.includes(rectKey.split(":")[0] as CardScope)) return null;
+   return <Shade light={table.glossLight} width={width} height={height} />;
+ }
+ 
+diff --git a/components/table/cardGloss.ts b/components/table/cardGloss.ts
+index c10878563..a997e6ae1 100644
+--- a/components/table/cardGloss.ts
++++ b/components/table/cardGloss.ts
+@@ -23,7 +23,8 @@ export interface Gloss {
+ export type GlossLight = Pick<Lamp, "lx" | "ly" | "level" | "r" | "t">;
+ 
+ /** Steps no soft gloss shows: the lamp sways at the felt's 0.01 pt, and every gloss following that is two mappers a card a frame. */
+-const GLOSS_POINT_STEP = 0.5;
++import { knob } from "../../lib/perfKnobs.ts";
++const GLOSS_POINT_STEP = knob.glossStep ? 2 : 0.5;
+ const GLOSS_LIGHT_STEP = 1 / 256;
+ /** Under a 60 Hz frame, so its jitter never skips one: a faster display, or jest's 1 ms frames, poses a gloss no oftener. */
+ export const GLOSS_FRAME_S = 0.012;
+diff --git a/components/table/feltFallback.tsx b/components/table/feltFallback.tsx
+index 77ec160ba..048da112a 100644
+--- a/components/table/feltFallback.tsx
++++ b/components/table/feltFallback.tsx
+@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
+ import type { FeltStops } from "@/lib/cosmetics";
+ import { DESIGN, LIGHT_ABOVE, lightUniforms, type Pool } from "./lampRig";
+ import { CLOTH_GLSL, clothUniforms } from "./feltShader";
++import { knob } from "@/lib/perfKnobs";
+ import { paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
+ 
+ const POOL_RADIUS = 420;
+@@ -101,8 +102,29 @@ function grainLayer(width: number, height: number, ax: number, ay: number): HTML
+   return cv;
+ }
+ 
+-function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, sx: number, sy: number) {
+-  const dpr = window.devicePixelRatio || 1;
++const baked = new Map<string, HTMLCanvasElement>();
++
++function bake(out: HTMLCanvasElement, stops: FeltStops, pool: Pool, sx: number, sy: number) {
++  if (!knob.fixBake) return bakeNow(out, stops, pool, sx, sy);
++  const key = `${stops.join()}|${pool.join()}|${sx},${sy}|${window.devicePixelRatio}`;
++  const hit = baked.get(key);
++  if (hit) {
++    out.width = hit.width;
++    out.height = hit.height;
++    out.getContext("2d")?.drawImage(hit, 0, 0);
++    return;
++  }
++  bakeNow(out, stops, pool, sx, sy);
++  const copy = document.createElement("canvas");
++  copy.width = out.width;
++  copy.height = out.height;
++  copy.getContext("2d")?.drawImage(out, 0, 0);
++  baked.set(key, copy);
++}
++
++function bakeNow(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, sx: number, sy: number) {
++  if (knob.noFallbackBake && out.width > 300) return;
++  const dpr = knob.fallbackDpr1 ? 1 : window.devicePixelRatio || 1;
+   const ax = dpr * sx;
+   const ay = dpr * sy;
+   out.width = Math.round(DESIGN.width * ax);
+diff --git a/components/table/handShade.web.tsx b/components/table/handShade.web.tsx
+index 88e5dec2b..a8b2751be 100644
+--- a/components/table/handShade.web.tsx
++++ b/components/table/handShade.web.tsx
+@@ -2,6 +2,7 @@
+ // shadows fall on the neighbouring cards, and this draws nothing.
+ import { lazy, Suspense, useEffect, useState } from "react";
+ import type { HandShadeProps } from "./feltReady";
++import { knob } from "@/lib/perfKnobs";
+ import { drawsOnGpu, SkiaLoadFailed } from "./feltSkia.web";
+ 
+ const SkiaHandShade = lazy(() => import("./feltSkiaBoundary").then((m) => ({ default: m.HandShadeBoundary })));
+@@ -12,7 +13,7 @@ export function HandShade(props: HandShadeProps) {
+     const id = requestAnimationFrame(() => setSkia(drawsOnGpu()));
+     return () => cancelAnimationFrame(id);
+   }, []);
+-  if (!skia) return null;
++  if (!skia || knob.noHandShade) return null;
+   return (
+     <SkiaLoadFailed>
+       <Suspense fallback={null}>
+diff --git a/components/table/lampRig.ts b/components/table/lampRig.ts
+index eec83c250..b94e7ab6c 100644
+--- a/components/table/lampRig.ts
++++ b/components/table/lampRig.ts
+@@ -152,6 +152,7 @@ const clamp01 = (v: number) => {
+   return Math.min(1, Math.max(0, v));
+ };
+ 
++import { knob } from "../../lib/perfKnobs.ts";
+ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
+   "worklet";
+   const dt = Math.min(MAX_DT, Math.max(0, seconds));
+@@ -170,7 +171,7 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
+   const run = 1 - s.freeze;
+   const w = 0.84 * (1 + 0.14 * Math.sin(s.t * 0.11 + 1.3) + 0.06 * Math.sin(s.t * 0.37));
+   s.ph += dt * w * run;
+-  const sway = reduced ? 0 : Math.sin(s.ph) * (SWAY + SWAY_KICKED * s.kick);
++  const sway = reduced || knob.noSway ? 0 : Math.sin(s.ph) * (SWAY + SWAY_KICKED * s.kick);
+   s.kick *= Math.exp(-dt * KICK_DECAY);
+   s.level = clamp01(s.lvl);
+   s.lx = s.x + sway;
+diff --git a/components/table/particleLayer.web.tsx b/components/table/particleLayer.web.tsx
+index c6ee4e7ad..1d1d8c681 100644
+--- a/components/table/particleLayer.web.tsx
++++ b/components/table/particleLayer.web.tsx
+@@ -14,6 +14,7 @@ import { startRain } from "./coneRain";
+ import { useLandingReaction } from "./useLandingReaction";
+ import { useBombBeat } from "./useBombBeat";
+ import type { LandingSignal } from "./useFlightClock";
++import { knob } from "@/lib/perfKnobs";
+ import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, SHEET, SPARK_LEN, SPRITE_R, stepScene, type Scene } from "./particleSprites";
+ 
+ function bakeSheet(): HTMLCanvasElement {
+@@ -81,9 +82,10 @@ export function animate(
+   sx: number,
+   sy: number
+ ): (() => void) | undefined {
++  if (knob.noParticles) return;
+   const c = cv.getContext("2d");
+   if (!c) return;
+-  const k = window.devicePixelRatio || 1;
++  const k = knob.particleDpr1 || knob.fixParticles ? 1 : window.devicePixelRatio || 1;
+   cv.width = Math.round(DESIGN.width * sx * k);
+   cv.height = Math.round(DESIGN.height * sy * k);
+   const white = bakeSheet();
+@@ -92,10 +94,11 @@ export function animate(
+   // Setting the size above cleared the canvas, so an asleep scene must still paint it once.
+   let cleared = true;
+   let id = requestAnimationFrame(function frame(now) {
++    if (knob.fixParticles && !cleared && scene.s.live === 0 && scene.ember.t < 0 && scene.rain.t < 0 && now - last < 30) return void (id = requestAnimationFrame(frame));
+     const dt = Math.min(0.05, (now - last) / 1000);
+     const l = lamp.value;
+     last = now;
+-    if (!cleared && sceneAsleep(scene, l, reduced)) return void (id = requestAnimationFrame(frame));
++    if (!cleared && sceneAsleep(scene, l, reduced || knob.particleIdleSleep)) return void (id = requestAnimationFrame(frame));
+     cleared = false;
+     if (stepScene(scene, l, dt, reduced, Math.random)) traceOnset("moment", "moth");
+     c.setTransform(1, 0, 0, 1, 0, 0);
+diff --git a/lib/perfKnobs.ts b/lib/perfKnobs.ts
+new file mode 100644
+index 000000000..a5a6c53dd
+--- /dev/null
++++ b/lib/perfKnobs.ts
+@@ -0,0 +1,22 @@
++// LOCAL-ONLY perf experiment knobs (not for commit): localStorage `__x_<name>` = "1".
++const read = (k: string): boolean => {
++  try {
++    return (globalThis as { localStorage?: Storage }).localStorage?.getItem(`__x_${k}`) === "1";
++  } catch {
++    return false;
++  }
++};
++export const knob = {
++  noParticles: read("noParticles"),
++  particleDpr1: read("particleDpr1"),
++  particleIdleSleep: read("particleIdleSleep"),
++  fallbackDpr1: read("fallbackDpr1"),
++  noFallbackBake: read("noFallbackBake"),
++  noSway: read("noSway"),
++  skiaDpr1: read("skiaDpr1"),
++  noGloss: read("noGloss"),
++  noHandShade: read("noHandShade"),
++  fixParticles: read("fixParticles"),
++  fixBake: read("fixBake"),
++  glossStep: read("glossStep"),
++};
+diff --git a/tests/e2e/perfLab.spec.ts b/tests/e2e/perfLab.spec.ts
+new file mode 100644
+index 000000000..171fc196e
+--- /dev/null
++++ b/tests/e2e/perfLab.spec.ts
+@@ -0,0 +1,161 @@
++// LOCAL-ONLY perf lab (not for commit): steady-state cost of a live table, sampled while the
++// table waits on the viewer's own turn (nothing but ambient motion runs), and around each play.
++// Variants are localStorage knobs (`__x_*`) read by the local experiment patch.
++import { test, type CDPSession, type Page } from "@playwright/test";
++import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
++import { resolve } from "node:path";
++import { openApp, startOfflineGame } from "./helpers/navigation";
++import { playAnyLegal } from "./helpers/bot";
++import { CANVASKIT_URL } from "../../lib/canvaskit";
++import { TABLE, TABLE_STATE } from "./helpers/selectors";
++import { YOUR_TURN_PREFIX } from "./helpers/labels";
++
++const OUT = "/tmp/claude-0/-home-user-murlan/9eb84156-ef46-5ca3-9201-81e4e5173f28/scratchpad/perf/lab";
++const INIT = "/tmp/claude-0/-home-user-murlan/9eb84156-ef46-5ca3-9201-81e4e5173f28/scratchpad/perf/probe/init.js";
++const env = process.env;
++const LABEL = env.PROBE_LABEL ?? "lab";
++const RATE = Number(env.PROBE_RATE ?? 1);
++const DPR = Number(env.PROBE_DPR ?? 3);
++const SAMPLES = Number(env.PROBE_SAMPLES ?? 4);
++const WIN = Number(env.PROBE_WIN ?? 4000);
++const SKIA = env.PROBE_SKIA === "1";
++const KNOBS = (env.PROBE_KNOBS ?? "").split(",").filter(Boolean);
++const PROFILE = env.PROBE_PROFILE === "1";
++const CK_DIR = resolve(__dirname, "../../node_modules/canvaskit-wasm/bin/full/");
++
++async function prepare(page: Page) {
++  await page.route(`${CANVASKIT_URL}**`, (route) => {
++    const file = route.request().url().split("/").pop()!;
++    route.fulfill({
++      body: readFileSync(resolve(CK_DIR, file)),
++      contentType: file.endsWith(".wasm") ? "application/wasm" : "application/javascript",
++      headers: { "access-control-allow-origin": "*" },
++    });
++  });
++  await page.addInitScript((knobs: string[]) => {
++    for (const k of knobs) localStorage.setItem(`__x_${k}`, "1");
++  }, KNOBS);
++  if (SKIA) {
++    await page.addInitScript(() => {
++      const fake = "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)";
++      for (const C of [WebGLRenderingContext, WebGL2RenderingContext]) {
++        const get = C.prototype.getParameter;
++        C.prototype.getParameter = function (p: number) {
++          if (p === 0x9246 || p === 0x1f01) return fake;
++          return get.call(this, p);
++        };
++      }
++      const gc = HTMLCanvasElement.prototype.getContext;
++      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, kind: string, attrs?: Record<string, unknown>) {
++        if (attrs && attrs.failIfMajorPerformanceCaveat) attrs = { ...attrs, failIfMajorPerformanceCaveat: false };
++        return gc.call(this, kind, attrs);
++      } as typeof gc;
++    });
++  }
++  await page.addInitScript({ path: INIT });
++  await page.emulateMedia({ reducedMotion: env.PROBE_REDUCED === "1" ? "reduce" : "no-preference" });
++}
++
++async function busyWindow(cdp: CDPSession, page: Page, ms: number) {
++  // Main-thread busy from CDP Performance metrics (TaskDuration etc.), frames from the in-page recorder.
++  const m0 = Object.fromEntries((await cdp.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]));
++  const t0 = await page.evaluate(() => performance.now());
++  await page.waitForTimeout(ms);
++  const t1 = await page.evaluate(() => performance.now());
++  const m1 = Object.fromEntries((await cdp.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]));
++  const d = (k: string) => +(((m1[k] - m0[k]) * 1000) / ((t1 - t0) / 1000)).toFixed(1);
++  const frames = await page.evaluate(([a, b]) => {
++    const f = (window as unknown as { __perf: { frames: number[]; longtasks: number[][] } }).__perf;
++    const fs = f.frames.filter((t) => t >= a && t <= b);
++    const iv = fs.slice(1).map((t, i) => t - fs[i]);
++    const s = [...iv].sort((x, y) => x - y);
++    const q = (p: number) => s[Math.min(s.length - 1, Math.floor(s.length * p))] ?? 0;
++    return {
++      fps: +(fs.length / ((b - a) / 1000)).toFixed(1),
++      p50: +q(0.5).toFixed(1),
++      p95: +q(0.95).toFixed(1),
++      worst: +(s[s.length - 1] ?? 0).toFixed(1),
++      janky: iv.filter((x) => x > 33.4).length,
++      longTasks: f.longtasks.filter(([t]) => t >= a && t <= b).length,
++    };
++  }, [t0, t1]);
++  // ms of main-thread work per second of wall time, by kind.
++  return {
++    ...frames,
++    taskMsPerSec: d("TaskDuration"),
++    scriptMsPerSec: d("ScriptDuration"),
++    layoutMsPerSec: d("LayoutDuration"),
++    styleMsPerSec: d("RecalcStyleDuration"),
++    t0,
++    t1,
++  };
++}
++
++const myTurn = (page: Page, timeout: number) =>
++  page.locator(`${TABLE}[${TABLE_STATE}^="${YOUR_TURN_PREFIX}"]`).waitFor({ timeout }).then(() => true, () => false);
++
++test("perf lab", async ({ browser, baseURL }) => {
++  test.setTimeout(15 * 60_000);
++  mkdirSync(OUT, { recursive: true });
++  const ctx = await browser.newContext({ locale: "it-IT", viewport: { width: 874, height: 402 }, deviceScaleFactor: DPR });
++  const page = await ctx.newPage();
++  await prepare(page);
++  const cdp = await ctx.newCDPSession(page);
++  await cdp.send("Performance.enable", { timeDomain: "threadTicks" });
++  await openApp(page, baseURL!);
++  if (RATE > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
++  await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
++  // Let the deal and (with Skia) CanvasKit settle.
++  await page.waitForTimeout(5000);
++  const turnWindows = [];
++  const playWindows = [];
++  if (PROFILE || env.PROBE_PROFILE_PLAY === "1") {
++    await cdp.send("Profiler.enable");
++    await cdp.send("Profiler.setSamplingInterval", { interval: 200 });
++  }
++  for (let i = 0; i < SAMPLES; i++) {
++    if (!(await myTurn(page, 120_000))) break;
++    await page.waitForTimeout(600);
++    if (PROFILE && i === 0) await cdp.send("Profiler.start");
++    turnWindows.push(await busyWindow(cdp, page, WIN));
++    if (PROFILE && i === 0) {
++      const { profile } = await cdp.send("Profiler.stop");
++      writeFileSync(`${OUT}/${LABEL}.turn.cpuprofile`, JSON.stringify(profile));
++    }
++    // Play, then measure the 2.5 s that follow (throw, landing, bots' replies).
++    if (env.PROBE_PROFILE_PLAY === "1") await cdp.send("Profiler.start");
++    const played = playAnyLegal(page);
++    const after = busyWindow(cdp, page, 2500);
++    await played;
++    playWindows.push(await after);
++    if (env.PROBE_PROFILE_PLAY === "1") {
++      const { profile } = await cdp.send("Profiler.stop");
++      writeFileSync(`${OUT}/${LABEL}.play${i}.cpuprofile`, JSON.stringify(profile));
++    }
++  }
++  const agg = (ws: Record<string, number>[]) => {
++    const keys = Object.keys(ws[0] ?? {}).filter((k) => k !== "t0" && k !== "t1");
++    return Object.fromEntries(keys.map((k) => [k, +(ws.reduce((a, w) => a + w[k], 0) / ws.length).toFixed(1)]));
++  };
++  const canv = await page.evaluate(() => [...document.querySelectorAll("canvas")].map((c) => `${c.width}x${c.height}`));
++  const layers = await page.evaluate(() => {
++    const n = (id: string) => document.querySelectorAll(`[data-testid="${id}"]`).length;
++    return {
++      glossSpot: n("card-gloss-spot"),
++      glossStreak: n("card-gloss-streak"),
++      foilInk: n("card-foil-ink"),
++      foilBand: n("card-foil-band"),
++      levelShade: n("card-level-shade"),
++      cardBoxes: n("card-box"),
++      dom: document.querySelectorAll("*").length,
++      willChange: [...document.querySelectorAll("*")].filter((e) => getComputedStyle(e).willChange !== "auto").length,
++    };
++  });
++  console.log(`[lab] ${LABEL} layers ${JSON.stringify(layers)}`);
++  const res = { label: LABEL, rate: RATE, dpr: DPR, skia: SKIA, knobs: KNOBS, canvases: canv, turn: agg(turnWindows), play: agg(playWindows), turnWindows, playWindows };
++  writeFileSync(`${OUT}/${LABEL}.json`, JSON.stringify(res));
++  console.log(`[lab] ${LABEL} turn ${JSON.stringify(res.turn)}`);
++  console.log(`[lab] ${LABEL} play ${JSON.stringify(res.play)}`);
++  console.log(`[lab] ${LABEL} canvases ${canv.join(" ")}`);
++  await ctx.close();
++});
+diff --git a/tests/e2e/perfProbe.spec.ts b/tests/e2e/perfProbe.spec.ts
+new file mode 100644
+index 000000000..bca4d904e
+--- /dev/null
++++ b/tests/e2e/perfProbe.spec.ts
+@@ -0,0 +1,185 @@
++// LOCAL-ONLY perf probe (not for commit). Plays real rounds at a real-motion table and dumps
++// per-frame data, long tasks, LoAF attribution, React commits, CPU profile and a trace.
++import { test, type CDPSession, type Page } from "@playwright/test";
++import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
++import { resolve } from "node:path";
++import { openApp, startOfflineGame, registerNewAccount, uniqueUsername } from "./helpers/navigation";
++import { driveGameToCompletion, untilNextDeal } from "./helpers/bot";
++import { goToOnlineLobby, createRoom, fillWithBotsAndStart } from "./helpers/online";
++import { CANVASKIT_URL } from "../../lib/canvaskit";
++
++const OUT = "/tmp/claude-0/-home-user-murlan/9eb84156-ef46-5ca3-9201-81e4e5173f28/scratchpad/perf/raw";
++const INIT = "/tmp/claude-0/-home-user-murlan/9eb84156-ef46-5ca3-9201-81e4e5173f28/scratchpad/perf/probe/init.js";
++const env = process.env;
++const LABEL = env.PROBE_LABEL ?? "run";
++const RATE = Number(env.PROBE_RATE ?? 1);
++const ROUNDS = Number(env.PROBE_ROUNDS ?? 2);
++const MODE = env.PROBE_MODE ?? "offline";
++const PLAYERS = Number(env.PROBE_PLAYERS ?? 4) as 2 | 3 | 4;
++const DPR = Number(env.PROBE_DPR ?? 3);
++const TRACE_MS = Number(env.PROBE_TRACE_MS ?? 0);
++const PROFILE = env.PROBE_PROFILE === "1";
++const REACT = env.PROBE_REACT === "1";
++const SKIA = env.PROBE_SKIA === "1";
++
++const CK_DIR = resolve(__dirname, "../../node_modules/canvaskit-wasm/bin/full/");
++
++async function readStream(cdp: CDPSession, handle: string): Promise<string> {
++  let out = "";
++  for (;;) {
++    const r = await cdp.send("IO.read", { handle, size: 1 << 20 });
++    out += r.base64Encoded ? Buffer.from(r.data, "base64").toString() : r.data;
++    if (r.eof) break;
++  }
++  await cdp.send("IO.close", { handle });
++  return out;
++}
++
++async function prepare(page: Page) {
++  await page.route(`${CANVASKIT_URL}**`, (route) => {
++    const file = route.request().url().split("/").pop()!;
++    route.fulfill({
++      body: readFileSync(resolve(CK_DIR, file)),
++      contentType: file.endsWith(".wasm") ? "application/wasm" : "application/javascript",
++      headers: { "access-control-allow-origin": "*" },
++    });
++  });
++  if (REACT) await page.addInitScript(() => localStorage.setItem("__perfReact", "1"));
++  const knobs = (env.PROBE_KNOBS ?? "").split(",").filter(Boolean);
++  await page.addInitScript((ks: string[]) => {
++    for (const k of ks) localStorage.setItem(`__x_${k}`, "1");
++  }, knobs);
++  if (SKIA) {
++    await page.addInitScript(() => {
++      const fake = "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)";
++      for (const C of [WebGLRenderingContext, WebGL2RenderingContext]) {
++        const get = C.prototype.getParameter;
++        C.prototype.getParameter = function (p: number) {
++          if (p === 0x9246 || p === 0x1f01) return fake;
++          return get.call(this, p);
++        };
++      }
++      const gc = HTMLCanvasElement.prototype.getContext;
++      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, kind: string, attrs?: Record<string, unknown>) {
++        if (attrs && attrs.failIfMajorPerformanceCaveat) attrs = { ...attrs, failIfMajorPerformanceCaveat: false };
++        return gc.call(this, kind, attrs);
++      } as typeof gc;
++    });
++  }
++  await page.addInitScript({ path: INIT });
++  await page.emulateMedia({ reducedMotion: "no-preference" });
++}
++
++test("perf probe", async ({ browser, baseURL }) => {
++  mkdirSync(OUT, { recursive: true });
++  const ctx = await browser.newContext({
++    locale: "it-IT",
++    viewport: { width: 874, height: 402 },
++    deviceScaleFactor: DPR,
++  });
++  const page = await ctx.newPage();
++  const errors: string[] = [];
++  page.on("pageerror", (e) => errors.push(e.message));
++  await prepare(page);
++  const cdp = await ctx.newCDPSession(page);
++
++  await openApp(page, baseURL!);
++  if (MODE === "online") {
++    await registerNewAccount(page, uniqueUsername("perf"));
++    await goToOnlineLobby(page);
++    await createRoom(page, { playerCount: PLAYERS, gameMode: "free_for_all" });
++  }
++
++  if (RATE > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
++  if (PROFILE) {
++    await cdp.send("Profiler.enable");
++    await cdp.send("Profiler.setSamplingInterval", { interval: 250 });
++    await cdp.send("Profiler.start");
++  }
++  let traceDone: Promise<string> | null = null;
++  if (TRACE_MS > 0) {
++    traceDone = new Promise((res) => cdp.once("Tracing.tracingComplete", (e) => res(readStream(cdp, e.stream!))));
++    await cdp.send("Tracing.start", {
++      transferMode: "ReturnAsStream",
++      traceConfig: {
++        includedCategories: [
++          "devtools.timeline",
++          "disabled-by-default-devtools.timeline",
++          "disabled-by-default-devtools.timeline.frame",
++          "v8",
++          "v8.execute",
++          "blink.user_timing",
++          "loading",
++          "latencyInfo",
++          "gpu",
++          "cc",
++          "viz",
++        ],
++      },
++    });
++  }
++
++  const startedAt = await page.evaluate(() => performance.now());
++  if (MODE === "online") await fillWithBotsAndStart(page);
++  else await startOfflineGame(page, { playerCount: PLAYERS, gameMode: "free_for_all" });
++
++  const stopTrace = TRACE_MS > 0 ? setTimeout(() => cdp.send("Tracing.end").catch(() => {}), TRACE_MS) : null;
++  const moves: string[] = [];
++  const roundEnds: number[] = [];
++  let driveError: string | null = null;
++  for (let r = 0; r < ROUNDS && !driveError; r++) {
++    await driveGameToCompletion(page, {
++      isFinished: untilNextDeal(),
++      maxTotalMs: 12 * 60_000,
++      stallMs: 60_000,
++      log: (l) => moves.push(l),
++    }).catch((e) => (driveError = String(e)));
++    roundEnds.push(await page.evaluate(() => performance.now()));
++  }
++  // A settled table as the control.
++  await page.waitForTimeout(4_000);
++  const idleFrom = await page.evaluate(() => performance.now());
++  await page.waitForTimeout(4_000);
++  const endedAt = await page.evaluate(() => performance.now());
++
++  if (stopTrace) clearTimeout(stopTrace);
++  if (traceDone) {
++    await cdp.send("Tracing.end").catch(() => {});
++    writeFileSync(`${OUT}/${LABEL}.trace.json`, await traceDone);
++  }
++  if (PROFILE) {
++    const { profile } = await cdp.send("Profiler.stop");
++    writeFileSync(`${OUT}/${LABEL}.cpuprofile`, JSON.stringify(profile));
++  }
++  const data = await page.evaluate(() => {
++    const P = (window as unknown as { __perf: Record<string, unknown> }).__perf;
++    const canv = [...document.querySelectorAll("canvas")].map((c) => ({
++      w: c.width,
++      h: c.height,
++      cw: c.clientWidth,
++      ch: c.clientHeight,
++    }));
++    const all = document.querySelectorAll("*");
++    let transformed = 0;
++    let animatedStyles = 0;
++    for (const el of all) {
++      const cs = getComputedStyle(el);
++      if (cs.transform && cs.transform !== "none") transformed++;
++      if ((el as HTMLElement).style && (el as HTMLElement).style.cssText.includes("transform")) animatedStyles++;
++    }
++    return {
++      ...P,
++      canvases: canv,
++      domNodes: all.length,
++      transformed,
++      inlineTransform: animatedStyles,
++      svgNodes: document.querySelectorAll("svg *").length,
++      imgs: document.querySelectorAll("img").length,
++    };
++  });
++  writeFileSync(
++    `${OUT}/${LABEL}.json`,
++    JSON.stringify({ label: LABEL, rate: RATE, mode: MODE, dpr: DPR, skia: SKIA, startedAt, roundEnds, idleFrom, endedAt, moves, errors, driveError, ...data })
++  );
++  await ctx.close();
++});
+diff --git a/tests/e2e/playwright.probe.config.ts b/tests/e2e/playwright.probe.config.ts
+new file mode 100644
+index 000000000..272b3e24e
+--- /dev/null
++++ b/tests/e2e/playwright.probe.config.ts
+@@ -0,0 +1,22 @@
++// LOCAL-ONLY perf probe config (not for commit): no webServer, points at a server started by hand.
++import { defineConfig } from "@playwright/test";
++
++export default defineConfig({
++  testDir: __dirname,
++  testMatch: new RegExp(process.env.PROBE_SPEC ?? "perfProbe") ,
++  outputDir: "/tmp/claude-0/-home-user-murlan/9eb84156-ef46-5ca3-9201-81e4e5173f28/scratchpad/perf/pw-results",
++  timeout: 20 * 60_000,
++  workers: 1,
++  retries: 0,
++  reporter: [["line"]],
++  use: {
++    baseURL: process.env.PROBE_URL ?? "http://127.0.0.1:5310",
++    locale: "it-IT",
++    trace: "off",
++    launchOptions: {
++      executablePath: "/opt/pw-browsers/chromium-1243/chrome-linux64/chrome",
++      args: (process.env.PROBE_ARGS ?? "").split(" ").filter(Boolean),
++    },
++  },
++  projects: [{ name: "chromium" }],
++});
