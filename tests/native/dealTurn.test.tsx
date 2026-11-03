@@ -2,7 +2,7 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { render, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { HAND_SCALE, HAND_SCALE_ON_TURN } from '@/components/cardFaceModel';
 import { Colors, Motion } from '@/lib/theme';

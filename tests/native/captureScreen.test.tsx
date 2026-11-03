@@ -15,7 +15,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { greyFilter, iosGrey } from '@/components/table/linkGrey';
 import { holdGrey } from '@/lib/ownLink';
 import { setMotion, setWindow } from './harness/env';

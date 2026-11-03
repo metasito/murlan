@@ -98,10 +98,10 @@ describe('an exchange whose frame clock never advances', () => {
 
   it('counts no hidden time: a watchdog running when the page hides waits a full span once it is back', async () => {
     const listeners = new Set<(state: AppStateStatus) => void>();
-    AppState.addEventListener = (_type, handler) => {
+    AppState.addEventListener = ((_type: string, handler: (state: AppStateStatus) => void) => {
       listeners.add(handler);
       return { remove: () => listeners.delete(handler) };
-    };
+    }) as typeof AppState.addEventListener;
     const pageGoes = (state: AppStateStatus) =>
       act(async () => {
         AppState.currentState = state;

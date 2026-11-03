@@ -3,7 +3,8 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
-import Animated, { getAnimatedStyle } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { useGiocaCues } from '@/components/useTableFeedback';
 import { Motion } from '@/lib/theme';
 

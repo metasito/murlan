@@ -14,7 +14,7 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import React from 'react';
 import { Text } from 'react-native';
 import { render, screen, act } from '@testing-library/react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { MenuLayout } from '@/components/MenuLayout';

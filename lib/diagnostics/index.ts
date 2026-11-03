@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
-import type { View } from "react-native";
+import type { ViewInstance } from "react-native";
 import orientation from "@/modules/murlan-orientation";
 import type { DiagRow } from "./types";
 import type { LampSide, Pixels } from "./lampLegibility";
@@ -87,8 +87,8 @@ export function setRingProbe(on: boolean): void {
   for (const listener of ringProbeListeners) listener();
 }
 
-export function useRingProbe(name: string): RefObject<View | null> {
-  const ref = useRef<View>(null);
+export function useRingProbe(name: string): RefObject<ViewInstance | null> {
+  const ref = useRef<ViewInstance>(null);
   const on = useSyncExternalStore(subscribeRingProbe, ringProbeState, ringProbeState);
   useEffect(() => {
     if (!DIAGNOSTICS || !on) return;

@@ -11,7 +11,7 @@ import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 // Reduced motion collapses a played card's flight to a single timer, so the
 // pile reaches its settled state on a tick rather than on a spring callback.

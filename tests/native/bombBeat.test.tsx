@@ -3,7 +3,8 @@ import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
+import { makeMutable } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 const mockOnsets: string[] = [];
 const mockSources = new Map<string, () => unknown>();

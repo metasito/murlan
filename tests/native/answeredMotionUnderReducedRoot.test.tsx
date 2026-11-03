@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, render, screen } from "@testing-library/react-native";
 import type { TestInstance } from "test-renderer";
-import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from "react-native-reanimated";
+import { ReduceMotion, ReducedMotionConfig } from "react-native-reanimated";
+import { getAnimatedStyle } from "./harness/animatedStyle";
 import { setMotionPreference } from "@/lib/accessibility";
 import { FloatingReactions } from "@/components/ReactionLayer";
 import { clearReactions, pushReaction } from "@/lib/reactions";

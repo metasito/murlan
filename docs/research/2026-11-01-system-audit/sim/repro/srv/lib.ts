@@ -250,7 +250,7 @@ export function summarise(msgs: Tapped[]) {
 /** PIDs of this database's backends, sampled until stop(); the log names a backend only by PID. */
 export class PidWatch {
   pids = new Set<number>();
-  #timer: NodeJS.Timeout | undefined;
+  #timer: ReturnType<typeof setInterval> | undefined;
   async sample() {
     const rows = await q<{ pid: number }>(
       "SELECT pid FROM pg_stat_activity WHERE datname = $1 AND application_name LIKE 'srv%'",

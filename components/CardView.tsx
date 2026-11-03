@@ -1,5 +1,5 @@
 import React, { useContext } from "react";
-import { View, StyleSheet, Pressable, Image, Platform } from "react-native";
+import { View, StyleSheet, Pressable, Image, Platform, type KeyDownEvent } from "react-native";
 import { TableText } from "@/components/table/TableText";
 import Animated from "react-native-reanimated";
 import { Asset } from "expo-asset";
@@ -491,15 +491,16 @@ function CardViewBase({
   const webActionKeys =
     Platform.OS === "web" && (onActivate !== undefined || (a11yActionKeys !== undefined && onA11yAction !== undefined))
       ? {
-          onKeyDown: (e: { key: string; preventDefault?: () => void }) => {
-            if (onActivate !== undefined && ACTIVATE_KEYS.has(e.key)) {
-              e.preventDefault?.();
+          onKeyDown: (e: KeyDownEvent) => {
+            const { key } = e.nativeEvent;
+            if (onActivate !== undefined && ACTIVATE_KEYS.has(key)) {
+              e.preventDefault();
               handleActivate();
               return;
             }
-            const action = a11yActionKeys?.[e.key];
+            const action = a11yActionKeys?.[key];
             if (action === undefined || onA11yAction === undefined) return;
-            e.preventDefault?.();
+            e.preventDefault();
             onA11yAction(action);
           },
         }

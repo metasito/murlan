@@ -4,7 +4,8 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 import type { TestInstance } from 'test-renderer';
-import { getAnimatedStyle, makeMutable, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { makeMutable, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { CardView } from '@/components/CardView';
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';

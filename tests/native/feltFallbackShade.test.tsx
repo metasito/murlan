@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
-import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
+import { makeMutable } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 jest.mock('@/components/table/feltFallback', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
@@ -20,7 +21,7 @@ import type { LampRig } from '@/components/table/useLampRig';
 import type { CardTable } from '@/components/table/useCardRects';
 import { FeltGradients } from '@/lib/tokens';
 
-const createElement = jest.fn(() => ({ getContext: () => null }));
+const createElement = jest.fn((_tag: string) => ({ getContext: () => null }));
 
 beforeEach(() => {
   // A browser whose WebGL cannot draw on the GPU: the fallback is the felt for good.

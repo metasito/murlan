@@ -3,7 +3,7 @@
 // every card on its slot, wherever the throw started.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import { act, render, screen } from "@testing-library/react-native";
-import { getAnimatedStyle } from "react-native-reanimated";
+import { getAnimatedStyle } from "./harness/animatedStyle";
 import type { Card } from "@/lib/game/gameEngine";
 import { farthest, flightOf, pileOf } from "./helpers/landing";
 

@@ -11,7 +11,8 @@
 // renders can catch either.
 import { describe, it, expect, jest } from "@jest/globals";
 import { act, render, screen } from "@testing-library/react-native";
-import { getAnimatedStyle, makeMutable } from "react-native-reanimated";
+import { makeMutable } from "react-native-reanimated";
+import { getAnimatedStyle } from "./harness/animatedStyle";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 import { fireLanding, flightOf, pileOf } from "./helpers/landing";
 import { Motion } from "@/lib/theme";

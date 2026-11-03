@@ -9,7 +9,7 @@ import React from "react";
 import { act, render, screen } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { getAnimatedStyle } from "react-native-reanimated";
+import { getAnimatedStyle } from "./harness/animatedStyle";
 import { GameTable } from "@/components/GameTable";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 import { setMotion } from "./harness/env";

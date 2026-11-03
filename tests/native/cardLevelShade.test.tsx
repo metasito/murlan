@@ -2,7 +2,8 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
-import { getAnimatedStyle, makeMutable, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { makeMutable, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { CardView } from '@/components/CardView';
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';

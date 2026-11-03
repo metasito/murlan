@@ -23,7 +23,7 @@ import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals
 import React from "react";
 import { act, render } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { getAnimatedStyle } from "react-native-reanimated";
+import { getAnimatedStyle } from "./harness/animatedStyle";
 
 import { GameTable } from "@/components/GameTable";
 import { farthest, frameOfFirst } from "./helpers/landing";

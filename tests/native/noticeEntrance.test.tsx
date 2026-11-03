@@ -1,7 +1,7 @@
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { setMotionPreference } from '@/lib/accessibility';
 import { NoticeText, TableNotice } from '@/components/table/TableNotice';
 import { mockupPx, noticeRise } from '@/components/table/noticeModel';

@@ -5,7 +5,8 @@ import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import { type SharedValue } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import type { TestInstance } from 'test-renderer';
 
 // tests/native/setup.ts's no-op Skia, except that a group draws its layer and a colour matrix shows its values.

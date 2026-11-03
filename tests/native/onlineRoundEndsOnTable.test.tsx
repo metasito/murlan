@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
-import { getAnimatedStyle } from 'react-native-reanimated';
+import { getAnimatedStyle } from './harness/animatedStyle';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as particles from '@/components/table/particles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
