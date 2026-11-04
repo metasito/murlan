@@ -27,7 +27,7 @@ jest.mock('@shopify/react-native-skia', () => {
       return image;
     },
   });
-  const Skia = new Proxy(call, { get: (_, key) => (key === 'Surface' ? { Make: surface } : call) });
+  const Skia = new Proxy(call, { get: (_, key) => (key === 'Surface' ? { Make: surface, MakeOffscreen: () => null } : call) });
   return new Proxy({ Skia, PaintStyle: {}, useCanvasRef: () => R.useRef(null) } as Record<string | symbol, unknown>, {
     get: (known, key) => (key === '__esModule' ? true : key in known ? known[key] : element),
   });
