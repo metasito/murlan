@@ -6,7 +6,7 @@ import { Handoff } from "../../lib/tokens.ts";
 import type { FlyDirection } from "../seatLayout.ts";
 import type { ParticleSpawn, Rng } from "./particles.ts";
 
-export const RIM = { cx: 465, cy: 201, rx: 385, ry: 182 } as const;
+export const RIM = { cx: 437, cy: 201, rx: 357, ry: 182 } as const;
 const ANGLE: Record<FlyDirection, number> = { bottom: 90, right: 0, top: -90, left: -180 };
 
 /** The one run a layer holds: a new hand-off restarts it, so two embers never fly at once. `t` < 0 is idle. */

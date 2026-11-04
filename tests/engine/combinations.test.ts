@@ -225,3 +225,33 @@ describe("how a card is written", () => {
     assert.equal(getSuitSymbol(null), "");
   });
 });
+
+describe("the order a straight is shown in", () => {
+  const faces = (cards: Card[]) => buildCombination(cards)?.cards.map((x) => x.rank).join(" ");
+
+  test("the Ace and the 2 lead a low straight, whatever order they were picked in", () => {
+    const picked = [c("6", "hearts"), c("A", "clubs"), c("4", "spades"), c("2", "hearts"), c("5", "diamonds"), c("3", "clubs")];
+    assert.equal(faces(picked), "A 2 3 4 5 6");
+  });
+
+  test("the Ace closes a high straight", () => {
+    const picked = [c("A", "clubs"), c("K", "spades"), c("10", "hearts"), c("Q", "hearts"), c("J", "diamonds")];
+    assert.equal(faces(picked), "10 J Q K A");
+  });
+
+  test("a royal straight is ordered the same way", () => {
+    const picked = ["5", "A", "3", "2", "4"].map((r) => c(r as "5", "hearts"));
+    const combo = buildCombination(picked);
+    assert.equal(combo?.type, "royal_straight");
+    assert.equal(combo?.cards.map((x) => x.rank).join(" "), "A 2 3 4 5");
+  });
+
+  test("a 13-card straight reads A to K", () => {
+    const all = ["K", "2", "A", "5", "Q", "3", "J", "4", "10", "9", "8", "7", "6"].map((r) => c(r as "5", "hearts"));
+    assert.equal(faces(all), "A 2 3 4 5 6 7 8 9 10 J Q K");
+  });
+
+  test("ordering changes no strength", () => {
+    assert.equal(buildCombination([c("A", "clubs"), c("2", "hearts"), c("3", "hearts"), c("4", "spades"), c("5", "hearts")])?.strength, 5);
+  });
+});

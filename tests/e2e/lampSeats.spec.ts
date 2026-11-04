@@ -75,8 +75,8 @@ test("the lamp re-aims when the window changes under it", async ({ page, baseURL
   expect((await tracedLamp(page)).x - before.x, "the floor: the right seat moved, and the lamp with it").toBeGreaterThan(100);
 });
 
-/** Plan 3 L9 as left/bottom/right: the Dynamic Island alone, then with the home bar. */
-const ISLAND_INSETS = [[62, 0, 0], [62, 21, 62]] as const;
+/** Plan 3 L9 as left/bottom/right: a cutout wider than the rail on the right edge, alone, then with the home bar. The table is centred until one edge's inset outgrows the rail, so these are the insets that move it. */
+const ISLAND_INSETS = [[0, 0, 100], [0, 21, 120]] as const;
 
 test("under the device's insets the light aims by the table's own box, not the window's, at every seat", async ({ page, baseURL }) => {
   test.setTimeout(180_000);

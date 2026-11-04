@@ -245,7 +245,7 @@ export const botMove = (page: Page) => page.evaluate(() => (globalThis as unknow
 
 export const playLowest = (cards: number) => async (page: Page) => {
   const hand = page.locator(HAND_CARD_BOXES);
-  for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true, position: { x: 8, y: 30 } });
+  for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true, position: { x: 16, y: 30 } });
   await legalGioca(page).click({ force: true, timeout: 10_000 });
 };
 
@@ -513,7 +513,7 @@ const MOMENTS: Moment[] = [
     onsets: ["sound:matchLost"],
     // The chapter's `at(200)` and `at(500)` run on the frames at 208 and 512.
     actions: [
-      { atMs: 208, app: (page) => page.locator(HAND_CARD_BOXES).first().click({ force: true, position: { x: 8, y: 30 } }) },
+      { atMs: 208, app: (page) => page.locator(HAND_CARD_BOXES).first().click({ force: true, position: { x: 16, y: 30 } }) },
       { atMs: 512, app: (page) => legalGioca(page).click({ force: true, timeout: 10_000 }) },
     ],
     variants: ["skia"],

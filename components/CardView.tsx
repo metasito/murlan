@@ -34,7 +34,6 @@ import {
   LETTER_SPACING,
   rankFontSize,
   rankInset,
-  stockLipHeight,
   SUIT_GLYPHS,
   suitMarksPath,
   ART_FILL,
@@ -471,7 +470,6 @@ function CardViewBase({
   }
 
   const stockStyle = { borderRadius: cardRadius(w), ...shadow };
-  const lipStyle = { width: w, height: h, top: stockLipHeight(h), borderRadius: cardRadius(w) };
 
   const rankText = card.isJoker ? "JK" : getCardDisplayRank(card.rank);
   // "10" is the only two-glyph rank. At the single-glyph size it renders wider
@@ -536,7 +534,6 @@ function CardViewBase({
         // corners, and a strip narrower than the card would clip the art with it.
         style={{ width: hitWidth ?? w, height: h }}
       >
-        <View pointerEvents="none" style={[styles.lip, lipStyle]} />
         {/* Named because it is not the same box as the pressable around it: in
             a hand, that one is only the strip this card exposes. Anything
             measuring what the player *sees* has to measure this.
@@ -578,9 +575,8 @@ function CardViewBase({
           >
             {rankText}
           </TableText>
-          <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
-        <LevelShade rectKey={rectKey} rects={rects} width={w} height={h + stockLipHeight(h)} />
+        <LevelShade rectKey={rectKey} rects={rects} width={w} height={h} />
       </Pressable>
     </View>
   );
@@ -615,7 +611,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   // A solid view under the card rather than a shadow layer: nothing to mask, on the felt or off it.
-  lip: { position: "absolute", left: 0, zIndex: Layer.felt, backgroundColor: Colors.cardLip, ...edgeAntialiased },
   stock: { zIndex: Layer.table },
   // The index characters sit in the drawn index column: the suit mark below
   // them comes from the SVG layer, so the two must agree on INDEX_X.

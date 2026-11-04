@@ -10,7 +10,6 @@ import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table
 import type { GlossLight } from '@/components/table/cardGloss';
 import { levelShade } from '@/components/table/rail';
 import { CardTableProvider, useCardTableValue, type OwnedRects } from '@/components/table/useCardRects';
-import { stockLipHeight } from '@/components/cardFaceModel';
 import { TABLE_CENTRE } from '@/components/table/lampRig';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 import { useLampRig, type LampRig } from '@/components/table/useLampRig';
@@ -57,7 +56,7 @@ describe('the lamp level on the cards', () => {
     const box = (testID: string, inner: string) =>
       StyleSheet.flatten(screen.getByTestId(testID, { includeHiddenElements: true }).queryAll((n) => n.props.testID === inner && typeof n.type === 'string')[0].props.style);
     const face = box('hand', 'card-box');
-    expect(box('hand', 'card-level-shade')).toMatchObject({ width: face.width, height: Number(face.height) + stockLipHeight(Number(face.height)) });
+    expect(box('hand', 'card-level-shade')).toMatchObject({ width: face.width, height: Number(face.height) });
   });
 
   it('renders nothing at lamp level 1', async () => {

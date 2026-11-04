@@ -59,7 +59,7 @@ afterEach(() => {
 });
 
 describe('the lamp gloss on the table', () => {
-  it('lights a hand card, a seat back and a pile card from their own registry entries', async () => {
+  it('lights a seat back from its registry entry and leaves a face card one unbroken paper tone', async () => {
     const view = await throwPair(3);
     await frames(2000);
     const opts = { includeHiddenElements: true };
@@ -70,7 +70,7 @@ describe('the lamp gloss on the table', () => {
     };
     const lit = Object.fromEntries(Object.entries(kinds).map(([k, n]) => [k, n && glossIn(n) ? (pose(glossIn(n)).opacity ?? 0) > 0 : 'no gloss']));
     await view.unmount();
-    expect(lit).toEqual({ hand: true, seat: true, pile: true });
+    expect(lit).toEqual({ hand: 'no gloss', seat: true, pile: 'no gloss' });
   }, 120_000);
 });
 
@@ -91,12 +91,12 @@ function RiggedTable({ pool, children }: { pool: Pool; children: React.ReactNode
   return <Table light={rig.glossLight} still={rig.stillLight}>{children}</Table>;
 }
 
-function Published({ id, x }: { id: string; x: SharedValue<number> }) {
+function Published({ id, x, faceDown }: { id: string; x: SharedValue<number>; faceDown?: boolean }) {
   const rects = useCardRect(useCardTable(), `hand:${id}`, true, [x], () => {
     'worklet';
     return rectAt(x.value, 330);
   });
-  return <CardView card={card(id)} rectKey={`hand:${id}`} rects={rects} />;
+  return <CardView card={card(id)} faceDown={faceDown} rectKey={`hand:${id}`} rects={rects} />;
 }
 
 const settle = () => act(async () => void jest.advanceTimersByTime(32));
@@ -115,8 +115,8 @@ describe('another card moving', () => {
     const xs = [makeMutable(300), makeMutable(500)];
     await render(
       <Table light={makeMutable(lightAt(437, 140))}>
-        <Published id="7_clubs" x={xs[0]} />
-        <Published id="9_hearts" x={xs[1]} />
+        <Published id="7_clubs" x={xs[0]} faceDown />
+        <Published id="9_hearts" x={xs[1]} faceDown />
       </Table>
     );
     expect(await glossRunsOver(() => (xs[0].value = 340))).toBe(2);
@@ -191,9 +191,9 @@ describe('moving the lamp', () => {
   const owned = (id: string, r: CardRect) => makeMutable<CardRects>({ [id]: r }) as unknown as OwnedRects;
   const threeCards = (
     <>
-      <CardView card={card('7_clubs')} rectKey="hand:7_clubs" rects={owned('hand:7_clubs', rectAt(437, 330))} />
+      <CardView card={card('7_clubs')} faceDown rectKey="hand:7_clubs" rects={owned('hand:7_clubs', rectAt(437, 330))} />
       <CardView card={card('3_spades')} faceDown rectKey="fan:top:0" rects={owned('fan:top:0', { ...rectAt(437, 40), w: 40, h: 58, back: true })} />
-      <CardView card={card('9_hearts')} rectKey="pile:9_hearts" rects={owned('pile:9_hearts', { ...rectAt(437, 201), w: 52, h: 76, rot: 8 })} />
+      <CardView card={card('9_hearts')} faceDown rectKey="pile:9_hearts" rects={owned('pile:9_hearts', { ...rectAt(437, 201), w: 52, h: 76, rot: 8 })} />
     </>
   );
   const glossPoses = () => screen.getAllByTestId('card-gloss-spot', { includeHiddenElements: true }).map((n) => JSON.stringify(pose(n)));

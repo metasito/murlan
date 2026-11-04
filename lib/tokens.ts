@@ -255,7 +255,7 @@ export const RestAir = {
 export const Beaten = {
   rotateDeg: -7,
   drop: 9,
-  shade: 'rgba(0,0,0,0.4)',
+  shade: 'rgba(0,0,0,0.16)',
 } as const;
 
 // A seat down to its last card: the lantern mockup's `.badge.last` (#1259 D4 #4).
@@ -592,6 +592,8 @@ export const Motion = {
   beaten: 280,
   /** The hand growing into its turn: the mockup's `.12s`. Off the ladder, a tap's length that travels; at once under reduced motion. */
   handResize: 120,
+  /** The hand closing the gap a played card leaves. Off the ladder, a beat longer than travel so the eye follows it; at once under reduced motion. */
+  refan: 320,
   /** The hand rising off the bottom edge on the viewer's turn. Off the ladder, between travel and reveal; at once under reduced motion. */
   handLift: 500,
 } as const;
@@ -663,11 +665,11 @@ export const MatchEnding = {
  * its duration — so the step's own length stands. Every other ladder step takes
  * the answer `Motion.reduced` already wrote down, which is the point: a call site
  * that decides for itself is how "reduced" came to mean a 200ms fade in one
- * screen and an instant jump in the next. `beaten` and `handResize`, the steps off the ladder,
+ * screen and an instant jump in the next. `beaten`, `handResize` and `refan`, the steps off the ladder,
  * have their reduced form (0) written here; `Motion.reduced` holds the ladder steps and `mark`.
  */
-export function motionMs(step: keyof typeof Motion.duration | "beaten" | "handResize", reduceMotion: boolean): number {
-  if (step === "beaten" || step === "handResize") return reduceMotion ? 0 : Motion[step];
+export function motionMs(step: keyof typeof Motion.duration | "beaten" | "handResize" | "refan", reduceMotion: boolean): number {
+  if (step === "beaten" || step === "handResize" || step === "refan") return reduceMotion ? 0 : Motion[step];
   if (!reduceMotion) return Motion.duration[step];
   return Motion.reduced[step] ?? Motion.duration[step];
 }

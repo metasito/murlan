@@ -602,6 +602,7 @@ export const OpponentSeat = memo(function OpponentSeat({
   countdown,
   focusMode = false,
   dealArrivals,
+  nameInset = 0,
   ...marking
 }: SlotMark & {
   place: OpponentSide;
@@ -622,6 +623,8 @@ export const OpponentSeat = memo(function OpponentSeat({
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
   dealArrivals?: DealArrivals;
+  /** A side seat's name slides this far inboard of the disc's outer edge (`sideNameInset`). */
+  nameInset?: number;
 }) {
   const arrived = useArrivedCount(dealArrivals);
   const held = cardCount ?? player.hand.length;
@@ -652,6 +655,7 @@ export const OpponentSeat = memo(function OpponentSeat({
         scale={scale}
         countdown={countdown}
         anchor={top ? "centre" : place}
+        nameInset={nameInset}
         focusMode={focusMode}
         mark={mark}
       />
@@ -681,6 +685,7 @@ function SeatWho({
   scale,
   countdown,
   anchor = "centre",
+  nameInset = 0,
   focusMode = false,
   mark,
 }: {
@@ -703,13 +708,14 @@ function SeatWho({
    * own column, so a label centred there hangs off the screen.
    */
   anchor?: "centre" | "left" | "right";
+  nameInset?: number;
   focusMode?: boolean;
 }) {
   const disc = SEAT_DISC * scale;
   const lit = seatLit(isActive, mark);
   const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
   const labelLeft =
-    anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW;
+    (anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW) + (anchor === "left" ? nameInset : anchor === "right" ? -nameInset : 0);
   return (
     <View style={seatStyles.who}>
       {!focusMode && (

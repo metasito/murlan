@@ -170,6 +170,17 @@ function getStraightStrength(cards: Card[]): number {
   return 0;
 }
 
+/** A straight's cards lowest face first, the Ace at whichever end `getStraightStrength` read it: the order the table shows them in. */
+function straightFaceOrder(cards: Card[]): Card[] {
+  // A 13-card straight reads A-2-…-K (docs/GAME-RULES.md § 6), which is the Ace low.
+  for (const aceAsHigh of cards.length === STRAIGHT_MAX_LEN ? [false, true] : [true, false]) {
+    const ranked = cards.map((card) => ({ card, face: getStraightFaceValue(card.rank, aceAsHigh) }));
+    if (!isConsecutiveRanks(ranked.map((r) => r.face ?? 0), cards.length)) continue;
+    return ranked.sort((a, b) => (a.face ?? 0) - (b.face ?? 0)).map((r) => r.card);
+  }
+  return cards;
+}
+
 function isBomb(cards: Card[]): boolean {
   if (cards.length !== 4) return false;
   if (cards.some((c) => c.isJoker)) return false;
@@ -389,7 +400,8 @@ function getCombinationStrength(combination: Combination): number {
 export function buildCombination(cards: Card[]): Combination | null {
   const type = getCombinationType(cards);
   if (!type) return null;
-  const combo: Combination = { type, cards, strength: 0 };
+  const ordered = type === "straight" || type === "royal_straight" ? straightFaceOrder(cards) : cards;
+  const combo: Combination = { type, cards: ordered, strength: 0 };
   combo.strength = getCombinationStrength(combo);
   return combo;
 }

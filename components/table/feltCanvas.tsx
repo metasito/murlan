@@ -305,6 +305,14 @@ const FLARE_SEEN = 0.005;
 const FLARE_WARM = [255, 199, 115] as const;
 const FLARE_POSITIONS = [0, 0.2, 0.4, 0.6, 0.8, 1];
 
+/** False only when the readback proves the baked cloth blank at the felt's centre; a build that cannot read pixels back keeps its bake. */
+function litAtCentre(image: SkImage, ax: number, ay: number): boolean {
+  const x = Math.min(image.width() - 1, Math.round((DESIGN.width / 2) * ax));
+  const y = Math.min(image.height() - 1, Math.round((DESIGN.height / 2) * ay));
+  const px = image.readPixels(x, y, { width: 1, height: 1, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul });
+  return !(px instanceof Uint8Array) || (px[3] > 0 && px[0] + px[1] + px[2] > 24);
+}
+
 /** The cloth lit at a lamp's target, in the device pixels the live shader would fill; `null` where no offscreen surface can be made. */
 function bakeCloth(aim: Pool, base: ClothUniforms, ax: number, ay: number): SkImage | null {
   if (!CLOTH) return null;
@@ -323,10 +331,12 @@ function bakeCloth(aim: Pool, base: ClothUniforms, ax: number, ay: number): SkIm
   // A texture image dies with its GL context on web, and is read back once here rather than held there.
   const image = Platform.OS === "web" ? snapshot.makeNonTextureImage() : snapshot;
   if (image !== snapshot) snapshot.dispose();
+  const painted = image !== null && litAtCentre(image, ax, ay);
   paint.dispose();
   shader.dispose();
   surface.dispose();
-  return image;
+  if (image && !painted) image.dispose();
+  return painted ? image : null;
 }
 
 /** The most recently used cloths, so a lamp that returns to a target it has lit already redraws nothing. */

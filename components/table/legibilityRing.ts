@@ -37,3 +37,17 @@ export function feltOnly(pixels: Pixels, perPt: number): Pixels {
   }
   return { width, height, data };
 }
+
+/** Clear air between a side seat's name and the rail's lit line, in points. */
+const NAME_CLEAR = 3;
+
+/**
+ * How far a side seat's name slides inboard of its disc's outer edge so the whole name stands on the
+ * felt: the felt is stretched to the window while the frame is not, so on a wide window the rail's
+ * lit line crosses the name (seatNameContrast).
+ */
+export function sideNameInset(side: "left" | "right", discCentreX: number, disc: number, windowWidth: number): number {
+  const { x, w } = ringRect(RAIL_BAND);
+  const { sx } = designScale(windowWidth, 1);
+  return Math.max(0, side === "left" ? x * sx + NAME_CLEAR - (discCentreX - disc / 2) : discCentreX + disc / 2 - ((x + w) * sx - NAME_CLEAR));
+}
