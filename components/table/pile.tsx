@@ -1,5 +1,5 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet } from "react-native";
+import { Platform, View, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -300,7 +300,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
       if (g.opacity <= 0) return null;
       const c = catching?.value ?? 0;
       const at = (t: number, held: boolean) => {
-        const p = flightPose(t, i, spec.n, from, to, spec.catchUp);
+        const p = flightPose(t, i, spec.n, from, to, spec.catchUp, spec.native);
         const drawn = pileCard(pile, g, wobbleAt(elapsed.value, spec.end, held), {
           slotX,
           slotY,
@@ -323,7 +323,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
     }
   );
   const style = useAnimatedStyle(() => {
-    const p = flightPose(still ? AT_REST : elapsed.value, i, spec.n, from, to, spec.catchUp);
+    const p = flightPose(still ? AT_REST : elapsed.value, i, spec.n, from, to, spec.catchUp, spec.native);
     return {
       transform: [{ translateX: p.x - to.x }, { translateY: p.y - to.y }, { rotate: `${p.rot}deg` }, { scale: p.scale }],
     };
@@ -719,7 +719,7 @@ export function usePileFlight({
 
     const thrown = readThrownPlay({ combo, playedBy: lastPlayedBy }, layout, seating, handOrigins.current);
     const to = pileSlots(thrown.cards.length, CARD_W(layout.scale * FIELD_SCALE), roomW);
-    const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
+    const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion, Platform.OS !== "web") };
     if (atRest) {
       setTrick((t) => playOnto(t, play));
       return;

@@ -83,6 +83,15 @@ test("the card's flight is the weight that was chosen", () => {
   );
 });
 
+// The web's throw is the mockup's and stays pinned above; a native table flies the same card slower,
+// still above the catch-up replay and never on the ladder (it is two numbers, a card and a stagger).
+test("a native throw is slower than the mockup's, and faster than a reveal", () => {
+  assert.ok(Motion.nativeThrow.card > Motion.throw.card, "the native throw must not be a snap");
+  assert.ok(Motion.nativeThrow.stagger >= Motion.throw.stagger);
+  assert.ok(Motion.nativeThrow.card < Motion.duration.reveal);
+  assert.ok(!("nativeThrow" in Motion.duration));
+});
+
 test("travel and shift lose their travel entirely under reduced motion", () => {
   assert.equal(Motion.reduced.shift, 0, "a shift that still travels has not been reduced");
   assert.equal(Motion.reduced.travel, 0, "a card that still flies has not been reduced");
