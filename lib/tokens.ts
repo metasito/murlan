@@ -584,6 +584,12 @@ export const Motion = {
   deal: { lead: 40, seat: 10, breath: 80, tail: 320 },
   /** The lantern mockup's `play()` (ADR-0008): per card, and between cards; catch-up is its reconnect replay. */
   throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
+  /**
+   * The same throw on a native table, where the 380 ms ease-out cube spends two thirds of its travel in the first
+   * third of its time and a phone's first play reads as a snap (device feel unmeasured). The web keeps `throw`: the
+   * mockup parity specs hold it. Reduced motion never flies, so it has no reduced form here.
+   */
+  nativeThrow: { card: 480, stagger: 60 },
   /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
   exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900, descend: 500 },
   /** A notice's mark or float fading in and out, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */

@@ -10,22 +10,21 @@ const POP = 0.1;
 const MOCKUP_CARD_W = 65.97;
 const SLOT_ROT = 1.2;
 
-function timing(catchUp: boolean): { card: number; stagger: number } {
+function timing(catchUp: boolean, native: boolean): { card: number; stagger: number } {
   "worklet";
-  return catchUp
-    ? { card: Motion.throw.catchUpCard, stagger: Motion.throw.catchUpStagger }
-    : { card: Motion.throw.card, stagger: Motion.throw.stagger };
+  if (catchUp) return { card: Motion.throw.catchUpCard, stagger: Motion.throw.catchUpStagger };
+  return native ? Motion.nativeThrow : { card: Motion.throw.card, stagger: Motion.throw.stagger };
 }
 
-export function flightEndMs(n: number, catchUp: boolean): number {
+export function flightEndMs(n: number, catchUp: boolean, native = false): number {
   "worklet";
-  const { card, stagger } = timing(catchUp);
+  const { card, stagger } = timing(catchUp, native);
   return card + (n - 1) * stagger;
 }
 
-export function flightPose(elapsedMs: number, i: number, n: number, from: CardFrom, to: CardSlot, catchUp: boolean): Pose {
+export function flightPose(elapsedMs: number, i: number, n: number, from: CardFrom, to: CardSlot, catchUp: boolean, native = false): Pose {
   "worklet";
-  const { card, stagger } = timing(catchUp);
+  const { card, stagger } = timing(catchUp, native);
   const k = Math.min(1, Math.max(0, (elapsedMs - i * stagger) / card));
   const e = 1 - Math.pow(1 - k, EASE_POWER);
   const arc = Math.sin(Math.PI * e);
@@ -37,13 +36,13 @@ export function flightPose(elapsedMs: number, i: number, n: number, from: CardFr
   };
 }
 
-export function contactMs(n: number, from: CardFrom[], to: CardSlot[], catchUp: boolean): number {
+export function contactMs(n: number, from: CardFrom[], to: CardSlot[], catchUp: boolean, native = false): number {
   "worklet";
-  const end = flightEndMs(n, catchUp);
+  const end = flightEndMs(n, catchUp, native);
   for (let t = 0; t < end; t++) {
     let touching = true;
     for (let i = 0; i < n && touching; i++) {
-      const p = flightPose(t, i, n, from[i], to[i], catchUp);
+      const p = flightPose(t, i, n, from[i], to[i], catchUp, native);
       touching = Math.hypot(p.x - to[i].x, p.y - to[i].y) <= 1 && Math.abs(p.scale - 1) <= 0.01;
     }
     if (touching) return t;

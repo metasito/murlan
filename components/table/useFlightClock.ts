@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { contactMs, flightEndMs, type CardFrom, type CardSlot } from "@/components/flightPose";
@@ -7,7 +7,7 @@ import { LAND_WOBBLE_MS, type ImpactTier } from "@/components/impact";
 import type { PulseStep } from "@/lib/device/feedback";
 
 export interface FlightSpec {
-  key: string; n: number; from: CardFrom[]; to: CardSlot[]; catchUp: boolean; reduced: boolean;
+  key: string; n: number; from: CardFrom[]; to: CardSlot[]; catchUp: boolean; reduced: boolean; native?: boolean;
   /** Computed on JS when the spec is built (`flightSpec`), never on the UI thread's first frame. */
   contact: number;
   end: number;
@@ -17,12 +17,12 @@ export interface LandingPayload { tier: ImpactTier; cards: number; x: number; y:
 export interface LandingSignal extends LandingPayload { key: string; seq: number; at: number }
 export const NO_LANDING: LandingSignal = { key: "", seq: 0, at: 0, tier: "ordinary", cards: 0, x: 0, y: 0, goingOut: false, heavy: false, mine: false, catchUp: false, pulses: [] };
 
-export function flightSpec(key: string, from: CardFrom[], to: CardSlot[], catchUp: boolean, reduced: boolean): FlightSpec {
+export function flightSpec(key: string, from: CardFrom[], to: CardSlot[], catchUp: boolean, reduced: boolean, native = false): FlightSpec {
   const n = to.length;
   return {
-    key, n, from, to, catchUp, reduced,
-    contact: reduced ? 0 : contactMs(n, from, to, catchUp),
-    end: reduced ? 0 : flightEndMs(n, catchUp),
+    key, n, from, to, catchUp, reduced, native,
+    contact: reduced ? 0 : contactMs(n, from, to, catchUp, native),
+    end: reduced ? 0 : flightEndMs(n, catchUp, native),
   };
 }
 
@@ -53,8 +53,8 @@ function stepper(
     const r = run.value;
     if (!r.spec) return;
     if (r.startedAt < 0) {
-      // On the throw's clock, not the first frame's: web hands a new frame callback its first frame two frames late.
-      r.startedAt = Math.min(frame.timestamp, r.thrownAt);
+      // Web hands a new frame callback its first frame two frames late, so it runs on the throw's clock; native starts on the first drawn frame, so a first play's mount hitch is not taken out of the flight.
+      r.startedAt = Platform.OS === "web" ? Math.min(frame.timestamp, r.thrownAt) : frame.timestamp;
       scheduleOnRN(report.start, r.spec.key, r.startedAt + r.spec.contact, r.startedAt + r.spec.end);
     }
     const t = frame.timestamp - r.startedAt;
