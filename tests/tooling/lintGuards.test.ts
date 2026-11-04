@@ -23,7 +23,7 @@ const { GUARDS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   guardBlocks: () => Block[];
 };
 const config = require("../../eslint.config.js") as Block[];
-const minimatch = require("minimatch") as (file: string, glob: string, opts: { dot: boolean }) => boolean;
+const { minimatch } = require("minimatch") as { minimatch: (file: string, glob: string, opts: { dot: boolean }) => boolean };
 const tsParser = require("@typescript-eslint/parser") as Linter.Parser;
 
 const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
