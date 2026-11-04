@@ -11,7 +11,7 @@ import type { CardTable } from '@/components/table/useCardRects';
 import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
 
-const mock = { clothBakes: 0, liveCloth: 0, images: [] as { dispose: jest.Mock }[], centre: [20, 120, 60, 255] };
+const mock = { clothBakes: 0, liveCloth: 0, images: [] as { dispose: jest.Mock }[], centre: [20, 120, 60, 255] as number[] | null };
 
 jest.mock('@shopify/react-native-skia', () => {
   const R = require('react') as typeof import('react');
@@ -23,7 +23,7 @@ jest.mock('@shopify/react-native-skia', () => {
     flush: () => {},
     dispose: () => {},
     makeImageSnapshot: () => {
-      const image = { dispose: j.fn(), makeNonTextureImage: () => image, width: () => 874, height: () => 402, readPixels: () => new Uint8Array(mock.centre) };
+      const image = { dispose: j.fn(), makeNonTextureImage: () => image, width: () => 874, height: () => 402, readPixels: () => (mock.centre ? new Uint8Array(mock.centre) : null) };
       mock.images.push(image);
       return image;
     },
@@ -121,6 +121,15 @@ describe('the felt cloth at rest', () => {
     expect(mock.images.length).toBeGreaterThan(0);
     expect(mock.liveCloth).toBe(1);
     expect(mock.images[mock.images.length - 1].dispose).toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('keeps the baked cloth when the build cannot read pixels back', async () => {
+    mock.centre = null;
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    await frames(160, sway(lamp));
+    expect(mock.liveCloth).toBe(0);
     await view.unmount();
   });
 });
