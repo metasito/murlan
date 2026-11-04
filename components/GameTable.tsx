@@ -30,6 +30,7 @@ import {
   handVisibleH,
   actionBtnSize,
   HAND_ZONE_GAP,
+  SEAT_DISC,
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
@@ -101,6 +102,7 @@ import { useLinkHold } from "@/components/table/useLinkHold";
 import type { OwnLink } from "@/lib/ownLink";
 import { CardTableProvider, useCardTableValue } from "@/components/table/useCardRects";
 import { lampPools } from "@/components/table/lampRig";
+import { sideNameInset } from "@/components/table/legibilityRing";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useRoundEnding } from "@/components/table/useRoundEnding";
 import { roundVoteShown } from "@/lib/timeline/roundEnding";
@@ -910,6 +912,7 @@ export function GameTable({
           player={opponent.player}
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
+          nameInset={place === "top" ? 0 : sideNameInset(place, anchors[place].x, SEAT_DISC * scale, W)}
           scale={scale}
           countdown={turn.clockSeat === opponent.seat ? countdown : undefined}
           focusMode={focusMode}
