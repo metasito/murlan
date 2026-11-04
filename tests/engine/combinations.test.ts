@@ -246,6 +246,11 @@ describe("the order a straight is shown in", () => {
     assert.equal(combo?.cards.map((x) => x.rank).join(" "), "A 2 3 4 5");
   });
 
+  test("a 13-card straight reads A to K", () => {
+    const all = ["K", "2", "A", "5", "Q", "3", "J", "4", "10", "9", "8", "7", "6"].map((r) => c(r as "5", "hearts"));
+    assert.equal(faces(all), "A 2 3 4 5 6 7 8 9 10 J Q K");
+  });
+
   test("ordering changes no strength", () => {
     assert.equal(buildCombination([c("A", "clubs"), c("2", "hearts"), c("3", "hearts"), c("4", "spades"), c("5", "hearts")])?.strength, 5);
   });

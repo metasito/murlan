@@ -328,18 +328,15 @@ function bakeCloth(aim: Pool, base: ClothUniforms, ax: number, ay: number): SkIm
   canvas.drawRect(Skia.XYWHRect(0, 0, DESIGN.width, DESIGN.height), paint);
   surface.flush();
   const snapshot = surface.makeImageSnapshot();
-  // A texture image outlives neither its surface nor, on web, its GL context: read back once here, held as pixels.
-  const image = snapshot.makeNonTextureImage();
-  snapshot.dispose();
+  // A texture image dies with its GL context on web, and is read back once here rather than held there.
+  const image = Platform.OS === "web" ? snapshot.makeNonTextureImage() : snapshot;
+  if (image !== snapshot) snapshot.dispose();
+  const painted = image !== null && litAtCentre(image, ax, ay);
   paint.dispose();
   shader.dispose();
   surface.dispose();
-  if (!image) return null;
-  if (!litAtCentre(image, ax, ay)) {
-    image.dispose();
-    return null;
-  }
-  return image;
+  if (image && !painted) image.dispose();
+  return painted ? image : null;
 }
 
 /** The most recently used cloths, so a lamp that returns to a target it has lit already redraws nothing. */

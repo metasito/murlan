@@ -185,12 +185,17 @@ test(`a card dragged out of the fan is not cut off — ${NARROWEST.name}`, async
   await page.waitForTimeout(1_200);
   expect(await clippedCards(page), "no clipping window to test against").toBeGreaterThan(0);
 
-  const card = page.locator(HAND_CARDS).nth(2);
-  const box = await card.boundingBox();
-  expect(box, "no card to drag").not.toBeNull();
+  const dragged = await page.evaluate((sel: string) => {
+    for (const el of Array.from(document.querySelectorAll(sel)).slice(2)) {
+      const r = el.getBoundingClientRect();
+      const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      if (at && el.contains(at)) return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }
+    return null;
+  }, HAND_CARDS);
+  expect(dragged, "no card the clip leaves reachable to drag").not.toBeNull();
 
-  const x = box!.x + box!.width / 2;
-  const y = box!.y + box!.height / 2;
+  const { x, y } = dragged!;
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.waitForTimeout(PAST_HOLD_MS);

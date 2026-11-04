@@ -172,7 +172,8 @@ function getStraightStrength(cards: Card[]): number {
 
 /** A straight's cards lowest face first, the Ace at whichever end `getStraightStrength` read it: the order the table shows them in. */
 function straightFaceOrder(cards: Card[]): Card[] {
-  for (const aceAsHigh of [true, false]) {
+  // A 13-card straight reads A-2-…-K (docs/GAME-RULES.md § 6), which is the Ace low.
+  for (const aceAsHigh of cards.length === STRAIGHT_MAX_LEN ? [false, true] : [true, false]) {
     const ranked = cards.map((card) => ({ card, face: getStraightFaceValue(card.rank, aceAsHigh) }));
     if (!isConsecutiveRanks(ranked.map((r) => r.face ?? 0), cards.length)) continue;
     return ranked.sort((a, b) => (a.face ?? 0) - (b.face ?? 0)).map((r) => r.card);

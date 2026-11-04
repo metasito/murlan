@@ -11,8 +11,8 @@ test("a thrown card's first frame is where the viewer last saw it", async ({ pag
   await pairsTable(page, baseURL!);
   await takeOver(page);
   const hand = page.locator(HAND_CARD_BOXES);
-  await hand.nth(0).click({ force: true, position: { x: 8, y: 30 } });
-  await hand.nth(1).click({ force: true, position: { x: 8, y: 30 } });
+  await hand.nth(0).click({ force: true, position: { x: 16, y: 30 } });
+  await hand.nth(1).click({ force: true, position: { x: 16, y: 30 } });
   await step(page);
   const before = [centre((await hand.nth(0).boundingBox())!), centre((await hand.nth(1).boundingBox())!)];
   await legalGioca(page).click({ force: true });

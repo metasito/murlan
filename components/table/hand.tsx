@@ -91,6 +91,7 @@ export function useHandArrival(input: {
 // the callback changes — not when some other card's selection does.
 const DESCEND_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
 const REFAN_EASING = Easing.bezier(0.22, 1, 0.36, 1);
+const RESIZE_EASING = Easing.inOut(Easing.quad);
 // The exchange's two states. Colour cannot be the only channel that carries
 // them, and it is not: the ungiveable card recedes under a veil, which is
 // luminance and survives a monochrome screen, while the giveable one glows,
@@ -373,7 +374,8 @@ function CardItemBase({
     const [from, k] = [resizeFrom.get(), resizing.get()];
     resizeFrom.set({ dx: was.x + from.dx * k - restX, dy: was.y + from.dy * k - restY, s: ((1 + (from.s - 1) * k) * was.w) / cardW });
     resizing.set(1);
-    resizing.set(withTiming(0, { duration: motionMs("handResize", reduceMotion), easing: REFAN_EASING, reduceMotion: ReduceMotion.Never }));
+    const resized = was.w !== cardW;
+    resizing.set(withTiming(0, { duration: motionMs(resized ? "handResize" : "refan", reduceMotion), easing: resized ? RESIZE_EASING : REFAN_EASING, reduceMotion: ReduceMotion.Never }));
   }, [restX, restY, cardW, reduceMotion, resizeFrom, resizing]);
   // Handed the values rather than reading them: a worklet follows only the shared values it reads itself, never those a helper it calls reads.
   const poseOf = (e: typeof arrival, s: PoseInputs, now: number) => {
