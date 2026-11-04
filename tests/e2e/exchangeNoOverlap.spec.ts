@@ -3,7 +3,11 @@
 // transformed views and a pill actually land (docs/agents/checks.md).
 import { expectNoteFits, NEIGHBOUR_IDS, readPillFacts } from "./helpers/pillNote";
 import { test, expect } from "./fixtures";
-import { exchangeSave, resumeSaved } from "./helpers/offlineSeed";
+import { exchangeSave, resumeSaved, seedSave } from "./helpers/offlineSeed";
+import { openApp } from "./helpers/navigation";
+import { LOCALE_KEY } from "../../lib/storageKeys";
+import { en } from "../../locales/en";
+import { sq } from "../../locales/sq";
 import { tap } from "./helpers/press";
 import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
 
@@ -64,5 +68,22 @@ for (const size of [{ width: 667, height: 375 }, { width: 844, height: 390 }, { 
 
     await expect(page.getByTestId("exchange-pill-note")).toBeVisible({ timeout: 15_000 });
     expectNoteFits(await page.evaluate(readPillFacts, NEIGHBOUR_IDS), size, `${size.width}px`);
+  });
+}
+
+// The widest the note ever sits against the turn pill is the tablet, whichever language the player reads it in.
+const LANGUAGES = [{ locale: "en", resume: en["home.resumeGame"] }, { locale: "sq", resume: sq["home.resumeGame"] }];
+for (const { locale, resume } of LANGUAGES) {
+  test(`the exchange note clears the turn pill at 1024px in ${locale}`, async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    const size = { width: 1024, height: 768 };
+    await page.setViewportSize(size);
+    await seedSave(page, midExchangeSave());
+    await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [LOCALE_KEY, locale]);
+    await openApp(page, baseURL!);
+    await page.getByRole("button", { name: resume }).click({ timeout: 60_000 });
+
+    await expect(page.getByTestId("exchange-pill-note")).toBeVisible({ timeout: 15_000 });
+    expectNoteFits(await page.evaluate(readPillFacts, NEIGHBOUR_IDS), size, `${locale} ${size.width}px`);
   });
 }

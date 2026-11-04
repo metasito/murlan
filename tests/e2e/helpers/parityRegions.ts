@@ -33,7 +33,7 @@ export function regionsFor({ pile, light, handTop, fans }: SideLayout): Record<s
     rim: { x: 64, y: 180, w: 8, h: 40 },
     rightBand: { x: 640, y: 150, w: 60, h: 100 },
     pile: { x: pile.x - 30, y: pile.y - 20, w: 60, h: 40 },
-    scorePill: { x: 740, y: 16, w: 90, h: 18 },
+    scorePill: { x: 700, y: 16, w: 90, h: 18 },
     hand: { x: light.x - 160, y: handTop + 40, w: 320, h: 16 },
     topFan: { x: fans.top.x - 12, y: fans.top.y - 5, w: 24, h: 10 },
     leftFan: { x: fans.left.x - 5, y: fans.left.y - 12, w: 10, h: 24 },
