@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { addOutline, buildGlow, CARD_ON_CARD_PATHS, buildShadow, castOffset, cardShades, handCardZ, handPaintOrder, pileGroupZ, pilePaintOrder, restingCast, shadeCards, shadeShape, SHADE_STEP, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
+import { CARD_ON_CARD_CSS } from "../e2e/helpers/cardOnCardCss.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { CardGlow, CardShadow, Colors, Layer as Layers, Motion } from "../../lib/tokens.ts";
 import { fixtureLine } from "../helpers/lanternFixture.ts";
@@ -31,7 +32,17 @@ describe("the card shadows are the owner's ruling, not the mockup's", () => {
     assert.match(src, /CARD_ON_CARD_PATHS/);
   });
 
-  test("on the felt the cast is a third of the mockup's (fall 26, 30, drop 3, blur 10), a lifted card's shadow larger", () => {
+  test("the Skia felt's passes paint the tokens, and the mockup's Skia-mode card-on-card is the contact tokens alone", () => {
+    const felt = fs.readFileSync(fileURLToPath(new URL("../../components/table/feltCanvas.tsx", import.meta.url)), "utf8");
+    assert.match(felt, /shadowPaint\(/);
+    assert.match(felt, /shadowFall\(/);
+    assert.doesNotMatch(felt, /CardShadow\.(cast|contact|fall)\.\w+\s*[*/+-]/);
+    assert.ok(!CARD_ON_CARD_CSS.includes("var(--shx)"), CARD_ON_CARD_CSS);
+    assert.ok(CARD_ON_CARD_CSS.includes(`.card{box-shadow:0 1.5px 0 #D6D0BC,0 .5px ${CardShadow.contact.blur}px rgba(0,0,0,.3)`), CARD_ON_CARD_CSS);
+    assert.ok(CARD_ON_CARD_CSS.includes(`.card.bkc{box-shadow:0 .5px ${CardShadow.contact.blur}px rgba(0,0,0,.35)`), CARD_ON_CARD_CSS);
+  });
+
+  test("on the felt the cast is a third of the old (fall 26, 30, drop 3, blur 10), a lifted card's shadow larger", () => {
     assert.ok(CardShadow.fall.x >= 26 * 3 - 1 && CardShadow.fall.y >= 30 * 3 - 3 && CardShadow.fall.drop <= 1);
     assert.ok(CardShadow.cast.blur <= 10 / 3 + 0.5);
     assert.ok(CardShadow.lifted.blur > CardShadow.cast.blur && CardShadow.lifted.y > castOffset({ x: 457, y: 222 }, { x: 437, y: 360 }).y);
@@ -43,16 +54,19 @@ describe("the card shadows are the owner's ruling, not the mockup's", () => {
     assert.equal(Colors.shadow, "#000000");
   });
 
-  test("the cast falls away from the light, a third as far as the mockup's `--shx`/`--shy`", () => {
+  test("the mockup carries the ruling's values, and its cast falls away from the light as `--shx`/`--shy` do", () => {
+    for (const [rule, y, blur, a] of [[".card{", CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.face], [".card.bkc{", CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.back], [".bk{", CardShadow.contact.y, CardShadow.contact.blur, CardShadow.alpha.fan]] as const) {
+      const css = /box-shadow:([^;}]+)/.exec(fixtureLine(rule))![1];
+      assert.ok(css.includes(`0 ${y === 0.5 ? ".5" : y}px ${blur}px rgba(0,0,0,${String(a).replace(/^0/, "")})`), `${rule} ${css}`);
+      if (rule !== ".bk{") assert.ok(css.includes(`var(--shx) var(--shy) ${CardShadow.cast.blur}px rgba(0,0,0,${String(CardShadow.cast.alpha).replace(/^0/, "")})`), `${rule} ${css}`);
+    }
     const line = fixtureLine("  stage.style.setProperty('--shx'");
     const [, shx, shy] = /'--shx',\((.+?)\)\.toFixed\(1\)\+'px'\);stage\.style\.setProperty\('--shy',\((.+?)\)\.toFixed/.exec(line)!;
     const pile = { x: 457, y: 222 };
     for (const light of [{ x: 437, y: 360 }, { x: 120, y: 40 }, { x: 800, y: 222 }]) {
       const run = (expr: string) => vm.runInNewContext(expr, { PILE: [pile.x, pile.y], lx: light.x, ly: light.y }) as number;
       const got = castOffset(pile, light);
-      const [mx, my] = [run(shx), run(shy)];
-      assert.ok(Math.abs(got.x - mx / 3) < 0.05 * Math.abs(mx) + 1e-9, JSON.stringify({ light, got, mx }));
-      assert.ok(Math.abs(got.y - (1 + (my - 3) / 3)) < 0.05 * Math.abs(my) + 1e-9, JSON.stringify({ light, got, my }));
+      assert.ok(Math.abs(got.x - run(shx)) < 1e-9 && Math.abs(got.y - run(shy)) < 1e-9, JSON.stringify({ light, got }));
     }
   });
 });

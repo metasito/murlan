@@ -144,6 +144,12 @@
     "yaml": "^2.9.1"
   },
   "private": true,
+  "reanimated": {
+    "staticFeatureFlags": {
+      "IOS_SYNCHRONOUSLY_UPDATE_UI_PROPS": true,
+      "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true
+    }
+  },
   "overrides": {
     "@expo/cli": {
       "zod": "$zod"

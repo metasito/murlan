@@ -60,6 +60,26 @@ describe('the lamp level on the cards', () => {
     expect(box('hand', 'card-level-shade')).toMatchObject({ width: face.width, height: Number(face.height) + stockLipHeight(Number(face.height)) });
   });
 
+  it('renders nothing at lamp level 1', async () => {
+    jest.useFakeTimers();
+    const light = makeMutable<GlossLight>({ lx: 437, ly: 140, level: 1, r: 1, t: 0 });
+    await render(
+      <Table light={light}>
+        <View testID="hand">
+          <CardView card={card('7_clubs')} rectKey="hand:7_clubs" rects={owned('hand:7_clubs')} />
+        </View>
+      </Table>
+    );
+    const shade = () => getAnimatedStyle(screen.getByTestId('card-level-shade', { includeHiddenElements: true }) as Parameters<typeof getAnimatedStyle>[0]) as { display?: string };
+    expect(shade().display).toBe('none');
+    await act(async () => {
+      light.value = { ...light.value, level: 0.75 };
+      jest.advanceTimersByTime(16);
+    });
+    expect(shade().display).toBe('flex');
+    jest.useRealTimers();
+  });
+
   it('shades a play in flight to the pile as the play it lands on', async () => {
     const light = makeMutable<GlossLight>({ lx: 437, ly: 140, level: 0.75, r: 1, t: 0 });
     const resting = flightOf('rest', [card('3_hearts')], [{ x: 0, y: -100, rot: 0, scale: 0.4 }]);
