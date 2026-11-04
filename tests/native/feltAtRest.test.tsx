@@ -11,27 +11,35 @@ import type { CardTable } from '@/components/table/useCardRects';
 import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
 
-const mock = { clothBakes: 0, liveCloth: 0, images: [] as { dispose: jest.Mock }[], centre: [20, 120, 60, 255] as number[] | null };
+const mock = { clothBakes: 0, liveCloth: 0, images: [] as { dispose: jest.Mock; texture: boolean; dead: boolean }[], centre: [20, 120, 60, 255] as number[] | null };
 
 jest.mock('@shopify/react-native-skia', () => {
   const R = require('react') as typeof import('react');
   const { jest: j } = require('@jest/globals') as typeof import('@jest/globals');
   const call: object = new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : call), apply: () => call });
   const element = ({ children }: { children?: React.ReactNode }) => R.createElement(R.Fragment, null, children);
-  const surface = () => ({
-    getCanvas: () => call,
-    flush: () => {},
-    dispose: () => {},
-    makeImageSnapshot: () => {
-      const image = { dispose: j.fn(), makeNonTextureImage: () => image, width: () => 874, height: () => 402, readPixels: () => (mock.centre ? new Uint8Array(mock.centre) : null) };
+  const surface = (gpu: boolean) => {
+    const owned: { dead: boolean }[] = [];
+    const make = (texture: boolean) => {
+      const image = {
+        texture,
+        dead: false,
+        dispose: j.fn(),
+        makeNonTextureImage: () => make(false),
+        width: () => 874,
+        height: () => 402,
+        readPixels: () => (mock.centre ? new Uint8Array(image.dead ? [0, 0, 0, 0] : mock.centre) : null),
+      };
       mock.images.push(image);
+      if (texture) owned.push(image);
       return image;
-    },
-  });
+    };
+    return { getCanvas: () => call, flush: () => {}, dispose: () => owned.forEach((i) => (i.dead = true)), makeImageSnapshot: () => make(gpu) };
+  };
   const Skia = new Proxy(call, {
     get: (_, key) =>
       key === 'Surface'
-        ? { Make: surface, MakeOffscreen: () => (mock.clothBakes++, surface()) }
+        ? { Make: () => surface(false), MakeOffscreen: () => (mock.clothBakes++, surface(true)) }
         : call,
   });
   const Shader = ({ children }: { children?: React.ReactNode }) => {
@@ -121,6 +129,18 @@ describe('the felt cloth at rest', () => {
     expect(mock.images.length).toBeGreaterThan(0);
     expect(mock.liveCloth).toBe(1);
     expect(mock.images[mock.images.length - 1].dispose).toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('holds no texture of a disposed surface as the baked cloth', async () => {
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    await frames(160, sway(lamp));
+    expect(mock.clothBakes).toBe(1);
+    const held = mock.images.filter((i) => i.dispose.mock.calls.length === 0);
+    expect(held.length).toBeGreaterThan(0);
+    expect(held.filter((i) => i.dead)).toEqual([]);
+    expect(held.filter((i) => i.texture)).toEqual([]);
     await view.unmount();
   });
 
