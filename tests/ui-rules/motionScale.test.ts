@@ -114,7 +114,7 @@ test("the beaten play turns over the lantern mockup's .grp transition, and at on
 });
 
 test("the hand grows into its turn over the mockup's .12s, and at once under reduced motion", () => {
-  assert.equal(motionMs("handResize", false), 120);
+  assert.equal(motionMs("handResize", false), 320);
   assert.equal(motionMs("handResize", true), 0);
 });
 

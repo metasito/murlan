@@ -87,7 +87,8 @@ describe("computeTableFrame", () => {
   test("each edge clears both the safe area and the table's own padding", () => {
     const f = frameOf();
     assert.equal(f.tableTop, 20);
-    assert.equal(f.tableRight, 44);
+    assert.equal(f.tableRight, f.tableLeft, "the right edge matches the rail, so the table sits on the window's centre line");
+    assert.equal(f.tableLeft, 58);
     assert.equal(f.tableBottom, 13);
     assert.ok(f.pad > 0, "nothing separates the chrome from the table's edge");
   });
@@ -175,12 +176,12 @@ describe("computeTableFrame", () => {
     const noInsets = { top: 0, bottom: 0, left: 0, right: 0 };
     const small = computeTableFrame({ width: 568, height: 320, insets: noInsets, scale: 320 / 390 });
     const tableW = 568 - small.tableLeft - small.tableRight;
-    assert.equal(Math.round(tableW - SIDE_SECTION_W * 2), 304);
+    assert.equal(Math.round(tableW - SIDE_SECTION_W * 2), 260);
     assert.ok(
       tableW - SIDE_SECTION_W * 2 < 568 * 0.55,
       "the share is meant to be the looser of the two bounds here"
     );
-    assert.equal(Math.round(small.fieldRoomW), 304);
+    assert.equal(Math.round(small.fieldRoomW), 260);
   });
 
 });

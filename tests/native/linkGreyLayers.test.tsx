@@ -19,7 +19,7 @@ jest.mock('@shopify/react-native-skia', () => {
   });
   const element = ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children);
   const known: Record<string | symbol, unknown> = {
-    Skia: call,
+    Skia: new Proxy(call, { get: (_, key) => (key === 'Surface' ? { Make: () => call, MakeOffscreen: () => null } : call) }),
     PaintStyle: {},
     useCanvasRef: () => React.useRef(null),
     Canvas: ({ testID, children }: { testID?: string; children?: React.ReactNode }) => React.createElement(View, { testID }, children),

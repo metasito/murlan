@@ -24,7 +24,7 @@ import type { TableLayout } from "./tableLayout.ts";
 
 const PAD_TOP = 13;
 const PAD_BOTTOM = 13;
-/** The edge opposite the rail, whichever physical side that is. */
+/** The edge opposite the rail, floored at the rail's own width so the table sits on the window's centre line. */
 const PAD_AWAY = 17;
 /** From the rail, or the safe edge, to the first thing drawn over the felt. */
 const PAD_INNER = 10;
@@ -142,7 +142,7 @@ export function computeTableFrame(opts: {
   const tableLeft = rail;
   const tableTop = Math.max(PAD_TOP * opts.scale, topPad) + surplus;
   const tableBottom = Math.max(PAD_BOTTOM * opts.scale, bottomPad) + surplus;
-  const tableRight = Math.max(PAD_AWAY * opts.scale, rightPad);
+  const tableRight = Math.max(PAD_AWAY * opts.scale, rightPad, tableLeft);
   const tableW = opts.width - tableLeft - tableRight;
   const handAvailW = tableW - (actionBtnSize(opts.scale) + HAND_ZONE_GAP * opts.scale) * 2;
 

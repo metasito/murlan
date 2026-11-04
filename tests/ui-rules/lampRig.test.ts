@@ -106,10 +106,10 @@ describe("the lamp rig", () => {
     }
   });
 
-  test("his page reproduces: your light 7 points inside the hand, at [443, 380] and reach 1", () => {
+  test("his page reproduces: your light 7 points inside the hand, at [437, 380] and reach 1", () => {
     const pools = lampPools(phoneTable(874, 402, INSETS["62/21/62"]).anchors, 874, 402);
     const [x, y, reach] = pools.bottom;
-    assert.deepEqual([Math.round(x), Math.round(y)], [443, 380], `the hand's pool at ${x}, ${y}`);
+    assert.deepEqual([Math.round(x), Math.round(y)], [437, 380], `the hand's pool at ${x}, ${y}`);
     assert.ok(Math.abs(reach - 1) < 1e-3, `the hand's reach ${reach}`);
   });
 

@@ -32,7 +32,7 @@ async function outlines(faceDown: boolean) {
 describe("a card's outline layers", () => {
   it.each([false, true])("carry a perspective on iOS only (face down: %s)", async (faceDown) => {
     const sized = await outlines(faceDown);
-    expect(sized.length).toBeGreaterThanOrEqual(faceDown ? 1 : 2);
+    expect(sized.length).toBeGreaterThanOrEqual(1);
     for (const style of sized)
       expect(style.transform).toEqual(Platform.OS === "ios" ? [{ perspective: expect.any(Number) }] : undefined);
   });

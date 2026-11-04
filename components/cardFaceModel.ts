@@ -77,8 +77,7 @@ export function handCardSize(tableScale: number, onTurn: boolean, faceDown: bool
 
 // ─── Card stock ─────────────────────────────────────────────────────────────
 //
-// A card is a physical object, not a flat swatch: a corner cut and a lit lip
-// where the stock meets the felt. Values below are authored at 2x table scale,
+// A card is a physical object, not a flat swatch: a corner cut and a hairline edge. Values below are authored at 2x table scale,
 // like the rest of the card, and halved here to land at scale 1.
 
 // Real poker stock has a 1/8in radius on a 2.5in card — 5% of card width. A
@@ -87,13 +86,6 @@ export function handCardSize(tableScale: number, onTurn: boolean, faceDown: bool
 const CARD_RADIUS_RATIO = 0.05;
 export function cardRadius(w: number): number {
   return w * CARD_RADIUS_RATIO;
-}
-
-const STOCK_LIP_RATIO = 1 / FACE_H;
-
-/** Height of the lit lip along the stock's bottom edge. */
-export function stockLipHeight(h: number): number {
-  return h * STOCK_LIP_RATIO;
 }
 
 // ─── Card back stock ────────────────────────────────────────────────────────

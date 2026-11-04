@@ -41,7 +41,7 @@ describe("anchors", () => {
   const pileY = (l: TableLayout) => midTop(l) + (l.window.height - l.frame.surplus - midTop(l) - l.handZoneH) / 2;
 
   test("the frame under these numbers: the rail on the left, the away pad on the right", () => {
-    assert.deepEqual([base.frame.tableLeft, base.frame.tableRight, base.frame.tableTop, base.frame.surplus], [58, 17, 13, 0]);
+    assert.deepEqual([base.frame.tableLeft, base.frame.tableRight, base.frame.tableTop, base.frame.surplus], [58, 58, 13, 0]);
   });
 
   test("bottom: the throw starts at the hand row's own vertical centre", () => {
@@ -106,24 +106,24 @@ describe("anchors", () => {
 
   test("the anchors are window points", () => {
     const a = base.anchors;
-    // tableW = 800-58-17 = 725, so the pile and the top ring sit at x = 58+362.5 = 420.5.
-    assert.deepEqual(a.bottom, { x: 420.5, y: 390 - base.handZoneH / 2 });
-    assert.deepEqual(a.top, { x: 420.5, y: 75.5 });
-    assert.deepEqual(a.pile, { x: 420.5, y: pileY(base) });
+    // tableW = 800-58-58 = 684, so the pile and the top ring sit on the window's centre line, x = 58+342 = 400.
+    assert.deepEqual(a.bottom, { x: 400, y: 390 - base.handZoneH / 2 });
+    assert.deepEqual(a.top, { x: 400, y: 75.5 });
+    assert.deepEqual(a.pile, { x: 400, y: pileY(base) });
     assert.deepEqual(a.left, { x: 82.5, y: midTop(base) + sideSlotHeight(1) / 2 });
-    assert.deepEqual(a.right, { x: 758.5, y: a.left.y });
+    assert.deepEqual(a.right, { x: 717.5, y: a.left.y });
   });
 
   test("left: the throw starts at the ring flush against the rail", () => {
-    // ringCenterX = 58 + Spacing.sm(8) + SEAT_DISC/2(16.5) = 82.5; dx = 82.5 - 420.5.
-    assert.equal(base.seatPoint("left").dx, -338);
+    // ringCenterX = 58 + Spacing.sm(8) + SEAT_DISC/2(16.5) = 82.5; dx = 82.5 - 400.
+    assert.equal(base.seatPoint("left").dx, -317.5);
   });
 
   test("right: the throw starts at the ring flush against the opposite edge", () => {
-    assert.equal(base.seatPoint("right").dx, 338);
+    assert.equal(base.seatPoint("right").dx, 317.5);
   });
 
-  test("left and right are mirror images of the same pile centre, however asymmetric the rail is", () => {
+  test("left and right are mirror images of the same pile centre, and the table's centre line is the window's", () => {
     assert.equal(base.seatPoint("left").dx + base.seatPoint("right").dx, 0);
   });
 
@@ -173,7 +173,7 @@ describe("the table's box and its chip row", () => {
 
 test("the float slot is the mockup's .floatchip on its own stage: centred on the table, its top at 300", () => {
   const l = phoneTable(874, 402);
-  assert.ok(Math.abs(l.anchors.pile.x - 457) <= 0.5);
+  assert.ok(Math.abs(l.anchors.pile.x - 437) <= 0.5);
   assert.ok(Math.abs(l.floatTop - 300) <= 0.5, `y ${l.floatTop}`);
 });
 

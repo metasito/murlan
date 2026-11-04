@@ -11,7 +11,7 @@ import type { CardTable } from '@/components/table/useCardRects';
 import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
 
-const mock = { clothBakes: 0, liveCloth: 0, images: [] as { dispose: jest.Mock }[] };
+const mock = { clothBakes: 0, liveCloth: 0, images: [] as { dispose: jest.Mock }[], centre: [20, 120, 60, 255] };
 
 jest.mock('@shopify/react-native-skia', () => {
   const R = require('react') as typeof import('react');
@@ -23,7 +23,7 @@ jest.mock('@shopify/react-native-skia', () => {
     flush: () => {},
     dispose: () => {},
     makeImageSnapshot: () => {
-      const image = { dispose: j.fn(), makeNonTextureImage: () => image };
+      const image = { dispose: j.fn(), makeNonTextureImage: () => image, width: () => 874, height: () => 402, readPixels: () => new Uint8Array(mock.centre) };
       mock.images.push(image);
       return image;
     },
@@ -60,6 +60,7 @@ beforeEach(() => {
   mock.clothBakes = 0;
   mock.liveCloth = 0;
   mock.images.length = 0;
+  mock.centre = [20, 120, 60, 255];
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -108,6 +109,18 @@ describe('the felt cloth at rest', () => {
     await frames(6000, sway(lamp));
     expect(mock.liveCloth).toBe(0);
     expect(mock.clothBakes).toBe(2);
+    await view.unmount();
+  });
+
+  it('keeps the live cloth when a bake comes out blank, and frees the blank image', async () => {
+    mock.centre = [0, 0, 0, 0];
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    await frames(160, sway(lamp));
+    expect(mock.clothBakes).toBeGreaterThan(0);
+    expect(mock.images.length).toBeGreaterThan(0);
+    expect(mock.liveCloth).toBe(1);
+    expect(mock.images[mock.images.length - 1].dispose).toHaveBeenCalled();
     await view.unmount();
   });
 });

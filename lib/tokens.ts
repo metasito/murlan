@@ -255,7 +255,7 @@ export const RestAir = {
 export const Beaten = {
   rotateDeg: -7,
   drop: 9,
-  shade: 'rgba(0,0,0,0.4)',
+  shade: 'rgba(52,36,12,0.16)',
 } as const;
 
 // A seat down to its last card: the lantern mockup's `.badge.last` (#1259 D4 #4).
@@ -590,8 +590,8 @@ export const Motion = {
   mark: { enter: 100, exit: 100, blink: 900 },
   /** The beaten play's turn: the lantern mockup's `.grp` transition, ease-out. Off the ladder, a hair past travel; at once under reduced motion. */
   beaten: 280,
-  /** The hand growing into its turn: the mockup's `.12s`. Off the ladder, a tap's length that travels; at once under reduced motion. */
-  handResize: 120,
+  /** The hand re-fanning, after a play or as it grows into its turn. Off the ladder, a beat longer than travel so the eye follows it; at once under reduced motion. */
+  handResize: 320,
   /** The hand rising off the bottom edge on the viewer's turn. Off the ladder, between travel and reveal; at once under reduced motion. */
   handLift: 500,
 } as const;
