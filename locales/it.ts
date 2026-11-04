@@ -305,7 +305,7 @@ export const it: Record<keyof typeof en, string> = {
   "exchange.pileGives": "{{from}} dà {{card}} a {{to}}",
   "exchange.pileYouGive": "Dai {{card}} a {{to}}",
   "exchange.pileGivesYou": "{{from}} ti dà {{card}}",
-  "exchange.pillNothing": "Nessuna carta 3–10",
+  "exchange.pillNothing": "Niente da 3–10",
 
   // ----------------------------------------------------------------- cards.*
   // Card names as read aloud/announced (ExchangeAnnouncement) — card ranks

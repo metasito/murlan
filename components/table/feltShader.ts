@@ -36,7 +36,7 @@ bool warpOver(vec2 c,float jac){
  if(uType<2.5)return mod(floor(c.x/2.)+floor(c.y/2.),2.)<.5;
  float s=mod(floor(c.x/6.),2.)<.5?c.x+c.y:c.y-c.x;return mod(s,4.)<2.;}
 vec4 cloth(vec2 p){
- vec2 q=abs(p-vec2(437.,201.))-vec2(361.,179.)+156.;
+ vec2 q=abs(p-vec2(437.,201.))-vec2(361.,185.)+156.;
  float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-156.;
  float inside=clamp(.5-sd*uK,0.,1.);
  if(inside<=0.){return vec4(0.);}

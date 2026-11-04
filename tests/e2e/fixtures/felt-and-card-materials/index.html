@@ -148,7 +148,7 @@ bool warpOver(vec2 c,float jac){
  float s=mod(floor(c.x/6.),2.)<.5?c.x+c.y:c.y-c.x;return mod(s,4.)<2.;}
 void main(){
  vec2 p=uO+vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uK;
- vec2 q=abs(p-vec2(437.,201.))-vec2(361.,179.)+156.;
+ vec2 q=abs(p-vec2(437.,201.))-vec2(361.,185.)+156.;
  float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-156.;
  float inside=clamp(.5-sd*uK,0.,1.);
  if(inside<=0.){gl_FragColor=vec4(0.);return;}
@@ -201,7 +201,7 @@ function drawCloth(v,lx,ly,f,stops){const{gl,U}=v.G,m=MAT();
  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
 
 /* ---------- the rail: built once per choice and size, lit per frame ---------- */
-function ringPath(c,d){c.roundRect(62+d,8+d,750-2*d,386-2*d,170-d);}
+function ringPath(c,d){c.roundRect(62+d,2+d,750-2*d,398-2*d,170-d);}
 const leatherPat=(()=>{const cv=document.createElement('canvas');cv.width=cv.height=64;const c=cv.getContext('2d'),r=rng(11);
  for(let i=0;i<900;i++){c.fillStyle=r()<.5?'rgba(255,255,255,.05)':'rgba(0,0,0,.14)';c.fillRect(r()*64,r()*64,.5+r(),.5+r());}return cv;})();
 const worldT=v=>[v.K,0,0,v.K,-v.ox*v.K,-v.oy*v.K];

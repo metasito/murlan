@@ -26,7 +26,7 @@ export const RAIL_BAND = RAIL.wood.w + RAIL.line.w;
 /** The mockup's `ringPath`: the rail's rounded rectangle, `d` points in from its outer edge. */
 export function ringRect(d: number): { x: number; y: number; w: number; h: number; r: number } {
   "worklet";
-  return { x: 62 + d, y: 8 + d, w: 750 - 2 * d, h: 386 - 2 * d, r: 170 - d };
+  return { x: 62 + d, y: 2 + d, w: 750 - 2 * d, h: 398 - 2 * d, r: 170 - d };
 }
 
 export interface RingPainter {

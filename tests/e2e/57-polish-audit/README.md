@@ -96,10 +96,10 @@ beside it leaves uncovered. It is not `table.txt`'s `card`, which is a card on t
 
 | Viewport | Table | `handSlot` | `emptyBand` at the audit | after #586 |
 | --- | --- | --- | --- | --- |
-| 568×320 | 496×309 | 30×90 | 94 | 94.5 |
-| 844×390 | 769×377 | 44×111 | 114 | 112.4 |
-| 956×440 | 878×425 | 49×125 | 130 | 126.7 |
-| 1112×834 | 964×806 | 50×233 | 270 | 254.8 |
+| 568×320 | 452×309 | 30×90 | 94 | 94.5 |
+| 844×390 | 728×377 | 44×111 | 114 | 112.4 |
+| 956×440 | 839×425 | 49×125 | 130 | 126.7 |
+| 1112×834 | 890×806 | 42×232 | 270 | 254.8 |
 
 - **Finding 3 applies to the online table.** 270px of the tablet's 806px table is the band
   between the lowest seat and the hand, against 94px of 309px on the smallest phone. It is
@@ -125,7 +125,7 @@ hypotheses next time.
 - **The blank box on "Passa e gioca" is `phone-portrait-outline` itself**, not a missing
   glyph. `tests/e2e/helpers/glyphCoverage.ts` reports zero failures across `/`, `/lobby`,
   `/rules`, `/auth` and `/(online)/profile`.
-- **The tablet-felt complaint is closed for the table.** At 1112×834 the table is 964×806 —
+- **The tablet-felt complaint is closed for the table.** At 1112×834 the table is 890×806 —
   97% of the viewport's height. What is left is the menu screens and the band inside the
   table, which are different findings.
 - **Creating a room is not slow, and it never hung.** Register, create, fill with bots and
