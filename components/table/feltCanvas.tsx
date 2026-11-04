@@ -328,9 +328,9 @@ function bakeCloth(aim: Pool, base: ClothUniforms, ax: number, ay: number): SkIm
   canvas.drawRect(Skia.XYWHRect(0, 0, DESIGN.width, DESIGN.height), paint);
   surface.flush();
   const snapshot = surface.makeImageSnapshot();
-  // A texture image dies with its GL context on web, and is read back once here rather than held there.
-  const image = Platform.OS === "web" ? snapshot.makeNonTextureImage() : snapshot;
-  if (image !== snapshot) snapshot.dispose();
+  // A snapshot is a texture of this surface's context: it dies with the context on web, and on iOS reads black once the surface is disposed below. Copy it to the CPU while the surface is alive.
+  const image = snapshot.makeNonTextureImage();
+  snapshot.dispose();
   const painted = image !== null && litAtCentre(image, ax, ay);
   paint.dispose();
   shader.dispose();

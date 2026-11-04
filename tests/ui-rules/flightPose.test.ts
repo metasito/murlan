@@ -89,3 +89,11 @@ test("a planted ease moves contact, and contactMs follows it", async () => {
   assert.notEqual(after, before, "the planted ease did not move contact, so this test cannot see a guessed contact");
   assert.equal(planted.contactMs(2, from, to, false), after);
 });
+
+test("a native flight runs the native throw's length, and the web's the mockup's", () => {
+  assert.equal(real.flightEndMs(3, false), 380 + 2 * 45);
+  assert.equal(real.flightEndMs(3, false, true), 480 + 2 * 60);
+  assert.equal(real.flightEndMs(3, true, true), real.flightEndMs(3, true), "a catch-up replay is never stretched");
+  const to: CardSlot[] = [{ x: 0, y: 0, rot: 0 }];
+  assert.ok(real.contactMs(1, [FANS[0]], to, false, true) > real.contactMs(1, [FANS[0]], to, false));
+});
