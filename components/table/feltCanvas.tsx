@@ -300,7 +300,9 @@ function settledAim(s: Lamp): string {
   return near ? `${s.tx},${s.ty},${s.tr}` : "";
 }
 
-const CACHED_CLOTHS = 6;
+const CLOTH_ENDS = [-SWAY, SWAY] as const;
+const CACHED_TARGETS = 3;
+const CACHED_CLOTHS = CACHED_TARGETS * CLOTH_ENDS.length;
 const FLARE_SEEN = 0.005;
 const FLARE_WARM = [255, 199, 115] as const;
 const FLARE_POSITIONS = [0, 0.2, 0.4, 0.6, 0.8, 1];
@@ -408,8 +410,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     if (!aim) return null;
     const target = aim.split(",").map(Number) as unknown as Pool;
     const lit = (lean: number) => cloths.get(`${aim}|${ax}|${ay}|${stops.join()}|${lean}`, () => bakeCloth(target, base, ax, ay, lean));
-    const left = lit(-SWAY);
-    const right = lit(SWAY);
+    const [left, right] = CLOTH_ENDS.map(lit);
     return left && right ? { left, right } : null;
   }, [cloths, aim, ax, ay, stops, base]);
   // The lamp's sway crosses the cloth lit at either end of it.
