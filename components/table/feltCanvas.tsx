@@ -32,7 +32,7 @@ import { useBenchHandle } from "@/lib/diagnostics";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, withAlpha } from "@/lib/theme";
-import { DESIGN, LIGHT_ABOVE, lightUniforms, type Lamp, type Pool } from "./lampRig";
+import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
@@ -300,7 +300,9 @@ function settledAim(s: Lamp): string {
   return near ? `${s.tx},${s.ty},${s.tr}` : "";
 }
 
-const CACHED_CLOTHS = 3;
+const CLOTH_ENDS = [-SWAY, SWAY] as const;
+const CACHED_TARGETS = 3;
+const CACHED_CLOTHS = CACHED_TARGETS * CLOTH_ENDS.length;
 const FLARE_SEEN = 0.005;
 const FLARE_WARM = [255, 199, 115] as const;
 const FLARE_POSITIONS = [0, 0.2, 0.4, 0.6, 0.8, 1];
@@ -313,13 +315,13 @@ function litAtCentre(image: SkImage, ax: number, ay: number): boolean {
   return !(px instanceof Uint8Array) || (px[3] > 0 && px[0] + px[1] + px[2] > 24);
 }
 
-/** The cloth lit at a lamp's target, in the device pixels the live shader would fill; `null` where no offscreen surface can be made. */
-function bakeCloth(aim: Pool, base: ClothUniforms, ax: number, ay: number): SkImage | null {
+/** The cloth lit with the lamp `lean` points off its target, in the device pixels the live shader would fill; `null` where no offscreen surface can be made. */
+function bakeCloth(aim: Pool, base: ClothUniforms, ax: number, ay: number, lean: number): SkImage | null {
   if (!CLOTH) return null;
   const surface = Skia.Surface.MakeOffscreen(Math.round(DESIGN.width * ax), Math.round(DESIGN.height * ay));
   if (!surface) return null;
   const [tx, ty, reach] = aim;
-  const uniforms = { ...base, uLamp: [tx, ty - LIGHT_ABOVE], uFlare: 0, ...lightUniforms(reach) };
+  const uniforms = { ...base, uLamp: [tx + lean, ty - LIGHT_ABOVE], uFlare: 0, ...lightUniforms(reach) };
   const shader = CLOTH.makeShader(processUniforms(CLOTH, uniforms));
   const paint = Skia.Paint();
   paint.setShader(shader);
@@ -404,10 +406,15 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const ax = PixelRatio.get() * sx;
   const ay = PixelRatio.get() * sy;
   const [cloths] = useState(() => new ClothCache());
-  const cloth = useMemo(
-    () => (aim ? cloths.get(`${aim}|${ax}|${ay}|${stops.join()}`, () => bakeCloth(aim.split(",").map(Number) as unknown as Pool, base, ax, ay)) : null),
-    [cloths, aim, ax, ay, stops, base]
-  );
+  const cloth = useMemo(() => {
+    if (!aim) return null;
+    const target = aim.split(",").map(Number) as unknown as Pool;
+    const lit = (lean: number) => cloths.get(`${aim}|${ax}|${ay}|${stops.join()}|${lean}`, () => bakeCloth(target, base, ax, ay, lean));
+    const [left, right] = CLOTH_ENDS.map(lit);
+    return left && right ? { left, right } : null;
+  }, [cloths, aim, ax, ay, stops, base]);
+  // The lamp's sway crosses the cloth lit at either end of it.
+  const lean = useDerivedValue(() => Math.min(1, Math.max(0, 0.5 + (lamp.value.lx - lamp.value.tx) / (2 * SWAY))));
   useEffect(() => () => cloths.dispose(), [cloths]);
 
   const uniforms = useDerivedValue(() => ({
@@ -473,7 +480,8 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
         </RoundedRect>
         {cloth ? (
           <>
-            <Image image={cloth} x={0} y={0} width={width} height={height} />
+            <Image image={cloth.left} x={0} y={0} width={width} height={height} />
+            <Image image={cloth.right} x={0} y={0} width={width} height={height} opacity={lean} />
             {flaring && (
               <Rect x={0} y={0} width={width} height={height} blendMode="plus">
                 <RadialGradient c={light} r={flareReach} colors={flareColors} positions={FLARE_POSITIONS} />

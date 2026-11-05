@@ -54,6 +54,9 @@ jest.mock('@shopify/react-native-skia', () => {
   });
 });
 
+// The cloth lit at either end of the lamp's sway, crossed by where the lamp is.
+const BAKES_PER_TARGET = 2;
+
 const at = { x: 0, y: 0 };
 const table = { rects: makeMutable({}), felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, motion: makeMutable(TABLE_AT_REST), pile: at, hand: at, seats: {} } as unknown as CardTable;
 const sway = (lamp: ReturnType<typeof makeMutable<Lamp>>) => () =>
@@ -80,7 +83,7 @@ describe('the felt cloth at rest', () => {
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     const baked = mock.clothBakes;
-    expect(baked).toBe(1);
+    expect(baked).toBe(BAKES_PER_TARGET);
     expect(mock.liveCloth).toBe(0);
     await frames(1600, sway(lamp));
     expect(mock.clothBakes).toBe(baked);
@@ -98,7 +101,7 @@ describe('the felt cloth at rest', () => {
       return s;
     }, true);
     await frames(3200, sway(lamp));
-    expect(mock.clothBakes).toBe(1);
+    expect(mock.clothBakes).toBe(BAKES_PER_TARGET);
     expect(mock.liveCloth).toBe(0);
     await view.unmount();
   });
@@ -116,7 +119,7 @@ describe('the felt cloth at rest', () => {
     expect(mock.liveCloth).toBe(1);
     await frames(6000, sway(lamp));
     expect(mock.liveCloth).toBe(0);
-    expect(mock.clothBakes).toBe(2);
+    expect(mock.clothBakes).toBe(2 * BAKES_PER_TARGET);
     await view.unmount();
   });
 
@@ -136,7 +139,7 @@ describe('the felt cloth at rest', () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
-    expect(mock.clothBakes).toBe(1);
+    expect(mock.clothBakes).toBe(BAKES_PER_TARGET);
     const held = mock.images.filter((i) => i.dispose.mock.calls.length === 0);
     expect(held.length).toBeGreaterThan(0);
     expect(held.filter((i) => i.dead)).toEqual([]);
