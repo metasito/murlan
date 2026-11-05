@@ -329,7 +329,7 @@ export function GameTable({
   // carries the home indicator — and taking it off here instead shrinks the cards on device
   // only, which is the divergence from the web design, not a fit for it.
   const scale = cardScale(Math.min(W, H));
-  const chips = chipScale(scale, W);
+  const chips = chipScale(scale, Math.max(W, H));
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
   // the row reads as one band even though only the cards are cropped.
   const actionBtn = actionBtnSize(scale);
