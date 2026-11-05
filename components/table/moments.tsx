@@ -13,7 +13,7 @@
 // that whole span rather than replaying every percentage break.
 
 import { useEffect } from "react";
-import { View, StyleSheet, type ViewStyle } from "react-native";
+import { Platform, View, StyleSheet, type ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -45,7 +45,11 @@ import type { LandingSignal } from "@/components/table/useFlightClock";
 // device access this session can re-verify a variant of. It animates a
 // plain `Animated.View`'s own `opacity`/`transform` instead, the shape
 // `Wave` already uses, with a static blurred `glow` (`makeShadow`)
-// standing outside the animated path for the outer halo.
+// on web for the outer halo; native draws it as one more circle.
+// Native composites a blended layer through an offscreen pass on every frame it moves, and the flare grows to
+// seven times its size, the sweep spans the table: both fade by opacity there instead, over the dark felt.
+const NATIVE = Platform.OS !== "web";
+const SCREEN_BLEND: ViewStyle | null = NATIVE ? null : { mixBlendMode: "screen" };
 const FLARE_GLOW = "#FFC966";
 const WAVE_STROKE = "rgba(255,236,180,.9)";
 const SWEEP_BAND = "rgba(255,240,200,.42)";
@@ -106,25 +110,30 @@ const FLARE_LAYER_CORE_DIAMETER = 0.16;
 const FLARE_LAYER_CORE_ALPHA = 0.92;
 const FLARE_LAYER_CORE_COLOR = "#FFFAE8";
 
+const FLARE_HALO_DIAMETER = 1;
+const FLARE_HALO_ALPHA = 0.07;
+
+// Web paints the halo as a blurred shadow; a shadow scaled 7x is rasterised again every frame on native, so
+// there it is one more circle, drawn once and only ever scaled and faded with the rest.
 const FLARE_LAYERS: readonly GradientLayer[] = [
+  ...(NATIVE ? [{ diameterFactor: FLARE_HALO_DIAMETER, fill: withAlpha(FLARE_GLOW, FLARE_HALO_ALPHA) }] : []),
   { diameterFactor: FLARE_LAYER_OUTER_DIAMETER, fill: withAlpha(FLARE_GLOW, FLARE_LAYER_OUTER_ALPHA) },
   { diameterFactor: FLARE_LAYER_MID_DIAMETER, fill: withAlpha(FLARE_LAYER_MID_COLOR, FLARE_LAYER_MID_ALPHA) },
   { diameterFactor: FLARE_LAYER_CORE_DIAMETER, fill: withAlpha(FLARE_LAYER_CORE_COLOR, FLARE_LAYER_CORE_ALPHA) },
 ];
 
-const SCREEN_BLEND: ViewStyle = { mixBlendMode: "screen" };
 
 // ─── Flare ──────────────────────────────────────────────────────────────────
 
 const FLARE_SIZE = 150;
 /** The bomb's own window — brief, because the surprise is over the instant it lands. */
-const FLARE_BRIEF_MS = 1500;
+const FLARE_BRIEF_MS = NATIVE ? Motion.nativeBurst.flare : 1500;
 /**
  * The match's own window — long enough to carry the closing beat rather
  * than read as a second bomb: `flareKindFor` (impact.ts) is what
  * decides which of the two a landing plays, never a branch in here.
  */
-const FLARE_SETTLE_MS = FLARE_BRIEF_MS * 2;
+const FLARE_SETTLE_MS = 3000;
 const FLARE_EASING = Easing.bezier(0.12, 0.72, 0.28, 1);
 const FLARE_Z = Layer.moment;
 
@@ -171,7 +180,7 @@ function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale:
   const size = FLARE_SIZE * scale;
   // Static — a shadow outside `useAnimatedStyle` never touches the per-frame
   // animated path the `animate-compositor-props` guard in eslint.guards.cjs checks.
-  const glow = makeShadow(FLARE_GLOW, 0, 0, 1, size * 0.55, 10);
+  const glow = NATIVE ? null : makeShadow(FLARE_GLOW, 0, 0, 1, size * 0.55, 10);
   return (
     <Animated.View
       pointerEvents="none"
