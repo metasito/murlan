@@ -34,8 +34,15 @@ async function play(page: Page, baseURL: string, locale: string, strings: String
   await stepUntil(page, () => page.locator(NOTE).isVisible(), "the receive resting on the last-played pill", { chunkMs: 100 });
 }
 
-for (const { locale, strings } of LANGUAGES)
-for (const viewport of [{ width: 844, height: 390 }, { width: 667, height: 375 }, { width: 1024, height: 768 }]) {
+const PHONES = [{ width: 844, height: 390 }, { width: 667, height: 375 }];
+const TABLET = { width: 1024, height: 768 };
+// The tablet is where the pill and the turn chip sit closest, so every language runs there; the
+// phones have room to spare and run in Italian only.
+const CASES = LANGUAGES.flatMap((language) =>
+  (language.locale === "it" ? [...PHONES, TABLET] : [TABLET]).map((viewport) => ({ ...language, viewport }))
+);
+
+for (const { locale, strings, viewport } of CASES) {
   test(`${viewport.width}px in ${locale}: the receive, then the winner's nothing to give back, are said by the pills`, async ({ page, baseURL }) => {
     test.setTimeout(240_000);
     await page.setViewportSize(viewport);
