@@ -46,6 +46,10 @@ import type { LandingSignal } from "@/components/table/useFlightClock";
 // plain `Animated.View`'s own `opacity`/`transform` instead, the shape
 // `Wave` already uses, with a static blurred `glow` (`makeShadow`)
 // on web for the outer halo; native draws it as one more circle.
+// Native composites a blended layer through an offscreen pass on every frame it moves, and the flare grows to
+// seven times its size, the sweep spans the table: both fade by opacity there instead, over the dark felt.
+const NATIVE = Platform.OS !== "web";
+const SCREEN_BLEND: ViewStyle | null = NATIVE ? null : { mixBlendMode: "screen" };
 const FLARE_GLOW = "#FFC966";
 const WAVE_STROKE = "rgba(255,236,180,.9)";
 const SWEEP_BAND = "rgba(255,240,200,.42)";
@@ -118,10 +122,6 @@ const FLARE_LAYERS: readonly GradientLayer[] = [
   { diameterFactor: FLARE_LAYER_CORE_DIAMETER, fill: withAlpha(FLARE_LAYER_CORE_COLOR, FLARE_LAYER_CORE_ALPHA) },
 ];
 
-// Native composites a blended layer through an offscreen pass on every frame it moves, and the flare grows to
-// seven times its size, the sweep spans the table: both fade by opacity there instead, over the dark felt.
-const NATIVE = Platform.OS !== "web";
-const SCREEN_BLEND: ViewStyle | null = NATIVE ? null : { mixBlendMode: "screen" };
 
 // ─── Flare ──────────────────────────────────────────────────────────────────
 
@@ -133,7 +133,7 @@ const FLARE_BRIEF_MS = NATIVE ? Motion.nativeBurst.flare : 1500;
  * than read as a second bomb: `flareKindFor` (impact.ts) is what
  * decides which of the two a landing plays, never a branch in here.
  */
-const FLARE_SETTLE_MS = FLARE_BRIEF_MS * 2;
+const FLARE_SETTLE_MS = 3000;
 const FLARE_EASING = Easing.bezier(0.12, 0.72, 0.28, 1);
 const FLARE_Z = Layer.moment;
 
@@ -185,8 +185,6 @@ function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale:
     <Animated.View
       pointerEvents="none"
       testID="bomb-flare"
-      shouldRasterizeIOS
-      renderToHardwareTextureAndroid
       style={[
         momentStyles.centered,
         { width: size, height: size, left: -size / 2, top: -size / 2, zIndex: FLARE_Z },

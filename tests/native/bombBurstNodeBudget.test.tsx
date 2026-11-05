@@ -11,6 +11,7 @@
 // bookkeeping left to exclude.
 import { describe, it, expect } from "@jest/globals";
 import React from "react";
+import { Platform } from "react-native";
 import { render } from "@testing-library/react-native";
 import { makeMutable } from "react-native-reanimated";
 import { BombBurst } from "@/components/table/moments";
@@ -91,6 +92,8 @@ describe("the bomb burst's own node budget (#765)", () => {
     // A flat fill (the shape the critique rejected) is one node with no
     // children at all; this only holds once there is a real falloff to count.
     expect(layers).toBeGreaterThanOrEqual(2);
+    // Native has no shadow halo, so a fourth circle stands in for it.
+    expect(layers).toBe(Platform.OS === "web" ? 3 : 4);
 
     await r.unmount();
   });

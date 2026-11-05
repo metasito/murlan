@@ -96,6 +96,7 @@ describe("the flare and the sweep blend only where blending is cheap (#1514)", (
     const style = styleOf("bomb-flare");
     expect(style.mixBlendMode).toBe(blended);
     if (Platform.OS !== "web") {
+      expect(style.width).toBe(150);
       expect(style.shadowRadius).toBeUndefined();
       expect(style.boxShadow).toBeUndefined();
     }
