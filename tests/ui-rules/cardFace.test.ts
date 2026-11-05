@@ -179,16 +179,18 @@ describe("cardScale", () => {
 
 describe("chipScale", () => {
   test("leaves every phone's chips at the table's scale", () => {
-    for (const [w, h] of [[667, 375], [844, 390], [932, 430], [568, 320]]) {
+    for (const [w, h] of [[667, 375], [844, 390], [932, 430], [640, 360], [568, 320]]) {
       const scale = cardScale(Math.min(w, h));
       assert.equal(chipScale(scale, w), scale, `${w}x${h}`);
     }
   });
 
   test("holds a tablet's chips to what its width can seat", () => {
-    const scale = cardScale(768);
-    const chips = chipScale(scale, 1024);
-    assert.ok(chips < scale);
-    assert.ok(chips >= cardScale(667 / 1.5), "still bigger than a phone's");
+    for (const [w, h] of [[1024, 768], [1112, 834]]) {
+      const scale = cardScale(h);
+      const chips = chipScale(scale, w);
+      assert.ok(chips < scale, `${w}x${h} is held back`);
+      assert.ok(Math.abs(chips - w / 690) < 1e-9, `${w}x${h} sits at 690 px of width per unit of scale`);
+    }
   });
 });
