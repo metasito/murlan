@@ -20,8 +20,7 @@ Verify against source before changing any.
   `tests/ui-rules/oneClock.test.ts` refuses a timer that waits out a motion token.
 - **The table's scale comes from the window's own short edge**, never that minus the safe-area
   insets. The safe area is the layout's job — the rail absorbs the cutout, the hand zone carries
-  the home indicator. The top chips (last-played pill, turn chip) take `chipScale`, the same scale
-  held to what the window's width can seat in one row (`components/cardFaceModel.ts`).
+  the home indicator.
 - **The lamp aims at laid-out places**, not a design constant
   (`tests/e2e/lampSeats.spec.ts`, `tests/e2e/startAnnouncement.spec.ts`).
 - **No seat place takes a card count**; `fanGeometry.ts` imports `seatLayout.ts`, never the
