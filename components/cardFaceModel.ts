@@ -23,6 +23,16 @@ export function cardScale(shortEdge: number): number {
   return Math.min(shortEdge, MAX_SHORT_EDGE) / BASE_SHORT_EDGE;
 }
 
+// The window width one unit of scale needs to seat the last-played pill and the turn chip in one row.
+// Scale follows the short edge, so this only bites below an aspect of 690/390 (about 1.77): a 16:9
+// phone is wide enough, a squarer tablet is not.
+const CHIP_ROW_WIDTH_PER_SCALE = 690;
+
+/** The scale of the top-row chips: the table's, held to what the window's width can seat in one row. */
+export function chipScale(scale: number, width: number): number {
+  return Math.min(scale, width / CHIP_ROW_WIDTH_PER_SCALE);
+}
+
 const TABLE_TEXT_MIN = 10;
 
 export function tableFontSize(base: number, scale: number): number {

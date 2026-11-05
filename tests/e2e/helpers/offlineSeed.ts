@@ -284,13 +284,14 @@ export async function resumeOnVirtualClock(
   baseURL: string,
   save: OfflineSave,
   beforeResume?: () => Promise<void>,
-  o: SeedOptions = { holdTurn: true }
+  o: SeedOptions = { holdTurn: true },
+  resumeLabel = "Riprendi partita"
 ): Promise<void> {
   await seedSave(page, save, o);
   await page.addInitScript((key) => window.localStorage.setItem(key, "1"), TUTORIAL_SEEN_KEY);
   await page.goto(baseURL);
   await takeOver(page);
-  const resume = page.getByRole("button", { name: "Riprendi partita" });
+  const resume = page.getByRole("button", { name: resumeLabel });
   await stepUntil(page, () => resume.isVisible(), "the home screen");
   await beforeResume?.();
   await resume.click({ force: true });
