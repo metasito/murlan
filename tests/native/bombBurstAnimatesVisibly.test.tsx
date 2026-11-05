@@ -86,19 +86,25 @@ describe("the bomb burst actually moves once fired (#765)", () => {
   });
 });
 
-describe("the flare and the sweep screen onto the felt on native too (#1514)", () => {
-  const blendOf = (testID: string) =>
-    StyleSheet.flatten(screen.getByTestId(testID, { includeHiddenElements: true }).props.style).mixBlendMode;
+describe("the flare and the sweep blend only where blending is cheap (#1514)", () => {
+  const styleOf = (testID: string) =>
+    StyleSheet.flatten(screen.getByTestId(testID, { includeHiddenElements: true }).props.style);
+  const blended = Platform.OS === "web" ? "screen" : undefined;
 
-  it(`the bomb flare carries mixBlendMode "screen" on ${Platform.OS}`, async () => {
+  it(`the bomb flare's mixBlendMode on ${Platform.OS} is ${String(blended)}, and it carries no shadow on native`, async () => {
     const r = await render(<BombBurst landing={makeMutable(NO_LANDING)} scale={1} />);
-    expect(blendOf("bomb-flare")).toBe("screen");
+    const style = styleOf("bomb-flare");
+    expect(style.mixBlendMode).toBe(blended);
+    if (Platform.OS !== "web") {
+      expect(style.shadowRadius).toBeUndefined();
+      expect(style.boxShadow).toBeUndefined();
+    }
     await r.unmount();
   });
 
-  it(`the sweep carries mixBlendMode "screen" on ${Platform.OS}`, async () => {
+  it(`the sweep's mixBlendMode on ${Platform.OS} is ${String(blended)}`, async () => {
     const r = await render(<Sweep trigger={1} width={200} height={100} />);
-    expect(blendOf("sweep")).toBe("screen");
+    expect(styleOf("sweep").mixBlendMode).toBe(blended);
     await r.unmount();
   });
 });

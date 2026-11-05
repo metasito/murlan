@@ -590,6 +590,8 @@ export const Motion = {
    * mockup parity specs hold it. Reduced motion never flies, so it has no reduced form here.
    */
   nativeThrow: { card: 480, stagger: 60 },
+  /** The bomb flare's window on a native table, a fifth longer than the mockup's 1500 ms so the cheaper, shadowless bloom reads as it grew rather than flashed (device feel unmeasured). The web keeps 1500. */
+  nativeBurst: { flare: 1800 },
   /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
   exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900, descend: 500 },
   /** A notice's mark or float fading in and out, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */
