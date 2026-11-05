@@ -19,6 +19,7 @@ import {
   INDEX_TEXT_W,
   isWideRank,
   cardScale,
+  chipScale,
   faceMarks,
   SUIT_GLYPHS,
   suitMarksPath,
@@ -173,5 +174,23 @@ describe("cardScale", () => {
     const atCap = cardScale(900);
     assert.equal(cardScale(1200), atCap);
     assert.equal(cardScale(4000), atCap);
+  });
+});
+
+describe("chipScale", () => {
+  test("leaves every phone's chips at the table's scale", () => {
+    for (const [w, h] of [[667, 375], [844, 390], [932, 430], [640, 360], [568, 320]]) {
+      const scale = cardScale(Math.min(w, h));
+      assert.equal(chipScale(scale, w), scale, `${w}x${h}`);
+    }
+  });
+
+  test("holds a tablet's chips to what its width can seat", () => {
+    for (const [w, h] of [[1024, 768], [1112, 834]]) {
+      const scale = cardScale(h);
+      const chips = chipScale(scale, w);
+      assert.ok(chips < scale, `${w}x${h} is held back`);
+      assert.ok(Math.abs(chips - w / 690) < 1e-9, `${w}x${h} sits at 690 px of width per unit of scale`);
+    }
   });
 });
