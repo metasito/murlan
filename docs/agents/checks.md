@@ -365,37 +365,35 @@ repo-level gate could have seen either. The enforcement point is your own loop.
 
 ## The target never moves with the code
 
-Rule 52. `TARGETS` in `tools/ci/target-freeze.mjs` is the only list of targets. The
-`Target freeze` step of `ci.yml`'s `Secret scan` job runs on every pull request and push, without
-`npm ci` and outside `scope`'s skips. It is a step, not a job, because one more job breaks the
-concurrency cap.
+Rule 52. `TARGETS` in `tools/ci/target-freeze.mjs` is the only list of targets. The invariant: the
+guard is decided by base-defined code and enforced by the ruleset. `.github/workflows/target-freeze.yml`
+runs on `pull_request_target` into `main`, so GitHub runs main's copy of the workflow and of the
+script, never the pull request's. A change that loosens the script, empties the list, edits its
+test or rewrites the workflow is judged by the list it started from; its edits take effect only
+once it has merged. A check inside `ci.yml` cannot do this: on `pull_request` the head's `ci.yml`
+runs, and it decides whether any step of it runs at all.
 
-**Base judges head.** The step checks out the base commit into `$RUNNER_TEMP/freeze-base` and runs
-base's copy of the script inside the head checkout. A change that loosens the script, empties the
-list or edits its own test is still judged by the list it started from. Base's copy also refuses
-two things in head's `ci.yml`: a `secrets` job that no longer runs base's copy ungated, and a
-`CI gate` that no longer needs that job. Any other edit to the `secrets` job counts as a target
-change. Head's copy runs, with `--bootstrap`, only when base has no script at all, and that mode
-refuses itself once base has one. It judges `<base>...HEAD` with renames off, so a target moved out
-of its path still counts where it was.
+**Nothing of the head runs.** The job checks out the base, fetches `refs/pull/<n>/head` as git
+objects, and runs base's script on `<base.sha>...<head>` with renames off, so a target moved out of
+its path still counts where it was. The head is read only through `git diff` and `git ls-tree`: no
+checkout, install or import of its files, no secrets, read-only `contents`, and the pull request's
+fields reach the shell through `env:`. Running the head's code there would be a pwn-request.
+`edited` is among its types, so a stack retargeted onto `main` is judged again on its new base.
 
-**What the step cannot see.** A pull request's `ci.yml` is the pull request's own. A change that
-rewrites the step's shell so it never reaches base's copy runs its own workflow, and nothing in a
-`pull_request` run can stop that. Closing it needs a check that runs from base's workflow, such as
-a `pull_request_target` workflow or a ruleset's required workflow. A retargeted pull request is not
-judged again on the new base, because the run is not triggered when a pull request's base changes:
-`edited` would rerun the whole workflow on every title edit and cancel the run in progress. The
-push run on `main` judges the merge against main's previous tip, so a retargeted stack is caught
-after it merges.
+**The ruleset makes it binding.** The `main` ruleset routes every change through a pull request,
+with no bypass actors, and requires the `Target freeze` status check beside `CI gate`; a workflow
+that is not required can be red and still merge. The pull request adding the workflow is not judged
+by it, since main has no copy yet; the owner adds the required check once it has merged.
 
-`tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list and every
-nightly spec inside it. It also plants diffs in a scratch repository and runs the real step on
-them: mixed, target-only and code-only diffs; a target and the code in separate commits; a rename
-out of the list; a deleted nightly spec; a branch that merges main; a merge ref; a tampered
-verdict; an emptied list; a deleted step; a step dropped from the gate; and the bootstrap. The
-guard is floored. A pattern that names no tracked file turns it red, and so does a base that is
-missing, cannot be read, or is the head itself. A push whose tree did not change has no file to
-judge, so it passes.
+`tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list, every nightly
+spec inside it, and the workflow's shape: its trigger, branches and types, read-only permissions, a
+checkout of the base, pinned actions, and its one `run`, verbatim. It plants diffs in a scratch
+repository and judges them: mixed, target-only and code-only diffs; a target and the code in
+separate commits; a rename out of the list; a deleted nightly spec; the workflow beside code; a
+branch that merges main; a merge ref. It runs the workflow's own `run` from a clone of the base on
+a planted `refs/pull/<n>/head` that tampers the verdict or empties the list, which head's copy
+passes and base's refuses. The guard is floored: a pattern that names no file in the head turns it
+red, and so does a base or head that is missing, cannot be read, or is the same commit.
 
 **What it leaves out, on purpose.** These change with the code by design, and freezing them would
 make every intended change unlandable:

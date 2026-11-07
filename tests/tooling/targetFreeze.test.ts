@@ -7,16 +7,18 @@ import path from "node:path";
 import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
-import { CODE, GUARD_JOB, TARGETS, armed, codeowners, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { CODE, TARGETS, codeowners, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
-const SCRIPT = path.join(root, "tools", "ci", "target-freeze.mjs");
-const CI = path.join(root, ".github", "workflows", "ci.yml");
+const WORKFLOW = ".github/workflows/target-freeze.yml";
 const tracked = trackedFiles(root);
 const inScratch = (p: string) => `tests/e2e/${p}`;
-const ciText = fs.readFileSync(CI, "utf8");
-const freezeStep = () => parse(ciText).jobs[GUARD_JOB].steps.find((s: { name?: string }) => s.name === "Target freeze");
+const workflowText = fs.readFileSync(path.join(root, WORKFLOW), "utf8");
+const workflow = parse(workflowText);
+type Step = { name?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; run?: string; if?: string };
+const steps = (): Step[] => (Object.values(workflow.jobs)[0] as { steps: Step[] }).steps;
+const freezeRun = () => steps().find((s) => s.name === "Target freeze")!.run!;
 
 describe("the list looks at the repository as it is", () => {
   test("every target and code pattern names a tracked file", () => {
@@ -30,7 +32,7 @@ describe("the list looks at the repository as it is", () => {
   });
 
   test("the mockups and their staging are targets; readings of the app and their neighbours are not", () => {
-    for (const f of ["tests/e2e/fixtures/lantern-table/index.html", "tests/e2e/helpers/mockupStage.ts", "tests/helpers/lanternFixture.ts", "tests/e2e/handParityLarge.spec.ts"]) {
+    for (const f of ["tests/e2e/fixtures/lantern-table/index.html", "tests/e2e/helpers/mockupStage.ts", "tests/helpers/lanternFixture.ts", "tests/e2e/handParityLarge.spec.ts", WORKFLOW]) {
       assert.ok(isTarget(f), f);
     }
     for (const f of [
@@ -40,6 +42,7 @@ describe("the list looks at the repository as it is", () => {
       "tests/fixtures/handRow.json",
       inScratch("sub/handParityX.spec.ts"),
       "components/GameTable.tsx",
+      ".github/workflows/ci.yml",
     ]) {
       assert.ok(!isTarget(f), f);
     }
@@ -50,15 +53,44 @@ describe("the list looks at the repository as it is", () => {
   test(".github/CODEOWNERS is the list's own rendering", () => {
     assert.equal(fs.readFileSync(path.join(root, ".github", "CODEOWNERS"), "utf8"), codeowners());
   });
+});
 
-  test("ci.yml runs base's copy on every pull request and push, in a gated job with the full history", () => {
-    const jobs = parse(ciText).jobs;
-    assert.equal(jobs[GUARD_JOB].steps[0].with["fetch-depth"], 0);
-    const step = freezeStep();
-    assert.equal(step?.if, "github.event_name == 'pull_request' || github.event_name == 'push'");
-    assert.equal(step.env?.BASE, "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}");
-    assert.ok(armed(ciText));
-    assert.ok([jobs["ci-gate"].needs].flat().includes(GUARD_JOB));
+describe("the workflow runs base's script on the head's objects, and nothing of the head's", () => {
+  test("it runs on every pull request into main, again when one is retargeted, and on nothing else", () => {
+    assert.deepEqual(workflow.on, { pull_request_target: { branches: ["main"], types: ["opened", "synchronize", "reopened", "edited"] } });
+  });
+
+  test("it reads only, holds no secret and keeps no cache", () => {
+    assert.deepEqual(workflow.permissions, { contents: "read" });
+    assert.doesNotMatch(workflowText, /secrets\.|actions\/cache|\.github\/actions\/install|\bnpm\b|\bnpx\b/);
+  });
+
+  test("one ungated job, whose name is the status check the ruleset requires", () => {
+    const jobs = Object.values(workflow.jobs) as Record<string, unknown>[];
+    assert.equal(jobs.length, 1);
+    assert.equal(jobs[0].name, "Target freeze");
+    for (const key of ["if", "permissions", "continue-on-error", "container", "services"]) assert.equal(jobs[0][key], undefined, key);
+  });
+
+  test("its actions are pinned as ci.yml pins them, and the checkout is the base's", () => {
+    const ci = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
+    const uses = steps().filter((s) => s.uses);
+    assert.deepEqual(uses.map((s) => s.uses!.split("@")[0]), ["actions/checkout", "actions/setup-node"]);
+    for (const s of uses) assert.ok(ci.includes(`uses: ${s.uses}`), `${s.uses} is not ci.yml's pin`);
+    assert.deepEqual(uses[0].with, { "fetch-depth": 0 });
+    assert.deepEqual(uses[1].with, { "package-manager-cache": false, "node-version-file": ".node-version" });
+  });
+
+  test("its one run fetches the head as objects and runs the checked-out script on them, with the pull request's fields through env", () => {
+    const runs = steps().filter((s) => s.run);
+    assert.equal(runs.length, 1);
+    assert.equal(steps().length, 3);
+    for (const s of steps()) assert.equal(s.if, undefined);
+    assert.deepEqual(runs[0].env, { PR: "${{ github.event.pull_request.number }}", BASE: "${{ github.event.pull_request.base.sha }}" });
+    assert.equal(
+      freezeRun(),
+      'git fetch --no-tags origin "+refs/pull/$PR/head:refs/freeze/head"\nnode tools/ci/target-freeze.mjs "$BASE" refs/freeze/head\n',
+    );
   });
 });
 
@@ -80,8 +112,8 @@ describe("planted diffs", () => {
     at()(["add", "-A"]);
     at()(["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", message]);
   };
-  const branch = (name: string, change: () => void, from = "main") => {
-    at()(["switch", "-q", "-c", name, from]);
+  const branch = (name: string, change: () => void) => {
+    at()(["switch", "-q", "-c", name, "main"]);
     change();
     commit(name);
   };
@@ -89,31 +121,36 @@ describe("planted diffs", () => {
     at()(["switch", "-q", "-c", name, onto]);
     at()(["-c", "user.name=t", "-c", "user.email=t@example.com", "merge", "-q", "--no-ff", "-m", `merge ${other}`, other]);
   };
-  const judge = (base = "main", opts = {}) => {
+  const judge = (head: string, base = "main") => {
     const lines: string[] = [];
-    return { code: run(base, at(), (l) => lines.push(l), opts), out: lines.join("\n") };
+    return { code: run(base, head, at(), (l) => lines.push(l)), out: lines.join("\n") };
   };
-  const on = (name: string, base = "main") => {
-    at()(["switch", "-q", name]);
-    return judge(base);
-  };
-  const ciStep = (name: string, base = "main") => {
-    at()(["switch", "-q", name]);
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "target-freeze-runner-"));
-    temps.push(temp);
-    const r = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", freezeStep().run], {
-      cwd: dir,
+  const REFUSED = /^::error::this change moves the parity targets and the code they judge together \(RULES\.md 52\)\./;
+  const pulls: string[] = [];
+  const asPullRequest = (name: string) => {
+    pulls.push(name);
+    const pr = String(pulls.length);
+    at()(["update-ref", `refs/pull/${pr}/head`, name]);
+    const runner = fs.mkdtempSync(path.join(os.tmpdir(), "target-freeze-runner-"));
+    temps.push(runner);
+    git(os.tmpdir())(["clone", "-q", "--branch", "main", dir, runner]);
+    const base = at().text(["rev-parse", "main"]);
+    const r = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", freezeRun()], {
+      cwd: runner,
       encoding: "utf8",
-      env: { ...process.env, BASE: base, RUNNER_TEMP: temp },
+      env: { ...process.env, PR: pr, BASE: base },
     });
     return { code: r.status, out: r.stdout + r.stderr };
   };
+  const ownCopy = (name: string) => {
+    at()(["switch", "-q", name]);
+    return spawnSync(process.execPath, [path.join(dir, SELF), "main", name], { cwd: dir, encoding: "utf8" });
+  };
   const representative = [...TARGETS.map((t) => tracked.find(matcher(t.pattern))!), ...CODE.map((d) => tracked.find((f) => f.startsWith(d))!)];
   const spares = ["tests/e2e/fixtures/lantern-table/index.html", "tests/e2e/fixtures/spare/index.html", inScratch("spare.nightly.spec.ts")];
-  const tools = ["tools/ci/target-freeze.mjs", "scripts/lib/entry.mjs", "tools/loop/cli.mjs", "tools/loop/session-env.mjs", ".github/workflows/ci.yml"];
-  const FIXTURE = "tests/e2e/fixtures/lantern-table/index.html";
   const SELF = "tools/ci/target-freeze.mjs";
-  const CI_FILE = ".github/workflows/ci.yml";
+  const tools = [SELF, "scripts/lib/entry.mjs", "tools/loop/cli.mjs", "tools/loop/session-env.mjs"];
+  const FIXTURE = "tests/e2e/fixtures/lantern-table/index.html";
   const targetAndCode = () => {
     write(FIXTURE, "moved\n");
     write("components/GameTable.tsx", "moved\n");
@@ -145,6 +182,10 @@ describe("planted diffs", () => {
       fs.rmSync(path.join(dir, tracked.find((f) => NIGHTLY.test(f))!));
       write("app/x.tsx", "moved\n");
     });
+    branch("workflow-with-code", () => {
+      write(WORKFLOW, "on: push\n");
+      write("lib/x.ts", "moved\n");
+    });
     branch("empty", () => {});
     branch("floor", () => fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs")));
     branch("verdict-tampered", () => {
@@ -155,35 +196,14 @@ describe("planted diffs", () => {
       targetAndCode();
       edit(SELF, "export const TARGETS = Object.freeze([", "export const TARGETS = Object.freeze([]);\nexport const WERE = Object.freeze([");
     });
-    branch("step-deleted", () => {
-      targetAndCode();
-      edit(CI_FILE, `node "$RUNNER_TEMP/freeze-base/${SELF}" "$BASE"`, "true");
-    });
-    branch("gate-dropped", () => {
-      targetAndCode();
-      edit(CI_FILE, `[scope, ${GUARD_JOB}, `, "[scope, ");
-    });
-    branch("guard-job-edited", () => edit(CI_FILE, "timeout-minutes: 10\n    steps:", "timeout-minutes: 11\n    steps:"));
-    branch("guard-job-edited-with-code", () => {
-      edit(CI_FILE, "timeout-minutes: 10\n    steps:", "timeout-minutes: 11\n    steps:");
-      write("components/GameTable.tsx", "moved\n");
-    });
-    branch("pre-freeze", () => fs.rmSync(path.join(dir, SELF)));
-    branch("bootstrap", () => {
-      write(SELF, real(SELF));
-      write(FIXTURE, "moved\n");
-    }, "pre-freeze");
-    branch("bootstrap-mixed", () => {
-      write(SELF, real(SELF));
-      targetAndCode();
-    }, "pre-freeze");
     at()(["switch", "-q", "main"]);
     write("components/main-moved.tsx", "main\n");
     commit("main moves the code");
-    branch("targets-after-main-moved", () => at()(["reset", "-q", "--hard", "targets-only"]));
+    at()(["switch", "-q", "-c", "targets-after-main-moved", "targets-only"]);
     merge("targets-merging-main", "targets-only", "main");
     merge("merge-ref-mixed", "main", "mixed");
     merge("merge-ref-targets", "main", "targets-only");
+    at()(["switch", "-q", "main"]);
   });
 
   after(() => {
@@ -191,108 +211,94 @@ describe("planted diffs", () => {
   });
 
   test("a diff moving a mockup and a component is refused, naming both", () => {
-    const { code, out } = on("mixed");
+    const { code, out } = judge("mixed");
     assert.equal(code, 1);
-    assert.match(out, /RULES\.md 52/);
+    assert.match(out, REFUSED);
     assert.match(out, /Targets:\n {2}tests\/e2e\/fixtures\/lantern-table\/index\.html\nCode:\n {2}components\/GameTable\.tsx/);
   });
 
   test("a target-only diff passes, and says it moved targets", () => {
-    assert.deepEqual(on("targets-only"), { code: 0, out: "targets only (1 files)" });
+    assert.deepEqual(judge("targets-only"), { code: 0, out: "targets only (1 files)" });
   });
 
   test("a code-only diff passes", () => {
-    assert.deepEqual(on("code-only"), { code: 0, out: "no parity target touched" });
+    assert.deepEqual(judge("code-only"), { code: 0, out: "no parity target touched" });
   });
 
   test("the target and the code in separate commits of one branch are refused", () => {
-    assert.equal(on("split-commits").code, 1);
+    const { code, out } = judge("split-commits");
+    assert.equal(code, 1);
+    assert.match(out, REFUSED);
   });
 
   test("renaming a mockup out of the targets beside a code change is still refused", () => {
-    const { code, out } = on("renamed-out");
+    const { code, out } = judge("renamed-out");
     assert.equal(code, 1);
     assert.match(out, /Targets:\n {2}tests\/e2e\/fixtures\/lantern-table\/index\.html\n/);
   });
 
   test("deleting a nightly spec beside an app change is refused", () => {
-    const { code, out } = on("nightly-deleted");
+    const { code, out } = judge("nightly-deleted");
     assert.equal(code, 1);
     assert.match(out, /Targets:\n {2}\S+\.nightly\.spec\.ts\nCode:\n {2}app\/x\.tsx/);
   });
 
-  test("main's own code changes are not the branch's: after main moved, after merging main, and on a merge ref", () => {
-    assert.deepEqual(on("targets-after-main-moved"), { code: 0, out: "targets only (1 files)" });
-    assert.deepEqual(on("targets-merging-main"), { code: 0, out: "targets only (1 files)" });
-    assert.deepEqual(on("merge-ref-targets"), { code: 0, out: "targets only (1 files)" });
-    assert.equal(on("merge-ref-mixed").code, 1);
-  });
-
-  test("a push whose tree is unchanged is green; a base that is the head itself is red", () => {
-    assert.deepEqual(on("empty"), { code: 0, out: "no file changed" });
-    const self = judge("HEAD");
-    assert.equal(self.code, 1);
-    assert.match(self.out, /HEAD is the commit under judgement/);
-  });
-
-  test("a missing base and an unreadable base are red, not green", () => {
-    assert.equal(run(undefined, at(), () => {}), 1);
-    const bad = judge("no-such-ref");
-    assert.equal(bad.code, 1);
-    assert.match(bad.out, /no change set from no-such-ref/);
-  });
-
-  test("a pattern that names no tracked file turns it red", () => {
-    const { code, out } = on("floor");
+  test("editing the workflow beside code is refused", () => {
+    const { code, out } = judge("workflow-with-code");
     assert.equal(code, 1);
-    assert.match(out, /name no tracked file.*tests\/e2e\/tiers\.mjs/);
+    assert.match(out, /Targets:\n {2}\.github\/workflows\/target-freeze\.yml\nCode:\n {2}lib\/x\.ts/);
   });
 
-  test("ci.yml's step judges a change by base's copy, so a change loosening its own copy is still refused", () => {
+  test("main's own code changes are not the branch's: after main moved, after merging main, and on a merge ref", () => {
+    assert.deepEqual(judge("targets-after-main-moved"), { code: 0, out: "targets only (1 files)" });
+    assert.deepEqual(judge("targets-merging-main"), { code: 0, out: "targets only (1 files)" });
+    assert.deepEqual(judge("merge-ref-targets"), { code: 0, out: "targets only (1 files)" });
+    const mixed = judge("merge-ref-mixed");
+    assert.equal(mixed.code, 1);
+    assert.match(mixed.out, REFUSED);
+  });
+
+  test("a head with no file changed is green; a head that is the base itself is red", () => {
+    assert.deepEqual(judge("empty"), { code: 0, out: "no file changed" });
+    assert.deepEqual(judge("main"), { code: 1, out: "::error::main is the commit under judgement, so there is no change set to judge." });
+  });
+
+  test("a missing or unreadable base or head is red, not green", () => {
+    assert.equal(run(undefined, "mixed", at(), () => {}), 1);
+    assert.equal(run("main", undefined, at(), () => {}), 1);
+    for (const [base, head] of [["no-such-ref", "mixed"], ["main", "no-such-ref"]]) {
+      const bad = judge(head, base);
+      assert.equal(bad.code, 1);
+      assert.match(bad.out, /^::error::no change set from /);
+    }
+  });
+
+  test("a pattern that names no file in the head turns it red", () => {
+    const { code, out } = judge("floor");
+    assert.equal(code, 1);
+    assert.match(out, /name no file in floor.*tests\/e2e\/tiers\.mjs/);
+  });
+
+  test("the workflow's run, from base's checkout, refuses a head that loosens its own copy", () => {
     for (const name of ["verdict-tampered", "list-emptied"]) {
-      at()(["switch", "-q", name]);
-      const headCopy = spawnSync(process.execPath, [path.join(dir, SELF), "main"], { cwd: dir, encoding: "utf8" });
-      assert.equal(headCopy.status, 0, `${name}: the planted bypass no longer bypasses head's copy, so this test proves nothing`);
-      const { code, out } = ciStep(name);
+      const own = ownCopy(name);
+      assert.equal(own.status, 0, `${name}: the planted bypass no longer bypasses head's copy, so this test proves nothing\n${own.stdout}`);
+      const { code, out } = asPullRequest(name);
       assert.equal(code, 1, out);
-      assert.match(out, /::error::this change moves the parity targets/);
+      assert.match(out, /^::error::this change moves the parity targets/m);
     }
-    assert.equal(ciStep("code-only").code, 0);
-    assert.equal(ciStep("targets-only").code, 0);
+    at()(["switch", "-q", "main"]);
   });
 
-  test("a change that disarms the step or drops it from the gate is refused by base's copy", () => {
-    for (const name of ["step-deleted", "gate-dropped"]) {
-      const { code, out } = ciStep(name);
-      assert.equal(code, 1, out);
-      assert.match(out, /no longer runs base's copy of the freeze/);
-    }
-  });
-
-  test("the job running the freeze is itself a target", () => {
-    const alone = ciStep("guard-job-edited");
-    assert.equal(alone.code, 0, alone.out);
-    assert.match(alone.out, /targets only \(1 files\)/);
-    const withCode = ciStep("guard-job-edited-with-code");
-    assert.equal(withCode.code, 1);
-    assert.match(withCode.out, /ci\.yml \(the secrets job, which runs this freeze\)/);
-  });
-
-  test("head's copy judges only while base has none, and then by the same rule", () => {
-    assert.equal(ciStep("bootstrap", "pre-freeze").code, 0);
-    const mixed = ciStep("bootstrap-mixed", "pre-freeze");
+  test("the workflow's run passes what the rule allows, by the verdict it prints", () => {
+    const targets = asPullRequest("targets-only");
+    assert.equal(targets.code, 0, targets.out);
+    assert.match(targets.out, /^targets only \(1 files\)$/m);
+    const code = asPullRequest("code-only");
+    assert.equal(code.code, 0, code.out);
+    assert.match(code.out, /^no parity target touched$/m);
+    const mixed = asPullRequest("mixed");
     assert.equal(mixed.code, 1, mixed.out);
-    assert.match(mixed.out, /--bootstrap|this change moves the parity targets/);
-    at()(["switch", "-q", "targets-only"]);
-    const claimed = judge("main", { bootstrap: true });
-    assert.equal(claimed.code, 1);
-    assert.match(claimed.out, /carries tools\/ci\/target-freeze\.mjs/);
-  });
-
-  test("the script exits on the verdict", () => {
-    at()(["switch", "-q", "mixed"]);
-    const mixed = spawnSync(process.execPath, [SCRIPT, "main"], { cwd: dir, encoding: "utf8" });
-    assert.equal(mixed.status, 1, mixed.stdout + mixed.stderr);
-    assert.match(mixed.stdout, /::error::this change moves the parity targets/);
+    assert.match(mixed.out, /^::error::this change moves the parity targets/m);
   });
 });

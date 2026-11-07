@@ -1,0 +1,37 @@
+# RULES.md 52. pull_request_target runs main's copy of this file and of the script, so a pull request
+# cannot loosen what judges it. Nothing from the head is checked out, installed or run: it is fetched
+# as git objects and only diffed (tests/tooling/targetFreeze.test.ts holds this shape).
+name: Target freeze
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: target-freeze-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  freeze:
+    name: Target freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          package-manager-cache: false
+          node-version-file: .node-version
+      - name: Target freeze
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/freeze/head"
+          node tools/ci/target-freeze.mjs "$BASE" refs/freeze/head
