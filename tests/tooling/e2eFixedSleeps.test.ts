@@ -22,7 +22,7 @@ const LEGACY: Record<string, number | { n: number; why: string }> = {
   "tests/e2e/cardScale.spec.ts": 3,
   "tests/e2e/controlRail.spec.ts": 3,
   "tests/e2e/exchangeFit.spec.ts": 1,
-  "tests/e2e/feltIdle.spec.ts": 3,
+  "tests/e2e/feltIdle.spec.ts": 2,
   "tests/e2e/feltNap.spec.ts": 1,
   "tests/e2e/handClearance.spec.ts": 6,
   "tests/e2e/handScroll.spec.ts": 5,

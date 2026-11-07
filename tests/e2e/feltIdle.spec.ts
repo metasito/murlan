@@ -4,50 +4,43 @@
 import { test, expect } from "./fixtures";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
+import { COUNTED, countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 import type { TraceFrame } from "../../lib/e2eTrace";
 
 const WINDOW_MS = 1_500;
 const VIEWPORT = { width: 874, height: 402 };
-
-function countDraws() {
-  const counted = window as unknown as { glDraws: number };
-  counted.glDraws = 0;
-  for (const gl of [WebGLRenderingContext, WebGL2RenderingContext]) {
-    for (const name of ["drawArrays", "drawElements"] as const) {
-      const draw = gl.prototype[name] as (...args: unknown[]) => void;
-      gl.prototype[name] = function (this: unknown, ...args: unknown[]) {
-        counted.glDraws++;
-        return draw.apply(this, args);
-      } as never;
-    }
-  }
-}
+/** The sway carries its light at most about 20 design points a second, and the felt redraws once it has moved half of one. */
+const FELT_FRAMES_PER_S = 40;
 
 for (const motion of ["reduce", "no-preference"] as const) {
-  test(`the felt draws ${motion === "reduce" ? "nothing while the lamp rests" : "every sway"}`, async ({
+  test(`the felt draws ${motion === "reduce" ? "nothing while the lamp rests" : "its swaying light half a point at a time"}`, async ({
     page,
     baseURL,
     consoleErrors,
   }) => {
     test.setTimeout(120_000);
     await page.emulateMedia({ reducedMotion: motion });
-    await page.addInitScript(countDraws);
+    await countRenders(page);
     await skiaOnSoftware(page);
     await page.setViewportSize(VIEWPORT);
     await openCaptureState(page, baseURL!, CAPTURE_STATES[0]);
     await untilSkiaFelt(page);
     await page.waitForTimeout(3_000);
+    await startRenderCounts(page);
 
-    const draws = await page.evaluate(async (ms) => {
-      const counted = window as unknown as { glDraws: number };
-      const from = counted.glDraws;
-      await new Promise((r) => setTimeout(r, ms));
-      return counted.glDraws - from;
-    }, WINDOW_MS);
+    // fixed wait on purpose: the window is the measurement
+    await page.waitForTimeout(WINDOW_MS);
+    const counts = await page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
+    const draws = counts.draws[COUNTED.felt] ?? 0;
+    const feltFrames = counts.drewIn[COUNTED.felt] ?? 0;
+    console.log(`felt (${motion}): ${draws} draws in ${feltFrames} of ${counts.frames} frames over ${WINDOW_MS} ms`);
 
     if (motion === "reduce") expect(draws, "the felt redrew a lamp that had not moved").toBe(0);
-    else expect(draws, "the counter saw no Skia frame while the lamp swayed").toBeGreaterThan(10);
+    else {
+      expect(draws, "the counter saw no Skia felt frame while the lamp swayed").toBeGreaterThan(10);
+      expect(feltFrames, `felt frames in ${WINDOW_MS} ms, more than its swaying light moved half a point in`).toBeLessThanOrEqual((FELT_FRAMES_PER_S * WINDOW_MS) / 1000);
+    }
     expect(consoleErrors.entries, "the felt warned while it drew").toEqual([]);
   });
 }
