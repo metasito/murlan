@@ -6,7 +6,7 @@
  * Runs before any `npm ci`: it imports only `node:` modules and repository files that do the same.
  */
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { REPO, git } from "../loop/cli.mjs";
+import { git } from "../loop/cli.mjs";
 
 /**
  * CODEOWNERS patterns: a trailing `/` is a directory, a pattern holding `/` is anchored at the root,
@@ -39,8 +39,8 @@ export const TARGETS = Object.freeze([
 /** What the targets judge: directories at the repository root. */
 export const CODE = Object.freeze(["app/", "components/", "lib/"]);
 
-/** The account that owns the repository, the only owner handle the repository itself names. */
-export const OWNER = `@${REPO.split("/")[0]}`;
+/** The owner's GitHub login, which authors this repository's pull requests. */
+export const OWNER = "@rotonmeta";
 
 /** @param {string} pattern */
 export function matcher(pattern) {
@@ -69,7 +69,6 @@ export const isCode = (file) => codeMatchers.some((m) => m(file));
 export function freezeVerdict(changed) {
   const targets = changed.filter(isTarget);
   const code = changed.filter(isCode);
-  if (!changed.length) return { ok: false, why: "no change set to judge", targets, code };
   if (targets.length && code.length) {
     const list = (/** @type {string[]} */ fs) => fs.map((f) => `  ${f}`).join("\n");
     return {
@@ -79,7 +78,8 @@ export function freezeVerdict(changed) {
       code,
     };
   }
-  return { ok: true, why: targets.length ? `targets only (${targets.length} files)` : "no parity target touched", targets, code };
+  const why = targets.length ? `targets only (${targets.length} files)` : changed.length ? "no parity target touched" : "no file changed";
+  return { ok: true, why, targets, code };
 }
 
 /** Renames off, so a target moved out of its path still counts as touched where it was. */
@@ -113,6 +113,7 @@ export function run(base, at = git(), log = console.log) {
     return 1;
   }
   let changed;
+  let same;
   try {
     const missing = unmatched(at.text(["ls-files", "-z"]).split("\0").filter(Boolean));
     if (missing.length) {
@@ -120,8 +121,13 @@ export function run(base, at = git(), log = console.log) {
       return 1;
     }
     changed = changedSince(base, at);
+    same = at.text(["rev-parse", "--verify", `${base}^{commit}`]).trim() === at.text(["rev-parse", "HEAD"]).trim();
   } catch (err) {
     log(`::error::no change set from ${base}: ${String(err?.message ?? err).split("\n")[0]}`);
+    return 1;
+  }
+  if (same) {
+    log(`::error::${base} is the commit under judgement, so there is no change set to judge.`);
     return 1;
   }
   const verdict = freezeVerdict(changed);

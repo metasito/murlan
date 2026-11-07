@@ -150,9 +150,14 @@ describe("planted diffs", () => {
     assert.deepEqual(on("targets-after-main-moved"), { code: 0, out: "targets only (1 files)" });
   });
 
-  test("an empty diff, a missing base and an unreadable base are red, not green", () => {
-    assert.match(on("empty").out, /no change set to judge/);
-    assert.equal(on("empty").code, 1);
+  test("a push whose tree is unchanged is green; a base that is the head itself is red", () => {
+    assert.deepEqual(on("empty"), { code: 0, out: "no file changed" });
+    const self = judge("HEAD");
+    assert.equal(self.code, 1);
+    assert.match(self.out, /HEAD is the commit under judgement/);
+  });
+
+  test("a missing base and an unreadable base are red, not green", () => {
     assert.equal(run(undefined, at(), () => {}), 1);
     const bad = judge("no-such-ref");
     assert.equal(bad.code, 1);

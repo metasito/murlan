@@ -373,7 +373,8 @@ breaks the concurrency cap. `TARGETS` in that
 file is the only list. `.github/CODEOWNERS` is its rendering, and `tests/tooling/targetFreeze.test.ts`
 holds the two equal, holds every nightly spec inside the list, and plants mixed, target-only,
 code-only, rename and deletion diffs in a scratch repository. The guard is floored. A pattern that
-names no tracked file turns it red, and so do an empty change set and a base it cannot read.
+names no tracked file turns it red. So does a base that is missing, cannot be read, or is the
+head itself. A push whose tree did not change has no file to judge, so it passes.
 
 **What it leaves out, on purpose.** `tests/fixtures/tableLayout.json` and `handRow.json` pin the
 code's own output. Their pins change with the code by design, so freezing them would make every
@@ -391,9 +392,9 @@ target, a third, target-only pull request follows the code pull request. Never m
 the target together to dodge this. A ratchet that loosens itself is what rule 52 exists to stop.
 
 **CODEOWNERS binds only under branch protection that requires code-owner review.** The owner
-named is `@` plus `REPO`'s owner in `tools/loop/cli.mjs`. Nothing in the repository confirms that
-it is a person rather than an organisation, so a team or an account with no access is silently
-ignored. Check with `gh api repos/metasito/murlan/codeowners/errors`.
+named is `OWNER` in `tools/ci/target-freeze.mjs`. GitHub silently ignores a CODEOWNERS entry for
+an account that has no write access, so check with
+`gh api repos/metasito/murlan/codeowners/errors`.
 
 ## Where a forbidden-shape rule goes
 

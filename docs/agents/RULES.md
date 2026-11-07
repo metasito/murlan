@@ -1,8 +1,7 @@
 # Rules
 
-Every rule an agent must follow, numbered; others cite the numbers, so never renumber — a rule
-that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAUDE.md` and
-`docs/agents/`. A prompt disagreeing with a rule is stale: fix it.
+Every rule an agent must follow, cited by number; never renumber: a rule that goes stays as `*(retired)*`, uncited.
+The *why* lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is stale: fix it.
 
 ## Checking your work
 
@@ -96,7 +95,8 @@ Another agent is working in this repository, on this machine, right now.
 
 37. **A failure you did not cause is still a failure you must rule out.** Before believing a red run, check free memory, the ports your suite binds, and whether another session is mid-run.
     Exhaustion and collision both read exactly like a regression.
-38. **Kill only what you started.** Processes, containers and databases outlive the session that started them; end yours when your run ends rather than leaving them warm for a next one.
+38. **Kill only what you started.** Processes, containers and databases outlive the session that
+    started them; end yours when your run ends rather than leaving them warm for a next one.
 39. **Remove a worktree only with `npm run worktrees:remove -- <path>`, run from the main checkout.** Never `git worktree remove`, `rm -rf` or `Remove-Item` on a worktree directory:
     a recursive delete follows the `node_modules` junction and empties the shared install. The named command detaches the link first.
 40. **Never leave a shell parked inside a worktree.** Run its checks with `git -C`, `npm --prefix`, or a subshell that exits — a live process holding the directory is one you cannot delete afterwards.
