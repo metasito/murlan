@@ -1,30 +1,19 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import net from "node:net";
 
 export interface Instance {
   port: number;
   child: ChildProcess;
 }
 
-/**
- * `n` distinct ports nothing holds now. The server listens with `reusePort`, so a fixed port
- * another checkout's suite also uses splits this suite's requests between two servers.
- */
-export async function freePorts(n: number): Promise<number[]> {
-  const probes = Array.from({ length: n }, () => net.createServer());
-  await Promise.all(probes.map((p) => new Promise<void>((resolve) => p.listen(0, "127.0.0.1", resolve))));
-  const ports = probes.map((p) => (p.address() as net.AddressInfo).port);
-  await Promise.all(probes.map((p) => new Promise<void>((resolve) => p.close(() => resolve()))));
-  return ports;
-}
+const SERVING = /serving on port (\d+)\D/;
+const OUTPUT_KEPT = 16 * 1024;
 
-/** A real server process on `port`, against `databaseUrl`; killed if it never comes up. */
-export async function boot(
-  port: number,
-  databaseUrl: string,
-  env: Record<string, string> = {}
-): Promise<Instance> {
+/**
+ * A real server process against `databaseUrl`, on the port the OS gave it; killed if it never
+ * comes up. Its output is kept, and printed if it fails to start or later exits non-zero.
+ */
+export async function boot(databaseUrl: string, env: Record<string, string> = {}): Promise<Instance> {
   const child = spawn(
     process.execPath,
     ["server/index.ts"],
@@ -32,35 +21,43 @@ export async function boot(
       env: {
         ...process.env,
         DATABASE_URL: databaseUrl,
-        PORT: String(port),
         SESSION_SECRET: "cross-instance-secret",
-        LOG_LEVEL: "silent",
         NODE_ENV: "development",
         ...env,
+        PORT: "0",
       },
       stdio: ["ignore", "pipe", "pipe"],
     }
   );
+  let output = "";
+  const keep = (buf: unknown) => {
+    output = (output + String(buf)).slice(-OUTPUT_KEPT);
+  };
+  child.stdout?.on("data", keep);
+  child.stderr?.on("data", keep);
   let up = false;
   let giveUp: ReturnType<typeof setTimeout> | undefined;
   try {
-    await new Promise<void>((resolve, reject) => {
-      giveUp = setTimeout(() => reject(new Error(`instance on ${port} never came up`)), 45_000);
-      child.once("exit", (code) => reject(new Error(`instance on ${port} exited with ${code} before it came up`)));
-      child.once("error", (err) => reject(new Error(`instance on ${port} did not start: ${err.message}`)));
-      const watch = (buf: unknown) => {
-        const line = String(buf);
-        if (line.includes(String(port)) || line.includes("listening")) {
-          clearTimeout(giveUp);
-          // The port is logged from the listen callback; the socket server is
-          // attached by then, but the adapter's first read from Redis is still in flight.
-          setTimeout(resolve, 600);
-        }
+    const port = await new Promise<number>((resolve, reject) => {
+      const fail = (why: string) => reject(new Error(`instance ${why}; its output:\n${output}`));
+      giveUp = setTimeout(() => fail("never came up"), 45_000);
+      child.once("exit", (code, signal) => fail(`exited with ${code ?? signal} before it came up`));
+      child.once("error", (err) => fail(`did not start: ${err.message}`));
+      const watch = () => {
+        const bound = SERVING.exec(output);
+        if (!bound) return;
+        child.stdout?.off("data", watch);
+        clearTimeout(giveUp);
+        // The port is logged from the listen callback; the socket server is
+        // attached by then, but the adapter's first read from Redis is still in flight.
+        setTimeout(() => resolve(Number(bound[1])), 600);
       };
       child.stdout?.on("data", watch);
-      child.stderr?.on("data", watch);
     });
     up = true;
+    child.once("exit", (code) => {
+      if (code) process.stderr.write(`instance on ${port} exited with ${code}; its output:\n${output}\n`);
+    });
     return { port, child };
   } finally {
     clearTimeout(giveUp);

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { connectSocket, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
-import { boot, freePorts, type Instance } from "../helpers/instance.ts";
+import { boot, type Instance } from "../helpers/instance.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 
@@ -39,10 +39,10 @@ describe("a half-open Redis link", { skip: hasDatabase() ? false : skipMessage()
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
     proxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
-    ports = await freePorts(2);
     const env = { MURLAN_AFK_TIMEOUT_MS: "600000" };
-    instances.push(await boot(ports[0], scoped, { ...env, REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy) }));
-    instances.push(await boot(ports[1], scoped, env));
+    instances.push(await boot(scoped, { ...env, REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy) }));
+    instances.push(await boot(scoped, env));
+    ports = instances.map((i) => i.port);
   });
 
   after(async () => {

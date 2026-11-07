@@ -1,22 +1,30 @@
-// tests/tooling/integrationPorts.test.ts — two integration files spawning a server on one port
-// fail each other whenever node --test runs them together.
+// tests/tooling/integrationPorts.test.ts — a test server on a port the test chose can be one another
+// file running beside it chose too, and two servers on one port fail each other's requests.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 
-test("every fixed port a test spawns a server on belongs to one file", () => {
-  const owners = new Map<number, string[]>();
-  let declarations = 0;
-  for (const file of readdirSync("tests/integration").filter((f) => f.endsWith(".ts"))) {
-    const source = readFileSync(`tests/integration/${file}`, "utf8");
-    for (const decl of source.matchAll(/const (?:\w*PORTS?|\[\w*PORTS?\])\s*=\s*([^;]+);/g)) {
-      declarations += 1;
-      for (const port of decl[1].match(/\b\d{4,5}\b/g) ?? []) {
-        owners.set(Number(port), [...(owners.get(Number(port)) ?? []), file]);
-      }
-    }
-  }
-  assert.ok(declarations >= 3, `found only ${declarations} port declarations — the scan no longer reads them`);
-  const shared = [...owners].filter(([, files]) => files.length > 1);
-  assert.deepEqual(shared, []);
+const sources = (dir: string) =>
+  readdirSync(dir, { recursive: true, encoding: "utf8" })
+    .filter((f) => /\.(test\.)?ts$/.test(f))
+    .map((f) => ({ file: `${dir}/${f}`, source: readFileSync(`${dir}/${f}`, "utf8") }));
+
+test("a test that spawns the server lets the OS choose its port", () => {
+  const spawners = sources("tests").filter(
+    ({ source }) => /\bspawn(Sync)?\(/.test(source) && /server\/index\.ts|"server", "index\.ts"/.test(source)
+  );
+  assert.ok(
+    spawners.some(({ file }) => file === "tests/helpers/instance.ts"),
+    `the scan no longer finds tests/helpers/instance.ts among the server spawners: ${spawners.map((s) => s.file).join(", ")}`
+  );
+  const chosen = spawners.filter(({ source }) => !/\bPORT: "0"/.test(source) || /\bPORT: (?:String\(|`|"[1-9]|\d)/.test(source));
+  assert.deepEqual(chosen.map((s) => s.file), [], "these spawn the server on a PORT other than \"0\"");
+});
+
+test("an integration server listens on a port the OS chose", () => {
+  const files = [...sources("tests/integration"), ...sources("tests/helpers")];
+  const listeners = files.filter(({ source }) => /\.listen\(/.test(source));
+  assert.ok(listeners.length >= 3, `found only ${listeners.length} files that listen — the scan no longer reads them`);
+  const fixed = files.filter(({ source }) => /\.listen\(\s*(?:\{\s*port:\s*)?[1-9]/.test(source));
+  assert.deepEqual(fixed.map((f) => f.file), [], "these listen on a fixed port");
 });

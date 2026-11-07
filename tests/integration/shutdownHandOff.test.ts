@@ -10,7 +10,7 @@ import pg from "pg";
 import type { ChildProcess } from "node:child_process";
 import { connectAs, DEADLINE_SCALE, eventually, reconnectWith, waitFor, waitForWhere, type TestSocket } from "../helpers/client.ts";
 import { hasDatabase, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
-import { boot, freePorts, type Instance } from "../helpers/instance.ts";
+import { boot, type Instance } from "../helpers/instance.ts";
 import { realClock, type Clock } from "../../server/http/clock.ts";
 import { ownershipKey, ownsRoom } from "../../server/game/gameOwnership.ts";
 import { activeGames, userSocketMap } from "../../server/game/gameRoom.ts";
@@ -121,10 +121,9 @@ describe("a graceful shutdown hands its tables to a live peer", { skip: hasDatab
 
   /** A table dealt on a fresh owner A: the host's socket on A, the guest's on B. */
   async function openTable(tag: string, opts: { maxPlayers: number; fillWithBots: boolean; ownerEnv?: Record<string, string> }) {
-    const [port] = await freePorts(1);
-    const owner = await boot(port!, process.env.DATABASE_URL!, { ...env, ...opts.ownerEnv });
+    const owner = await boot(process.env.DATABASE_URL!, { ...env, ...opts.ownerEnv });
     owners.push(owner);
-    const onA = { url: `http://127.0.0.1:${port}` } as TestServer;
+    const onA = { url: `http://127.0.0.1:${owner.port}` } as TestServer;
     const suffix = `${tag}${Date.now() % 1e6}`;
     const host = await connectAs(onA, `ho${suffix}`);
     const guest = await connectAs(peer, `gu${suffix}`);

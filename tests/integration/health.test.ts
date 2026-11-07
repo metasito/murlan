@@ -8,7 +8,7 @@ import type { PoolClient } from "pg";
 import { performance } from "node:perf_hooks";
 import { eventually } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
-import { boot, freePorts, type Instance } from "../helpers/instance.ts";
+import { boot, type Instance } from "../helpers/instance.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import express from "express";
@@ -154,9 +154,8 @@ describe("the probes with a dependency gone", { skip: hasDatabase() ? false : sk
     await admin.end();
     pgProxy = await startProxy(targetOf(baseUrl, 5432));
     redisProxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
-    const [port] = await freePorts(1);
-    url = `http://127.0.0.1:${port}`;
-    instance = await boot(port, viaProxy(scoped, pgProxy), { REDIS_URL: viaProxy(process.env.REDIS_URL!, redisProxy) });
+    instance = await boot(viaProxy(scoped, pgProxy), { REDIS_URL: viaProxy(process.env.REDIS_URL!, redisProxy) });
+    url = `http://127.0.0.1:${instance.port}`;
   });
 
   after(async () => {

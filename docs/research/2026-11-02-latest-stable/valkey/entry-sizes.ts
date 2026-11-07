@@ -8,7 +8,7 @@
 import { appendFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createClient, RESP_TYPES } from "redis";
-import { boot, freePorts, stopInstance, at, type Instance } from "../../../../tests/helpers/instance.ts";
+import { boot, stopInstance, at, type Instance } from "../../../../tests/helpers/instance.ts";
 import { connectAs } from "../../../../tests/helpers/client.ts";
 import { Seat, seatSocket, settle } from "../../../../tests/soak/soak.ts";
 import type { TestServer } from "../../../../tests/helpers/testServer.ts";
@@ -130,10 +130,11 @@ const stat = (xs: number[]) => {
   return `n=${s.length} mean=${mean.toFixed(1)} p50=${q(0.5)} p90=${q(0.9)} p99=${q(0.99)} max=${s.at(-1) ?? 0}`;
 };
 
-const ports = await freePorts(2);
+const ports: number[] = [];
 const instances: Instance[] = [];
 try {
-  for (const port of ports) instances.push(await boot(port, databaseUrl, env));
+  for (let n = 0; n < 2; n++) instances.push(await boot(databaseUrl, env));
+  ports.push(...instances.map((i) => i.port));
   const rng = makeRng(seed);
   const all: Seat[][] = [];
   const tag = Date.now().toString(36);

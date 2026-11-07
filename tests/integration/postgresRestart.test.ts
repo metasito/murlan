@@ -6,10 +6,10 @@ import pg from "pg";
 import { connectSocket as connectTo, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
-import { boot, freePorts, type Instance } from "../helpers/instance.ts";
+import { boot, type Instance } from "../helpers/instance.ts";
 import { FORCED_EXIT_MS } from "../../server/http/shutdown.ts";
 
-const PORTS = await freePorts(2);
+const PORTS: number[] = [];
 
 async function register(port: number, username: string): Promise<string> {
   const res = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
@@ -103,8 +103,9 @@ describe("the server survives its Postgres backends being terminated", {
     // The servers here are child processes; this pool creates their schema and outlives their restarts.
     admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
-    for (const port of PORTS) {
-      const instance = await boot(port, scoped, { MURLAN_AFK_TIMEOUT_MS: "600000" });
+    for (let n = 0; n < 2; n++) {
+      const instance = await boot(scoped, { MURLAN_AFK_TIMEOUT_MS: "600000" });
+      PORTS.push(instance.port);
       watched.push(watch(instance));
     }
   });

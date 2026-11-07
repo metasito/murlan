@@ -6,12 +6,11 @@ import pg from "pg";
 import type { Socket } from "socket.io-client";
 import { hasDatabase, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
-import { boot, freePorts, stopInstance, type Instance } from "../helpers/instance.ts";
+import { boot, stopInstance, type Instance } from "../helpers/instance.ts";
 
 // Off: the rejoin alone must take the table over.
 process.env.MURLAN_SWEEP_INTERVAL_MS = "3600000";
 
-const [OWNER_PORT] = await freePorts(1);
 /** One silent 1.5 s try to the dead owner, the claim and the restore, and the socket hops. */
 const REJOINED_WITHIN_MS = 3_000;
 
@@ -35,9 +34,9 @@ describe("a rejoin after the table's owner was killed", { skip: hasDatabase() ? 
   });
 
   test("is answered with the table inside one try and the restore", { timeout: 90_000 }, async () => {
-    owner = await boot(OWNER_PORT, process.env.DATABASE_URL!, { MURLAN_AFK_TIMEOUT_MS: "600000" });
+    owner = await boot(process.env.DATABASE_URL!, { MURLAN_AFK_TIMEOUT_MS: "600000" });
     const tag = Date.now() % 1e6;
-    const host = await connectAs({ url: `http://127.0.0.1:${OWNER_PORT}` } as TestServer, `okr_h${tag}`);
+    const host = await connectAs({ url: `http://127.0.0.1:${owner.port}` } as TestServer, `okr_h${tag}`);
     const guest = await connectAs(local, `okr_g${tag}`);
     sockets.push(host.socket, guest.socket);
     const created = waitFor(host.socket, "room:state");

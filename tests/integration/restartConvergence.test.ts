@@ -21,11 +21,12 @@ import type { ChildProcess } from "node:child_process";
 import pg from "pg";
 import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 import { connectSocket, eventually, nothingArrives, settled, waitFor, type TestSocket } from "../helpers/client.ts";
-import { boot as bootInstance, freePorts, stopInstance } from "../helpers/instance.ts";
+import { boot as bootInstance, stopInstance } from "../helpers/instance.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 
-const [PORT] = await freePorts(1);
+/** The serving instance's, which a replacement changes. */
+let PORT: number;
 const SETTLE_CEILING_MS = 20_000;
 
 interface Client {
@@ -40,7 +41,9 @@ interface Client {
 async function boot(databaseUrl: string, extraEnv: Record<string, string> = {}): Promise<ChildProcess> {
   // Nothing here plays a round, and an AFK auto-move between the two captures
   // would be a table that changed for a reason that is not the restart.
-  return (await bootInstance(PORT, databaseUrl, { MURLAN_AFK_TIMEOUT_MS: "600000", ...extraEnv })).child;
+  const instance = await bootInstance(databaseUrl, { MURLAN_AFK_TIMEOUT_MS: "600000", ...extraEnv });
+  PORT = instance.port;
+  return instance.child;
 }
 
 async function register(username: string): Promise<string> {

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { connectSocket, waitFor, type TestSocket } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
-import { boot, freePorts, type Instance } from "../helpers/instance.ts";
+import { boot, type Instance } from "../helpers/instance.ts";
 import { driveRound } from "../helpers/gameDriver.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
@@ -29,12 +29,12 @@ describe("Redis stopped mid-game", { skip: hasDatabase() ? false : skipMessage()
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
     proxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
-    [port] = await freePorts(1);
-    instance = await boot(port, scoped, {
+    instance = await boot(scoped, {
       REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy),
       LOG_LEVEL: "error",
       MURLAN_AFK_TIMEOUT_MS: "600000",
     });
+    port = instance.port;
     instance.child.stdout?.on("data", (buf) => output.push(String(buf)));
   });
 
