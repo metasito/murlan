@@ -200,7 +200,11 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 
 - The secret scan read every branch, so two branch-only findings reddened main and unrelated PRs. *fixed here*: a PR scans its own commits, main its own history, and the script refuses any other range.
 - The browser test report job never runs `npm ci`; `tests/e2e/timings.json` stale since 2026-10-21. *fixed here*.
-- The integration servers' port probe-then-bind race with `reusePort`, and their child stderr silenced. *being fixed in this change*.
+- The integration servers' port probe-then-bind race with `reusePort`, and their child stderr silenced. *fixed here*: servers boot on `PORT=0` and report the port they bound; `reusePort` is gone from `server/index.ts`, so a clash is `EADDRINUSE`, not a silent share.
+- `tools/ci/e2ePort.mjs` still probes a free port and binds it later: the same window, now loud rather than silent.
+- `tests/integration/ownerKilledRejoin.test.ts` passes in 4 s, then holds the file open about 60 s: a handle left open.
+- `boot()` in `tests/helpers/instance.ts` waits a fixed 600 ms after the serving line for the Redis adapter; it wants a readiness signal, not a sleep.
+- `tests/integration/redisDegraded.test.ts` passes a `LOG_LEVEL` the logger never reads.
 - Sign-out closes a socket mid-handshake; Chrome's warning fails strict specs. *fixed here* (`lib/socket.ts`, `tests/native/socketTeardown.test.tsx`).
 - Riprova calls `socket?.disconnect().connect()` (`context/OnlineGameContext.tsx`); pressed while an attempt is still opening it closes a connecting websocket the same way.
 - `halt` in `context/SocketContext.tsx` calls `socket.disconnect()` directly; it normally runs once the engine has settled, but nothing guarantees it.
