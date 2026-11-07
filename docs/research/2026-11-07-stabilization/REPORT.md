@@ -198,8 +198,8 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 
 **CI and tests** ([ci-reliability.md](ci-reliability.md))
 
-- The secret scan reads every branch; two known false positives redden runs. *being fixed in this change*.
-- The browser test report job never runs `npm ci`; `tests/e2e/timings.json` stale since 2026-10-21. *being fixed in this change*.
+- The secret scan read every branch, so two branch-only findings reddened main and unrelated PRs. *fixed here*: a PR scans its own commits, main its own history, and the script refuses any other range.
+- The browser test report job never runs `npm ci`; `tests/e2e/timings.json` stale since 2026-10-21. *fixed here*.
 - The integration servers' port probe-then-bind race with `reusePort`, and their child stderr silenced. *being fixed in this change*.
 - Sign-out closes a socket mid-handshake; Chrome's warning fails strict specs. *fixed here* (`lib/socket.ts`, `tests/native/socketTeardown.test.tsx`).
 - Riprova calls `socket?.disconnect().connect()` (`context/OnlineGameContext.tsx`); pressed while an attempt is still opening it closes a connecting websocket the same way.
