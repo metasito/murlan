@@ -196,6 +196,9 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 - #1977 moved the app and only part of the lantern mockup: the mockup kept the cards' lit lip and face
   gloss, the standings board's old centre and the old felt base fill. Each surfaced as a red nightly
   moment. *fixed here*, in commits that change the mockup alone. The class stays open until S3 holds.
+- The online room at phone landscape pushed its format controls below the fold for any name over
+  about 12 characters (names may be 30): the status line wrapped. *fixed here*. The tap-target sweep
+  had used 12-character names, so the fixture's gentleness hid it; the sweep now uses the longest name.
 - At the round's end (`plose`, t=1440) the app draws a bright sweep down the felt's right edge that the
   mockup has no counterpart for; it lies outside every measured region, so no check sees it.
 - #1977 mixed a straight's display order (`lib/game/gameEngine.ts`, `buildCombination`) into a
