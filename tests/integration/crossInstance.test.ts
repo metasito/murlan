@@ -27,13 +27,13 @@ import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { createClient } from "redis";
 import { keyspace } from "../../server/store/redis.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
-import { boot, freePorts, stopInstance, type Instance } from "../helpers/instance.ts";
+import { boot, stopInstance, type Instance } from "../helpers/instance.ts";
 import { playRoundOut } from "../helpers/gameDriver.ts";
 import { userStore } from "../../server/store/userStore.ts";
 import { mintAuthToken } from "../../server/http/authTokens.ts";
 import { closeDatabase, openDatabase } from "../../server/store/db.ts";
 
-const PORTS = await freePorts(2);
+const PORTS: number[] = [];
 /** Short, so the "was it re-sent?" window below is seconds rather than tens. */
 const ACK_TIMEOUT_MS = 700;
 
@@ -84,12 +84,13 @@ describe("broadcasts cross server instances", {
 
     // Sequentially: both run `ensureSchema` against the same empty schema, and
     // `CREATE TYPE` is not idempotent against a concurrent identical one.
-    for (const port of PORTS) instances.push(await boot(port, scopedDatabaseUrl(viaProxy(baseUrl, pgProxy), schema), {
+    for (let n = 0; n < 2; n++) instances.push(await boot(scopedDatabaseUrl(viaProxy(baseUrl, pgProxy), schema), {
       MURLAN_STATE_ACK_TIMEOUT_MS: String(ACK_TIMEOUT_MS),
       // Nothing here plays a round; an AFK auto-move mid-assertion would be
       // state arriving for a reason that is not a re-send.
       MURLAN_AFK_TIMEOUT_MS: "600000",
     }));
+    PORTS.push(...instances.map((i) => i.port));
 
     const tag = Date.now().toString(36);
     aName = `xa${tag}`;

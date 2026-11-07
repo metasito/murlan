@@ -10,7 +10,7 @@ import { createClient } from "redis";
 import type { Socket } from "socket.io-client";
 import { ackUnchecked, connectAs, settled, waitFor, type TestSocket } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { boot, freePorts, type Instance } from "../helpers/instance.ts";
+import { boot, type Instance } from "../helpers/instance.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { keyspace } from "../../server/store/redis.ts";
@@ -73,12 +73,12 @@ describe("an intent for a table another instance owns", { skip: hasDatabase() ? 
     await admin.end();
     proxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
     presence = openPresenceStore({ id: `observer-${schema}`, url: process.env.REDIS_URL, ns: keyspace(scoped), heartbeat: false });
-    ports = await freePorts(3);
     const env = { MURLAN_AFK_TIMEOUT_MS: "600000", METRICS_TOKEN };
     // Sequentially: each runs `ensureSchema` against the same schema.
-    instances.push(await boot(ports[0], scoped, { ...env, REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy) }));
-    instances.push(await boot(ports[1], scoped, env));
-    instances.push(await boot(ports[2], scoped, env));
+    instances.push(await boot(scoped, { ...env, REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy) }));
+    instances.push(await boot(scoped, env));
+    instances.push(await boot(scoped, env));
+    ports = instances.map((i) => i.port);
 
     const tag = Date.now().toString(36);
     const at = (port: number) => ({ url: `http://127.0.0.1:${port}` }) as TestServer;

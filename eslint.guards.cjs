@@ -84,6 +84,14 @@ const GUARDS = [
     spare: ['// it.only("x")\nconst profit = 1; benefit(2); onlyOnce(); split(".only(");', 'test("z", { only: false }, () => {});', "cache.only.each(x);"].map((code) => ({ file: "tests/ui-rules/plant.test.ts", code })),
   },
   {
+    id: "skia-image-fit",
+    why: "A Skia <Image> with no `fit` is drawn `contain`: an image whose aspect differs from its box is letterboxed, and only on windows shaped unlike the one it was checked on. Name the fit; an image laid over a design rect is `fill`, as components/table/feltCanvas.tsx draws its cloth.",
+    selector: 'JSXOpeningElement[name.name="Image"]:has(JSXAttribute[name.name="image"]):not(:has(JSXAttribute[name.name="fit"]))',
+    files: DRAWN,
+    plant: { file: "components/Plant.tsx", code: ["const a = <Image image={cloth} x={0} y={0} width={w} height={h} />;", "const b = <Image\n  image={rail}\n  width={w}\n  height={h}\n/>;"].join("\n"), hits: 2 },
+    spare: ['const a = <Image image={cloth} fit="fill" width={w} height={h} />;', 'const b = <Image source={art} resizeMode="stretch" />;', "const c = <Atlas image={sheet} sprites={s} transforms={t} />;"].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
     id: "intents-through-send",
     why: "A bare `emit` is at-most-once and carries no intentId, so its loss is silent and its retry is a second intent: send it through `send()` in lib/sendIntent.ts.",
     selector:

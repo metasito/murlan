@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { hasDatabase, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
-import { boot, freePorts, type Instance } from "../helpers/instance.ts";
+import { boot, type Instance } from "../helpers/instance.ts";
 import type { Client } from "../helpers/table.ts";
 import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
@@ -15,7 +15,6 @@ import { userStore } from "../../server/store/userStore.ts";
  */
 process.env.MURLAN_SWEEP_INTERVAL_MS = "500";
 
-const [OWNER_PORT] = await freePorts(1);
 const OWNER_BOT_DELAY_MS = 6_000;
 
 describe("a table outlives losing its owner", { skip: hasDatabase() ? false : skipMessage() }, () => {
@@ -38,11 +37,11 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
   });
 
   async function openTable(tag: string, maxPlayers: number): Promise<{ host: Client; guest: Client; room: WireRoomState }> {
-    owner = await boot(OWNER_PORT, process.env.DATABASE_URL!, {
+    owner = await boot(process.env.DATABASE_URL!, {
       MURLAN_AFK_TIMEOUT_MS: "300",
       MURLAN_BOT_MOVE_DELAY_MS: String(OWNER_BOT_DELAY_MS),
     });
-    const remote = { url: `http://127.0.0.1:${OWNER_PORT}` } as TestServer;
+    const remote = { url: `http://127.0.0.1:${owner.port}` } as TestServer;
     const host = await connectAs(remote, `own_${tag}_h${Date.now() % 1e6}`);
     const guest = await connectAs(local, `own_${tag}_g${Date.now() % 1e6}`);
     sockets.push(host.socket, guest.socket);

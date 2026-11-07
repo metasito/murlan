@@ -5,13 +5,18 @@ import { setSafeArea } from "./helpers/safeArea";
 import { feltPixels, seatAnchor, skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import { expectLampOver, openStill, stateById } from "./helpers/lampSeat";
 
+const RAIL = '[data-testid="control-rail"]';
+
 test("under the device's insets the felt's light sits over the pile (D4 #9)", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
   await skiaOnSoftware(page);
   await openStill(page, baseURL!, PHONES.find((p) => p.name === "iPhone 16 Pro")!, stateById("lamp-bottom"));
-  const bare = await seatAnchor(page, "pile");
+  // The table centres on the window whatever the insets, so the floor is the rail they widen, not the pile.
+  const railWidth = async () => (await page.locator(RAIL).boundingBox())?.width ?? 0;
+  const bare = await railWidth();
+  expect(bare, "the floor: no rail laid out").toBeGreaterThan(0);
   await setSafeArea(page, 62, 21, 62);
-  await expect.poll(async () => (await seatAnchor(page, "pile")).x, { message: "the floor: the insets moved the table" }).not.toBeCloseTo(bare.x, 0);
+  await expect.poll(railWidth, { message: "the floor: the insets reached the table's layout" }).toBeGreaterThan(bare);
   await expectLampOver(page, "bottom", "under 62/21/62 insets");
   await untilSkiaFelt(page);
 

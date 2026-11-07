@@ -1,3 +1,4 @@
+import type { AddressInfo } from "node:net";
 import { logger } from "./shared/logger.ts";
 import { createApp } from "./app.ts";
 import { shutdown } from "./http/shutdown.ts";
@@ -19,10 +20,9 @@ checkBootEnv();
   const { server, io, rt } = await createApp();
 
   const port = parseInt(process.env.PORT || "5000", 10);
-  // reusePort is Linux-only; Windows and macOS reject it with ENOTSUP.
-  const listenOpts = { port, host: "0.0.0.0", ...(process.platform === "linux" ? { reusePort: true } : {}) };
-  server.listen(listenOpts, () => {
-    logger.info(`express server serving on port ${port}`);
+  server.listen({ port, host: "0.0.0.0" }, () => {
+    // The bound port, not PORT: tests/helpers/instance.ts boots on PORT=0 and reads it from this line.
+    logger.info(`express server serving on port ${(server.address() as AddressInfo).port}`);
   });
 
   process.on("SIGTERM", () => void shutdown("SIGTERM", { io, server, tables: rt }));

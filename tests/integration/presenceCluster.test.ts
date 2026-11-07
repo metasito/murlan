@@ -14,9 +14,9 @@ import { connectSocket as connectTo, waitFor, waitForOrNull, type TestSocket } f
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { keyspace } from "../../server/store/redis.ts";
-import { accountOn, at, befriendOn, boot, freePorts, stopInstance, type Instance } from "../helpers/instance.ts";
+import { accountOn, at, befriendOn, boot, stopInstance, type Instance } from "../helpers/instance.ts";
 
-const PORTS = await freePorts(2);
+const PORTS: number[] = [];
 const FETCH_SOCKETS = "7";
 const FETCH_SOCKETS_RESPONSE = 8;
 const SERVER_SIDE_EMIT = "9";
@@ -77,7 +77,8 @@ describe("presence across two instances", { skip: hasDatabase() ? false : skipMe
       },
       true
     );
-    for (const port of PORTS) instances.push(await boot(port, scoped, { MURLAN_AFK_TIMEOUT_MS: "600000" }));
+    for (let n = 0; n < 2; n++) instances.push(await boot(scoped, { MURLAN_AFK_TIMEOUT_MS: "600000" }));
+    PORTS.push(...instances.map((i) => i.port));
   });
 
   after(async () => {

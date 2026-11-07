@@ -14,7 +14,7 @@ import { connectRateLimits, routeLimiter } from "../../server/http/rateLimit.ts"
 import { installClock, realClock } from "../../server/http/clock.ts";
 import { closeRedis, keyspace, redisReady } from "../../server/store/redis.ts";
 import { eventually } from "../helpers/client.ts";
-import { boot, freePorts, stopInstance, type Instance } from "../helpers/instance.ts";
+import { boot, stopInstance, type Instance } from "../helpers/instance.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
@@ -61,7 +61,6 @@ describe("a limit across instances", { skip: hasDatabase() ? false : skipMessage
   const scoped = scopedDatabaseUrl(baseUrl, schema);
   const env = { REDIS_URL: realRedis!, MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT: "3" };
   const instances: Instance[] = [];
-  let spare: number;
   const email = `Reset.Victim.${Date.now()}@Example.test`;
 
   before(async () => {
@@ -69,9 +68,7 @@ describe("a limit across instances", { skip: hasDatabase() ? false : skipMessage
     const admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
-    const ports = await freePorts(3);
-    spare = ports[2];
-    instances.push(await boot(ports[0], scoped, env), await boot(ports[1], scoped, env));
+    instances.push(await boot(scoped, env), await boot(scoped, env));
   });
 
   after(async () => {
@@ -100,7 +97,7 @@ describe("a limit across instances", { skip: hasDatabase() ? false : skipMessage
 
   test("an instance replaced, as a deploy does, keeps the count within the window", async () => {
     await stopInstance(instances[0].child);
-    instances[0] = await boot(spare, scoped, env);
+    instances[0] = await boot(scoped, env);
     assert.equal(await requestReset(instances[0]), 429, "the deploy reset the count");
   });
 });

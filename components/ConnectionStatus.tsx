@@ -22,7 +22,7 @@ export function ConnectionStatus({
         style={[styles.dot, { backgroundColor: connected ? Colors.success : Colors.textMuted }]}
         {...a11yHidden()}
       />
-      <Text style={styles.text}>
+      <Text style={styles.text} numberOfLines={1}>
         {connected ? t("onlineLobby.connectedAs", { username }) : t("onlineLobby.connecting")}
       </Text>
     </View>
@@ -32,5 +32,5 @@ export function ConnectionStatus({
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
   dot: { width: DOT, height: DOT, borderRadius: Radius.full },
-  text: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
+  text: { flexShrink: 1, fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
 });

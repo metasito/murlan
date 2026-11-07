@@ -84,6 +84,15 @@ describe("every browser spec reaches exactly one shard", () => {
     assert.match(step, /node --test tests\/tooling\/e2eShardSplit\.test\.ts[\s\S]*git commit /);
   });
 
+  test("the weekly timings commit installs the packages this file imports, under the commit's own gate", () => {
+    const steps = loadWorkflow("ci.yml").jobs["browser-report"].steps ?? [];
+    const commit = steps.findIndex((s) => s.name === "Commit the regenerated timings, if main's copy is stale");
+    const install = steps.findIndex((s) => s.uses === "./.github/actions/install");
+    assert.ok(commit > 0, "browser-report has no timings commit step");
+    assert.ok(install >= 0 && install < commit, "the commit runs this file, which imports `yaml`, with no node_modules");
+    assert.equal(steps[install].if, steps[commit].if);
+  });
+
   test("a spec in a subdirectory is placed, as Playwright would run it", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "e2e-shard-"));
     try {
