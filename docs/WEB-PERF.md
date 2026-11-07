@@ -71,10 +71,10 @@ refuses to publish a number unless the hand's order actually changed.
 | `longTasks`, `longTaskMs` | main-thread tasks over 50ms, via `PerformanceObserver` |
 | `transformed` | elements carrying a non-identity transform when sampled |
 | `domNodes` | elements in the document |
-| `feltFps`, `feltFallbackFps`, `particlesFps`, `handShadeFps` | frames a second the Skia felt's, the fallback felt's, the motes' and the hand shade's canvas drew in (`tests/e2e/helpers/renderCounters.ts`) |
-| `cardStylesPerS` | style writes a second inside cards' own views |
 | `taskMsPerS`, `scriptMsPerS` | main-thread and script milliseconds a second, CDP's `Performance.getMetrics` `TaskDuration` and `ScriptDuration` |
-| `felts` | which felt the trace saw draw through the window (`null` in a production export, which has no trace) |
+| `feltFps`, `particlesFps`, `handShadeFps` | `PERF_SKIA` only: frames a second the Skia felt's, the motes' and the hand shade's canvas drew in (`tests/e2e/helpers/renderCounters.ts`) |
+| `cardStylesPerS` | `PERF_SKIA` only: style writes a second inside cards' own views |
+| `felts` | `PERF_SKIA` only: which felt the trace saw draw through the window |
 
 `turn-4x` is the 2.5 s after the viewer's own play on the `idle-4x` table: the throw, its landing,
 the lamp's glide to the next seat and the bots behind it.
@@ -85,7 +85,9 @@ WebGL on SwiftShader, where the table keeps its fallback felt (`drawsOnGpu`,
 mode runs against the e2e build, never `PERF_URL`, and fails a window whose trace saw any felt but
 Skia's. It records at device pixel ratio 1: at 3 SwiftShader draws the Skia table at about four
 frames a second, under every window's floor, and `drag` misses its floor of 20 frames even at 1. SwiftShader draws on the CPU: its frame times say how two builds compare on this machine,
-never what a phone's GPU pays.
+never what a phone's GPU pays. Only this mode installs the render counters and runs the trace,
+which patch every draw call, observe every style write and sample every frame: their cost is in its
+figures, and in no other mode's.
 
 `online-idle` is `idle` on a two-seat online table, motion on.
 `throttled-load` opens home under Lighthouse's mobile throttling (4x CPU, 150ms RTT, 1.6 Mbps)
@@ -145,7 +147,8 @@ Two things worth carrying forward:
 `PERF_SKIA=1` against an e2e build where the felt redraws once its light has moved half a design point
 (`FELT_STEP`, `components/table/lampRig.ts`), 874x402, DPR 1, motion on, 2026-11-07, the median of three runs at
 load average 1.2 to 4.2. SwiftShader draws the felt on the CPU, so read these against each other and
-against a run of another build on the same machine, never as a phone's.
+against a run of another build on the same machine, never as a phone's. They are not comparable with
+the baseline above: a different build, felt and pixel ratio, and the counters and trace running.
 
 | | CPU | fps | p95 | worst | janky | longTasks | longTaskMs | feltFps | taskMsPerS |
 |---|---|---|---|---|---|---|---|---|---|

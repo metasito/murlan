@@ -22,7 +22,7 @@ export async function countRenders(page: Page): Promise<void> {
     const fresh = () => ({ draws: {} as Record<string, number>, drewIn: {} as Record<string, number>, frames: 0, readPixels: 0, styles: {} as Record<string, number> });
     let counts = fresh();
     let frame = 0;
-    const lastFrame: Record<string, number> = {};
+    let lastFrame: Record<string, number> = {};
     const bump = (into: Record<string, number>, key: string) => (into[key] = (into[key] ?? 0) + 1);
     type Ctx = { canvas?: HTMLCanvasElement | OffscreenCanvas };
     const draw = (self: Ctx, kind: string) => {
@@ -77,6 +77,7 @@ export async function countRenders(page: Page): Promise<void> {
     const take = () => {
       const out = counts;
       counts = fresh();
+      lastFrame = {};
       return out;
     };
     (window as unknown as { murlanRenderCounts: { start(): boolean; take(): typeof counts } }).murlanRenderCounts = { start, take };
@@ -97,4 +98,4 @@ export async function startRenderCounts(page: Page): Promise<void> {
 export const TAKE_RENDER_COUNTS = "window.murlanRenderCounts.take()";
 
 /** Skia's web canvases carry no `testID` of their own: each is named by the view it lies in. */
-export const COUNTED = { felt: "table-felt webgl", feltFallback: "table-felt 2d", handShade: "card-shade webgl", particles: "particles 2d" } as const;
+export const COUNTED = { felt: "table-felt webgl",handShade: "card-shade webgl", particles: "particles 2d" } as const;

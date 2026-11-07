@@ -21,7 +21,7 @@ import { YOUR_TURN_PREFIX } from "./helpers/labels";
 import { HAND_CARDS, TABLE_STATE } from "./helpers/selectors";
 import { PAST_HOLD_MS } from "./helpers/press";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
-import { COUNTED, countRenders, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
+import { COUNTED, countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import type { TraceFrame } from "../../lib/e2eTrace";
 
 const TABLE = '[data-testid="game-table"]';
@@ -29,22 +29,22 @@ const TABLE = '[data-testid="game-table"]';
 /** The Skia felt on this software rasteriser, which only an e2e build honours (`drawsOnGpu`, feltSkia.web.tsx). */
 const SKIA = process.env.PERF_SKIA === "1";
 
+/** Recorded under PERF_SKIA alone: its counters and trace cost the page they measure. */
 interface RenderReport {
   /** Frames per second each canvas drew in, and style writes a second inside cards' views. */
   feltFps: number;
-  feltFallbackFps: number;
   particlesFps: number;
   handShadeFps: number;
   cardStylesPerS: number;
+  /** Which felt the trace saw draw through the window. */
+  felts: TraceFrame["felt"][];
+}
+
+interface FrameReport extends Partial<RenderReport> {
+  frames: number;
   /** Main-thread milliseconds a second, from CDP's `Performance.getMetrics`. */
   taskMsPerS: number;
   scriptMsPerS: number;
-  /** Which felt the trace saw draw through the window; null where the build has no trace. */
-  felts: TraceFrame["felt"][] | null;
-}
-
-interface FrameReport extends RenderReport {
-  frames: number;
   /** Presented frames per second over the window; 60 is a table holding the display's rate. */
   fps: number;
   /** Milliseconds between presented frames — 16.7 is one frame at 60fps. */
@@ -92,12 +92,10 @@ async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport
     const of = (name: string) => all.find((m) => m.name === name)?.value ?? 0;
     return { at: Date.now(), task: of("TaskDuration"), script: of("ScriptDuration") };
   };
-  await page.evaluate(() => {
-    const w = window as unknown as { murlanRenderCounts: { start(): boolean; take(): unknown }; murlanTrace?: { start(): void } };
-    w.murlanRenderCounts.start();
-    w.murlanRenderCounts.take();
-    w.murlanTrace?.start();
-  });
+  if (SKIA) {
+    await startRenderCounts(page);
+    await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
+  }
   const from = await metrics();
   await page.evaluate(() => {
     const rec = { times: [] as number[], longTasks: 0, longTaskMs: 0, running: true };
@@ -122,23 +120,10 @@ async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport
   return {
     stop: async () => {
       const to = await metrics();
-      const counts = await page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
-      const felts = await page.evaluate(() => {
-        const trace = (window as unknown as { murlanTrace?: { frames: TraceFrame[] } }).murlanTrace;
-        return trace ? [...new Set(trace.frames.map((f) => f.felt))] : null;
-      });
       const seconds = (to.at - from.at) / 1000;
       const perS = (n: number | undefined) => +((n ?? 0) / seconds).toFixed(1);
-      const render: RenderReport = {
-        feltFps: perS(counts.drewIn[COUNTED.felt]),
-        feltFallbackFps: perS(counts.drewIn[COUNTED.feltFallback]),
-        particlesFps: perS(counts.drewIn[COUNTED.particles]),
-        handShadeFps: perS(counts.drewIn[COUNTED.handShade]),
-        cardStylesPerS: perS(counts.styles.cards),
-        taskMsPerS: perS((to.task - from.task) * 1000),
-        scriptMsPerS: perS((to.script - from.script) * 1000),
-        felts,
-      };
+      const cost = { taskMsPerS: perS((to.task - from.task) * 1000), scriptMsPerS: perS((to.script - from.script) * 1000) };
+      const render = SKIA ? await renderReport(page, perS) : {};
       const frames = await page.evaluate(() => {
         const rec = (window as unknown as {
           __perfRec: { times: number[]; longTasks: number; longTaskMs: number; running: boolean };
@@ -171,8 +156,24 @@ async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport
         };
       });
       await cdp.detach();
-      return { ...frames, ...render };
+      return { ...frames, ...cost, ...render };
     },
+  };
+}
+
+async function renderReport(page: Page, perS: (n: number | undefined) => number): Promise<RenderReport> {
+  const counts = await page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
+  const felts = await page.evaluate(() => {
+    const trace = (window as unknown as { murlanTrace: { frames: TraceFrame[]; stop(): void } }).murlanTrace;
+    trace.stop();
+    return [...new Set(trace.frames.map((f) => f.felt))];
+  });
+  return {
+    feltFps: perS(counts.drewIn[COUNTED.felt]),
+    particlesFps: perS(counts.drewIn[COUNTED.particles]),
+    handShadeFps: perS(counts.drewIn[COUNTED.handShade]),
+    cardStylesPerS: perS(counts.styles.cards),
+    felts,
   };
 }
 
@@ -203,8 +204,9 @@ function expectSkia(report: FrameReport, what: string): void {
 
 test.describe("web frame performance", () => {
   test.beforeEach(async ({ page }) => {
+    if (!SKIA) return;
     await countRenders(page);
-    if (SKIA) await skiaOnSoftware(page);
+    await skiaOnSoftware(page);
   });
 
   test("records a baseline through the deal and the first plays", async ({ page, baseURL }) => {

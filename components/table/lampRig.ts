@@ -122,7 +122,7 @@ export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
   };
 }
 
-/** Design points the light may move before the felt redraws it: a level or two of 8-bit light at most, and a sway that crosses it a few times a second, not every frame. */
+/** Design points the light may move before the felt redraws it, so a sway crosses it a few times a second, not every frame. Measured, not derived: Skia captures at this step differ from ones redrawn every frame by at most 2 levels of 8-bit light (`tests/ui-rules/lampRig.test.ts` holds the step). */
 const FELT_STEP = 0.5;
 /** Half a step of 8-bit light. */
 const LIGHT_STEP = 1 / 512;

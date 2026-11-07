@@ -26,6 +26,8 @@ import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts"
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const DT = 1 / 60;
+/** Design points the felt may draw its light behind the lamp's: the step the Skia captures were compared at, not lampRig's own constant, so a wider step fails here until it has been compared again. */
+const DRAWN_BEHIND = 0.5;
 const SEAT: Record<string, FlyDirection> = { you: "bottom", luan: "right", besnik: "top", gent: "left" };
 const MOCKUP_POOL = runFixture([fixtureLine("const POOL=")]).POOL as Record<string, [number, number]>;
 const DIRECTIONS = ["bottom", "right", "top", "left"] as const;
@@ -252,7 +254,7 @@ describe("the lamp rig", () => {
       lag = Math.max(lag, Math.abs(swaying.lx - swaying.drawn.lx));
     }
     assert.ok(frames >= 90 && frames <= 220, `the sway asked for ${frames} of 600 frames, outside 90..220`);
-    assert.ok(lag <= 0.5, `the felt drew a light ${lag} design points behind the lamp's`);
+    assert.ok(lag <= DRAWN_BEHIND,`the felt drew a light ${lag} design points behind the lamp's`);
   });
 
   test("the reach glides with the light, and snaps under reduced motion", () => {
@@ -290,7 +292,7 @@ describe("the lamp rig", () => {
       stepLamp(s, DT, false);
       asked.push(lampMoved(s));
       const behind = Math.abs(s.r - s.drawn.r) * DESIGN.width;
-      assert.ok(behind <= 0.5, `frame ${i}: a point the reach scales drawn ${behind} design points behind`);
+      assert.ok(behind <= DRAWN_BEHIND,`frame ${i}: a point the reach scales drawn ${behind} design points behind`);
     }
     assert.ok(asked.slice(0, 60).every(Boolean), "a gliding reach went without its redraw");
     assert.deepEqual(asked.slice(-200).filter(Boolean), [], "a settled reach asked for a frame");
