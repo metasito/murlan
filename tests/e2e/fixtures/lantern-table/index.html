@@ -64,7 +64,7 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 #shade{background:#000;opacity:0}
 #dim{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
 #flash{position:absolute;inset:0;opacity:0;pointer-events:none;background:rgba(255,222,150,.5)}
-.card{position:absolute;box-sizing:border-box;background:linear-gradient(160deg,#FFFDF7,#F7F4EA 55%,#E6E1D2);border:1px solid rgba(90,78,52,.45);box-shadow:0 1.5px 0 #D6D0BC,0 .5px 1px rgba(0,0,0,.3),var(--shx) var(--shy) 3.5px rgba(0,0,0,.5);overflow:hidden}
+.card{position:absolute;box-sizing:border-box;background:linear-gradient(160deg,#FFFDF7,#F7F4EA 55%,#E6E1D2);border:1px solid rgba(90,78,52,.45);box-shadow:0 .5px 1px rgba(0,0,0,.3),var(--shx) var(--shy) 3.5px rgba(0,0,0,.5);overflow:hidden}
 .card svg{position:absolute;inset:0;display:block}
 .card image{mix-blend-mode:multiply}
 .card .gl{position:absolute;inset:0;pointer-events:none}
@@ -688,7 +688,7 @@ function clockTick(dt){if(!S.turn||!S.clockRate)return;S.used+=dt*1000*S.clockRa
   if(S.turn==='you'){const c=$('#tclock');if(c)c.textContent=Math.ceil(rem/1000);}else seatEls[S.turn].ring.style.setProperty('--p',(rem/300).toFixed(1));
   if(S.onClock)S.onClock(rem);}
 function gloss(){const fr=stage.getBoundingClientRect(),s=fr.width/W,lx=lamp.lx,ly=lamp.ly,list=[];
-  stage.querySelectorAll('.card').forEach(c=>{const r=c.getBoundingClientRect();if(r.width)list.push([c,(r.left+r.width/2-fr.left)/s,(r.top+r.height/2-fr.top)/s]);});
+  stage.querySelectorAll('.card.bkc').forEach(c=>{const r=c.getBoundingClientRect();if(r.width)list.push([c,(r.left+r.width/2-fr.left)/s,(r.top+r.height/2-fr.top)/s]);});
   for(const[c,cx,cy]of list){const w=c._w,h=c._h,vx=lx-cx,vy=ly-cy,d=Math.hypot(vx,vy)||1,b=clamp(1-Math.hypot(vx,vy*1.2)/440);
     const ang=Math.atan2(vx/d,-vy/d),len=Math.abs(w*Math.sin(ang))+Math.abs(h*Math.cos(ang)),half=Math.hypot(w,h)/2,cp=50+Math.min(1,d/260)*.7*half/len*100,wp=half*.2/len*100,a=(.05+.22*b)*lamp.L;
     c._gl.style.background=`radial-gradient(circle 85px at ${(w/2+vx).toFixed(1)}px ${(h/2+vy).toFixed(1)}px,rgba(255,248,232,${(.3*lamp.L).toFixed(3)}),rgba(255,244,222,${(.1*lamp.L).toFixed(3)}) 30%,rgba(255,244,222,0)),linear-gradient(${(ang*180/Math.PI).toFixed(1)}deg,rgba(255,246,228,0) ${(cp-wp).toFixed(1)}%,rgba(255,246,228,${a.toFixed(3)}) ${cp.toFixed(1)}%,rgba(255,246,228,0) ${(cp+wp).toFixed(1)}%)`;}}
