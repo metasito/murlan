@@ -122,19 +122,20 @@ export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
   };
 }
 
-const POINT_STEP = 0.01;
+/** Design points the light may move before the felt redraws it: a level or two of 8-bit light at most, and a sway that crosses it a few times a second, not every frame. */
+const FELT_STEP = 0.5;
 /** Half a step of 8-bit light. */
 const LIGHT_STEP = 1 / 512;
 /** Nothing the reach scales lies farther than the table's width from the light: under this, no point moves by a step. */
-const REACH_STEP = POINT_STEP / DESIGN.width;
+const REACH_STEP = FELT_STEP / DESIGN.width;
 
 /** Whether this frame draws anything the last one drawn did not; the felt redraws only then. */
 export function lampMoved(s: Lamp): boolean {
   "worklet";
   const d = s.drawn;
   const still =
-    Math.abs(s.lx - d.lx) <= POINT_STEP &&
-    Math.abs(s.ly - d.ly) <= POINT_STEP &&
+    Math.abs(s.lx - d.lx) <= FELT_STEP &&
+    Math.abs(s.ly - d.ly) <= FELT_STEP &&
     Math.abs(s.level - d.level) <= LIGHT_STEP &&
     Math.abs(s.f - d.f) <= LIGHT_STEP &&
     Math.abs(s.r - d.r) <= REACH_STEP;

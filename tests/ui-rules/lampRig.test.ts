@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  DESIGN,
   LIGHT_ABOVE,
   designScale,
   lampControls,
@@ -230,7 +231,7 @@ describe("the lamp rig", () => {
     assert.ok(s.level > 0.99 && s.level <= 1, `level ${s.level}`);
   });
 
-  test("a lamp that has come to rest asks for no frame, and a swaying one asks for every frame", () => {
+  test("a lamp that has come to rest asks for no frame, and a swaying one only for the frames its light moved half a point in", () => {
     const still = restingLamp(mockupPool("bottom"), 0.75);
     lampControls.setTarget(still, mockupPool("right"), true);
     lampControls.hold(still, "breath", null, 2.2);
@@ -244,11 +245,14 @@ describe("the lamp rig", () => {
 
     const swaying = restingLamp(mockupPool("bottom"));
     let frames = 0;
+    let lag = 0;
     for (let i = 0; i < 600; i++) {
       stepLamp(swaying, DT, false);
       if (lampMoved(swaying)) frames++;
+      lag = Math.max(lag, Math.abs(swaying.lx - swaying.drawn.lx));
     }
-    assert.ok(frames > 570,`the sway asked for ${frames} of 600 frames`);
+    assert.ok(frames >= 90 && frames <= 220, `the sway asked for ${frames} of 600 frames, outside 90..220`);
+    assert.ok(lag <= 0.5, `the felt drew a light ${lag} design points behind the lamp's`);
   });
 
   test("the reach glides with the light, and snaps under reduced motion", () => {
@@ -285,8 +289,10 @@ describe("the lamp rig", () => {
     for (let i = 0; i < 600; i++) {
       stepLamp(s, DT, false);
       asked.push(lampMoved(s));
+      const behind = Math.abs(s.r - s.drawn.r) * DESIGN.width;
+      assert.ok(behind <= 0.5, `frame ${i}: a point the reach scales drawn ${behind} design points behind`);
     }
-    assert.ok(asked.slice(0, 120).every(Boolean), "a gliding reach went without its redraw");
+    assert.ok(asked.slice(0, 60).every(Boolean), "a gliding reach went without its redraw");
     assert.deepEqual(asked.slice(-200).filter(Boolean), [], "a settled reach asked for a frame");
   });
 });
