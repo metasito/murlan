@@ -377,7 +377,7 @@ function lightRail(c,lx,ly,f){c.save();c.setTransform(V.K,0,0,V.K,0,0);c.beginPa
  c.beginPath();ringPath(c,13*.32);c.lineWidth=1.1;c.strokeStyle=g;c.stroke();c.restore();}
 function drawScene(lx,ly,f){const stops=feltStops(),c=V.bgc;
  c.setTransform(1,0,0,1,0,0);c.fillStyle='#040605';c.fillRect(0,0,V.bg.width,V.bg.height);
- c.setTransform(V.K,0,0,V.K,0,0);const g=c.createRadialGradient(lx,ly,0,lx,ly,420);stops.forEach((s,i)=>g.addColorStop(i/4,s));rr(c,76,16,778,370,156);c.fillStyle=g;c.fill();
+ c.setTransform(V.K,0,0,V.K,0,0);const g=c.createRadialGradient(lx,ly,0,lx,ly,420);stops.forEach((s,i)=>g.addColorStop(i/4,s));rr(c,76,16,722,370,156);c.fillStyle=g;c.fill();
  c.setTransform(1,0,0,1,0,0);c.drawImage(buildRail(),0,0);lightRail(c,lx,ly,f);
  if(V.G)drawCloth(lx,ly,f,stops);}
 
@@ -571,7 +571,7 @@ function payoff(t0,after,order,partita,winner){const rs=SC.rows;for(const k of A
   else{at(t0+1600,()=>{boardFill(winner);tw(600,e=>SC.b=e,{ease:easeIO});tw(400,e=>$('#dim').style.opacity=(.6*e).toFixed(3));});
     at(t0+2100,()=>tw(300,e=>SC.bx=e,{ease:easeOut}));at(t0+2600,()=>tw(300,e=>SC.bt=e,{ease:easeOut}));}}
 function boardFill(w){const me=w==='you';SC.win=w;scoreEl.querySelector('.bx').innerHTML=`<div class="tb"><div style="width:24px;height:24px">${TROPHY.replace('#F3E0A6','#C9A84C')}</div></div><span>${me?'Hai vinto':'Vince'}</span><b class="${me?'me':''}">${NAMES[w]}</b><span>Partita a 21${DOT}${SC.rows[w].af}</span>`;}
-const PANW=236,PANH=128,PILLW=124,RIGHT=805.7,BOARD={x:237,y:72,w:440,h:252};
+const PANW=236,PANH=128,PILLW=124,RIGHT=805.7,BOARD={x:217,y:72,w:440,h:252};
 function renderScore(){const o=SC.o,b=SC.b;let x,y,w,h,rad;
   if(b>0){w=lerp(PANW,BOARD.w,b);h=lerp(PANH,BOARD.h,b);x=lerp(RIGHT-PANW,BOARD.x,b);y=lerp(13.4,BOARD.y,b);rad=lerp(12,16,b);}
   else{w=lerp(PILLW,PANW,o);h=lerp(23.7,PANH,o);x=RIGHT-w;y=13.4;rad=lerp(11.85,12,clamp(o));}

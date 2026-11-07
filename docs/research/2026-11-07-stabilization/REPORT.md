@@ -193,6 +193,11 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 - The 120 Hz unlock doubles the cost of every continuous redraw.
 - `perf:web` never mounts the Skia felt (software WebGL), so its baselines measure the fallback.
 - Layout has no owner; the chip row and hand fan have each been re-fixed many times.
+- #1977 moved the app and only part of the lantern mockup: the mockup kept the cards' lit lip and face
+  gloss, the standings board's old centre and the old felt base fill. Each surfaced as a red nightly
+  moment. *fixed here*, in commits that change the mockup alone. The class stays open until S3 holds.
+- At the round's end (`plose`, t=1440) the app draws a bright sweep down the felt's right edge that the
+  mockup has no counterpart for; it lies outside every measured region, so no check sees it.
 - #1977 mixed a straight's display order (`lib/game/gameEngine.ts`, `buildCombination`) into a
   visual PR. It changes no strength and no rule, but an engine change belongs in its own reviewed diff.
 
