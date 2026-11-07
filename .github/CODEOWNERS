@@ -1,0 +1,22 @@
+# Generated from TARGETS in tools/ci/target-freeze.mjs (RULES.md 52); tests/tooling/targetFreeze.test.ts holds them equal.
+/tests/e2e/fixtures/                    @metasito
+/tests/e2e/57-polish-audit/captures/    @metasito
+*.nightly.spec.ts                       @metasito
+/tests/e2e/tiers.mjs                    @metasito
+/tests/e2e/handParity*.spec.ts          @metasito
+/tests/e2e/lampSeats.spec.ts            @metasito
+/tests/e2e/helpers/mockupParity.ts      @metasito
+/tests/e2e/helpers/parityRegions.ts     @metasito
+/tests/e2e/helpers/traceDiff.ts         @metasito
+/tests/e2e/helpers/reconnectDiff.ts     @metasito
+/tests/e2e/helpers/reconnectParity.ts   @metasito
+/tests/e2e/helpers/lanternDepartures.ts @metasito
+/tests/helpers/clothDepartures.ts       @metasito
+/tests/e2e/helpers/feltParityGrid.ts    @metasito
+/tests/e2e/helpers/handParity.ts        @metasito
+/tests/e2e/helpers/lampSeat.ts          @metasito
+/tools/ci/feltPixels.mjs                @metasito
+/tools/ci/edgePixels.mjs                @metasito
+/tools/ci/target-freeze.mjs             @metasito
+/tests/tooling/targetFreeze.test.ts     @metasito
+/.github/CODEOWNERS                     @metasito

@@ -363,6 +363,38 @@ comments first. Where a scan needs a reasoned exception, `tests/ui-rules/touchTa
 **This is a rule, not a check** — neither failure above was ever a committed check at all, so no
 repo-level gate could have seen either. The enforcement point is your own loop.
 
+## The target never moves with the code
+
+Rule 52. The `Target freeze` step of `ci.yml`'s `Secret scan` job runs
+`node tools/ci/target-freeze.mjs <base>` on every pull request and push. It judges
+`<base>...HEAD` with renames off, so a target moved out of its path still counts where it was. It
+runs without `npm ci` and outside `scope`'s skips. It is a step, not a job, because one more job
+breaks the concurrency cap. `TARGETS` in that
+file is the only list. `.github/CODEOWNERS` is its rendering, and `tests/tooling/targetFreeze.test.ts`
+holds the two equal, holds every nightly spec inside the list, and plants mixed, target-only,
+code-only, rename and deletion diffs in a scratch repository. The guard is floored. A pattern that
+names no tracked file turns it red, and so do an empty change set and a base it cannot read.
+
+**What it leaves out, on purpose.** `tests/fixtures/tableLayout.json` and `handRow.json` pin the
+code's own output. Their pins change with the code by design, so freezing them would make every
+intended layout change unlandable. The polish-audit `.txt` surveys are a reading of the app, not
+a target. A threshold written inside app code is outside the list too: the list covers only the
+files named in it.
+
+**Landing a target change.** First, open a pull request that touches only targets and cites the
+decision. Then open the code pull request, which meets the new target. A pull-request test that
+compares the app with the mockup can go red in between: `tests/helpers/lanternFixture.ts`'s
+oracles, `pileBeaten.spec.ts`, `reconnect.spec.ts`, and `handParity.spec.ts`, which is itself a
+target. If the test that goes red is not a target, the target pull request may mark it
+expected-failing, citing the decision, and the code pull request removes the mark. If it is a
+target, a third, target-only pull request follows the code pull request. Never move the code and
+the target together to dodge this. A ratchet that loosens itself is what rule 52 exists to stop.
+
+**CODEOWNERS binds only under branch protection that requires code-owner review.** The owner
+named is `@` plus `REPO`'s owner in `tools/loop/cli.mjs`. Nothing in the repository confirms that
+it is a person rather than an organisation, so a team or an account with no access is silently
+ignored. Check with `gh api repos/metasito/murlan/codeowners/errors`.
+
 ## Where a forbidden-shape rule goes
 
 A rule that says "this shape of code must not appear here" — a call, an import, a JSX element, a

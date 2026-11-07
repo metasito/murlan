@@ -96,8 +96,7 @@ Another agent is working in this repository, on this machine, right now.
 
 37. **A failure you did not cause is still a failure you must rule out.** Before believing a red run, check free memory, the ports your suite binds, and whether another session is mid-run.
     Exhaustion and collision both read exactly like a regression.
-38. **Kill only what you started.** Processes, containers and databases outlive the session that
-    started them; end yours when your run ends rather than leaving them warm for a next one.
+38. **Kill only what you started.** Processes, containers and databases outlive the session that started them; end yours when your run ends rather than leaving them warm for a next one.
 39. **Remove a worktree only with `npm run worktrees:remove -- <path>`, run from the main checkout.** Never `git worktree remove`, `rm -rf` or `Remove-Item` on a worktree directory:
     a recursive delete follows the `node_modules` junction and empties the shared install. The named command detaches the link first.
 40. **Never leave a shell parked inside a worktree.** Run its checks with `git -C`, `npm --prefix`, or a subshell that exits — a live process holding the directory is one you cannot delete afterwards.
@@ -116,3 +115,4 @@ Another agent is working in this repository, on this machine, right now.
 49. **A new guard, check or scan lands proven and floored**: it meets rule 6, and it fails when what it inspects is gone, empty or renamed, so it cannot pass by not looking.
 50. **No seam, interface or adapter layer until a second adapter exists.**
 51. **The table costs nothing at rest, and its speed is measured as it is played.** A frame loop, mapper or canvas that redraws when what it draws has not changed is a defect, and so is a full-screen canvas sized above DPR 1 that does not need the detail. A speed number taken under reduced motion, or only at full CPU speed, measures nothing: measure with motion on and at 4x CPU throttle, before and after, in the PR body (`docs/research/2026-11-03-table-perf/REPORT.md`). The owner's ruling, 2026-11-03.
+52. **The target never moves with the code.** A change set that touches a parity target (`TARGETS` in `tools/ci/target-freeze.mjs`: the mockups, captures, exemptions and thresholds) touches nothing under `app/`, `components/` or `lib/`; CI's `Target freeze` refuses one that does. A target moves only in a pull request of its own that cites the decision moving it (a `docs/GAME-RULES.md` decision, an ADR, or an owner ruling), as #1986's mockup-only commits did; `.github/CODEOWNERS` routes it to the owner. The code that meets the new target lands after it (`docs/agents/checks.md` § The target never moves with the code).

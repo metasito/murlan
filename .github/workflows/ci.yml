@@ -235,6 +235,19 @@ jobs:
             exit 1
           fi
 
+      # RULES.md 52. A step here, not a job: the full history is already
+      # checked out, and a job of its own would push the run past the
+      # concurrency cap (tests/tooling/e2eShardSplit.test.ts).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          package-manager-cache: false
+          node-version-file: .node-version
+      - name: Target freeze
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: node tools/ci/target-freeze.mjs "$BASE"
+
   # The three checks that need the Postgres service, and only those: jest and
   # eslint are their own jobs so this one's ~150s of tests stops standing in
   # front of their ~90s. Nothing here is gated on them, and nothing there is
