@@ -76,6 +76,57 @@ export const CLOTH_SKSL = `${UNIFORMS}\n${CLOTH_BODY}\nhalf4 main(vec2 xy){retur
 /** WebGL's, for the fallback's bake: the mockup's own `gl_FragCoord` mapping, `uPx` device pixels a point on each axis. */
 export const CLOTH_GLSL = `precision highp float;\nuniform vec2 uRes,uPx;\n${UNIFORMS}\n${CLOTH_BODY}\nvoid main(){gl_FragColor=cloth(vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uPx);}`;
 
+function once(body: string, line: string): number {
+  const at = body.indexOf(line);
+  if (at < 0 || body.indexOf(line, at + 1) >= 0) throw new Error(`the cloth has ${line} other than once`);
+  return at;
+}
+
+const cut = (from: string, to: string) => CLOTH_BODY.slice(once(CLOTH_BODY, from), once(CLOTH_BODY, to));
+const swap = (body: string, from: string, to: string) => (once(body, from), body.replace(from, to));
+
+const HELPERS = cut("float h21(", "vec4 cloth(");
+const WEAVE = cut(" vec2 u=p/uPitch", " vec3 L=");
+const MOTT = cut(" float mott=", " vec3 col=");
+const FUZZ = cut(" col*=1.+(h21(", " col+=vec3(1.,.78");
+
+/** Half-widths of what the weave's planes hold in 8 bits: the thread's tone, the mottle. */
+const TV_SPAN = 0.15;
+const MOTT_SPAN = 0.04;
+
+export const WEAVE_PLANES = 3;
+
+/**
+ * The cloth's lamp-free terms, one plane each pass: the thread normal; its profile, tone and
+ * mottle; the fuzz and which thread is on top. Opaque, so an 8-bit surface keeps them unpremultiplied.
+ */
+export const WEAVE_SKSL = `uniform float uK,uPitch,uType,uTwo,uMott,uPlane;
+${HELPERS}half4 main(vec2 p){
+${WEAVE}${MOTT} float fuzz=h21(floor(p*uK));
+ if(uPlane<.5)return half4(n*.5+.5,1.);
+ if(uPlane<1.5)return half4(prof,tv/${2 * TV_SPAN}+.5,mott/${2 * MOTT_SPAN}+.5,1.);
+ return half4(fuzz,wo?1.:0.,0.,1.);}`;
+
+const LIT_BODY = [
+  [
+    WEAVE,
+    ` vec4 g0=uG0.eval(p),g1=uG1.eval(p),g2=uG2.eval(p);
+ vec3 n=g0.xyz*2.-1.;
+ bool wo=g2.y>.5;
+ float prof=g1.x,tv=(g1.y-.5)*${2 * TV_SPAN};
+`,
+  ],
+  [MOTT, ` float mott=(g1.z-.5)*${2 * MOTT_SPAN};\n`],
+  [FUZZ, ` col*=1.+(g2.x-.5)*uFuzz;\n`],
+].reduce((body, [from, to]) => swap(body, from, to), CLOTH_BODY);
+
+/** The cloth again, lit from the weave's planes `uG0`–`uG2`, sampled nearest at the device pixel they were baked on. */
+export const LIT_SKSL = `${UNIFORMS}\nuniform shader uG0,uG1,uG2;\n${LIT_BODY}\nhalf4 main(vec2 xy){return half4(cloth(xy));}`;
+
+export function weaveUniforms(k: number, plane: number): ClothUniforms {
+  return { uK: k, uPitch: TWILL.uPitch, uType: TWILL.uType, uTwo: TWILL.uTwo, uMott: TWILL.uMott, uPlane: plane };
+}
+
 export type ClothUniforms = Record<string, number | number[]>;
 
 function rgb(hex: string): number[] {
