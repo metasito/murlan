@@ -4,14 +4,14 @@
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { CLOTH_SKSL, LIT_SKSL, WEAVE_PLANES, WEAVE_SKSL, clothUniforms, weaveUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
+import { CLOTH_SKSL, FELT_K_CAP, LIT_SKSL, WEAVE_PLANES, WEAVE_SKSL, clothUniforms, weaveUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
 import { lightUniforms } from "../../components/table/lampRig.ts";
 import { FeltGradients } from "../../lib/tokens.ts";
 
 const require = createRequire(import.meta.url);
 
 /** Device pixels per design point: DPR 1, a DPR 2 phone, and the felt's cap. */
-const DENSITIES = [1, 2, 2.5];
+const DENSITIES = [1, 2, FELT_K_CAP];
 const LAMPS: [x: number, y: number][] = [
   [437, 362],
   [784, 201],

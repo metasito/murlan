@@ -96,6 +96,9 @@ const MOTT_SPAN = 0.04;
 
 export const WEAVE_PLANES = 3;
 
+/** The most device pixels a design point gets: the mockup's `V.K`, the owner's cap (2026-11-07). */
+export const FELT_K_CAP = 2.5;
+
 /**
  * The cloth's lamp-free terms, one plane each pass: the thread normal; its profile, tone and
  * mottle; the fuzz and which thread is on top. Opaque, so an 8-bit surface keeps them unpremultiplied.
