@@ -86,12 +86,12 @@ describe("the workflow runs base's script on the head's objects, and nothing of 
     assert.equal(runs.length, 1);
     assert.equal(steps().length, 3);
     for (const s of steps()) assert.equal(s.if, undefined);
-    assert.deepEqual(runs[0].env, { PR: "${{ github.event.pull_request.number }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}" });
+    assert.deepEqual(runs[0].env, { HEAD_SHA: "${{ github.event.pull_request.head.sha }}" });
     assert.equal(
       freezeRun(),
       [
-        'git fetch --no-tags origin "+refs/pull/$PR/head:refs/freeze/head"',
-        '[ "$(git rev-parse refs/freeze/head)" = "$HEAD_SHA" ] || { echo "::error::refs/pull/$PR/head is not $HEAD_SHA."; exit 1; }',
+        'git fetch --no-tags origin "+$HEAD_SHA:refs/freeze/head"',
+        '[ "$(git rev-parse refs/freeze/head)" = "$HEAD_SHA" ] || { echo "::error::the fetched head is not $HEAD_SHA."; exit 1; }',
         "node tools/ci/target-freeze.mjs HEAD refs/freeze/head",
         "",
       ].join("\n"),
@@ -153,7 +153,7 @@ describe("planted diffs", () => {
     const r = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", freezeRun()], {
       cwd: runner,
       encoding: "utf8",
-      env: { ...process.env, PR: pr, HEAD_SHA: headSha },
+      env: { ...process.env, HEAD_SHA: headSha },
     });
     return { code: r.status, out: r.stdout + r.stderr };
   };
@@ -291,7 +291,7 @@ describe("planted diffs", () => {
     for (const [base, head] of [["no-such-ref", "mixed"], ["main", "no-such-ref"]]) {
       const bad = judge(head, base);
       assert.equal(bad.code, 1);
-      assert.match(bad.out, /^::error::no change set from /);
+      assert.match(bad.out, /^::error::could not read \S+ or \S+, so nothing was judged: /);
     }
   });
 
@@ -308,7 +308,7 @@ describe("planted diffs", () => {
   test("a head whose other workflow names a job Target freeze is refused", () => {
     assert.deepEqual(judge("spoof"), {
       code: 1,
-      out: "::error::.github/workflows/ci.yml name a job Target freeze, whose check would stand in for this one (RULES.md 52).",
+      out: "::error::.github/workflows/ci.yml names a job or step Target freeze, whose check would stand in for this one (RULES.md 52).",
     });
   });
 
@@ -319,10 +319,14 @@ describe("planted diffs", () => {
     assert.match(judge("targets-merging-main", "main~1").out, REFUSED);
   });
 
-  test("the workflow refuses a fetched head that is not the event's head", () => {
-    const stale = asPullRequest("code-only", at().text(["rev-parse", "mixed"]));
-    assert.equal(stale.code, 1);
-    assert.match(stale.out, /^::error::refs\/pull\/\d+\/head is not [0-9a-f]{40}\.$/m);
+  test("the workflow fetches the event's head by SHA, and a SHA it cannot fetch or match is red", () => {
+    const bySha = asPullRequest("code-only", at().text(["rev-parse", "mixed"]));
+    assert.match(bySha.out, REFUSED);
+    for (const sha of ["1".repeat(40), ""]) {
+      const bad = asPullRequest("code-only", sha);
+      assert.notEqual(bad.code, 0, bad.out);
+      assert.doesNotMatch(bad.out, /^(code only|targets only|no file changed)/m);
+    }
   });
 
   test("the workflow's run, from base's checkout, refuses a head that loosens its own copy", () => {

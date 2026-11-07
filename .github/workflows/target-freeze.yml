@@ -31,9 +31,8 @@ jobs:
           node-version-file: .node-version
       - name: Target freeze
         env:
-          PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          git fetch --no-tags origin "+refs/pull/$PR/head:refs/freeze/head"
-          [ "$(git rev-parse refs/freeze/head)" = "$HEAD_SHA" ] || { echo "::error::refs/pull/$PR/head is not $HEAD_SHA."; exit 1; }
+          git fetch --no-tags origin "+$HEAD_SHA:refs/freeze/head"
+          [ "$(git rev-parse refs/freeze/head)" = "$HEAD_SHA" ] || { echo "::error::the fetched head is not $HEAD_SHA."; exit 1; }
           node tools/ci/target-freeze.mjs HEAD refs/freeze/head

@@ -144,11 +144,11 @@ export function run(base, head, at = git(), log = console.log) {
       .map((f) => ({ path: f, text: at.text(["show", `${head}:${f}`]) }));
     const spoofs = impostors(workflows);
     if (spoofs.length) {
-      log(`::error::${spoofs.join(", ")} name a job ${CHECK}, whose check would stand in for this one (RULES.md 52).`);
+      log(`::error::${spoofs.join(", ")} ${spoofs.length === 1 ? "names" : "name"} a job or step ${CHECK}, whose check would stand in for this one (RULES.md 52).`);
       return 1;
     }
   } catch (err) {
-    log(`::error::no change set from ${base} to ${head}: ${String(err?.message ?? err).split("\n")[0]}`);
+    log(`::error::could not read ${base} or ${head}, so nothing was judged: ${String(err?.message ?? err).split("\n")[0]}`);
     return 1;
   }
   const verdict = freezeVerdict(changed);
