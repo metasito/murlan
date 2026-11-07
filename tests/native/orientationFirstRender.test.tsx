@@ -35,6 +35,7 @@ jest.mock('@/modules/murlan-orientation', () => ({
 
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { OrientationProvider, useIsLandscape, useLandscapeLock } from '@/lib/device/orientation';
+import { AppModal } from '@/components/AppModal';
 
 function Probe() {
   return <Text testID="orientation-value">{String(useIsLandscape())}</Text>;
@@ -66,6 +67,28 @@ describe('useIsLandscape on the very first render', () => {
 
     expect(screen.getByTestId('orientation-value').props.children).toBe('false');
 
+    await view.unmount();
+  });
+
+  it("a modal's first render reads the measured window around it, not the misreported one", async () => {
+    const seen: boolean[] = [];
+    function FirstRead() {
+      seen.push(useIsLandscape());
+      return null;
+    }
+    const tree = (open: boolean) => (
+      <OrientationProvider>
+        <AppModal visible={open} onRequestClose={() => {}}>
+          {open ? <FirstRead /> : null}
+        </AppModal>
+      </OrientationProvider>
+    );
+    const view = await render(tree(false));
+    await fireEvent(screen.getByTestId('orientation-root'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, ...TRUE_PORTRAIT } },
+    });
+    await view.rerender(tree(true));
+    expect(seen[0]).toBe(false);
     await view.unmount();
   });
 

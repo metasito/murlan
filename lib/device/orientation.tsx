@@ -92,8 +92,10 @@ type WindowSize = { width: number; height: number };
 const OrientationContext = createContext<WindowSize | null>(null);
 
 /**
- * Seeds every screen's first render with `useWindowDimensions()`, then
- * overrides it with what the app's own root view actually measures.
+ * Seeds its first render with the enclosing provider's value, or with
+ * `useWindowDimensions()` when it is the outermost, then overrides it with
+ * what its own view measures: the app's root, or a modal's, whose native
+ * window the root view behind it can measure stale while it is up (#1378).
  *
  * `Dimensions.get('window')` — what `useWindowDimensions()` reads — is a
  * value iOS hands the bridge once at launch and only replaces on a genuine
@@ -105,6 +107,7 @@ const OrientationContext = createContext<WindowSize | null>(null);
  */
 export function OrientationProvider({ children, testID = "orientation-root" }: { children: ReactNode; testID?: string }) {
   const fallback = useWindowDimensions();
+  const enclosing = useContext(OrientationContext);
   const [measured, setMeasured] = useState<WindowSize | null>(null);
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -116,7 +119,7 @@ export function OrientationProvider({ children, testID = "orientation-root" }: {
 
   return (
     <View testID={testID} style={styles.fill} onLayout={onLayout}>
-      <OrientationContext.Provider value={measured ?? fallback}>
+      <OrientationContext.Provider value={measured ?? enclosing ?? fallback}>
         {children}
       </OrientationContext.Provider>
     </View>

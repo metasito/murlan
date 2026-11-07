@@ -40,7 +40,6 @@ export function AppModal({
       supportedOrientations={["portrait", "landscape"]}
       accessibilityLabel={accessibilityLabel}
     >
-      {/* Its own window: the root view behind it can measure stale while it is up (#1378). */}
       <OrientationProvider testID="modal-orientation-root">{children}</OrientationProvider>
     </Modal>
   );
