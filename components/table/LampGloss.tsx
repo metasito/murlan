@@ -58,6 +58,7 @@ function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTabl
       <Animated.Image
         testID="card-gloss-spot"
         source={GLOSS_SPOT_ART()}
+        resizeMode="stretch"
         style={[styles.layer, { left: -radius, top: -radius, width: 2 * radius, height: 2 * radius }, spotStyle]}
       />
       <Animated.View testID="card-gloss-streak" pointerEvents="none" style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, streakStyle]}>

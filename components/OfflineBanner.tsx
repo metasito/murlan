@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useSyncExternalStore } from "react";
-import { StyleSheet, View, useWindowDimensions } from "react-native";
+import { StyleSheet, View } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Layer, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
+import { useOrientedWindow } from "@/lib/device/orientation";
 import { cardScale } from "@/components/cardFaceModel";
 import { mockupPx } from "@/components/table/noticeModel";
 import { OfflinePill } from "@/components/table/notices/hud";
@@ -55,7 +56,7 @@ export function OfflineBanner({ overTable = false }: { overTable?: boolean }) {
   const offline = useDeviceOffline();
   const underTable = useSyncExternalStore(watch, tableOnScreen, tableOnScreen);
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useOrientedWindow();
   const scale = cardScale(Math.min(width, height));
   const shown = offline && (overTable || !underTable);
   // G2 drew the pill over a landscape menu only; standing, a menu's corner controls share its row, so it goes under them.
