@@ -789,14 +789,17 @@ jobs:
     permissions:
       contents: write
       actions: read
+    env:
+      COMMIT_TIMINGS: ${{ github.event_name == 'schedule' && needs.browser.result == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           package-manager-cache: false
           node-version-file: .node-version
-      # This job's own scripts import only `node:` modules; the one package it runs is Playwright's
-      # CLI, pinned to the lockfile's version because a blob report is read by the version that wrote it.
+      # Short of the weekly commit, this job's scripts import only `node:` modules; the one package
+      # they run is Playwright's CLI, pinned to the lockfile's version because a blob report is read
+      # by the version that wrote it.
       - name: Playwright's CLI
         run: echo "PW=@playwright/test@$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_ENV"
       - id: pw-cli
@@ -871,6 +874,12 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      # The commit's gate, e2eShardSplit.test.ts, imports `yaml` and lists the suite with the
+      # lockfile's Playwright: the one step here that needs node_modules.
+      - name: Dependencies for the timings commit
+        if: env.COMMIT_TIMINGS == 'true'
+        uses: ./.github/actions/install
+
       # On the weekly schedule only, never per-merge. `main` has no branch
       # protection blocking a direct push, and a push authored with the default
       # GITHUB_TOKEN does not trigger a new workflow run, so this cannot loop.
@@ -892,7 +901,7 @@ jobs:
       # inside the floor; if it ever trips it says so by name and a
       # `workflow_dispatch` regenerates.
       - name: Commit the regenerated timings, if main's copy is stale
-        if: ${{ github.event_name == 'schedule' && needs.browser.result == 'success' }}
+        if: env.COMMIT_TIMINGS == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
