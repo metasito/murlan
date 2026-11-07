@@ -11,20 +11,40 @@
 // `npm run test:e2e` costs nothing and gains no noise from it. Run it with
 // `npm run perf:web`, and see docs/WEB-PERF.md for what the numbers mean and
 // what to compare them against.
-import type { Page } from "@playwright/test";
+import type { CDPSession, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";
-import { driveGameToCompletion } from "./helpers/bot";
+import { driveGameToCompletion, playAnyLegal } from "./helpers/bot";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
 import { HAND_CARDS, TABLE_STATE } from "./helpers/selectors";
 import { PAST_HOLD_MS } from "./helpers/press";
+import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
+import { COUNTED, countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
+import type { TraceFrame } from "../../lib/e2eTrace";
 
 const TABLE = '[data-testid="game-table"]';
 
-interface FrameReport {
+/** The Skia felt on this software rasteriser, which only an e2e build honours (`drawsOnGpu`, feltSkia.web.tsx). */
+const SKIA = process.env.PERF_SKIA === "1";
+
+/** Recorded under PERF_SKIA alone: its counters and trace cost the page they measure. */
+interface RenderReport {
+  /** Frames per second each canvas drew in, and style writes a second inside cards' views. */
+  feltFps: number;
+  particlesFps: number;
+  handShadeFps: number;
+  cardStylesPerS: number;
+  /** Which felt the trace saw draw through the window. */
+  felts: TraceFrame["felt"][];
+}
+
+interface FrameReport extends Partial<RenderReport> {
   frames: number;
+  /** Main-thread milliseconds a second, from CDP's `Performance.getMetrics`. */
+  taskMsPerS: number;
+  scriptMsPerS: number;
   /** Presented frames per second over the window; 60 is a table holding the display's rate. */
   fps: number;
   /** Milliseconds between presented frames — 16.7 is one frame at 60fps. */
@@ -41,15 +61,20 @@ interface FrameReport {
 }
 
 // A phone, not a desktop: the owner's table is an iPhone 16 Pro in landscape at 3x, and
-// every case runs with motion on because that is how it is played (#1965).
-test.use({ reducedMotion: "no-preference", deviceScaleFactor: 3 });
+// every case runs with motion on because that is how it is played (#1965). Skia on SwiftShader at
+// 3x draws about four frames a second, under every window's floor, so PERF_SKIA records at 1x.
+test.use({ reducedMotion: "no-preference", deviceScaleFactor: SKIA ? 1 : 3 });
 
 const PHONE_VIEWPORT = { width: 874, height: 402 };
 /** Lighthouse's mobile CPU preset. */
 const PHONE_CPU_RATE = 4;
 
+const throttles = new WeakMap<Page, CDPSession>();
+
+/** One session a page: a throttle is that session's own override, so a second session's would not replace it. */
 async function throttleCpu(page: Page, rate: number): Promise<void> {
-  const cdp = await page.context().newCDPSession(page);
+  const cdp = throttles.get(page) ?? (await page.context().newCDPSession(page));
+  throttles.set(page, cdp);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate });
 }
 
@@ -60,6 +85,18 @@ async function throttleCpu(page: Page, rate: number): Promise<void> {
  * matters here: whether the main thread got back in time to paint.
  */
 async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport> }> {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Performance.enable");
+  const metrics = async () => {
+    const { metrics: all } = await cdp.send("Performance.getMetrics");
+    const of = (name: string) => all.find((m) => m.name === name)?.value ?? 0;
+    return { at: Date.now(), task: of("TaskDuration"), script: of("ScriptDuration") };
+  };
+  if (SKIA) {
+    await startRenderCounts(page);
+    await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
+  }
+  const from = await metrics();
   await page.evaluate(() => {
     const rec = { times: [] as number[], longTasks: 0, longTaskMs: 0, running: true };
     (window as unknown as { __perfRec: typeof rec }).__perfRec = rec;
@@ -81,8 +118,13 @@ async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport
   });
 
   return {
-    stop: () =>
-      page.evaluate(() => {
+    stop: async () => {
+      const to = await metrics();
+      const seconds = (to.at - from.at) / 1000;
+      const perS = (n: number | undefined) => +((n ?? 0) / seconds).toFixed(1);
+      const cost = { taskMsPerS: perS((to.task - from.task) * 1000), scriptMsPerS: perS((to.script - from.script) * 1000) };
+      const render = SKIA ? await renderReport(page, perS) : {};
+      const frames = await page.evaluate(() => {
         const rec = (window as unknown as {
           __perfRec: { times: number[]; longTasks: number; longTaskMs: number; running: boolean };
         }).__perfRec;
@@ -112,7 +154,26 @@ async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport
           transformed,
           domNodes: document.querySelectorAll("*").length,
         };
-      }),
+      });
+      await cdp.detach();
+      return { ...frames, ...cost, ...render };
+    },
+  };
+}
+
+async function renderReport(page: Page, perS: (n: number | undefined) => number): Promise<RenderReport> {
+  const counts = await page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
+  const felts = await page.evaluate(() => {
+    const trace = (window as unknown as { murlanTrace: { frames: TraceFrame[]; stop(): void } }).murlanTrace;
+    trace.stop();
+    return [...new Set(trace.frames.map((f) => f.felt))];
+  });
+  return {
+    feltFps: perS(counts.drewIn[COUNTED.felt]),
+    particlesFps: perS(counts.drewIn[COUNTED.particles]),
+    handShadeFps: perS(counts.drewIn[COUNTED.handShade]),
+    cardStylesPerS: perS(counts.styles.cards),
+    felts,
   };
 }
 
@@ -132,7 +193,22 @@ async function waitForViewerTurn(page: Page): Promise<void> {
   await page.waitForTimeout(1_000);
 }
 
+/** Under PERF_SKIA, waits for the Skia felt; a window it recorded must have drawn that felt alone. */
+async function skiaFelt(page: Page): Promise<void> {
+  if (SKIA) await untilSkiaFelt(page, 120_000);
+}
+
+function expectSkia(report: FrameReport, what: string): void {
+  if (SKIA) expect(report.felts, `the felts the trace saw through ${what}`).toEqual(["skia"]);
+}
+
 test.describe("web frame performance", () => {
+  test.beforeEach(async ({ page }) => {
+    if (!SKIA) return;
+    await countRenders(page);
+    await skiaOnSoftware(page);
+  });
+
   test("records a baseline through the deal and the first plays", async ({ page, baseURL }) => {
     test.setTimeout(3 * 60_000);
 
@@ -149,10 +225,12 @@ test.describe("web frame performance", () => {
     // Then a settled table, as the control. The difference between the two is
     // the cost of the animation rather than the cost of the page.
     await page.waitForTimeout(2_000);
+    await skiaFelt(page);
     const idle = await record(page, 2_000);
 
     console.log(`[web-perf] deal ${JSON.stringify(deal)}`);
     console.log(`[web-perf] idle ${JSON.stringify(idle)}`);
+    expectSkia(idle, "the settled table");
 
     // The only assertions are anti-vacuity ones. A threshold here would be the
     // flaky gate this was explicitly not to become — the numbers above are the
@@ -174,6 +252,7 @@ test.describe("web frame performance", () => {
     await openSeededGame(page, baseURL!, 4);
     await page.locator(TABLE).waitFor({ timeout: 60_000 });
     await page.waitForTimeout(1_500);
+    await skiaFelt(page);
 
     const cards = await page.locator(HAND_CARDS).all();
     const boxes = (await Promise.all(cards.map((c) => c.boundingBox())))
@@ -236,12 +315,13 @@ test.describe("web frame performance", () => {
       `the pointer went down and up without moving a card, so the recording above is of an idle table: ${after.join(", ")}`
     ).not.toEqual(before);
     expect(drag.frames, "no frames were observed during the drag").toBeGreaterThan(20);
+    expectSkia(drag, "the drag");
     expect(drag.domNodes, "the table never rendered").toBeGreaterThan(100);
   });
 
   // The phone's CPU is the budget a desktop run hides: the same table that holds 60fps at 1x
   // is a fraction of that at 4x, and the owner plays it on the phone.
-  test("records a settled table at phone speed", async ({ page, baseURL }) => {
+  test("records a settled table and a turn at phone speed", async ({ page, baseURL }) => {
     test.setTimeout(3 * 60_000);
 
     await page.setViewportSize(PHONE_VIEWPORT);
@@ -250,11 +330,24 @@ test.describe("web frame performance", () => {
     await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
     await page.locator(TABLE).waitFor({ timeout: 120_000 });
     await waitForViewerTurn(page);
+    await skiaFelt(page);
     const settled4x = await record(page, 4_000);
 
     console.log(`[web-perf] idle-4x ${JSON.stringify(settled4x)}`);
     expect(settled4x.frames, "no frames were observed on the throttled table").toBeGreaterThan(5);
     expect(settled4x.domNodes, "the table never rendered").toBeGreaterThan(100);
+    expectSkia(settled4x, "the settled table");
+
+    // The viewer's own move, a single or else a pass: the throw and its landing, the lamp's glide
+    // and the bots' turn behind it. Picked at full speed: the picker's one-second wait for GIOCA
+    // runs out on a slow table.
+    await throttleCpu(page, 1);
+    if ((await playAnyLegal(page)) === null) await page.getByRole("button", { name: "Passa il turno" }).click();
+    await throttleCpu(page, PHONE_CPU_RATE);
+    const turn4x = await record(page, 2_500);
+    console.log(`[web-perf] turn-4x ${JSON.stringify(turn4x)}`);
+    expect(turn4x.frames, "no frames were observed through the turn").toBeGreaterThan(5);
+    expectSkia(turn4x, "the turn");
   });
 
   // One round from the click to the result, the recorder running throughout: the deal, every

@@ -19,7 +19,7 @@ async function playTopCard(page: Page): Promise<void> {
   await tap(page, legalGioca(page));
 }
 
-// The felt redraws every sway of the lamp, which on SwiftShader takes the main thread (feltIdle.spec.ts)
+// The felt redraws as the lamp sways, which on SwiftShader takes the main thread (feltIdle.spec.ts)
 // and leaves a press waiting past its reach; at rest it draws only when a card moves.
 async function skiaAtRest(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: "reduce" });
