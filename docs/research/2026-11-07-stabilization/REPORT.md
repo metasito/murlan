@@ -242,3 +242,7 @@ Asked 2026-11-07; the answers stand until the owner changes them.
 3. **The renderer rebuild (cause 3): approved, on the condition that the table stays as good to look
    at as it is.** It lands as a sequence of small PRs, each held to the parity suite and the captures
    above, and each reviewed before it merges, green CI or not.
+4. **The felt's resolution: capped at 2.5 device pixels per design point, as the mockup caps it
+   (`V.K`).** The felt renders at the cap and is scaled up to the screen. On 3x screens the weave
+   reads as the mockup's, about half today's strength, and the felt draws about 30% fewer pixels.
+   It lands with the deferred cloth, with captures of today against the cap at 3x in that PR.
