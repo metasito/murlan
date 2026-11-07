@@ -1,4 +1,4 @@
-import { describe, it, expect, jest } from '@jest/globals';
+import { afterEach, describe, it, expect, jest } from '@jest/globals';
 import { Platform } from 'react-native';
 
 import { connectSocket, disconnectSocket, peekSocket } from '@/lib/socket';
@@ -15,8 +15,14 @@ async function handsOverCredentials(socket: ReturnType<typeof lastSocket>): Prom
 }
 
 describe('signing out while the socket is still opening', () => {
+  let os: { restore(): void } | undefined;
+  afterEach(() => {
+    os?.restore();
+    os = undefined;
+  });
+
   it('leaves the opening websocket alone, then closes it once it opens', async () => {
-    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    os = jest.replaceProperty(Platform, 'OS', 'web');
     const onAuthFailure = jest.fn();
     connectSocket('opening1', { onAuthFailure });
     const socket = lastSocket();
@@ -38,7 +44,6 @@ describe('signing out while the socket is still opening', () => {
     expect(onConnect).not.toHaveBeenCalled();
     socket.refuse(new Error('Not authenticated'));
     expect(onAuthFailure).not.toHaveBeenCalled();
-    os.restore();
   });
 
   it('closes it once the opening fails', () => {

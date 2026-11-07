@@ -251,7 +251,7 @@ for (const size of SIZES) {
 
     await openApp(page, baseURL!);
     // The longest name an account may have: the lobby and the room show it, so they are swept at their widest.
-    await registerNewAccount(page, uniqueUsername("tap").padEnd(USERNAME_MAX, "x"));
+    await registerNewAccount(page, uniqueUsername("tap").padEnd(USERNAME_MAX, "W"));
     await goToOnlineLobby(page);
     await settled(page, 2500);
     await expectNoBuriedControls(page, "online lobby", 6);

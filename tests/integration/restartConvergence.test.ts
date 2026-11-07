@@ -108,9 +108,8 @@ async function storedSeats(
  * seen them. The sockets close after the kill, never before, so no disconnect
  * grace is armed on a server still up to arm one.
  *
- * The exit is the listening socket released, which is all this waits on: a
- * room's advisory lock is session-scoped, and Postgres drops it when the
- * killed backend dies.
+ * The exit is all this waits on: a room's advisory lock is session-scoped, and
+ * Postgres drops it when the killed backend dies.
  */
 async function replaceServer(
   dying: ChildProcess,

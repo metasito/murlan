@@ -65,7 +65,7 @@ export async function boot(databaseUrl: string, env: Record<string, string> = {}
   }
 }
 
-/** Kills `child` and resolves once it has exited, which is when its listening port is free again. */
+/** Kills `child` and resolves once it has exited. */
 export function stopInstance(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
   const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
