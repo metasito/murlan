@@ -307,7 +307,7 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
       ]}
     >
       <TableText style={[styles.bold, { color: ink, fontSize: part.tileFont }]}>{rank}</TableText>
-      <Svg width={part.tileSuit} height={part.tileSuit} viewBox={SUIT_BOX}>
+      <Svg width={part.tileSuit} height={part.tileSuit} viewBox={SUIT_BOX} preserveAspectRatio="xMidYMid meet">
         <SuitShape suit={suit} color={ink} />
       </Svg>
     </LinearGradient>
