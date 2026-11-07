@@ -30,6 +30,7 @@ import { TABLE, TABLE_DEALING } from "./helpers/selectors";
 import { sweepSizes, UNDERSIZED_BY_DESIGN } from "./helpers/tapTargets";
 import { Reading } from "../../lib/tokens";
 import { it as copy } from "../../locales/it";
+import { USERNAME_MAX } from "../../shared/username";
 
 const SHORT_HAND = 5;
 const BANNER = '[data-testid="notification-banner"]';
@@ -249,7 +250,8 @@ for (const size of SIZES) {
     await sweepSizes(page, "sign-in");
 
     await openApp(page, baseURL!);
-    await registerNewAccount(page, uniqueUsername("tap"));
+    // The longest name an account may have: the lobby and the room show it, so they are swept at their widest.
+    await registerNewAccount(page, uniqueUsername("tap").padEnd(USERNAME_MAX, "x"));
     await goToOnlineLobby(page);
     await settled(page, 2500);
     await expectNoBuriedControls(page, "online lobby", 6);
