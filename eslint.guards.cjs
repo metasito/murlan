@@ -66,9 +66,8 @@ const RN_WINDOW = "/^(useWindowDimensions|Dimensions)$/";
 const REQUIRE_RN = 'CallExpression[callee.name="require"][arguments.0.value="react-native"]';
 const LAYOUT = 'MemberExpression:matches([property.name="layout"], [property.value="layout"]):matches([object.property.name="nativeEvent"], [object.name="nativeEvent"])';
 const SIZE_ONLY = 'ObjectPattern:not(:has(> Property:not([computed=false][key.name=/^(width|height)$/][value.type="Identifier"]))):not(:has(> RestElement))';
-const EVENT_ALIAS = ':function:has(VariableDeclarator[id.type="Identifier"] > MemberExpression.init:matches([property.name="nativeEvent"], [property.value="nativeEvent"]))';
-const ALIASED_LAYOUT = 'MemberExpression:matches([property.name="layout"], [property.value="layout"])[object.type="Identifier"]';
-const DEEP_RN_WINDOW = "/^react-native.Libraries.Utilities.(useWindowDimensions|Dimensions)(.js)?$/";
+const NATIVE_EVENT = 'MemberExpression:matches([property.name="nativeEvent"], [property.value="nativeEvent"])';
+const DEEP_RN_WINDOW = "/^react-native\\x2FLibraries\\x2FUtilities\\x2F(useWindowDimensions|Dimensions)(\\.js)?$/";
 const EVENT_PATTERN = ':matches(Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]) > ObjectPattern, VariableDeclarator:matches([init.property.name="nativeEvent"], [init.name="nativeEvent"]) > ObjectPattern)';
 
 /** @type {readonly Guard[]} */
@@ -173,8 +172,6 @@ const GUARDS = [
       `VariableDeclarator:not(:has(> ${SIZE_ONLY}.id)) > ${LAYOUT}.init`,
       `${EVENT_PATTERN} > Property:matches([key.name="layout"], [key.value="layout"]):not(:has(> ${SIZE_ONLY}.value))`,
       `${EVENT_PATTERN} > RestElement`,
-      `${EVENT_ALIAS} MemberExpression:not([computed=false][property.name=/^(width|height)$/]) > ${ALIASED_LAYOUT}.object`,
-      `${EVENT_ALIAS} :not(MemberExpression) > ${ALIASED_LAYOUT}`,
     ].join(", "),
     files: SCREENS,
     plant: { file: "components/Plant.tsx", code: [
@@ -191,9 +188,7 @@ const GUARDS = [
       "const m = e.nativeEvent.layout['height'];",
       "const { ...rest } = e.nativeEvent;",
       "const n = e?.nativeEvent?.layout;",
-      "function p(e) { const ne = e.nativeEvent; return ne.layout.y; }",
-      "function q(e) { const ne = e.nativeEvent; keep(ne.layout); }",
-    ].join("\n"), hits: 15 },
+    ].join("\n"), hits: 13 },
     spare: [
       "const a = (e) => setH(e.nativeEvent.layout.height);",
       "const { width, height } = e.nativeEvent.layout;",
@@ -203,8 +198,32 @@ const GUARDS = [
       "function g(e) { const { nativeEvent } = e; return nativeEvent.contentOffset.y; }",
       "const { layout } = props; const x = layout.x;",
       "const w = e?.nativeEvent.layout.width;",
-      "function r(e) { const ne = e.nativeEvent; return ne.layout.width; }",
       "function t(e) { const { pageX } = e.nativeEvent; return seat.layout.x + pageX; }",
+      "function G(e) { const ne = e.nativeEvent; return seat.layout.x; }",
+      "function H(props) { const onPress = (e) => { const ne = e.nativeEvent; }; return props.layout.width; }",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "native-event-in-place",
+    why: "An event's `nativeEvent` bound to a name of its own hides every later read through it from onlayout-size-only, which can follow only the name `nativeEvent`: destructure what the handler needs from it where it is read, as components/GameTable.tsx does.",
+    selector: [
+      `VariableDeclarator[id.type="Identifier"] > ${NATIVE_EVENT}.init`,
+      `AssignmentExpression > ${NATIVE_EVENT}.right`,
+      'ObjectPattern > Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]):not([value.type="Identifier"][value.name="nativeEvent"]):not([value.type="ObjectPattern"])',
+    ].join(", "),
+    files: SCREENS,
+    plant: { file: "components/Plant.tsx", code: [
+      "function p(e) { const ne = e.nativeEvent; return ne.layout.y; }",
+      "function q(e) { const ne = e.nativeEvent; keep(ne.layout); }",
+      "function u(e) { let ne; ne = e.nativeEvent; const { layout: { y } } = ne; }",
+      "const v = ({ nativeEvent: ne }) => ne.layout.y;",
+    ].join("\n"), hits: 4 },
+    spare: [
+      "function t(e) { const { pageX } = e.nativeEvent; return seat.layout.x + pageX; }",
+      "const a = (e) => setH(e.nativeEvent.layout.height);",
+      "const b = ({ nativeEvent }) => nativeEvent.layout.width;",
+      "const c = ({ nativeEvent: { layout: { width } } }) => setW(width);",
+      "const d = seat.nativeEventCount;",
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
@@ -215,8 +234,7 @@ const GUARDS = [
       `ExportNamedDeclaration[source.value="react-native"]:not([exportKind="type"]) > ExportSpecifier[local.name=${RN_WINDOW}]:not([exportKind="type"])`,
       `VariableDeclarator:has(> ${REQUIRE_RN}.init) > ObjectPattern > Property[key.name=${RN_WINDOW}]`,
       `MemberExpression[property.name=${RN_WINDOW}]:has(> ${REQUIRE_RN}.object)`,
-      `ImportDeclaration[source.value=${DEEP_RN_WINDOW}]:not([importKind="type"])`,
-      `CallExpression[callee.name="require"][arguments.0.value=${DEEP_RN_WINDOW}]`,
+      importsOf(DEEP_RN_WINDOW, { values: true }),
       `Program:has(ImportDeclaration[source.value="react-native"] > :matches(ImportNamespaceSpecifier, ImportDefaultSpecifier), VariableDeclarator[id.type="Identifier"] > ${REQUIRE_RN}.init) MemberExpression[object.type="Identifier"][property.name=${RN_WINDOW}]`,
     ].join(", "),
     files: SCREENS,
@@ -231,7 +249,10 @@ const GUARDS = [
       'const s = require("react-native").Dimensions.get("window");',
       'import useWD from "react-native/Libraries/Utilities/useWindowDimensions";',
       'const Dm = require("react-native/Libraries/Utilities/Dimensions");',
-    ].join("\n"), hits: 8 },
+      'export { default as useWD2 } from "react-native/Libraries/Utilities/useWindowDimensions";',
+      'export * from "react-native/Libraries/Utilities/Dimensions";',
+      'const lazy = import("react-native/Libraries/Utilities/Dimensions.js");',
+    ].join("\n"), hits: 11 },
     spare: [
       'import { useOrientedWindow } from "@/lib/device/orientation";',
       "const { width, height } = useOrientedWindow();",
@@ -240,6 +261,8 @@ const GUARDS = [
       'import { type Dimensions, View } from "react-native";',
       'export type { Dimensions } from "react-native";',
       'import { useWindowDimensions } from "./fakeWindow";',
+      'import type Dims2 from "react-native/Libraries/Utilities/Dimensions";',
+      'import { useWindowDimensions as u2 } from "react-native-web-hooks/Libraries/Utilities/useWindowDimensions";',
       "const d = layout.Dimensions;",
       'import RN from "react-native";\nconst w = RN.PixelRatio.get();',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
