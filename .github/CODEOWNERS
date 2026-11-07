@@ -1,16 +1,17 @@
 # Generated from TARGETS in tools/ci/target-freeze.mjs (RULES.md 52); tests/tooling/targetFreeze.test.ts holds them equal.
 /tests/e2e/fixtures/                    @rotonmeta
-/tests/e2e/57-polish-audit/captures/    @rotonmeta
 *.nightly.spec.ts                       @rotonmeta
 /tests/e2e/tiers.mjs                    @rotonmeta
 /tests/e2e/handParity*.spec.ts          @rotonmeta
 /tests/e2e/lampSeats.spec.ts            @rotonmeta
 /tests/e2e/helpers/mockupParity.ts      @rotonmeta
+/tests/e2e/helpers/mockupStage.ts       @rotonmeta
 /tests/e2e/helpers/parityRegions.ts     @rotonmeta
 /tests/e2e/helpers/traceDiff.ts         @rotonmeta
 /tests/e2e/helpers/reconnectDiff.ts     @rotonmeta
 /tests/e2e/helpers/reconnectParity.ts   @rotonmeta
 /tests/e2e/helpers/lanternDepartures.ts @rotonmeta
+/tests/helpers/lanternFixture.ts        @rotonmeta
 /tests/helpers/clothDepartures.ts       @rotonmeta
 /tests/e2e/helpers/feltParityGrid.ts    @rotonmeta
 /tests/e2e/helpers/handParity.ts        @rotonmeta

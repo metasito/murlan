@@ -246,7 +246,13 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'push'
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: node tools/ci/target-freeze.mjs "$BASE"
+        run: |
+          if git cat-file -e "$BASE:tools/ci/target-freeze.mjs" 2>/dev/null; then
+            git worktree add --detach "$RUNNER_TEMP/freeze-base" "$BASE"
+            node "$RUNNER_TEMP/freeze-base/tools/ci/target-freeze.mjs" "$BASE"
+          else
+            node tools/ci/target-freeze.mjs --bootstrap "$BASE"
+          fi
 
   # The three checks that need the Postgres service, and only those: jest and
   # eslint are their own jobs so this one's ~150s of tests stops standing in

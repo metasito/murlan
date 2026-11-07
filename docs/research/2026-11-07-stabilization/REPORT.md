@@ -168,7 +168,7 @@ A rule holds only when a machine refuses its breach. Each item below is a mechan
 |---|---|---|---|
 | S1 | A change the player can see is checked by looking. | A PR touching `components/`, `lib/tokens.ts`, `lib/theme.ts` or the table's assets needs a green parity run on its head (dispatched `parity-nightly.yml`) before `CI gate` passes. | declined by the owner, 2026-11-07 |
 | S2 | A red nightly stops visual merges. | While a `parity` issue is open, `CI gate` refuses a PR touching those paths unless that PR's own parity run is green. The nightly is bisected and the culprit PR's ticket reopened. No auto-close. | declined by the owner, 2026-11-07 |
-| S3 | The target never moves with the code. | CI refuses a diff touching both the parity targets (`tests/e2e/fixtures/`, mockup exemptions, captures, thresholds) and `app/`, `components/` or `lib/`; CODEOWNERS on the targets. | built: `Target freeze` in `ci.yml`, `TARGETS` in `tools/ci/target-freeze.mjs`, rule 52; CODEOWNERS (`@rotonmeta`) binds only once branch protection requires code-owner review |
+| S3 | The target never moves with the code. | CI refuses a diff touching both the parity targets (`tests/e2e/fixtures/`, mockup exemptions, captures, thresholds) and `app/`, `components/` or `lib/`; CODEOWNERS on the targets. | built: `Target freeze` in `ci.yml`, run from base's copy; `TARGETS` in `tools/ci/target-freeze.mjs`; rule 52. The captures are left out: they are a reading of the app, never compared. CODEOWNERS (`@rotonmeta`) is routing only, since the owner authors the pull requests |
 | S4 | The table costs nothing at rest. | A blocking spec counts paints and frame callbacks over a settled 2 s window and fails on any. | proposed: needs the renderer rebuild first |
 | S5 | Speed is measured on the renderer players get. | `perf:web` on the Skia path, motion on, 4x throttle, with owner-held budgets, blocking on table changes. | proposed |
 | S6 | A flake is fixed at its source the day it is seen. | No reruns (already rule-backed for device jobs); a flaky test is fixed or quarantined with a ticket by the agent who saw it. | partly: this change fixes the five known causes |
@@ -195,7 +195,7 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 - Layout has no owner; the chip row and hand fan have each been re-fixed many times.
 - #1977 moved the app and only part of the lantern mockup: the mockup kept the cards' lit lip and face
   gloss, the standings board's old centre and the old felt base fill. Each surfaced as a red nightly
-  moment. *fixed here*, in commits that change the mockup alone. The class stays open until S3 holds. Run over the 388 merges since 2026-09-24, S3's guard refuses 55, #1977 and #1986 among them.
+  moment. *fixed here*, in commits that change the mockup alone. The class stays open until S3 holds. Run over the 389 merges since 2026-09-24, S3's guard refuses 55, #1977 and #1986 among them.
 - The online room at phone landscape pushed its format controls below the fold for any name over
   about 12 characters (names may be 30): the status line wrapped. *fixed here*. The tap-target sweep
   had used 12-character names, so the fixture's gentleness hid it; the sweep now uses the longest name.

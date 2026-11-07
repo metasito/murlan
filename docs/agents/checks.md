@@ -365,22 +365,57 @@ repo-level gate could have seen either. The enforcement point is your own loop.
 
 ## The target never moves with the code
 
-Rule 52. The `Target freeze` step of `ci.yml`'s `Secret scan` job runs
-`node tools/ci/target-freeze.mjs <base>` on every pull request and push. It judges
-`<base>...HEAD` with renames off, so a target moved out of its path still counts where it was. It
-runs without `npm ci` and outside `scope`'s skips. It is a step, not a job, because one more job
-breaks the concurrency cap. `TARGETS` in that
-file is the only list. `.github/CODEOWNERS` is its rendering, and `tests/tooling/targetFreeze.test.ts`
-holds the two equal, holds every nightly spec inside the list, and plants mixed, target-only,
-code-only, rename and deletion diffs in a scratch repository. The guard is floored. A pattern that
-names no tracked file turns it red. So does a base that is missing, cannot be read, or is the
-head itself. A push whose tree did not change has no file to judge, so it passes.
+Rule 52. `TARGETS` in `tools/ci/target-freeze.mjs` is the only list of targets. The
+`Target freeze` step of `ci.yml`'s `Secret scan` job runs on every pull request and push, without
+`npm ci` and outside `scope`'s skips. It is a step, not a job, because one more job breaks the
+concurrency cap.
 
-**What it leaves out, on purpose.** `tests/fixtures/tableLayout.json` and `handRow.json` pin the
-code's own output. Their pins change with the code by design, so freezing them would make every
-intended layout change unlandable. The polish-audit `.txt` surveys are a reading of the app, not
-a target. A threshold written inside app code is outside the list too: the list covers only the
-files named in it.
+**Base judges head.** The step checks out the base commit into `$RUNNER_TEMP/freeze-base` and runs
+base's copy of the script inside the head checkout. A change that loosens the script, empties the
+list or edits its own test is still judged by the list it started from. Base's copy also refuses
+two things in head's `ci.yml`: a `secrets` job that no longer runs base's copy ungated, and a
+`CI gate` that no longer needs that job. Any other edit to the `secrets` job counts as a target
+change. Head's copy runs, with `--bootstrap`, only when base has no script at all, and that mode
+refuses itself once base has one. It judges `<base>...HEAD` with renames off, so a target moved out
+of its path still counts where it was.
+
+**What the step cannot see.** A pull request's `ci.yml` is the pull request's own. A change that
+rewrites the step's shell so it never reaches base's copy runs its own workflow, and nothing in a
+`pull_request` run can stop that. Closing it needs a check that runs from base's workflow, such as
+a `pull_request_target` workflow or a ruleset's required workflow. A retargeted pull request is not
+judged again on the new base, because the run is not triggered when a pull request's base changes:
+`edited` would rerun the whole workflow on every title edit and cancel the run in progress. The
+push run on `main` judges the merge against main's previous tip, so a retargeted stack is caught
+after it merges.
+
+`tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list and every
+nightly spec inside it. It also plants diffs in a scratch repository and runs the real step on
+them: mixed, target-only and code-only diffs; a target and the code in separate commits; a rename
+out of the list; a deleted nightly spec; a branch that merges main; a merge ref; a tampered
+verdict; an emptied list; a deleted step; a step dropped from the gate; and the bootstrap. The
+guard is floored. A pattern that names no tracked file turns it red, and so does a base that is
+missing, cannot be read, or is the head itself. A push whose tree did not change has no file to
+judge, so it passes.
+
+**What it leaves out, on purpose.** These change with the code by design, and freezing them would
+make every intended change unlandable:
+
+- `tests/fixtures/tableLayout.json` and `handRow.json` pin the code's own output.
+- The polish-audit captures (`tests/e2e/57-polish-audit/captures/`) and `.txt` surveys are
+  readings of the app. The captures are written under `AUDIT_UPDATE=1` and never compared. The
+  survey is compared, and it is regenerated with every layout change.
+- Thresholds that live in unit tests that also judge the app:
+  - `tests/ui-rules/lampRig.test.ts`'s 1.2-point mockup-seat tolerance.
+  - `tests/ui-rules/cardShadows.test.ts`'s shadow bounds, which are the owner's 2026-11-03 ruling.
+- `tests/e2e/pileBeaten.spec.ts` and `reconnect.spec.ts`, which mostly assert app behaviour.
+- A threshold written inside app code. The list covers only the files it names.
+
+Some targets take their values from the app, so a code change moves them without touching the
+list:
+
+- `tests/e2e/helpers/lanternDepartures.ts` injects `LIGHT_ABOVE`, `GLIDE`, `LAMP_LIGHT` and
+  `lampPools` from `components/table/lampRig.ts`.
+- `tests/e2e/helpers/handParity.ts` asserts `HAND_NEAR_RATIO` from `components/cardFaceModel.ts`.
 
 **Landing a target change.** First, open a pull request that touches only targets and cites the
 decision. Then open the code pull request, which meets the new target. A pull-request test that
@@ -391,10 +426,18 @@ expected-failing, citing the decision, and the code pull request removes the mar
 target, a third, target-only pull request follows the code pull request. Never move the code and
 the target together to dodge this. A ratchet that loosens itself is what rule 52 exists to stop.
 
-**CODEOWNERS binds only under branch protection that requires code-owner review.** The owner
-named is `OWNER` in `tools/ci/target-freeze.mjs`. GitHub silently ignores a CODEOWNERS entry for
-an account that has no write access, so check with
-`gh api repos/metasito/murlan/codeowners/errors`.
+**A target helper that imports an app module** (an export's name, the `OfflineSave` shape, a
+`testID`) changes in three steps, expand and contract:
+
+1. A code pull request adds the new name beside the old one.
+2. A target-only pull request switches the targets to the new name.
+3. A code pull request removes the old name.
+
+**CODEOWNERS is routing, not the guard.** It routes target changes to the repository owner, `OWNER`
+in the script. The owner also authors the pull requests, so it adds no required review today, and
+it binds only under branch protection that requires code-owner review. The script is the guard.
+CODEOWNERS is there for a future second reviewer. GitHub silently ignores an entry for an account
+without write access, so check it with `gh api repos/metasito/murlan/codeowners/errors`.
 
 ## Where a forbidden-shape rule goes
 
