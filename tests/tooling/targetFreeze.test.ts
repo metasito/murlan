@@ -7,7 +7,7 @@ import path from "node:path";
 import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
-import { CODE, TARGETS, codeowners, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { CODE, TARGETS, codeowners, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -77,7 +77,7 @@ describe("the workflow runs base's script on the head's objects, and nothing of 
     const uses = steps().filter((s) => s.uses);
     assert.deepEqual(uses.map((s) => s.uses!.split("@")[0]), ["actions/checkout", "actions/setup-node"]);
     for (const s of uses) assert.ok(ci.includes(`uses: ${s.uses}`), `${s.uses} is not ci.yml's pin`);
-    assert.deepEqual(uses[0].with, { "fetch-depth": 0 });
+    assert.deepEqual(uses[0].with, { "fetch-depth": 0, "persist-credentials": false });
     assert.deepEqual(uses[1].with, { "package-manager-cache": false, "node-version-file": ".node-version" });
   });
 
@@ -86,11 +86,27 @@ describe("the workflow runs base's script on the head's objects, and nothing of 
     assert.equal(runs.length, 1);
     assert.equal(steps().length, 3);
     for (const s of steps()) assert.equal(s.if, undefined);
-    assert.deepEqual(runs[0].env, { PR: "${{ github.event.pull_request.number }}", BASE: "${{ github.event.pull_request.base.sha }}" });
+    assert.deepEqual(runs[0].env, { PR: "${{ github.event.pull_request.number }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}" });
     assert.equal(
       freezeRun(),
-      'git fetch --no-tags origin "+refs/pull/$PR/head:refs/freeze/head"\nnode tools/ci/target-freeze.mjs "$BASE" refs/freeze/head\n',
+      [
+        'git fetch --no-tags origin "+refs/pull/$PR/head:refs/freeze/head"',
+        '[ "$(git rev-parse refs/freeze/head)" = "$HEAD_SHA" ] || { echo "::error::refs/pull/$PR/head is not $HEAD_SHA."; exit 1; }',
+        "node tools/ci/target-freeze.mjs HEAD refs/freeze/head",
+        "",
+      ].join("\n"),
     );
+  });
+
+  test("no other workflow names a job Target freeze, whose check would stand in for this one", () => {
+    const dirOf = path.join(root, ".github", "workflows");
+    const workflows = fs.readdirSync(dirOf).map((f) => ({ path: `.github/workflows/${f}`, text: fs.readFileSync(path.join(dirOf, f), "utf8") }));
+    assert.ok(workflows.length > 5);
+    assert.deepEqual(impostors(workflows), []);
+    for (const line of ["    name: Target freeze", "    name: 'Target freeze'", '      - name: "target freeze" # x']) {
+      assert.deepEqual(impostors([{ path: ".github/workflows/ci.yml", text: `jobs:\n  x:\n${line}\n` }]), [".github/workflows/ci.yml"], line);
+    }
+    assert.deepEqual(impostors([{ path: WORKFLOW, text: workflowText }]), []);
   });
 });
 
@@ -127,18 +143,17 @@ describe("planted diffs", () => {
   };
   const REFUSED = /^::error::this change moves the parity targets and the code they judge together \(RULES\.md 52\)\./;
   const pulls: string[] = [];
-  const asPullRequest = (name: string) => {
+  const asPullRequest = (name: string, headSha = at().text(["rev-parse", name])) => {
     pulls.push(name);
     const pr = String(pulls.length);
     at()(["update-ref", `refs/pull/${pr}/head`, name]);
     const runner = fs.mkdtempSync(path.join(os.tmpdir(), "target-freeze-runner-"));
     temps.push(runner);
     git(os.tmpdir())(["clone", "-q", "--branch", "main", dir, runner]);
-    const base = at().text(["rev-parse", "main"]);
     const r = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", freezeRun()], {
       cwd: runner,
       encoding: "utf8",
-      env: { ...process.env, PR: pr, BASE: base },
+      env: { ...process.env, PR: pr, HEAD_SHA: headSha },
     });
     return { code: r.status, out: r.stdout + r.stderr };
   };
@@ -187,7 +202,14 @@ describe("planted diffs", () => {
       write("lib/x.ts", "moved\n");
     });
     branch("empty", () => {});
-    branch("floor", () => fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs")));
+    branch("retired", () => {
+      fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
+      edit(SELF, '  { pattern: "tests/e2e/tiers.mjs", what: "which specs are nightly" },\n', "");
+    });
+    branch("spoof", () => {
+      write(".github/workflows/ci.yml", "jobs:\n  fake:\n    name: Target freeze\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n");
+      write("components/GameTable.tsx", "moved\n");
+    });
     branch("verdict-tampered", () => {
       targetAndCode();
       edit(SELF, "if (targets.length && code.length)", "if (false)");
@@ -273,10 +295,34 @@ describe("planted diffs", () => {
     }
   });
 
-  test("a pattern that names no file in the head turns it red", () => {
-    const { code, out } = judge("floor");
+  test("a pattern that names no file in the base turns it red", () => {
+    const { code, out } = judge("mixed", "retired");
     assert.equal(code, 1);
-    assert.match(out, /name no file in floor.*tests\/e2e\/tiers\.mjs/);
+    assert.match(out, /^::error::these patterns name no file in retired, so the freeze no longer sees them: tests\/e2e\/tiers\.mjs$/);
+  });
+
+  test("a target retires in one pull request: its file and its pattern go together", () => {
+    assert.deepEqual(judge("retired"), { code: 0, out: "targets only (2 files)" });
+  });
+
+  test("a head whose other workflow names a job Target freeze is refused", () => {
+    assert.deepEqual(judge("spoof"), {
+      code: 1,
+      out: "::error::.github/workflows/ci.yml name a job Target freeze, whose check would stand in for this one (RULES.md 52).",
+    });
+  });
+
+  test("the workflow judges against the checked-out tip of main, so a head that merged a newer main is judged on its own change", () => {
+    const merged = asPullRequest("targets-merging-main");
+    assert.equal(merged.code, 0, merged.out);
+    assert.match(merged.out, /^targets only \(1 files\)$/m);
+    assert.match(judge("targets-merging-main", "main~1").out, REFUSED);
+  });
+
+  test("the workflow refuses a fetched head that is not the event's head", () => {
+    const stale = asPullRequest("code-only", at().text(["rev-parse", "mixed"]));
+    assert.equal(stale.code, 1);
+    assert.match(stale.out, /^::error::refs\/pull\/\d+\/head is not [0-9a-f]{40}\.$/m);
   });
 
   test("the workflow's run, from base's checkout, refuses a head that loosens its own copy", () => {

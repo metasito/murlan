@@ -373,27 +373,41 @@ test or rewrites the workflow is judged by the list it started from; its edits t
 once it has merged. A check inside `ci.yml` cannot do this: on `pull_request` the head's `ci.yml`
 runs, and it decides whether any step of it runs at all.
 
-**Nothing of the head runs.** The job checks out the base, fetches `refs/pull/<n>/head` as git
-objects, and runs base's script on `<base.sha>...<head>` with renames off, so a target moved out of
-its path still counts where it was. The head is read only through `git diff` and `git ls-tree`: no
-checkout, install or import of its files, no secrets, read-only `contents`, and the pull request's
-fields reach the shell through `env:`. Running the head's code there would be a pwn-request.
-`edited` is among its types, so a stack retargeted onto `main` is judged again on its new base.
+**Nothing of the head runs.** The job checks out main's tip without persisting its token, fetches
+`refs/pull/<n>/head` as git objects, refuses it unless it is the event's `head.sha`, and runs main's
+script on `HEAD...<head>` with renames off, so a target moved out of its path still counts where it
+was. The head is read only through `git diff`, `git ls-tree` and `git show`: no checkout, install or
+import of its files, no secret, read-only `contents`, and the pull request's fields reach the shell
+through `env:`. Running the head's code there would be a pwn-request. `edited` is among its types,
+so a stack retargeted onto `main` is judged again on its new base.
 
-**The ruleset makes it binding.** The `main` ruleset routes every change through a pull request,
-with no bypass actors, and requires the `Target freeze` status check beside `CI gate`; a workflow
-that is not required can be red and still merge. The pull request adding the workflow is not judged
-by it, since main has no copy yet; the owner adds the required check once it has merged.
+**The ruleset makes it binding, and what stays spoofable.** The `main` ruleset routes every change
+through a pull request, with no bypass actors. The owner is to require `Target freeze` there once
+this workflow has merged; the pull request adding it is not judged by it, since main has no copy
+yet. A ruleset's "Require workflows to pass" rule would bind the check to this file on `main`, and
+GitHub's docs say it accepts `pull_request_target` workflows, but it exists only in organization
+rulesets, and `metasito/murlan` belongs to a user account. So the requirement is a status check,
+matched by name, and any workflow's job can report a check of that name: a head's `ci.yml` runs on
+`pull_request` and could add a green `Target freeze` of its own. Main's script refuses a head whose
+workflows name a job `Target freeze` outside this file (`impostors`), which turns the real check
+red. Whether GitHub then blocks the merge on the red run or accepts the green one is not measured;
+nor does the script see a name built by an expression. Moving the repository to an organization
+with the workflows rule closes both.
+
+A change to the guard (the script, this workflow, its test, CODEOWNERS) is a target change, and
+today it lands with no review required.
 
 `tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list, every nightly
-spec inside it, and the workflow's shape: its trigger, branches and types, read-only permissions, a
-checkout of the base, pinned actions, and its one `run`, verbatim. It plants diffs in a scratch
-repository and judges them: mixed, target-only and code-only diffs; a target and the code in
-separate commits; a rename out of the list; a deleted nightly spec; the workflow beside code; a
+spec inside it, no other workflow naming a job `Target freeze`, and the workflow's shape: its
+trigger, branches and types, read-only permissions, a checkout of the base, pinned actions, and its
+one `run`, verbatim. It plants diffs in a scratch repository and judges them: mixed, target-only
+and code-only diffs; a target and the code in separate commits; a rename out of the list; a deleted
+nightly spec; the workflow beside code; a target retired in one pull request; an impostor job; a
 branch that merges main; a merge ref. It runs the workflow's own `run` from a clone of the base on
-a planted `refs/pull/<n>/head` that tampers the verdict or empties the list, which head's copy
-passes and base's refuses. The guard is floored: a pattern that names no file in the head turns it
-red, and so does a base or head that is missing, cannot be read, or is the same commit.
+a planted `refs/pull/<n>/head`: one that tampers the verdict or empties the list, which head's copy
+passes and base's refuses; one that merged a newer main; and one that is not the event's head. The
+guard is floored: a pattern that names no file in the base turns it red, and so does a base or head
+that is missing, cannot be read, or is the same commit.
 
 **What it leaves out, on purpose.** These change with the code by design, and freezing them would
 make every intended change unlandable:

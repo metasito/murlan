@@ -36,11 +36,12 @@ export const TARGETS = Object.freeze([
   { pattern: ".github/CODEOWNERS", what: "who reviews this list" },
 ]);
 
-/** What the targets judge: directories at the repository root. */
 export const CODE = Object.freeze(["app/", "components/", "lib/"]);
 
-/** The owner's GitHub login, which authors this repository's pull requests. */
 export const OWNER = "@rotonmeta";
+
+export const WORKFLOW = ".github/workflows/target-freeze.yml";
+export const CHECK = "Target freeze";
 
 /** @param {string} pattern */
 export function matcher(pattern) {
@@ -87,10 +88,20 @@ export function changedSince(base, head, at = git()) {
   return at.text(["diff", "--name-only", "--no-renames", "-z", `${base}...${head}`]).split("\0").filter(Boolean);
 }
 
-/** Each pattern must still name a file in the tree judged, or the list has stopped looking at it. */
+/** Each pattern must still name a file in the base, or the list has stopped looking at it. */
 export function unmatched(tracked) {
   const seen = (/** @type {(file: string) => boolean} */ m) => tracked.some(m);
   return [...TARGETS.filter((_, i) => !seen(targetMatchers[i])).map((t) => t.pattern), ...CODE.filter((_, i) => !seen(codeMatchers[i]))];
+}
+
+/**
+ * The workflows other than WORKFLOW that name something CHECK: a check run of theirs answers the
+ * ruleset's requirement as the real one does.
+ * @param {{ path: string, text: string }[]} workflows
+ */
+export function impostors(workflows) {
+  const named = new RegExp(`^[ \\t-]*name:[ \\t]*(["']?)${CHECK}\\1[ \\t]*(#.*)?$`, "im");
+  return workflows.filter((w) => w.path !== WORKFLOW && named.test(w.text)).map((w) => w.path);
 }
 
 export function codeowners() {
@@ -120,12 +131,22 @@ export function run(base, head, at = git(), log = console.log) {
       log(`::error::${base} is the commit under judgement, so there is no change set to judge.`);
       return 1;
     }
-    const missing = unmatched(at.text(["ls-tree", "-r", "-z", "--name-only", head]).split("\0").filter(Boolean));
+    const missing = unmatched(at.text(["ls-tree", "-r", "-z", "--name-only", base]).split("\0").filter(Boolean));
     if (missing.length) {
-      log(`::error::these patterns name no file in ${head}, so the freeze no longer sees them: ${missing.join(", ")}`);
+      log(`::error::these patterns name no file in ${base}, so the freeze no longer sees them: ${missing.join(", ")}`);
       return 1;
     }
     changed = changedSince(base, head, at);
+    const workflows = at
+      .text(["ls-tree", "-z", "--name-only", head, "--", ".github/workflows/"])
+      .split("\0")
+      .filter((f) => /\.ya?ml$/.test(f))
+      .map((f) => ({ path: f, text: at.text(["show", `${head}:${f}`]) }));
+    const spoofs = impostors(workflows);
+    if (spoofs.length) {
+      log(`::error::${spoofs.join(", ")} name a job ${CHECK}, whose check would stand in for this one (RULES.md 52).`);
+      return 1;
+    }
   } catch (err) {
     log(`::error::no change set from ${base} to ${head}: ${String(err?.message ?? err).split("\n")[0]}`);
     return 1;
