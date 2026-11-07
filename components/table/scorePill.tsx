@@ -258,7 +258,7 @@ export function ScorePill({
           {...a11yHidden()}
           style={[styles.chip, { height: anchor.restH - 2, paddingHorizontal: PX.padH * u, gap: PX.between * u }, chipStyle]}
         >
-          <Svg width={PX.icon * u} height={PX.icon * u} viewBox="0 0 11 11" fill={Colors.gold}>
+          <Svg width={PX.icon * u} height={PX.icon * u} viewBox="0 0 11 11" preserveAspectRatio="xMidYMid meet" fill={Colors.gold}>
             <Rect x={0} y={5} width={3} height={6} rx={0.6} />
             <Rect x={4} y={1.5} width={3} height={9.5} rx={0.6} />
             <Rect x={8} y={3.5} width={3} height={7.5} rx={0.6} opacity={0.7} />
@@ -473,7 +473,7 @@ function StandingRowView({
 
 function Chevron({ up, unit }: { up: boolean; unit: number }) {
   return (
-    <Svg width={PX.chevW * unit} height={PX.chevH * unit} viewBox="0 0 7 5">
+    <Svg width={PX.chevW * unit} height={PX.chevH * unit} viewBox="0 0 7 5" preserveAspectRatio="xMidYMid meet">
       <Path
         d={up ? "M.8 4l2.7-2.6L6.2 4" : "M.8 1l2.7 2.6L6.2 1"}
         fill="none"

@@ -85,11 +85,92 @@ const GUARDS = [
   },
   {
     id: "skia-image-fit",
-    why: "A Skia <Image> with no `fit` is drawn `contain`: an image whose aspect differs from its box is letterboxed, and only on windows shaped unlike the one it was checked on. Name the fit; an image laid over a design rect is `fill`, as components/table/feltCanvas.tsx draws its cloth.",
-    selector: 'JSXOpeningElement[name.name="Image"]:has(JSXAttribute[name.name="image"]):not(:has(JSXAttribute[name.name="fit"]))',
+    why: "A Skia <Image> with no `fit` is drawn `contain`, and an <ImageShader> `none`: an image whose aspect or pixel size differs from its box is letterboxed or cropped, and only on windows shaped unlike the one it was checked on. Name the fit; an image laid over a design rect is `fill`, as components/table/feltCanvas.tsx draws its cloth.",
+    selector: 'JSXOpeningElement[name.name=/^(Image|ImageShader)$/]:has(JSXAttribute[name.name="image"]):not(:has(JSXAttribute[name.name="fit"]))',
     files: DRAWN,
-    plant: { file: "components/Plant.tsx", code: ["const a = <Image image={cloth} x={0} y={0} width={w} height={h} />;", "const b = <Image\n  image={rail}\n  width={w}\n  height={h}\n/>;"].join("\n"), hits: 2 },
-    spare: ['const a = <Image image={cloth} fit="fill" width={w} height={h} />;', 'const b = <Image source={art} resizeMode="stretch" />;', "const c = <Atlas image={sheet} sprites={s} transforms={t} />;"].map((code) => ({ file: "components/Plant.tsx", code })),
+    plant: { file: "components/Plant.tsx", code: [
+      "const a = <Image image={cloth} x={0} y={0} width={w} height={h} />;",
+      "const b = <Image\n  image={rail}\n  width={w}\n  height={h}\n/>;",
+      "const c = <ImageShader image={weave} rect={r} />;",
+    ].join("\n"), hits: 3 },
+    spare: [
+      'const a = <Image image={cloth} fit="fill" width={w} height={h} />;',
+      'const b = <Image source={art} resizeMode="stretch" />;',
+      "const c = <Atlas image={sheet} sprites={s} transforms={t} />;",
+      'const d = <ImageShader image={weave} fit="fill" rect={r} />;',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "image-resize-mode",
+    why: "A React Native <Image> or <ImageBackground> with no `resizeMode` is drawn `cover`: art whose aspect differs from its box is cropped, and only in boxes shaped unlike the one it was checked in. Name it as the prop, as components/CardView.tsx draws its card art.",
+    selector: 'JSXOpeningElement[name.name=/^(Image|ImageBackground)$/]:has(JSXAttribute[name.name="source"]):not(:has(JSXAttribute[name.name="resizeMode"]))',
+    files: DRAWN,
+    plant: { file: "components/Plant.tsx", code: [
+      "const a = <Image source={art} style={ART_FILL} />;",
+      "const b = <ImageBackground\n  source={felt}\n  style={s}\n/>;",
+      "const c = <MaskedView maskElement={<Image source={art} style={s} />} />;",
+    ].join("\n"), hits: 3 },
+    spare: [
+      'const a = <Image source={art} style={ART_FILL} resizeMode="stretch" />;',
+      'const b = <Image image={cloth} fit="fill" width={w} height={h} />;',
+      'const c = <ImageBackground source={felt} resizeMode="cover" style={s} />;',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "svg-aspect",
+    why: "An <Svg> with a `viewBox` and no `preserveAspectRatio` is drawn `xMidYMid meet`: a box whose aspect drifts from the viewBox's letterboxes the drawing inside it. Name it, as components/table/scorePill.tsx draws its icons.",
+    selector: 'JSXOpeningElement[name.name="Svg"]:has(JSXAttribute[name.name="viewBox"]):not(:has(JSXAttribute[name.name="preserveAspectRatio"]))',
+    files: DRAWN,
+    plant: { file: "components/Plant.tsx", code: [
+      'const a = <Svg width={w} height={h} viewBox="0 0 7 5" />;',
+      "const b = <Svg\n  viewBox={BOX}\n  width={s}\n  height={s}\n>{x}</Svg>;",
+    ].join("\n"), hits: 2 },
+    spare: [
+      'const a = <Svg width={w} height={h} viewBox="0 0 7 5" preserveAspectRatio="xMidYMid meet" />;',
+      "const b = <Svg width={w} height={h} style={s} />;",
+      'const c = <View viewBox="0 0 1 1" />;',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "onlayout-size-only",
+    why: "On web `onLayout` is a ResizeObserver, which fires on a change of size and never of position, so an x or y read from it goes stale the first time the box moves at the same size: take only width and height from it, as components/NotificationBanner.tsx does.",
+    selector: [
+      'MemberExpression[property.name=/^(x|y|left|top)$/][object.property.name="layout"][object.object.property.name="nativeEvent"]',
+      'VariableDeclarator[init.property.name="layout"][init.object.property.name="nativeEvent"] > ObjectPattern > Property[key.name=/^(x|y|left|top)$/]',
+      'Property[key.name="nativeEvent"] > ObjectPattern > Property[key.name="layout"] > ObjectPattern > Property[key.name=/^(x|y|left|top)$/]',
+    ].join(", "),
+    files: SCREENS,
+    plant: { file: "components/Plant.tsx", code: [
+      "const a = (e) => setTop(e.nativeEvent.layout.y);",
+      "const { x, width } = e.nativeEvent.layout;",
+      "const c = ({ nativeEvent: { layout: { y } } }) => setTop(y);",
+    ].join("\n"), hits: 3 },
+    spare: [
+      "const a = (e) => setH(e.nativeEvent.layout.height);",
+      "const { width, height } = e.nativeEvent.layout;",
+      "const c = (e) => setY(e.nativeEvent.contentOffset.y);",
+      "const d = seat.layout.x;",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "window-through-orientation",
+    why: "useWindowDimensions reads a size iOS can hand over in the wrong orientation on a cold start, and a second read of it drifts from the first: read the window with useOrientedWindow() or useIsLandscape() from lib/device/orientation.tsx, which measures the app's own root view.",
+    selector: [
+      'ImportSpecifier[imported.name=/^(useWindowDimensions|Dimensions)$/]',
+      'MemberExpression[property.name=/^(useWindowDimensions|Dimensions)$/]',
+    ].join(", "),
+    files: SCREENS,
+    ignores: [{ glob: "lib/device/orientation.tsx", reason: "the one reader of the window, falling back to it until the root view is measured" }],
+    plant: { file: "components/Plant.tsx", code: [
+      'import { View, useWindowDimensions } from "react-native";',
+      'import { Dimensions as D } from "react-native";',
+      "const { width } = RN.useWindowDimensions();",
+    ].join("\n"), hits: 3 },
+    spare: [
+      'import { useOrientedWindow } from "@/lib/device/orientation";',
+      "const { width, height } = useOrientedWindow();",
+      'type Size = ScaledSize;\nconst s = "useWindowDimensions";',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "intents-through-send",
