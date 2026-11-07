@@ -201,8 +201,10 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 - The secret scan reads every branch; two known false positives redden runs. *being fixed in this change*.
 - The browser test report job never runs `npm ci`; `tests/e2e/timings.json` stale since 2026-10-21. *being fixed in this change*.
 - The integration servers' port probe-then-bind race with `reusePort`, and their child stderr silenced. *being fixed in this change*.
-- Sign-out closes a socket mid-handshake; Chrome's warning fails strict specs. *being fixed in this change*.
-- `tests/e2e/tapTargets.spec.ts` builds usernames inline, the collision-prone way. *being fixed in this change*.
+- Sign-out closes a socket mid-handshake; Chrome's warning fails strict specs. *fixed here* (`lib/socket.ts`, `tests/native/socketTeardown.test.tsx`).
+- Riprova calls `socket?.disconnect().connect()` (`context/OnlineGameContext.tsx`); pressed while an attempt is still opening it closes a connecting websocket the same way.
+- `halt` in `context/SocketContext.tsx` calls `socket.disconnect()` directly; it normally runs once the engine has settled, but nothing guarantees it.
+- `tests/e2e/tapTargets.spec.ts` builds usernames inline, the collision-prone way. *fixed here*.
 - 17 browser shards each pull database images from a registry; use job `services:` or one cached image.
 - `npm audit` as a PR gate reds unrelated PRs on a new advisory; gate only on the lockfile diff, audit on the schedule.
 - Main pushes skip the suite when the tree passed on its PR, so main's 0% failure rate measures the skip.
