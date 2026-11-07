@@ -249,10 +249,7 @@ for (const size of SIZES) {
     await sweepSizes(page, "sign-in");
 
     await openApp(page, baseURL!);
-    await registerNewAccount(
-      page,
-      `tap${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
-    );
+    await registerNewAccount(page, uniqueUsername("tap"));
     await goToOnlineLobby(page);
     await settled(page, 2500);
     await expectNoBuriedControls(page, "online lobby", 6);
@@ -288,10 +285,7 @@ for (const size of SIZES) {
     await page.setViewportSize({ width: size.width, height: size.height });
 
     await openApp(page, baseURL!);
-    await registerNewAccount(
-      page,
-      `tapp${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
-    );
+    await registerNewAccount(page, uniqueUsername("tapp"));
     await page.getByRole("button", { name: "Il mio profilo" }).click();
     await settled(page, 3000);
     await expectNoBuriedControls(page, "profile", 2);
@@ -451,10 +445,7 @@ test("every menu screen stays capped at 1920 wide", async ({ page, baseURL }) =>
   await assertCapped("not-found");
 
   await openApp(page, baseURL!);
-  await registerNewAccount(
-    page,
-    `capw${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
-  );
+  await registerNewAccount(page, uniqueUsername("capw"));
 
   // Profile and leaderboard are reached from the home menu, before ever
   // visiting the online lobby.
