@@ -184,6 +184,7 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 - Felt cloth letterboxed on any window not shaped 874×402 (iPad: black bands, side seats dark). *fixed here*.
 - lampSeats floor asserted a pile move the centring design removed. *fixed here*.
 - The online game screen sized its rail, and the offline pill its place, from `useWindowDimensions` while the table read `useOrientedWindow`: two reads of the window that can disagree on a cold start (#819, #821). *fixed here* (S7).
+- A modal's contents read the window measured behind it, which can go stale while the modal is up (#1378); `AppModal` now measures its own window. *fixed here* (S7).
 - The baked-cloth cache (3 targets) misses every turn in a 4-player game: two full-resolution bakes
   with GPU readback, synchronous in render, each turn ([performance.md](performance.md) §1).
 - The felt runs the live procedural shader during every lamp glide (~2 s), which is most of play.

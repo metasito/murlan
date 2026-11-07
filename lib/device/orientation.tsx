@@ -103,7 +103,7 @@ const OrientationContext = createContext<WindowSize | null>(null);
  * actually on screen, so it carries the true orientation from the first
  * layout pass regardless of what the bridge handed over.
  */
-export function OrientationProvider({ children }: { children: ReactNode }) {
+export function OrientationProvider({ children, testID = "orientation-root" }: { children: ReactNode; testID?: string }) {
   const fallback = useWindowDimensions();
   const [measured, setMeasured] = useState<WindowSize | null>(null);
 
@@ -115,7 +115,7 @@ export function OrientationProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <View testID="orientation-root" style={styles.fill} onLayout={onLayout}>
+    <View testID={testID} style={styles.fill} onLayout={onLayout}>
       <OrientationContext.Provider value={measured ?? fallback}>
         {children}
       </OrientationContext.Provider>

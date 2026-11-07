@@ -6,6 +6,7 @@
 import React from "react";
 import { Modal } from "react-native";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { OrientationProvider } from "@/lib/device/orientation";
 
 export function AppModal({
   visible = true,
@@ -39,7 +40,8 @@ export function AppModal({
       supportedOrientations={["portrait", "landscape"]}
       accessibilityLabel={accessibilityLabel}
     >
-      {children}
+      {/* Its own window: the root view behind it can measure stale while it is up (#1378). */}
+      <OrientationProvider testID="modal-orientation-root">{children}</OrientationProvider>
     </Modal>
   );
 }
