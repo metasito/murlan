@@ -467,7 +467,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
       <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={greyLayer}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
-        {rail && <Image image={rail} x={0} y={0} width={width} height={height} />}
+        {rail && <Image image={rail} fit="fill" x={0} y={0} width={width} height={height} />}
         <Group clip={OUTER}>
           <Group clip={FELT_EDGE} invertClip>
             <Rect x={0} y={0} width={width} height={height} blendMode="softLight">
@@ -480,8 +480,8 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
         </RoundedRect>
         {cloth ? (
           <>
-            <Image image={cloth.left} x={0} y={0} width={width} height={height} />
-            <Image image={cloth.right} x={0} y={0} width={width} height={height} opacity={lean} />
+            <Image image={cloth.left} fit="fill" x={0} y={0} width={width} height={height} />
+            <Image image={cloth.right} fit="fill" x={0} y={0} width={width} height={height} opacity={lean} />
             {flaring && (
               <Rect x={0} y={0} width={width} height={height} blendMode="plus">
                 <RadialGradient c={light} r={flareReach} colors={flareColors} positions={FLARE_POSITIONS} />
