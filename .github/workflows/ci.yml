@@ -171,13 +171,16 @@ jobs:
           fi
 
       # The pinned image, not the official gitleaks-action: that action scans
-      # only the commits a push or PR adds, and this needs the whole history
-      # every run. Runs through the shared script (see there) rather than a
-      # docker command written out here, so the self-test below exercises the
+      # only the commits a push adds, and main's push and schedule read main's
+      # whole history. A pull request answers for its own commits, never for
+      # another branch's. Runs through the shared script (see there) rather than
+      # a docker command written out here, so the self-test below exercises the
       # identical invocation.
       - name: gitleaks
         shell: bash
-        run: bash .github/scripts/gitleaks-scan.sh "$PWD" gitleaks-output.txt
+        env:
+          SCAN_RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || 'HEAD' }}
+        run: bash .github/scripts/gitleaks-scan.sh "$PWD" gitleaks-output.txt "$SCAN_RANGE"
 
       # gitleaks logs "N commits scanned" to stderr, not stdout — the step
       # above must fold both into gitleaks-output.txt or this reads an empty
@@ -215,7 +218,7 @@ jobs:
           # bash runs this script with -e, and the leak-found exit below is
           # the expected outcome, not a script error — `|| status=$?` reads
           # it without that exit code aborting the step before it is checked.
-          bash .github/scripts/gitleaks-scan.sh "$scratch" gitleaks-selftest.txt || status=$?
+          bash .github/scripts/gitleaks-scan.sh "$scratch" gitleaks-selftest.txt HEAD || status=$?
           status=${status:-0}
           rm -rf "$scratch"
 
