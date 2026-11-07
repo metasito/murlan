@@ -24,6 +24,31 @@ export interface PendingAck<E extends keyof Outgoing = keyof Outgoing> {
 
 type AuthCallback = (cb: (data: Record<string, unknown>) => void) => void;
 
+/** The socket's Manager: its engine's state, and the `open` / `error` it raises as that engine settles. */
+class FakeManager {
+  readonly reconnection = jest.fn();
+  readonly engine: { readyState: 'opening' | 'open' | 'closing' | 'closed' } = { readyState: 'closed' };
+  private listeners = new Map<string, Listener[]>();
+
+  once(event: 'open' | 'error', fn: Listener): this {
+    const wrapper = Object.assign((...args: never[]) => {
+      this.off(event, wrapper);
+      fn(...args);
+    }, { inner: fn });
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), wrapper]);
+    return this;
+  }
+
+  off(event: 'open' | 'error', fn: Listener): this {
+    this.listeners.set(event, (this.listeners.get(event) ?? []).filter((l) => l !== fn && (l as { inner?: Listener }).inner !== fn));
+    return this;
+  }
+
+  emit(event: 'open' | 'error', ...args: unknown[]): void {
+    [...(this.listeners.get(event) ?? [])].forEach((l) => (l as (...a: unknown[]) => void)(...args));
+  }
+}
+
 /**
  * The client socket `io()` hands lib/socket.ts. It never talks to anything: a test plays the
  * server through `serverEmit`, `open` and the acks it reads back.
@@ -43,10 +68,11 @@ export class FakeSocket {
   });
   readonly disconnect = jest.fn(() => {
     this.active = false;
+    this.io.engine.readyState = 'closed';
     if (this.connected) this.drop('io client disconnect');
     return this;
   });
-  readonly io = { reconnection: jest.fn() };
+  readonly io = new FakeManager();
   private readonly listeners = new Map<string, Listener[]>();
   /** How often each event was subscribed and unsubscribed over the socket's life. */
   readonly subscriptions = new Map<string, { on: number; off: number }>();
@@ -64,6 +90,7 @@ export class FakeSocket {
   private attempt(): void {
     if (this.connected) return;
     this.active = true;
+    this.io.engine.readyState = 'opening';
     this.credentials = this.handshake();
   }
 
@@ -160,8 +187,11 @@ export class FakeSocket {
     [...this.unanswered].forEach((drop) => drop());
   }
 
-  /** The handshake succeeding. */
+  /** The handshake succeeding: the engine opens, then the namespace connects unless that closed it. */
   open(): void {
+    this.io.engine.readyState = 'open';
+    this.io.emit('open');
+    if (this.io.engine.readyState !== 'open') return;
     this.connected = true;
     this.active = true;
     this.serverEmit('connect');
@@ -170,12 +200,22 @@ export class FakeSocket {
   /** The connection lost from the server's side; socket.io keeps reconnecting. */
   drop(reason: string): void {
     this.connected = false;
+    this.io.engine.readyState = 'closed';
     this.serverEmit('disconnect', reason);
   }
 
   /** The server's middleware refusing the handshake: socket.io gives up on this socket. */
   refuse(err: Error): void {
     this.active = false;
+    this.io.engine.readyState = 'closed';
+    this.serverEmit('connect_error', err);
+  }
+
+  /** The engine failing before it opened, as a refused upgrade does. */
+  failToOpen(err: Error): void {
+    this.active = false;
+    this.io.engine.readyState = 'closed';
+    this.io.emit('error', err);
     this.serverEmit('connect_error', err);
   }
 

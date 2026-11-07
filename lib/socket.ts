@@ -19,6 +19,7 @@ export type Socket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
 interface SocketEntry {
   socket: Socket;
   handlers: { onAuthFailure: () => void };
+  retire: () => void;
 }
 
 const socketMap = new Map<string, SocketEntry>();
@@ -75,15 +76,17 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
   }
   const handlers = { onAuthFailure };
   let latestAttempt = 0;
+  let retired = false;
   const baseUrl = getApiUrl().replace(/\/$/, "");
   const socket = io(baseUrl, {
     // Called before every connection attempt, including each reconnect, so a
     // fresh ticket is minted every time (tickets are single-use).
     auth: (cb: (data: Record<string, unknown>) => void) => {
+      if (retired) return;
       if (Platform.OS === "web") return cb({ protocolVersion: PROTOCOL_VERSION });
       const attempt = ++latestAttempt;
       void fetchSocketTicket(() => handlers.onAuthFailure()).then((ticket) => {
-        if (attempt !== latestAttempt) return;
+        if (attempt !== latestAttempt || retired) return;
         cb(ticket ? { ticket, protocolVersion: PROTOCOL_VERSION } : { protocolVersion: PROTOCOL_VERSION });
       });
     },
@@ -104,18 +107,36 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
       if (err.message === NOT_AUTHENTICATED) handlers.onAuthFailure();
     });
   }
-  socketMap.set(userId, { socket, handlers });
+  socketMap.set(userId, { socket, handlers, retire: () => (retired = true) });
   mapListeners.forEach((fn) => fn());
   return socket;
 }
 
 
+/**
+ * A retired socket never hands over credentials again, so it never sends the
+ * namespace CONNECT: nothing can be emitted or received on it once signed out.
+ */
 export function disconnectSocket(userId: string) {
-  const s = socketMap.get(userId)?.socket;
-  if (s) {
-    s.removeAllListeners();
-    s.disconnect();
-    socketMap.delete(userId);
-    mapListeners.forEach((fn) => fn());
+  const entry = socketMap.get(userId);
+  if (!entry) return;
+  const { socket } = entry;
+  entry.retire();
+  entry.handlers.onAuthFailure = () => {};
+  socket.removeAllListeners();
+  // Closing a websocket still CONNECTING makes the browser log an error; wait
+  // for the engine to settle and close it then.
+  if (socket.io.engine?.readyState === "opening") {
+    const close = () => {
+      socket.io.off("open", close);
+      socket.io.off("error", close);
+      socket.disconnect();
+    };
+    socket.io.once("open", close);
+    socket.io.once("error", close);
+  } else {
+    socket.disconnect();
   }
+  socketMap.delete(userId);
+  mapListeners.forEach((fn) => fn());
 }
