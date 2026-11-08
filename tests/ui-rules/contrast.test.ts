@@ -294,12 +294,12 @@ for (const [file, ref] of TABLE_TEXT) {
   const min = DISABLED.has(id) ? LARGE_MIN : BODY_MIN;
   const spec = backdrop.measuredBy;
   if (spec) {
-    test(`the table's ${ref} is measured over the real felt by ${spec}`, () => {
+    test(`the table's ${id} is measured over the real felt by ${spec}`, () => {
       assert.match(readFileSync(path.join(repoRoot, spec), "utf8"), /seat-name[\s\S]*toBeGreaterThanOrEqual\(BODY_MIN\)/);
     });
     continue;
   }
-  test(`the table's ${ref} clears ${min}:1 on every felt stop`, () => {
+  test(`the table's ${id} clears ${min}:1 on every felt stop`, () => {
     const ink = styleInk(file, ref);
     assert.ok(ink, `${id} has no color`);
     const fills = [backdrop.plate ?? []].flat().map((plate) => {
