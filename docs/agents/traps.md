@@ -204,5 +204,7 @@ holder (`reapWorktree` in `tools/loop/reap.mjs`).
   swaying Skia lamp there took the main thread and timed out the whole suite. A spec of Skia's
   own pixels calls `skiaOnSoftware(page)` first (`tests/e2e/helpers/tableTrace.ts`);
   `tests/e2e/feltIdle.spec.ts` pins both halves, and `tests/e2e/tableAtRest.spec.ts` counts, frame by
-  frame on the virtual clock, what a settled Skia table still draws. SwiftShader's `GPU stall due to ReadPixels`
+  frame on the virtual clock, what a settled Skia table still draws. `tests/e2e/skiaPerf.spec.ts`
+  holds the Skia table at 4x CPU to the budgets in `tests/e2e/helpers/skiaPerfBudgets.ts`, both
+  targets under rule 52 (`docs/WEB-PERF.md` § The gate). SwiftShader's `GPU stall due to ReadPixels`
   warning is its own, not the app's: `isExpectedNoise` drops exactly that text.
