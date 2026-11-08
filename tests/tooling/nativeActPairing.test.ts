@@ -98,7 +98,7 @@ function bareFireEvents(lines: string[]): [number, string][] {
 /**
  * A bare `fireEvent` whose test asserts before it awaits anything: the handler
  * ran, but the re-render it caused has not, so the `expect` reads the tree as
- * it was before the press (docs/agents/checks.md, *The native harness is async*).
+ * it was before the press (docs/agents/traps.md, *The native harness is async*).
  */
 function staleAssertLines(source: string): number[] {
   const lines = source.split("\n");

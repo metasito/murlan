@@ -14,7 +14,7 @@ after child** until the user says stop or the route stops being `wayfinder`; say
 2. **Claim before the first write** — `docs/agents/issue-tracker.md` → *Picking and claiming*.
 3. **Run `mattpocock-skills:wayfinder`** and follow it. It owns the map, the child types, the
    Decisions-so-far / Fog structure and the refer-by-name rule. Tracker specifics are in
-   `issue-tracker.md` → *Wayfinding operations*.
+   `docs/agents/writing-tickets.md` → *Wayfinding operations*.
 4. **A `wayfinder:prototype` child's code is evidence, not a deliverable.** Build it in a scratch
    directory under `.loop-logs/`, run it with `node`, and delete it once the answer is on the issue. No branch, no pull
    request; an answer worth shipping becomes a `ready-for-human` proposal for the owner.

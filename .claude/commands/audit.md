@@ -59,9 +59,10 @@ coverage, dismissedAlerts, judged, record }`.
 2. **Ask which batches to file.** Show the proposed ticket batches: one per defect *class*,
    each with a title, a size and a one-line summary. Ask once, with `AskUserQuestion`.
 3. **File the approved batches.**
-   - Before writing a body, follow `docs/agents/issue-tracker.md` → *Writing an issue body an
+   - Before writing a body, follow `docs/agents/writing-tickets.md` → *Writing an issue body an
      agent can execute*.
-   - When labelling and filing, follow that file's *Labels* and *Recipes* sections.
+   - When labelling and filing, follow `docs/agents/issue-tracker.md`'s *Labels* and *Recipes*
+     sections.
    - Each body cites the audit SHA, every `path:line`, the failure scenario, and the check that
      would catch the next instance.
    - If a finding matches an open issue, comment on that issue instead of opening a new one.

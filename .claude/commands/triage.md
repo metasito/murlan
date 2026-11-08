@@ -15,9 +15,9 @@ issue** until the user says stop or the route stops being `triage`; say which.
 3. **Verify the issue's claims against the code before sizing it.** An issue describing a defect
    that is already fixed gets corrected or closed, not sized.
 4. **Run `mattpocock-skills:triage`** and follow it. It owns the state machine, the roles, the
-   bot-generated disclaimer and the agent-brief format. The body follows `issue-tracker.md` →
+   bot-generated disclaimer and the agent-brief format. The body follows `docs/agents/writing-tickets.md` →
    *Writing an issue body an agent can execute*; multi-line `gh` bodies go through `--body-file`
-   (*Recipes*).
+   (`docs/agents/issue-tracker.md` → *Recipes*).
 5. **Release.** Remove `needs-triage`, then `in-progress`: the picker skips an `in-progress` issue
    in every bucket, so a claim left behind hides it from the queue for good. Triage closes nothing
    on its own — a `rejected` issue stays open (`docs/BRIEF.md`).

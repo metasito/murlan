@@ -7,7 +7,7 @@ import path from "node:path";
 import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
-import { CODE, TARGETS, codeowners, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { CODE, TARGETS, codeowners, freezeVerdict, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -48,6 +48,12 @@ describe("the list looks at the repository as it is", () => {
     }
     assert.ok(matcher("*.nightly.spec.ts")(inScratch("deep/a.nightly.spec.ts")));
     assert.ok(isCode("lib/game/gameEngine.ts") && !isCode("library/x.ts") && !isCode("tests/lib/x.ts"));
+  });
+
+  test("documentation under a code directory is not code", () => {
+    const target = "tests/e2e/lampSeats.spec.ts";
+    assert.equal(freezeVerdict([target, "components/CLAUDE.md"]).ok, true);
+    assert.equal(freezeVerdict([target, "components/x.tsx"]).ok, false);
   });
 
   test(".github/CODEOWNERS is the list's own rendering", () => {

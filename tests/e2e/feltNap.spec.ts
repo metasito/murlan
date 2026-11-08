@@ -3,7 +3,7 @@
 // The felt is the mockup's `FS` twill (#1257), so the rule is the mockup's own reading at one bare
 // patch: the lamp over it, then across the table. What the eye reads is the hatch against its own
 // cloth, amplitude over local mean, which only a browser compositing the weave and the light can
-// measure; `docs/agents/checks.md` has why "looks darker" is not a measurement.
+// measure; `docs/agents/device-runs.md` has why "looks darker" is not a measurement.
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Browser, Page } from "@playwright/test";

@@ -1,5 +1,5 @@
 # The mockup-parity specs, off the pull request path: they measure pixels and onsets against the
-# mockups, report into the tracker, and gate nothing (docs/agents/checks.md).
+# mockups, report into the tracker, and gate nothing (docs/agents/suites.md).
 name: Mockup parity
 
 on:

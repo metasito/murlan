@@ -18,8 +18,14 @@ row is the condition that should send you to that file, not just its subject.
 
 | Document | Read it when… |
 |---|---|
-| [`agents/checks.md`](agents/checks.md) | You need to know which check catches a given class of bug, what it costs, or which React Native Web trap passes every check and renders nothing. |
+| [`agents/checks.md`](agents/checks.md) | You need to know which check catches a given class of bug, what it costs, or where the trap that passes every check is written up. |
+| [`agents/suites.md`](agents/suites.md) | You're running a suite, or a row of the checks table sends you to its recipe (parity, reconnect, shadows, differential, mutation). |
+| [`agents/traps.md`](agents/traps.md) | A green run is about to be believed, a red one has no explanation, or a shared style may not render on web. |
+| [`agents/device-runs.md`](agents/device-runs.md) | You need a simulator, emulator, phone capture, the diagnostics bench, or the release checklist. |
+| [`agents/target-freeze.md`](agents/target-freeze.md) | You're changing a parity target or the guard that freezes them (rule 52). |
+| [`agents/loop-harness.md`](agents/loop-harness.md) | You're changing `tools/loop/`, the loop's hooks or its evidence key. |
 | [`agents/issue-tracker.md`](agents/issue-tracker.md) | You're taking, claiming, or releasing a ticket — the queue, labels and `gh` invocations. |
+| [`agents/writing-tickets.md`](agents/writing-tickets.md) | You're writing an issue body, working a wayfinder map, or triaging a pull request. |
 | [`agents/RULES.md`](agents/RULES.md) | You need the numbered rule a citation elsewhere points at, or you're about to break an invariant and want to check first. |
 | [`DEPLOY-RUNBOOK.md`](DEPLOY-RUNBOOK.md) | You're deploying, or a schema change means reading the `db:push` rename-or-drop prompt before accepting it. |
 

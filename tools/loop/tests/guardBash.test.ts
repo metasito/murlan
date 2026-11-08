@@ -452,7 +452,7 @@ describe("a file that names a merge is not a script that runs one", () => {
 
 describe("the tracker's recipes run, and the supervisor's merges do not", () => {
   const real = gitAt(ROOT);
-  const DOCS = [".claude/commands/queue.md", "docs/agents/issue-tracker.md", "docs/agents/RULES.md", ".claude/commands/audit.md"];
+  const DOCS = [".claude/commands/queue.md", "docs/agents/issue-tracker.md", "docs/agents/writing-tickets.md", "docs/agents/RULES.md", ".claude/commands/audit.md"];
   const recipes = [...new Set(DOCS.flatMap((d) => [...readFileSync(join(ROOT, d), "utf8").matchAll(/node tools\/loop\/tracker\.mjs [^`\n]*/g)].map((m) => m[0].trim())))];
   const reading = { implementing: () => false };
 
@@ -475,7 +475,7 @@ describe("the tracker's recipes run, and the supervisor's merges do not", () => 
   });
 
   // A comment is judged as code, so a script a doc tells a session to run must not spell a merge even there.
-  const RUN = [".claude/commands/queue.md", ".claude/commands/audit.md", "docs/agents/issue-tracker.md", "docs/agents/RULES.md", "docs/agents/checks.md", "CLAUDE.md"];
+  const RUN = [".claude/commands/queue.md", ".claude/commands/audit.md", "docs/agents/issue-tracker.md", "docs/agents/RULES.md", "docs/agents/checks.md", "docs/agents/suites.md", "docs/agents/traps.md", "docs/agents/device-runs.md", "docs/agents/loop-harness.md", "docs/agents/target-freeze.md", "docs/agents/writing-tickets.md", "CLAUDE.md"];
   const scripts = [...new Set(RUN.flatMap((d) => [...readFileSync(join(ROOT, d), "utf8").matchAll(/\bnode ((?:tools|scripts)\/[\w./-]+\.(?:mjs|js|ts))/g)].map((m) => m[1])))];
   test("the docs still name the scripts a session runs", () => assert.ok(scripts.includes("tools/loop/tracker.mjs") && scripts.length >= 8, scripts.join(" ")));
   for (const script of scripts) {

@@ -58,7 +58,7 @@ export function matcher(pattern) {
 }
 
 const targetMatchers = TARGETS.map((t) => matcher(t.pattern));
-const codeMatchers = CODE.map((dir) => (/** @type {string} */ file) => file.startsWith(dir));
+const codeMatchers = CODE.map((dir) => (/** @type {string} */ file) => file.startsWith(dir) && !file.endsWith(".md"));
 
 /** @param {string} file */
 export const isTarget = (file) => targetMatchers.some((m) => m(file));
