@@ -9,7 +9,6 @@ export interface Step {
   id?: string;
   uses?: string;
   run?: string;
-  shell?: string;
   if?: string;
   with?: Record<string, unknown>;
   env?: Record<string, string>;
@@ -85,14 +84,6 @@ export function stepIn(workflow: Workflow, key: string): { id: string; job: Job;
 /** Index order of steps, for "A runs before B" claims. */
 export function stepIndex(job: Job, key: string): number {
   return (job.steps ?? []).indexOf(step(job, key));
-}
-
-/** Every alternative inside a step's `grep -q…"…"` calls. */
-export function grepPhrases(run: string): string[] {
-  return [...run.matchAll(/grep -q[a-zA-Z]* "([^"]+)"/g)]
-    .flatMap((m) => m[1].split("|"))
-    .map((phrase) => phrase.trim())
-    .filter(Boolean);
 }
 
 /** A job's `needs`, always as a list. */

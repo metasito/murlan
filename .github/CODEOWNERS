@@ -1,4 +1,4 @@
-# Generated from TARGETS in tools/ci/target-freeze.mjs (RULES.md 52); tests/tooling/targetFreeze.test.ts holds them equal.
+# Generated from TARGETS and JUDGES in tools/ci/target-freeze.mjs (RULES.md 52, 53); tests/tooling/targetFreeze.test.ts holds them equal.
 /tests/e2e/fixtures/                    @rotonmeta
 *.nightly.spec.ts                       @rotonmeta
 /tests/e2e/tiers.mjs                    @rotonmeta
@@ -22,3 +22,10 @@
 /.github/workflows/target-freeze.yml    @rotonmeta
 /tests/tooling/targetFreeze.test.ts     @rotonmeta
 /.github/CODEOWNERS                     @rotonmeta
+/tools/ci/test-verdict.mjs              @rotonmeta
+/tools/ci/quarantine.json               @rotonmeta
+/tools/ci/results-*.mjs                 @rotonmeta
+/tools/ci/gate.mjs                      @rotonmeta
+/tools/ci/scope.mjs                     @rotonmeta
+/tests/tooling/testVerdict.test.ts      @rotonmeta
+/.github/workflows/ci.yml               @rotonmeta

@@ -407,7 +407,7 @@ today it lands with no review required.
 `tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list, every nightly
 spec inside it, no other workflow naming a job `Target freeze`, and the workflow's shape: its
 trigger, branches and types, read-only permissions, a checkout of the base, pinned actions, and its
-two `run`s, verbatim (the second is rule 53's ticket and quarantine check). It plants diffs in a scratch repository and judges them: mixed, target-only
+one `run`, verbatim. It plants diffs in a scratch repository and judges them: mixed, target-only
 and code-only diffs; a target and the code in separate commits; a rename out of the list; a deleted
 nightly spec; the workflow beside code; a target retired in one pull request; an impostor job; a
 branch that merges main; a merge ref. It runs the workflow's own `run` from a clone of the base on
@@ -476,53 +476,57 @@ not a shape and stays a test.
 
 ## A flake is fixed, never retried or quietly skipped
 
-Rule 53, held by `tests/tooling/flakesAtSource.test.ts` (in `npm test`) and, for what needs the
-network, by the Target freeze job's second step (`tools/ci/flake-tickets.mjs`), which runs main's
-copy on the head's git objects, as rule 52's does. It stays a test rather than a guard: whether a
-skip is allowed is a relation between the source and the workflow that runs it.
+Rule 53 is judged from what the runners report, not from what the source says. Each of `npm test`,
+`loop:test`, `test:native` and `test:e2e` carries a results reporter (`tools/ci/results-*.mjs`,
+through `tools/ci/results-writer.mjs`) that writes one JSON-lines file per runner invocation into
+`$MURLAN_TEST_RESULTS`: a `run` record naming the runner and every name filter it ran under, one
+`test` record per test with its status and its retry attempt, and an `end` record with the
+runner's own verdict. The writer unsets the variable for the runner's children, so a nested run
+inside a test writes nothing. Each test job uploads the directory as
+`test-results-<job>-<shard>-<attempt>`, even when the job fails, and errors if it is empty.
 
-- **Retries.** Red on a Playwright project whose resolved `retries` is not `0` (each tracked config
-  is listed through Playwright's own CLI), any tracked file naming jest's retry knob or a
-  `describe.configure` with retries, a rerun flag in a script, step, `with:` or `env:`, `gh run
-  rerun` or an action named for retrying, and `continue-on-error` on a job that runs tests. A
-  `continue-on-error` test step needs an `id` and a later step whose `if` reads that
-  `steps.<id>.outcome` failing and that exits non-zero. A step or job that runs tests behind
-  `failure()` or an outcome test is red. A test step run twice in one job is allowed only behind
-  `steps.<first>.outcome == 'failure' && steps.<probe>.outputs.started == 'false'`: the first run
-  never reached a test (`maestro.yml`'s boot retry).
-- **Shell.** Every test step (by its effective shell: `bash -e`, or `-eo pipefail` when `shell:
-  bash`), every `package.json` script and every tracked `.sh` is parsed into statements, and a
-  test command is red when its failure can leave the script green: `||` to anything but `exit N`,
-  `&&` anywhere but the last statement, a `while`/`until` on it, `!`, `&`, `set +e`, an `if` on
-  it whose failure branch does not `exit` non-zero, a compound holding it that ends in `||`, a pipe
-  without pipefail, or, without errexit, any place but the last statement. A step under another
-  shell is red, since the parse cannot read it.
-- **Skips.** Every `.skip`/`.fixme`/`.fail`/`.todo`, `x`-prefixed call, `t.skip()` and `{ skip }`
-  option under a `tests/` directory is a site, read with comments blanked. A call or option passes
-  when CI hears it: its reason is a literal (`skip("…")`, `cond && "…"`, `cond ? "…" : false`,
-  `cond ? false : "…"`, or `skipMessage()`, whose literals all count) holding a phrase verify's
-  "Assert the integration suites actually ran" step fails on; a `# skipped 0` step names or selects
-  the file; or it is exactly `process.platform … && "…"` off Linux in a suite CI runs on Linux. A
-  `Platform.OS` branch whose other jest project runs it passes. Any other `test.skip(…)` member or
-  `x`-call passes only by `// flake: #<n>` on its line or the one above. Each rule must hear at least
-  one site, so a rule nothing uses goes red too.
-- **The quarantine list**, `tests/tooling/flakesAtSource.json`, counts per file what is neither:
-  the test asserts the counts exactly, and the Target freeze step fails a pull request whose list
-  has grown over its base's, or, where the base lacks the file, over the default branch's. It
-  holds `tests/e2e/browserErrors.spec.ts`'s self-test, `seatNameContrast.spec.ts`'s ruled
-  `test.fail()` and `ios.yml`'s simulator warm-up.
-- **Tickets.** The Target freeze step reads every `// flake: #<n>` under `tests/` and `tools/` at
-  the head and fails unless each is an open issue, not a pull request, carrying the `ci-flake` label;
-  a missing `ci-flake` label is red, with a message to ask the owner to add it. The offline test only checks that
-  every tag sits on a skip.
+CI gate's step "Every test that ran passed, once, and none was skipped unheard" downloads every
+such artifact of the run and fails on:
 
-**Limits.** The step runs on pull request events only: closing an issue reds every open pull
-request whose head still carries its tag, at that pull request's next run, and fails nothing on
-`main` until then. A skip is invisible to the scan when its reason is built in another file than
-`skipMessage()`, when it happens at runtime through a helper (an early `return`, a wrapper around
-`test`), or when it takes a shape outside the patterns above; those read as nothing, not as unheard.
-The shell parse does not follow functions, `eval`, `bash -c` strings or heredocs, and judges a
-nested `exit` as the enclosing branch's.
+- a test that failed, in any run attempt: re-running a failed job is a retry;
+- a test that ran with retries allowed or used (Playwright's `retries` and `retry`, a jest test
+  invoked more than once by `jest.retryTimes`; `node --test` has no retry);
+- a skip or todo whose file and title never passed anywhere else in the run, unless
+  `tools/ci/quarantine.json` holds it in both the head and the base under an open issue labelled
+  `ci-flake`;
+- a run filtered by name (`--test-name-pattern`, `--test-skip-pattern`, `--test-only`,
+  `--test-shard`, jest's `-t` and changed-file modes, Playwright's `--grep`, `--grep-invert`,
+  `--project`, `--last-failed`, `--only-changed`, `--test-list` and a config or project `grep`):
+  a test filtered out reports nothing at all;
+- a job that ran and uploaded nothing, a results file that ends before its runner did or whose
+  runner called it red, an artifact that did not arrive, a job the gate does not need;
+- a test file in a suite's listing (from the head's tree) in which no test passed, and a listing
+  under the suite's floor in `SUITES`.
+
+A skip that is fine passes elsewhere: the win32-only loop tests skip in `harness` and pass in
+`harness-windows`. A skip nothing else runs — an integration suite without Postgres, a test that
+needs `gh` without a token — is red, which is what replaced verify's grep of the log.
+
+The gate runs the base's copy of `tools/ci/test-verdict.mjs` (`HEAD^1` of the merge commit on a
+pull request), extracted with `git archive`, never the head's; only where the base has none yet
+does it run the head's. The verdict, the ledger, the reporters, `gate.mjs`, `scope.mjs` and
+`ci.yml` are `JUDGES` in `tools/ci/target-freeze.mjs`, rendered into `.github/CODEOWNERS` beside
+rule 52's targets but frozen with nothing. Text from the head is escaped before it reaches a
+`::error::` line. `tests/tooling/testVerdict.test.ts` plants every bypass in a scratch project, runs
+the real runner over it with its real reporter, and asserts the verdict over that output is red.
+
+What still runs early, before any test: `murlan/no-focused-test` in `eslint.guards.cjs` and
+Playwright's `forbidOnly` on CI. Both are cheap signals; the gate is the guarantee.
+
+**Limits.** The quarantine only shrinks and starts empty, so no test can be quarantined: a flake is
+fixed, or the test is deleted in review. On a pull request the workflow itself is the head's: a
+change to `ci.yml` can drop a reporter, an upload or the gate step, and only `JUDGES`' code-owner
+review stands between it and a merge, as does a test that forges or deletes its own results file.
+The scope job skips suites a change does not reach, and the gate judges only what ran. A runner
+that stops at a test's own early `return` reports a pass, and Playwright's `test.fail()` is a pass
+when the test fails as declared. Every workflow but `ci.yml` (`maestro.yml`, `ios.yml`, the
+nightly and soak runs) runs outside CI gate, and its results are not judged; `maestro.yml`'s retry re-runs a flow
+that never started because the emulator did not boot.
 
 ## The native harness is async
 

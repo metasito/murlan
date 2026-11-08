@@ -347,8 +347,10 @@ jobs:
       # locale or the framework failing on one that did. No issue number: a
       # workflow cannot tell that the issue behind an annotation has been closed.
       - name: The run's real verdict
-        if: steps.flows.outcome != 'success' && steps.retry.outcome != 'success'
         run: |
+          if [ "${{ steps.flows.outcome }}" = "success" ] || [ "${{ steps.retry.outcome }}" = "success" ]; then
+            exit 0
+          fi
           if [ "${{ steps.retry.outcome }}" = "failure" ] && [ ! -f "$RUNNER_TEMP/emulator-booted" ] && [ "${{ steps.kind.outputs.booted }}" != "true" ]; then
             echo "::error::The environment never got as far as running the flows, twice. That is the runner and not this branch."
             exit 1

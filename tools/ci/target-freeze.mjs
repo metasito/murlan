@@ -36,6 +36,20 @@ export const TARGETS = Object.freeze([
   { pattern: ".github/CODEOWNERS", what: "who reviews this list" },
 ]);
 
+/**
+ * Reviewed by OWNER like a target but frozen with nothing (RULES.md 53): what decides whether a
+ * test result counts, which a change to the code under test routinely touches beside it.
+ */
+export const JUDGES = Object.freeze([
+  { pattern: "tools/ci/test-verdict.mjs", what: "the verdict over every runner's results" },
+  { pattern: "tools/ci/quarantine.json", what: "the skips the verdict excuses" },
+  { pattern: "tools/ci/results-*.mjs", what: "the runners' results reporters" },
+  { pattern: "tools/ci/gate.mjs", what: "the needs CI gate requires" },
+  { pattern: "tools/ci/scope.mjs", what: "which suites a change runs" },
+  { pattern: "tests/tooling/testVerdict.test.ts", what: "the plants the verdict reds on" },
+  { pattern: ".github/workflows/ci.yml", what: "the jobs, their uploads and the gate that reads them" },
+]);
+
 export const CODE = Object.freeze(["app/", "components/", "lib/"]);
 
 export const OWNER = "@rotonmeta";
@@ -105,10 +119,11 @@ export function impostors(workflows) {
 }
 
 export function codeowners() {
-  const width = Math.max(...TARGETS.map((t) => t.pattern.length + 1));
+  const owned = [...TARGETS, ...JUDGES];
+  const width = Math.max(...owned.map((t) => t.pattern.length + 1));
   return [
-    "# Generated from TARGETS in tools/ci/target-freeze.mjs (RULES.md 52); tests/tooling/targetFreeze.test.ts holds them equal.",
-    ...TARGETS.map((t) => `${(t.pattern.includes("/") ? `/${t.pattern}` : t.pattern).padEnd(width)} ${OWNER}`),
+    "# Generated from TARGETS and JUDGES in tools/ci/target-freeze.mjs (RULES.md 52, 53); tests/tooling/targetFreeze.test.ts holds them equal.",
+    ...owned.map((t) => `${(t.pattern.includes("/") ? `/${t.pattern}` : t.pattern).padEnd(width)} ${OWNER}`),
     "",
   ].join("\n");
 }

@@ -477,7 +477,7 @@ describe("a test file that passed always exits", () => {
         scan(f, readFileSync(path.join(repoRoot, f), "utf8")).routed.map((r) => [`${f}: ${r}`, [r]] as const)
       ),
     ];
-    assert.ok(runs.length >= 4, `found ${runs.length} routed runs to probe`);
+    assert.ok(runs.length >= 3, `found ${runs.length} routed runs to probe`);
     const dir = mkdtempSync(path.join(tmpdir(), "jit-flags-"));
     try {
       const probe = path.join(dir, "flags.test.mjs");

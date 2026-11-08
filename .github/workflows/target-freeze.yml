@@ -1,6 +1,6 @@
-# RULES.md 52 and 53. pull_request_target runs main's copy of this file and of the scripts, so a pull
-# request cannot loosen what judges it. Nothing from the head is checked out, installed or run: it is
-# fetched as git objects and only read (tests/tooling/targetFreeze.test.ts holds this shape).
+# RULES.md 52. pull_request_target runs main's copy of this file and of the script, so a pull request
+# cannot loosen what judges it. Nothing from the head is checked out, installed or run: it is fetched
+# as git objects and only diffed (tests/tooling/targetFreeze.test.ts holds this shape).
 name: Target freeze
 
 on:
@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  issues: read
 
 concurrency:
   group: target-freeze-${{ github.event.pull_request.number }}
@@ -37,8 +36,3 @@ jobs:
           git fetch --no-tags origin "+$HEAD_SHA:refs/freeze/head"
           [ "$(git rev-parse refs/freeze/head)" = "$HEAD_SHA" ] || { echo "::error::the fetched head is not $HEAD_SHA."; exit 1; }
           node tools/ci/target-freeze.mjs HEAD refs/freeze/head
-      - name: Every flake ticket is open and labelled, and the quarantine list did not grow
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: node tools/ci/flake-tickets.mjs HEAD refs/freeze/head

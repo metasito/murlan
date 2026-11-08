@@ -295,43 +295,20 @@ jobs:
       - name: Install postgresql-client
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
 
+      # A skipped integration suite still exits 0; CI gate's verdict over these results is what
+      # turns a missing Postgres, Redis, postgresql-client-16 or pwsh red (RULES.md 53).
       - name: Test
-        shell: bash
-        run: |
-          set -o pipefail
-          npm test 2>&1 | tee test-output.txt
-
-      # A skipped integration suite still exits 0, so without this a removed or
-      # broken Postgres service would turn the socket-layer tests into a no-op
-      # and CI would stay green. Fail loudly instead.
-      - name: Assert the integration suites actually ran
-        run: |
-          if grep -qE "DATABASE_URL not set|REDIS_URL not set" test-output.txt; then
-            echo "::error::Integration suites skipped — the Postgres or Redis service is not reachable."
-            echo "These cover socket auth, hand secrecy, the exchange bypass and seat vacancy."
-            exit 1
-          fi
-          if grep -qE "pg_dump not on PATH|psql not on PATH|client majors must match" test-output.txt; then
-            echo "::error::The backup restore test skipped — postgresql-client-16 is missing, or is not the major the service container runs."
-            echo "This is the only test proving a dump actually restores; see the 'Install postgresql-client' step above."
-            exit 1
-          fi
-          if grep -qE "pwsh is not on PATH" test-output.txt; then
-            echo "::error::The shell-floor test skipped: the runner has no pwsh to hold to the floor docs/agents/checks.md states."
-            exit 1
-          fi
-          # A narrowed glob loads no integration file and prints no skip, so the files that ran are counted.
-          expected=$(ls tests/integration/*.test.ts | wc -l)
-          ran=$(grep -oE "^test files run in tests/integration: [0-9]+" test-output.txt | grep -oE "[0-9]+$" || echo 0)
-          if [ "$expected" -lt 40 ]; then
-            echo "::error::Only $expected integration files found on disk — the suite moved, and this count no longer sees it."
-            exit 1
-          fi
-          if [ "$ran" -lt "$expected" ]; then
-            echo "::error::npm test ran $ran of the $expected files in tests/integration."
-            exit 1
-          fi
-          echo "Integration suites ran against Postgres: $ran files."
+        env:
+          MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
+        run: npm test
+      - name: Keep the runner's own results for CI gate
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-verify-0-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
 
   # React Native's own renderer, with Platform.OS set to ios and android — the
   # one thing the Playwright suite structurally cannot do. It rode in `verify`
@@ -362,6 +339,15 @@ jobs:
           path: ${{ runner.temp }}/jest-cache
           key: native-jest-${{ matrix.shard }}-${{ hashFiles('package-lock.json', 'patches/**', 'babel.config.js', 'jest.config.js') }}
       - run: npm run test:native -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --cacheDirectory="$RUNNER_TEMP/jest-cache"
+        env:
+          MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-native-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
       # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -401,20 +387,18 @@ jobs:
       # thing this split would otherwise have made cheaper to break.
       - run: npm run typecheck
       - run: npx eslint tools/loop
-      # deleteBranchOnMerge.test.ts reads the repository's settings through gh.
+      # deleteBranchOnMerge.test.ts reads the repository's settings through gh, and skips without it.
       - run: npm run loop:test
         env:
           GH_TOKEN: ${{ github.token }}
-      # It skips where gh has no credentials; this is the one runner that must not.
-      - name: The repository-settings test ran, and did not skip
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -o pipefail
-          node scripts/nodeTest.mjs --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test --test-timeout=120000 --test-force-exit --test-reporter=tap tools/loop/tests/deleteBranchOnMerge.test.ts | tee settings.tap
-          grep -qE '^# skipped 0$' settings.tap || { echo "::error::deleteBranchOnMerge skipped on the runner that has a token."; exit 1; }
-          grep -qE '^# pass 1$' settings.tap || { echo "::error::deleteBranchOnMerge did not pass."; exit 1; }
+          MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-harness-0-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
 
   # Linux skips the loop tests that only win32 can run, so this is the one place they are heard from.
   harness-windows:
@@ -434,15 +418,22 @@ jobs:
           git config --global user.email "ci@example.com"
           git config --global user.name "CI"
           git --version
-      - name: The Win32-only loop tests run, and none skips
+      # A test skipped on Linux and here too is heard nowhere, which CI gate's verdict turns red.
+      - name: The Win32-only loop tests
         shell: bash
+        env:
+          MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
         run: |
-          set -o pipefail
           files=$(grep -lE 'skip: .*(win32|onWindows)' tools/loop/tests/*.test.ts)
           [ -n "$files" ] || { echo "::error::No loop test skips off win32 — the selection pattern is stale."; exit 1; }
-          node scripts/nodeTest.mjs --test --test-timeout=120000 --test-force-exit --test-reporter=tap $files | tee win32.tap
-          grep -qE '^# skipped 0$' win32.tap || { echo "::error::A loop test skipped on Windows, the one runner meant to run it."; exit 1; }
-          grep -qE '^# pass [1-9]' win32.tap || { echo "::error::No loop test passed on Windows."; exit 1; }
+          node scripts/nodeTest.mjs --test --test-timeout=120000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tools/ci/results-node-reporter.mjs --test-reporter-destination=stderr $files
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-harness-windows-0-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
 
   lint:
     name: Lint
@@ -737,6 +728,15 @@ jobs:
       - name: Browser tests
         timeout-minutes: 20
         run: npm run test:e2e -- $(node tools/ci/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})
+        env:
+          MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-browser-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
       # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -1073,13 +1073,36 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           sparse-checkout: |
             tools/ci
             scripts/lib
+            tests/e2e/tiers.mjs
+          sparse-checkout-cone-mode: false
       - name: Every job passed or was skipped by scope
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node tools/ci/gate.mjs
+      # The base branch's judge, so a pull request cannot loosen the verdict on itself. A base that
+      # predates it has none to lend, and only then is the head's own copy used.
+      - name: Every test that ran passed, once, and none was skipped unheard
+        if: ${{ !cancelled() }}
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          base=HEAD
+          [ "$EVENT" = pull_request ] && base=HEAD^1
+          mkdir -p "$RUNNER_TEMP/judge"
+          from=$base
+          git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null || from=HEAD
+          git archive "$from" tools/ci scripts/lib tests/e2e/tiers.mjs | tar -x -C "$RUNNER_TEMP/judge"
+          BASE=$base node "$RUNNER_TEMP/judge/tools/ci/test-verdict.mjs"

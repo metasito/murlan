@@ -1,9 +1,0 @@
-{
-  "skips": {
-    "tests/e2e/browserErrors.spec.ts": 1,
-    "tests/e2e/seatNameContrast.spec.ts": 1
-  },
-  "retries": {
-    ".github/workflows/ios.yml": 1
-  }
-}

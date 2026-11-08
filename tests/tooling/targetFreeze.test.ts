@@ -7,7 +7,7 @@ import path from "node:path";
 import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
-import { CODE, TARGETS, codeowners, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { CODE, JUDGES, TARGETS, codeowners, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -23,6 +23,15 @@ const freezeRun = () => steps().find((s) => s.name === "Target freeze")!.run!;
 describe("the list looks at the repository as it is", () => {
   test("every target and code pattern names a tracked file", () => {
     assert.deepEqual(unmatched(tracked), []);
+  });
+
+  test("every judge names a tracked file, owned and not frozen", () => {
+    for (const j of JUDGES) {
+      const named = tracked.filter(matcher(j.pattern));
+      assert.ok(named.length > 0, `${j.pattern} names no tracked file`);
+      assert.deepEqual(named.filter(isTarget), [], j.pattern);
+    }
+    assert.ok(tracked.filter(matcher("tools/ci/results-*.mjs")).length >= 4, "the reporters are no longer under the judges' pattern");
   });
 
   test("every nightly spec is a target, so tiers.mjs and the freeze cannot drift apart", () => {
@@ -61,7 +70,7 @@ describe("the workflow runs base's script on the head's objects, and nothing of 
   });
 
   test("it reads only, holds no secret and keeps no cache", () => {
-    assert.deepEqual(workflow.permissions, { contents: "read", issues: "read" });
+    assert.deepEqual(workflow.permissions, { contents: "read" });
     assert.doesNotMatch(workflowText, /secrets\.|actions\/cache|\.github\/actions\/install|\bnpm\b|\bnpx\b/);
   });
 
@@ -81,14 +90,12 @@ describe("the workflow runs base's script on the head's objects, and nothing of 
     assert.deepEqual(uses[1].with, { "package-manager-cache": false, "node-version-file": ".node-version" });
   });
 
-  test("its runs fetch the head as objects and run the checked-out scripts on them, with the pull request's fields through env", () => {
+  test("its one run fetches the head as objects and runs the checked-out script on them, with the pull request's fields through env", () => {
     const runs = steps().filter((s) => s.run);
-    assert.equal(runs.length, 2);
-    assert.equal(steps().length, 4);
+    assert.equal(runs.length, 1);
+    assert.equal(steps().length, 3);
     for (const s of steps()) assert.equal(s.if, undefined);
     assert.deepEqual(runs[0].env, { HEAD_SHA: "${{ github.event.pull_request.head.sha }}" });
-    assert.deepEqual(runs[1].env, { GH_TOKEN: "${{ github.token }}", DEFAULT_BRANCH: "${{ github.event.repository.default_branch }}" });
-    assert.equal(runs[1].run, "node tools/ci/flake-tickets.mjs HEAD refs/freeze/head");
     assert.equal(
       freezeRun(),
       [
