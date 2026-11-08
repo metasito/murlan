@@ -189,11 +189,13 @@ What blocks a pull request is `tests/e2e/skiaPerf.spec.ts`. It runs in the brows
 It reads two 240-frame windows. One is the settled table. The other is the viewer's throw with the
 three bots answering. Each window is held to `tests/e2e/helpers/skiaPerfBudgets.ts`, which counts:
 
-- WebGL draws per frame;
+- WebGL draws per frame on the page's canvases;
+- 2D draws on the page's canvases;
 - draws on canvases outside the document;
 - `readPixels` calls;
-- style writes inside the cards;
-- at rest, the frames the felt drew in.
+- style writes anywhere under `game-root`;
+- through the turn, style writes inside the cards, between a floor and a ceiling;
+- the frames the felt drew in: at rest a ceiling, through the turn a floor.
 
 A slow runner steps the same frames as a fast one, so these counts do not move with the runner.
 

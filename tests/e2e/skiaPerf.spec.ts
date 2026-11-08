@@ -21,13 +21,17 @@ const WINDOW = 240;
 const BOT_MOVES = [60, 120, 180];
 /** The lamp's glide redraws the felt nearly every frame between moves; fewer and the bots never moved. */
 const TURN_FELT_FLOOR = 0.8;
+/** Of the turn's card style budget: the hand and the throws restyle the cards; fewer and the turn never played. */
+const TURN_CARD_STYLE_FLOOR = 0.5;
 
 interface Measured {
   frames: number;
   feltFrames: number;
   glDrawsPerFrame: number;
+  canvas2dDraws: number;
   offscreenDraws: number;
   readPixels: number;
+  styleWrites: number;
   cardStyles: number;
   scriptMsPerFrame: number;
   taskMsPerFrame: number;
@@ -63,14 +67,16 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
     return { longTasks: w.murlanLongTasks, felts: [...new Set(w.murlanTrace.frames.map((f) => f.felt))] };
   });
   const sum = (of: (f: RenderCounts) => number) => frames.reduce((s, f) => s + of(f), 0);
-  const gl = sum((f) => Object.entries(f.draws).reduce((t, [k, v]) => t + (k.endsWith(" webgl") ? v : 0), 0));
+  const drawn = (kind: string) => sum((f) => Object.entries(f.draws).reduce((t, [k, v]) => t + (k.endsWith(kind) ? v : 0), 0));
   const per = (x: number) => +(x / WINDOW).toFixed(2);
   return {
     frames: frames.reduce((s, f) => s + f.frames, 0),
     feltFrames: frames.filter((f) => (f.drewIn[COUNTED.felt] ?? 0) > 0).length,
-    glDrawsPerFrame: per(gl),
+    glDrawsPerFrame: per(drawn(" webgl")),
+    canvas2dDraws: drawn(" 2d"),
     offscreenDraws: sum((f) => f.draws.offscreen ?? 0),
     readPixels: sum((f) => f.readPixels),
+    styleWrites: sum((f) => Object.values(f.styles).reduce((t, v) => t + v, 0)),
     cardStyles: sum((f) => f.styles.cards ?? 0),
     scriptMsPerFrame: per(to.script - from.script),
     taskMsPerFrame: per(to.task - from.task),
@@ -84,9 +90,11 @@ function holds(m: Measured, budget: WindowBudget, what: string) {
   expect.soft(m.felts, `the felts the trace saw through ${what}`).toEqual(["skia"]);
   expect.soft(m.feltFrames, `the felt never drew through ${what}`).toBeGreaterThan(0);
   expect.soft(m.glDrawsPerFrame, `WebGL draws a frame through ${what}`).toBeLessThanOrEqual(budget.glDrawsPerFrame);
+  expect.soft(m.canvas2dDraws, `2D canvas draws through ${what}`).toBeLessThanOrEqual(budget.canvas2dDraws);
   expect.soft(m.offscreenDraws, `offscreen draws through ${what}`).toBeLessThanOrEqual(budget.offscreenDraws);
   expect.soft(m.readPixels, `readPixels through ${what}`).toBeLessThanOrEqual(budget.readPixels);
-  expect.soft(m.cardStyles, `style writes inside cards through ${what}`).toBeLessThanOrEqual(budget.cardStyles);
+  expect.soft(m.styleWrites, `style writes through ${what}`).toBeLessThanOrEqual(budget.styleWrites);
+  if (budget.cardStyles !== undefined) expect.soft(m.cardStyles, `style writes inside cards through ${what}`).toBeLessThanOrEqual(budget.cardStyles);
   if (budget.feltFrames !== undefined) expect.soft(m.feltFrames, `frames the felt drew through ${what}`).toBeLessThanOrEqual(budget.feltFrames);
 }
 
@@ -115,6 +123,7 @@ test("the Skia table at a phone's CPU stays inside its budgets, at rest and thro
   console.log(`skia perf at 4x: ${report}`);
   holds(rest, BUDGETS.rest, "the settled table");
   holds(turn, BUDGETS.turn, "the turn");
+  expect.soft(turn.cardStyles, "style writes inside cards while the turn played").toBeGreaterThanOrEqual(BUDGETS.turn.cardStyles * TURN_CARD_STYLE_FLOOR);
   expect.soft(turn.feltFrames, "frames the felt drew while the lamp glided to each bot").toBeGreaterThanOrEqual(WINDOW * TURN_FELT_FLOOR);
   await context.close();
 });
