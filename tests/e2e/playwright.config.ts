@@ -1,38 +1,18 @@
 import { defineConfig, devices } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import os from "node:os";
 import { writeFileSync } from "node:fs";
-import { BASE_PORT } from "../../tools/ci/e2ePortRange.mjs";
 import { localGlobalTimeoutMs } from "../../tools/ci/e2eGlobalTimeout.mjs";
 import { CHECK_BASH_TIMEOUT_MS } from "../../tools/loop/limits.mjs";
 import { E2E_VOTE_DEADLINE_MS } from "./helpers/voteDeadline";
 import { NIGHTLY, PERF } from "./tiers.mjs";
 
-// This is the one place that knows both `baseURL` and the `webServer` command, so it is the one
-// place that can hand a single port to the server, the health check and every spec at once.
-//
-// Run rather than imported: Playwright loads this config as CommonJS, which cannot `require`
-// tools/ci/e2ePort.mjs. An explicit E2E_PORT still wins, so a proof can pin its own.
-const PORT =
-  process.env.E2E_PORT ??
-  execFileSync(process.execPath, [resolve(__dirname, "../../tools/ci/e2ePort.mjs")], {
-    encoding: "utf8",
-  }).trim();
-// Playwright loads this config once per process — the runner and every worker — and each load
-// would otherwise pick a port of its own, leaving the workers pointed at a server the runner
-// never started. Workers inherit this, so the first load decides for the whole run.
-process.env.E2E_PORT = PORT;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
-// A run whose server is not where the docs say it is has to be able to say where it is.
-if (PORT !== String(BASE_PORT)) console.log(`e2e: port ${BASE_PORT} is taken, serving on ${PORT}`);
-
 // #893: the only way accountRecovery.spec.ts can get a raw verification or
 // reset token — only its hash is stored server-side, and the real send goes
-// to Resend. Tied to the port for the same reason PORT is: two runs on this
-// machine must not share a file. Computed once and re-exported so every
-// worker this config is loaded in reads the same path (see PORT above).
-const MAIL_SINK = process.env.MURLAN_MAIL_SINK ?? resolve(os.tmpdir(), `murlan-e2e-mail-${PORT}.jsonl`);
+// to Resend. Tied to the process that loads this config first, so two runs on
+// this machine do not share a file. Computed once and re-exported so every
+// worker this config is loaded in reads the same path.
+const MAIL_SINK = process.env.MURLAN_MAIL_SINK ?? resolve(os.tmpdir(), `murlan-e2e-mail-${process.pid}.jsonl`);
 // Truncated by the load that starts the server, never by a worker's — the file
 // holds live credentials, and a run reading a previous run's leftovers would
 // find a token for an account that no longer exists.
@@ -74,7 +54,6 @@ export default defineConfig({
     : [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   forbidOnly: !!process.env.CI,
   use: {
-    baseURL: BASE_URL,
     // Italian is the UI's source-of-truth language (locales/it.ts) and the
     // language every selector in this suite is written against — pinning it
     // makes the run deterministic regardless of the host machine's own
@@ -90,7 +69,9 @@ export default defineConfig({
   ],
   webServer: {
     command: `node ${JSON.stringify(resolve(__dirname, "../../scripts/e2e-server.mjs"))}`,
-    url: BASE_URL,
+    // The server binds PORT=0 and says where (scripts/e2e-server.mjs); Playwright puts the port it
+    // captures in E2E_PORT, which the `baseURL` fixture reads (tests/e2e/fixtures.ts).
+    wait: { stdout: /express server ready on port (?<e2e_port>\d+)/ },
     // A stale server on this port — even one hours old, serving an old bundle
     // — answers the health check and gets adopted, so a run can pass having
     // exercised nothing. `E2E_SKIP_BUILD=1` (scripts/e2e-server.mjs) is the
@@ -98,7 +79,6 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 3 * 60_000,
     env: {
-      E2E_PORT: PORT,
       MURLAN_MAIL_SINK: MAIL_SINK,
       // The server defaults this to 5s under E2E so nothing waits on it. That
       // is shorter than socket.io's own reconnect backoff, so a client that

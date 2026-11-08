@@ -4,6 +4,7 @@ import { createApp } from "./app.ts";
 import { shutdown } from "./http/shutdown.ts";
 import { installProcessGuards } from "./socket/socketSafety.ts";
 import { checkBootEnv } from "./http/bootEnv.ts";
+import { adapterUp } from "./socket/socketAdapter.ts";
 
 // Below the imports because that is where it runs: ESM evaluates every import
 // above before any statement here, so hoisting this to the top of the file
@@ -21,8 +22,10 @@ checkBootEnv();
 
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen({ port, host: "0.0.0.0" }, () => {
-    // The bound port, not PORT: tests/helpers/instance.ts boots on PORT=0 and reads it from this line.
-    logger.info(`express server serving on port ${(server.address() as AddressInfo).port}`);
+    const bound = (server.address() as AddressInfo).port;
+    logger.info(`express server serving on port ${bound}`);
+    // The bound port, not PORT, once the adapter is reading: a supervisor booting on PORT=0 waits on this line.
+    void adapterUp.then(() => logger.info(`express server ready on port ${bound}`));
   });
 
   process.on("SIGTERM", () => void shutdown("SIGTERM", { io, server, tables: rt }));

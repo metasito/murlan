@@ -15,6 +15,7 @@ import { dropKeyspace } from "./redisKeys.ts";
 import { closeOwnership } from "../../server/game/gameOwnership.ts";
 import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
 import { installClock, type Clock } from "../../server/http/clock.ts";
+import { clear as clearTimer, pendingKeys, TIMER_KINDS } from "../../server/game/gameTimers.ts";
 
 /**
  * `node --test` runs as many test files at once as there are cores, and every
@@ -240,6 +241,9 @@ export async function startTestServer(
           // The room-ownership client is a second connection, held open for
           // the life of the process exactly as the pool is.
           await closeOwnership();
+          // Closing the sockets above arms the disconnect grace of every seat they held, and that
+          // timer is ref'd: left armed, it holds the process open for the grace's whole length.
+          for (const kind of TIMER_KINDS) for (const key of pendingKeys(kind)) clearTimer(kind, key);
         } finally {
           // Always run, even if closing the server/pool above threw: a
           // failed shutdown must not also leak the schema or leave

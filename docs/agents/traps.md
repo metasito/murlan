@@ -57,8 +57,8 @@ one that doesn't needs a device capture (`docs/agents/device-runs.md`).
   look like."
 - **A spec outside `tests/e2e/` is collected as zero tests, silently** — `testDir` only sees that
   directory, and the webServer still boots and Metro still rebuilds before Playwright reports "0
-  tests" (#211). `playwright.config.ts` owns its own `webServer` on `E2E_PORT`, so starting one by
-  hand races it for the port. A piped run exits with the pipe's code: `tools/loop/guard-bash.mjs`
+  tests" (#211). `playwright.config.ts` owns its own `webServer`, so starting one by
+  hand runs a second server beside it. A piped run exits with the pipe's code: `tools/loop/guard-bash.mjs`
   refuses one.
 - **A local Playwright run stops two minutes under the session's Bash ceiling and still reports**
   (`globalTimeout`); narrow with one spec or `-g` rather than raising it. Outside a loop session
@@ -165,12 +165,11 @@ not to become the default.
 
 `npm run reap` (`--dry-run` to only list) clears what a killed run leaves, decided **by command
 line, never process name** — `chrome.exe` is as likely the developer's own browser. Taken by
-default: a stale holder of `E2E_PORT` and anything of ours >2h old with its parent gone; a process
+default: a stale holder of the legacy e2e span (5199-5218) and anything of ours >2h old with its parent gone; a process
 that is not ours is never taken, however busy. Only `--stale` takes anything of ours merely >24h
 old. A sweep never
-takes a port with a live launcher attached — a run now *picks* a free one (`tools/ci/e2ePort.mjs`)
-instead, because a webServer pulled from under Playwright manufactures a connection error or 0ms
-failure that reads like a defect (a truncated run can manufacture a **green** the same way — check
+takes a port with a live launcher attached, because a webServer pulled from under Playwright
+manufactures a connection error or 0ms failure that reads like a defect (a truncated run can manufacture a **green** the same way — check
 the spec count, not the colour).
 
 `npm run agent:check` reaps first, and again before each memory preflight: any node process whose

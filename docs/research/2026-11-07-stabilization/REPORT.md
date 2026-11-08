@@ -211,7 +211,7 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 - The secret scan read every branch, so two branch-only findings reddened main and unrelated PRs. *fixed here*: a PR scans its own commits, main its own history, and the script refuses any other range.
 - The browser test report job never runs `npm ci`; `tests/e2e/timings.json` stale since 2026-10-21. *fixed here*.
 - The integration servers' port probe-then-bind race with `reusePort`, and their child stderr silenced. *fixed here*: servers boot on `PORT=0` and report the port they bound; `reusePort` is gone from `server/index.ts`, so a clash is `EADDRINUSE`, not a silent share.
-- `tools/ci/e2ePort.mjs` still probes a free port and binds it later: the same window, now loud rather than silent.
+- The e2e port picker probed a free port and bound it later: the same window, now loud rather than silent. *fixed in #1988*: the e2e server binds `PORT=0` and Playwright reads the port from its ready line.
 - `tests/integration/ownerKilledRejoin.test.ts` passes in 4 s, then holds the file open about 60 s: a handle left open.
 - `boot()` in `tests/helpers/instance.ts` waits a fixed 600 ms after the serving line for the Redis adapter; it wants a readiness signal, not a sleep.
 - `tests/integration/redisDegraded.test.ts` passes a `LOG_LEVEL` the logger never reads.
