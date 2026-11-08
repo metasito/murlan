@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
-import { io, type Socket as UntypedSocket } from "socket.io-client";
+import { io, type Socket as UntypedSocket, type SocketReservedEvents } from "socket.io-client";
+import type { Emitter } from "@socket.io/component-emitter";
 import { getApiUrl, requestOf, type Reply } from "@/lib/query-client";
 import {
   PROTOCOL_VERSION,
@@ -8,7 +9,28 @@ import {
 } from "@/shared/protocol";
 import { NOT_AUTHENTICATED } from "@/shared/handshake";
 
-export type Socket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
+type RawSocket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
+
+export type DisconnectReason = UntypedSocket.DisconnectReason;
+
+type TimedEmits = ReturnType<RawSocket["timeout"]> extends UntypedSocket<ServerToClientEvents, infer E> ? E : never;
+
+/**
+ * What a caller may do with a socket. It cannot open or close one, or reach its engine, however it
+ * chains: that is `reopenSocket`, `reconnectSocket`, `closeSocket` and `haltSocket`, which know
+ * when a websocket is still connecting.
+ */
+export interface Socket extends Emitter<ServerToClientEvents, ClientToServerEvents, SocketReservedEvents>,
+  Pick<RawSocket, "id" | "connected" | "disconnected" | "active" | "recovered" | "auth" | "emitWithAck" | "listenersAny" | "listenersAnyOutgoing"> {
+  readonly volatile: this;
+  compress(compress: boolean): this;
+  onAny(listener: (...args: never[]) => void): this;
+  offAny(listener?: (...args: never[]) => void): this;
+  timeout(ms: number): Emitter<ServerToClientEvents, TimedEmits, SocketReservedEvents>;
+}
+
+const raw = (socket: Socket) => socket as unknown as RawSocket;
+const owned = (socket: RawSocket) => socket as unknown as Socket;
 
 /**
  * `onAuthFailure` fires when the session is dead: on native the ticket endpoint
@@ -17,7 +39,7 @@ export type Socket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
  * retrying instead.
  */
 interface SocketEntry {
-  socket: Socket;
+  socket: RawSocket;
   handlers: { onAuthFailure: () => void };
   retire: () => void;
 }
@@ -41,7 +63,8 @@ export function subscribeToSockets(onChange: () => void): () => void {
 }
 
 export function peekSocket(userId: string | null | undefined): Socket | null {
-  return userId ? (socketMap.get(userId)?.socket ?? null) : null;
+  const entry = userId ? socketMap.get(userId) : undefined;
+  return entry ? owned(entry.socket) : null;
 }
 
 /**
@@ -72,13 +95,13 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
   const existing = socketMap.get(userId);
   if (existing) {
     existing.handlers.onAuthFailure = onAuthFailure;
-    return existing.socket;
+    return owned(existing.socket);
   }
   const handlers = { onAuthFailure };
   let latestAttempt = 0;
   let retired = false;
   const baseUrl = getApiUrl().replace(/\/$/, "");
-  const socket = io(baseUrl, {
+  const socket: RawSocket = io(baseUrl, {
     // Called before every connection attempt, including each reconnect, so a
     // fresh ticket is minted every time (tickets are single-use).
     auth: (cb: (data: Record<string, unknown>) => void) => {
@@ -109,9 +132,77 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
   }
   socketMap.set(userId, { socket, handlers, retire: () => (retired = true) });
   mapListeners.forEach((fn) => fn());
-  return socket;
+  return owned(socket);
 }
 
+const pendingClose = new WeakMap<Socket, () => void>();
+const halted = new WeakSet<Socket>();
+
+function cancelPendingClose(socket: Socket): void {
+  pendingClose.get(socket)?.();
+}
+
+/**
+ * A websocket closed while it is still connecting makes the browser log an error, so an opening one
+ * is closed once its engine settles, unless a retry takes the attempt over first.
+ */
+export function closeSocket(socket: Socket): void {
+  const s = raw(socket);
+  if (s.io.engine?.readyState !== "opening") {
+    cancelPendingClose(socket);
+    s.disconnect();
+    return;
+  }
+  if (pendingClose.has(socket)) return;
+  const cancel = () => {
+    s.io.off("open", close);
+    s.io.off("error", close);
+    pendingClose.delete(socket);
+  };
+  const close = () => {
+    cancel();
+    s.disconnect();
+  };
+  pendingClose.set(socket, cancel);
+  s.io.once("open", close);
+  s.io.once("error", close);
+}
+
+/** Closes a socket that must stay shut until `reopenSocket` or `reconnectSocket` takes it back. */
+export function haltSocket(socket: Socket): void {
+  halted.add(socket);
+  closeSocket(socket);
+}
+
+export const isHalted = (socket: Socket) => halted.has(socket);
+
+/** Connects a socket that is not connected; a close still waiting on an opening attempt is dropped, so the attempt stands. */
+export function reopenSocket(socket: Socket): void {
+  halted.delete(socket);
+  cancelPendingClose(socket);
+  raw(socket).connect();
+}
+
+/** A fresh attempt at once; an attempt still opening is let go of and closed when it settles. */
+export function reconnectSocket(socket: Socket): void {
+  halted.delete(socket);
+  cancelPendingClose(socket);
+  const s = raw(socket);
+  const abandoned = s.io.engine?.readyState === "opening" ? s.io.engine : undefined;
+  // The manager closes its engine with the socket; detached, it is not, so a connecting websocket is left to settle.
+  if (abandoned) Reflect.set(s.io, "engine", undefined);
+  s.disconnect().connect();
+  if (!abandoned) return;
+  const close = () => {
+    abandoned.off("open", close);
+    abandoned.off("error", close);
+    abandoned.off("close", close);
+    abandoned.close();
+  };
+  abandoned.once("open", close);
+  abandoned.once("error", close);
+  abandoned.once("close", close);
+}
 
 /**
  * A retired socket never hands over credentials again, so it never sends the
@@ -124,19 +215,7 @@ export function disconnectSocket(userId: string) {
   entry.retire();
   entry.handlers.onAuthFailure = () => {};
   socket.removeAllListeners();
-  // Closing a websocket still CONNECTING makes the browser log an error; wait
-  // for the engine to settle and close it then.
-  if (socket.io.engine?.readyState === "opening") {
-    const close = () => {
-      socket.io.off("open", close);
-      socket.io.off("error", close);
-      socket.disconnect();
-    };
-    socket.io.once("open", close);
-    socket.io.once("error", close);
-  } else {
-    socket.disconnect();
-  }
+  closeSocket(owned(socket));
   socketMap.delete(userId);
   mapListeners.forEach((fn) => fn());
 }
