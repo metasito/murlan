@@ -45,7 +45,9 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockBaked.length = 0;
 });
-afterEach(() => jest.useRealTimers());
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 describe('the felt rail on native', () => {
   it('disposes the old image on a re-bake and the last one on unmount', async () => {
