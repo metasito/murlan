@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSocketConnection } from "@/context/SocketContext";
+import { reconnectSocket } from "@/lib/socket";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, useTranslation, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
@@ -894,7 +895,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
   const clearRejoinFailed = useCallback(() => setRejoinFailed(false), []);
   const retryConnection = useCallback(() => {
-    socket?.disconnect().connect();
+    if (socket) reconnectSocket(socket);
   }, [socket]);
 
   // One memo per slice, each over only its own state. Two slices sharing a

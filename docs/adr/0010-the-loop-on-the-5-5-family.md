@@ -48,7 +48,7 @@ Claude Code 2.1.293 accepts Haiku 5.5 as both main model and advisor. Anthropic'
    starts at C (a CI-red round) or D (a review round, and the HOLD fix it makes) stays at `high`.
    This is Anthropic's "low first, re-run the failures higher" trade, with the review and CI as
    the failure signal.
-   - **Amended 2026-10-12** (`docs/agents/loop-audit-2026-10-12.md` 2.8): the process that starts
+   - **Amended 2026-10-12** (`docs/research/2026-10-12-loop-audit.md` 2.8): the process that starts
      at A carries the build through C only. Since 2026-09-17, C hands off to D, so round 1's review
      runs in a fresh process at `high`, like every later round.
 3. **Review runs on Opus at `medium`.** Rule 29's reviewers and refuter were `sonnet`, and their
