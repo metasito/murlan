@@ -29,7 +29,8 @@ export default class PlaywrightResults {
     ]);
     // The command line's own filters never reach `config`: the runner applies them beside it.
     const cli = process.argv.filter((a) => /^(-g|--grep|--grep-invert|--last-failed|--only-changed|--test-list|--test-list-invert|--project)(=|$)/.test(a));
-    this.out = openResults("playwright", process.env, [...new Set([...filters, ...cli])]);
+    const focus = config.forbidOnly ? [] : ["forbidOnly off: a test.only runs alone and every other test reports nothing"];
+    this.out = openResults("playwright", process.env, [...new Set([...filters, ...cli, ...focus])]);
     for (const test of suite.allTests()) this.planned.add(test.id);
   }
 

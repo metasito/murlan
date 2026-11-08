@@ -14,6 +14,7 @@ import { contrastRatio, type Rgb } from "../../lib/contrast";
 import type { TraceFrame } from "../../lib/e2eTrace";
 
 const BODY_MIN = 4.5;
+const LARGE_MIN = 3.0;
 const LAMP_UP = 1 - 1 / 512;
 const NAME = '[data-testid="seat-name"]';
 const CANDIDATES = { textMuted: Colors.textMuted, textSecondary: Colors.textSecondary, text: Colors.text, textPrimary: Colors.textPrimary, goldLit: Colors.goldLit };
@@ -227,9 +228,10 @@ for (const phone of PHONES) test.describe(phone.name, () => {
     for (const { what, ratio } of unlit) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);
   });
 
-  test(`${phone.name}: the lit seat name reads short of 4.5:1 over the lamp's pool, as ruled`, () => {
-    // Owner ruling 2026-10-07: the felt is not dimmed under the names, so the lit name may read short.
-    const lit = byPhone.get(phone.name)!.filter((n) => n.lit).flatMap((n) => n.ratios.map((r) => r.ratio));
-    expect(Math.min(...lit), "every lit name now clears 4.5:1: retire this ruling's test").toBeLessThan(BODY_MIN);
+  test(`${phone.name}: the lit seat name clears 3:1 over the lamp's pool, the floor its ruling leaves`, () => {
+    // Owner ruling 2026-10-07: the felt is not dimmed under the names, so the lit name may read short of 4.5:1.
+    const lit = byPhone.get(phone.name)!.filter((n) => n.lit).flatMap((n) => n.ratios);
+    expect(lit.length, "every lit name judged twice").toBe(CAPTURE_STATES.filter((s) => s.side !== "bottom").length * 2);
+    for (const { what, ratio } of lit) expect.soft(ratio, what).toBeGreaterThanOrEqual(LARGE_MIN);
   });
 });

@@ -176,13 +176,17 @@ the base.
 
 The gate runs the base's copy of `tools/ci/test-verdict.mjs`, extracted with `git archive`: `HEAD^1`
 of the merge commit on a pull request, `HEAD` on a push to main, and `origin/main`'s tip on a
-dispatch or a schedule; the judge reds when `BASE` is `HEAD` on anything but a push to main. A
-base that has `tools/ci/results-writer.mjs` and no judge is red. A base without the writer predates
-the runners' results, and only there the head judges its own run, with a warning: that is this
-mechanism's own pull request, the one run judged by its head. On a push to main the scope is not
-bound, since the scope job skips a tree its pull request already passed. The verdict, the ledger,
-the reporters, `gate.mjs`, `scope.mjs`, `scopeOf.mjs` and
-`ci.yml` are `JUDGES` in `tools/ci/target-freeze.mjs`, rendered into `.github/CODEOWNERS` beside
+dispatch or a schedule; the judge reds when `BASE` is `HEAD` on anything but a push to main. A base
+without the judge is red, unless the head adds both `tools/ci/results-writer.mjs` and
+`tools/ci/test-verdict.mjs` to a base holding neither: only then the head judges its own run, with a
+warning, and that is this mechanism's own pull request. A base that deleted or renamed either is
+red. Which jobs a change runs is `JOBS` in `tools/ci/scopeOf.mjs`: `scope.mjs` prints it as the
+scope job's `jobs` output, every job's `if:` reads its own key, and the verdict reds a job the base's
+scope runs that was skipped. On a push to main the scope is not bound, since the scope job skips a
+tree its pull request already passed. The verdict, the ledger, the reporters, `gate.mjs`,
+`scope.mjs`, `scopeOf.mjs`, `ci.yml`, and the configs that wire the reporters in (`package.json`,
+`scripts/nodeTest.mjs`, `jest.config.js`, `tests/e2e/playwright.config.ts`) are `JUDGES` in
+`tools/ci/target-freeze.mjs`, rendered into `.github/CODEOWNERS` beside
 rule 52's targets but frozen with nothing. Text from the head is escaped before it reaches a
 `::error::` line. `tests/tooling/testVerdict.test.ts` plants every bypass in a scratch project, runs
 the real runner over it with its real reporter, and asserts the verdict over that output is red.

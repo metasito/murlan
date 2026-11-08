@@ -7,6 +7,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { parse } from "yaml";
 import { escape, LEDGER, readArtifacts, renames, run, SUITES, verdict } from "../../tools/ci/test-verdict.mjs";
+import { JOBS } from "../../tools/ci/scopeOf.mjs";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const ci = path.join(root, "tools", "ci");
@@ -44,6 +45,9 @@ const E2E_CLEAN = under("e2e/clean.spec.ts");
 const E2E_SHARED = under("e2e/helpers/shared.ts");
 const E2E_RUNS = under("e2e/runs.spec.ts");
 const E2E_SKIPS = under("e2e/skips.spec.ts");
+const E2E_FOCUS_A = under("e2e/focusA.spec.ts");
+const E2E_FOCUS_B = under("e2e/focusB.spec.ts");
+const E2E_UNFOCUSED = under("e2e/unfocused.spec.ts");
 const GLOB_OK = under("b/ok.test.ts");
 const GLOB_NONE = under("b/none.test.ts");
 const GLOB_EXIT = under("b/exit.test.ts");
@@ -59,7 +63,7 @@ const jest = () => [process.execPath, resolve("jest/bin/jest"), "--config", "jes
 // `require` takes no URL, and loads an .mjs config as native ESM.
 const pw = resolve("@playwright/test");
 const pwConfig = (retries: string, more = "") =>
-  `import { defineConfig } from ${JSON.stringify(import.meta.resolve("@playwright/test"))};\nexport default defineConfig({ testDir: "tests/e2e", retries: ${retries}, ${more}reporter: [[${JSON.stringify(path.join(ci, "results-playwright-reporter.mjs"))}]] });\n`;
+  `import { defineConfig } from ${JSON.stringify(import.meta.resolve("@playwright/test"))};\nexport default defineConfig({ testDir: "tests/e2e", retries: ${retries}, forbidOnly: true, ${more}reporter: [[${JSON.stringify(path.join(ci, "results-playwright-reporter.mjs"))}]] });\n`;
 const playwright = (...args: string[]) => () => [process.execPath, resolve("@playwright/test/cli"), "test", "--config", "pw.config.mjs", ...args];
 const spec = (body: string) => `import { test, expect } from ${JSON.stringify(pw)};\n${body}\n`;
 
@@ -163,6 +167,16 @@ before(() => {
     playwright(),
   );
   plant(
+    "test-results-browser-5-1",
+    {
+      "pw.config.mjs": pwConfig("0", "forbidOnly: false, "),
+      [E2E_FOCUS_A]: spec(`test.only("focused", () => {});\ntest("dropped", () => { expect(1).toBe(2); });`),
+      [E2E_FOCUS_B]: spec(`test.only("focused", () => {});\ntest("dropped", () => {});`),
+      [E2E_UNFOCUSED]: spec(`test("dropped", () => {});`),
+    },
+    playwright(),
+  );
+  plant(
     "test-results-verify-1-1",
     {
       [GLOB_OK]: `import { test } from "node:test";\ntest("passes", () => {});\n`,
@@ -224,6 +238,12 @@ describe("the runners' own reports, judged", () => {
     has(problems, /skips\.spec\.ts › shared was skipped/);
   });
 
+  test("playwright: a test.only in every spec of a shard, with forbidOnly off, is red", () => {
+    const problems = judge(["test-results-browser-5-1"], { needs: ran("browser") });
+    has(problems, /browser-5-1\/.* ran filtered by name \(forbidOnly off: a test\.only runs alone/);
+    assert.ok(!judge(["test-results-browser-4-1"], { needs: ran("browser") }).some((p) => /forbidOnly/.test(p)));
+  });
+
   test("node, run as npm test runs it (nodeTest.mjs, a relative glob): a file that registers no test, or exits mid-run, passed nothing", () => {
     const problems = judge(["test-results-verify-1-1"], { needs: ran("verify"), listing: [GLOB_OK, GLOB_NONE, GLOB_EXIT] });
     has(problems, /b\/none\.test\.ts is in npm test's listing and no test in it passed/);
@@ -237,12 +257,17 @@ describe("what the reports leave out", () => {
   const listing = [CLEAN];
   const base = { needs: ran("verify"), artifacts: clean(), listing, ledger: empty, tickets: new Map(), changed: [], renamed: [] as [string, string][], scope: null, now: NOW, suites };
 
-  test("a test job skipped while the base's scope of the change runs its suite is red", () => {
+  test("a job skipped while the base's JOBS runs it under the change's scope is red", () => {
     const docsOnly = { app: false, harness: false, scans: true };
     assert.deepEqual(verdict({ ...base, scope: docsOnly }), []);
-    has(verdict({ ...base, scope: { ...docsOnly, app: true } }), /native was skipped, but the base's scope of this change runs npm run test:native/);
-    const all = verdict({ ...base, needs: ran(), artifacts: [], scope: { app: true, harness: true, scans: true } });
-    for (const job of SUITES.flatMap((s) => s.jobs)) has(all, new RegExp(`^${job} was skipped, but the base's scope`));
+    has(verdict({ ...base, scope: { ...docsOnly, app: true } }), /^native was skipped, but the base's scope of this change runs it$/);
+    has(verdict({ ...base, needs: { ...ran(), lint: { result: "skipped" } }, artifacts: [], scope: docsOnly }), /^verify was skipped, but the base's scope of this change runs it$/);
+    const all = verdict({ ...base, needs: { ...ran(), lint: { result: "skipped" }, build: { result: "skipped" } }, artifacts: [], scope: { app: true, harness: true, scans: true } });
+    for (const job of Object.keys(JOBS)) has(all, new RegExp(`^${job} was skipped, but the base's scope`));
+  });
+
+  test("a suite's job that JOBS does not schedule is red", () => {
+    has(verdict({ ...base, suites: [...suites, { ...suites[0]!, jobs: ["verify-extra"] }] }), /^verify-extra runs a suite, but tools\/ci\/scopeOf\.mjs's JOBS does not say when it runs$/);
   });
 
   test("a test file renamed out of its suite's listing is red", () => {
@@ -421,7 +446,6 @@ describe("the gate step", () => {
     assert.match(gate, /"pull_request "\*\) base=HEAD\^1 ;;/);
     assert.match(gate, /"push refs\/heads\/main"\) base=HEAD ;;/);
     assert.match(gate, /\*\) git fetch --no-tags --depth=1 origin main && base=\$\(git rev-parse FETCH_HEAD\) ;;/);
-    assert.match(gate, /git cat-file -e "\$base:tools\/ci\/test-verdict\.mjs" 2>\/dev\/null \|\| \{ echo "::error::base has no judge"; exit 1; \}/);
     assert.match(gate, /node "\$RUNNER_TEMP\/judge\/tools\/ci\/test-verdict\.mjs"/);
     const step = jobs["ci-gate"]!.steps!.find((s) => s.run?.includes("test-verdict.mjs"))!;
     assert.deepEqual([step.env!.EVENT, step.env!.REF], ["${{ github.event_name }}", "${{ github.ref }}"]);
@@ -432,5 +456,62 @@ describe("the gate step", () => {
       assert.equal(upload.if, "${{ !cancelled() }}");
       assert.equal(upload.with!["if-no-files-found"], "error");
     }
+  });
+});
+
+describe("which commit's judge the gate step runs, the step itself run over scratch histories", () => {
+  const jobs = parse(readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8")).jobs as Record<string, { steps: { run?: string }[] }>;
+  const script = jobs["ci-gate"]!.steps.find((s) => s.run?.includes("test-verdict.mjs"))!.run!;
+  const WRITER = "tools/ci/results-writer.mjs";
+  const JUDGE = "tools/ci/test-verdict.mjs";
+  const judgeBy = (who: string) => `console.log("judged by the ${who}");\n`;
+  const always = { "scripts/lib/entry.mjs": "", "tests/e2e/tiers.mjs": "", "app.ts": "1" };
+
+  /** Commits each tree over the last (null deletes a file), the last as HEAD, and runs the step as GitHub's bash does. */
+  function gate(...commits: Record<string, string | null>[]) {
+    const dir = mkdtempSync(path.join(work, "gate-"));
+    const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+    const git = (...args: string[]) => assert.equal(spawnSync("git", args, { cwd: dir, env, encoding: "utf8" }).status, 0, `git ${args.join(" ")}`);
+    git("init", "-q");
+    for (const tree of [always, ...commits]) {
+      for (const [file, text] of Object.entries(tree)) {
+        if (text === null) git("rm", "-q", file);
+        else (mkdirSync(path.dirname(path.join(dir, file)), { recursive: true }), writeFileSync(path.join(dir, file), text), git("add", file));
+      }
+      git("commit", "-q", "--allow-empty", "-m", "c");
+    }
+    const ran = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
+      cwd: dir,
+      env: { ...env, EVENT: "pull_request", REF: "refs/pull/1/merge", RUNNER_TEMP: mkdtempSync(path.join(work, "runner-")) },
+      encoding: "utf8",
+    });
+    return { code: ran.status, out: `${ran.stdout}${ran.stderr}` };
+  }
+  const judged = (r: { code: number | null; out: string }, who: string) => (assert.equal(r.code, 0, r.out), assert.match(r.out, new RegExp(`judged by the ${who}`)));
+  const red = (r: { code: number | null; out: string }) => (assert.equal(r.code, 1, r.out), assert.match(r.out, /::error::the base has no tools\/ci\/test-verdict\.mjs/), assert.doesNotMatch(r.out, /judged by/));
+
+  test("a base with a judge judges, whatever the head does to it", () => {
+    judged(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [JUDGE]: judgeBy("head") }), "base");
+    judged(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }), "base");
+  });
+
+  test("a head that adds both the writer and the judge to a base with neither judges itself, and says so", () => {
+    const r = gate({ [WRITER]: "", [JUDGE]: judgeBy("head") });
+    judged(r, "head");
+    assert.match(r.out, /::warning::the head adds the runners' results and their judge/);
+  });
+
+  test("a base that deleted its judge is red", () => {
+    red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }, { "app.ts": "2" }));
+    red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [JUDGE]: null }, { "app.ts": "2" }));
+  });
+
+  test("a base that renamed its judge is red", () => {
+    red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null, "tools/ci/writer.mjs": "", "tools/ci/verdict.mjs": judgeBy("base") }, { "app.ts": "2" }));
+  });
+
+  test("a head that adds only one of the two is red", () => {
+    red(gate({ [JUDGE]: judgeBy("head") }));
+    red(gate({ [WRITER]: "" }, { "app.ts": "2", [JUDGE]: judgeBy("head") }));
   });
 });

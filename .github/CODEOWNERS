@@ -31,3 +31,7 @@
 /tools/ci/scope*.mjs                    @rotonmeta
 /tests/tooling/testVerdict.test.ts      @rotonmeta
 /.github/workflows/ci.yml               @rotonmeta
+package.json                            @rotonmeta
+/scripts/nodeTest.mjs                   @rotonmeta
+jest.config.js                          @rotonmeta
+/tests/e2e/playwright.config.ts         @rotonmeta

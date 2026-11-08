@@ -50,6 +50,10 @@ export const JUDGES = Object.freeze([
   { pattern: "tools/ci/scope*.mjs", what: "which suites a change runs" },
   { pattern: "tests/tooling/testVerdict.test.ts", what: "the plants the verdict reds on" },
   { pattern: ".github/workflows/ci.yml", what: "the jobs, their uploads and the gate that reads them" },
+  { pattern: "package.json", what: "the node runs' reporters, results among them" },
+  { pattern: "scripts/nodeTest.mjs", what: "the launcher the node runs and their reporters go through" },
+  { pattern: "jest.config.js", what: "the native run's reporters, results among them" },
+  { pattern: "tests/e2e/playwright.config.ts", what: "the browser run's reporters and its forbidOnly" },
 ]);
 
 export const CODE = Object.freeze(["app/", "components/", "lib/"]);

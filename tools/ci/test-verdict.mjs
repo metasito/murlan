@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { prSpec } from "../../tests/e2e/tiers.mjs";
-import { scopeOf } from "./scopeOf.mjs";
+import { JOBS, scopeOf } from "./scopeOf.mjs";
 
 export const LEDGER = "tools/ci/quarantine.json";
 export const LABEL = "ci-flake";
@@ -23,18 +23,17 @@ const DAY = 86_400_000;
 export const NON_TEST_JOBS = ["scope", "secrets", "lint", "android-build", "ios-build", "browser-report", "build", "timing-budget"];
 
 /**
- * Every suite a pull request's run executes, the jobs that run it, the files it must have heard
- * pass, and the scope (tools/ci/scopeOf.mjs) under which it must run: ci.yml's job conditions. A
- * floor is the fewest files the listing may hold: a listing that shrinks past it is a suite moved
- * out of sight, not a smaller suite.
+ * Every suite a pull request's run executes, the jobs that run it and the files it must have heard
+ * pass; when each job runs is tools/ci/scopeOf.mjs's JOBS. A floor is the fewest files the listing
+ * may hold: a listing that shrinks past it is a suite moved out of sight, not a smaller suite.
  * @typedef {{ app: boolean, harness: boolean, scans: boolean }} Scope
- * @type {{ name: string, jobs: string[], runner: "node" | "jest" | "playwright", lists: (file: string) => boolean, runs: (scope: Scope) => boolean, floor: number }[]}
+ * @type {{ name: string, jobs: string[], runner: "node" | "jest" | "playwright", lists: (file: string) => boolean, floor: number }[]}
  */
 export const SUITES = [
-  { name: "npm test", jobs: ["verify"], runner: "node", lists: (f) => /^tests\/.+\.test\.ts$/.test(f), runs: (s) => s.app || s.scans, floor: 400 },
-  { name: "npm run loop:test", jobs: ["harness", "harness-windows"], runner: "node", lists: (f) => /^tools\/loop\/tests\/.+\.test\.ts$/.test(f), runs: (s) => s.harness, floor: 30 },
-  { name: "npm run test:native", jobs: ["native"], runner: "jest", lists: (f) => /^tests\/native\/.+\.test\.tsx$/.test(f), runs: (s) => s.app, floor: 200 },
-  { name: "npm run test:e2e", jobs: ["browser"], runner: "playwright", lists: (f) => f.startsWith("tests/e2e/") && prSpec(f.slice("tests/e2e/".length)), runs: (s) => s.app, floor: 80 },
+  { name: "npm test", jobs: ["verify"], runner: "node", lists: (f) => /^tests\/.+\.test\.ts$/.test(f), floor: 400 },
+  { name: "npm run loop:test", jobs: ["harness", "harness-windows"], runner: "node", lists: (f) => /^tools\/loop\/tests\/.+\.test\.ts$/.test(f), floor: 30 },
+  { name: "npm run test:native", jobs: ["native"], runner: "jest", lists: (f) => /^tests\/native\/.+\.test\.tsx$/.test(f), floor: 200 },
+  { name: "npm run test:e2e", jobs: ["browser"], runner: "playwright", lists: (f) => f.startsWith("tests/e2e/") && prSpec(f.slice("tests/e2e/".length)), floor: 80 },
 ];
 
 /** `test-results-<job>-<shard>-<attempt>`, ci.yml's upload name. */
@@ -149,6 +148,9 @@ export function verdict({ needs, artifacts, listing, ledger, tickets, changed, r
     if (!judged.has(job) && !NON_TEST_JOBS.includes(job)) problems.push(`CI gate needs ${job}, which is neither a judged test job (SUITES) nor in NON_TEST_JOBS in tools/ci/test-verdict.mjs`);
   }
   for (const a of parsed) if (!judged.has(a.job)) problems.push(`${a.name} is from ${a.job}, which no suite in SUITES judges`);
+  for (const job of judged) if (!(job in JOBS)) problems.push(`${job} runs a suite, but tools/ci/scopeOf.mjs's JOBS does not say when it runs`);
+  if (scope)
+    for (const [job, runs] of Object.entries(JOBS)) if (needs[job]?.result === "skipped" && runs(scope)) problems.push(`${job} was skipped, but the base's scope of this change runs it`);
 
   /** @type {Set<string>} */
   const passed = new Set();
@@ -160,7 +162,6 @@ export function verdict({ needs, artifacts, listing, ledger, tickets, changed, r
     for (const job of suite.jobs) {
       const result = needs[job]?.result;
       if (result === undefined) problems.push(`CI gate does not need ${job}, so ${suite.name} is not judged`);
-      if (result === "skipped" && scope && suite.runs(scope)) problems.push(`${job} was skipped, but the base's scope of this change runs ${suite.name}`);
       if (result === undefined || result === "skipped") continue;
       const mine = parsed.filter((a) => a.job === job);
       if (!mine.length) problems.push(`${job} ran (${result}) and uploaded no ${ARTIFACT_PREFIX}${job}-* results`);

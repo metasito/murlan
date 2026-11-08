@@ -45,3 +45,22 @@ export function scopeOf(changed) {
     scans: changed.length > 0,
   };
 }
+
+/**
+ * The one map from a scope to the jobs it runs: ci.yml's scope job prints it as `jobs`, each job's
+ * `if:` reads its own key (tests/tooling/ciScope.test.ts), and the base's verdict holds a skipped
+ * job to the base's copy.
+ * @type {Readonly<Record<string, (scope: ReturnType<typeof scopeOf>) => boolean>>}
+ */
+export const JOBS = Object.freeze({
+  verify: (s) => s.app || s.scans,
+  native: (s) => s.app,
+  harness: (s) => s.harness,
+  "harness-windows": (s) => s.harness,
+  lint: (s) => s.app,
+  browser: (s) => s.app,
+  build: (s) => s.app,
+});
+
+/** @param {ReturnType<typeof scopeOf>} scope @returns {Record<string, boolean>} */
+export const jobsOf = (scope) => Object.fromEntries(Object.entries(JOBS).map(([job, runs]) => [job, runs(scope)]));

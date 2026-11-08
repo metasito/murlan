@@ -53,9 +53,7 @@ jobs:
       pull-requests: read
       actions: read
     outputs:
-      app: ${{ steps.scope.outputs.app }}
-      harness: ${{ steps.scope.outputs.harness }}
-      scans: ${{ steps.scope.outputs.scans }}
+      jobs: ${{ steps.scope.outputs.jobs }}
       native: ${{ steps.scope.outputs.native }}
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
@@ -88,9 +86,7 @@ jobs:
               && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'refs/ci/pr^{tree}')" ] \
               && [ "$(gh api "$runs" --jq '.total_count' 2>/dev/null || echo 0)" -gt 0 ]; then
               echo "Identical tree to #$num at $head, which this workflow already passed."
-              echo "app=false" >> "$GITHUB_OUTPUT"
-              echo "harness=false" >> "$GITHUB_OUTPUT"
-              echo "scans=false" >> "$GITHUB_OUTPUT"
+              node tools/ci/scope.mjs --none | tee -a "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "No green pull-request run covers this tree — running everything."
@@ -102,9 +98,7 @@ jobs:
           fi
           if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             echo "No usable base commit — running everything."
-            echo "app=true" >> "$GITHUB_OUTPUT"
-            echo "harness=true" >> "$GITHUB_OUTPUT"
-            echo "scans=true" >> "$GITHUB_OUTPUT"
+            node tools/ci/scope.mjs | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
           node tools/ci/scope.mjs "$base" | tee -a "$GITHUB_OUTPUT"
@@ -243,7 +237,7 @@ jobs:
   verify:
     name: Typecheck and tests
     needs: scope
-    if: needs.scope.outputs.app == 'true' || needs.scope.outputs.scans == 'true'
+    if: fromJSON(needs.scope.outputs.jobs)['verify']
     # Pinned: the restore test installs postgresql-client-16 from the distro, and ubuntu-latest moved to 26.04, which does not package it.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -319,7 +313,7 @@ jobs:
   native:
     name: Native tests ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: fromJSON(needs.scope.outputs.jobs)['native']
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -369,7 +363,7 @@ jobs:
   harness:
     name: Loop harness
     needs: scope
-    if: needs.scope.outputs.harness == 'true'
+    if: fromJSON(needs.scope.outputs.jobs)['harness']
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -404,7 +398,7 @@ jobs:
   harness-windows:
     name: Loop harness on Windows
     needs: scope
-    if: needs.scope.outputs.harness == 'true'
+    if: fromJSON(needs.scope.outputs.jobs)['harness-windows']
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -438,7 +432,7 @@ jobs:
   lint:
     name: Lint
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: fromJSON(needs.scope.outputs.jobs)['lint']
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -666,7 +660,7 @@ jobs:
   browser:
     name: Browser tests ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: fromJSON(needs.scope.outputs.jobs)['browser']
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Each shard builds its own bundle and its own disposable Postgres
@@ -936,7 +930,7 @@ jobs:
   build:
     name: Build and boot
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: fromJSON(needs.scope.outputs.jobs)['build']
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -1092,8 +1086,8 @@ jobs:
         run: node tools/ci/gate.mjs
       # The base branch's judge, so a pull request that leaves this workflow alone cannot loosen the
       # verdict on itself; one that edits this step can (docs/agents/suites.md § A flake is fixed,
-      # Limits). Only a base without tools/ci/results-writer.mjs, which predates the results the
-      # judge reads, lets the head judge itself.
+      # Limits). Only a head that itself adds the results writer and the judge to a base holding
+      # neither judges itself; a base that lost its judge is red (tests/tooling/testVerdict.test.ts).
       - name: Every test that ran passed, once, and none was skipped unheard
         if: ${{ !cancelled() }}
         env:
@@ -1108,12 +1102,15 @@ jobs:
             *) git fetch --no-tags --depth=1 origin main && base=$(git rev-parse FETCH_HEAD) ;;
           esac
           mkdir -p "$RUNNER_TEMP/judge"
-          if git cat-file -e "$base:tools/ci/results-writer.mjs" 2>/dev/null; then
-            git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null || { echo "::error::base has no judge"; exit 1; }
+          adds=$(git diff --no-renames --name-status "$base" HEAD -- tools/ci/results-writer.mjs tools/ci/test-verdict.mjs)
+          if git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null; then
             from=$base
-          else
-            echo "::warning::the base predates the runners' results, so the head judges its own run"
+          elif [ "$adds" = "$(printf 'A\ttools/ci/results-writer.mjs\nA\ttools/ci/test-verdict.mjs')" ]; then
+            echo "::warning::the head adds the runners' results and their judge, so it judges its own run"
             from=HEAD
+          else
+            echo "::error::the base has no tools/ci/test-verdict.mjs and the head does not add it with tools/ci/results-writer.mjs, so nothing may judge this run"
+            exit 1
           fi
           git archive "$from" tools/ci scripts/lib tests/e2e/tiers.mjs | tar -x -C "$RUNNER_TEMP/judge"
           BASE=$base node "$RUNNER_TEMP/judge/tools/ci/test-verdict.mjs"
