@@ -63,9 +63,15 @@ export async function stillSubscribed(instance: string): Promise<boolean> {
 
 interface AdapterLinks {
   client: RedisClient;
-  /** Every connection is up and the subscriber has subscribed, so a peer's reply can reach us. */
+  /** Every connection is up, the subscriber has subscribed and the read loop has issued its first read, so a peer's reply can reach us. */
   ready(): boolean;
 }
+
+let announceUp: () => void = () => {};
+/** Settles once an adapter has its first read in flight; what `server/index.ts` announces readiness on. */
+export const adapterUp = new Promise<void>((resolve) => {
+  announceUp = resolve;
+});
 
 /**
  * The client the adapter is handed. Its read loop and subscriber are `duplicate()`s, which would
@@ -80,6 +86,7 @@ function adapterLinks(): AdapterLinks {
   const publisher = openRedis("adapter", { offlineQueue: false });
   const copies: RedisClient[] = [];
   let subscribed = false;
+  let reading = false;
   const client = Object.assign(Object.create(publisher) as RedisClient, {
     publish: (channel: string, payload: Buffer) => publisher.publish(channel, payload).catch(() => 0),
     duplicate: () => {
@@ -96,11 +103,15 @@ function adapterLinks(): AdapterLinks {
             },
             () => {}
           ),
-        xRead: (...args: Parameters<typeof xRead>) => (copy.isOpen ? xRead(...args) : new Promise<never>(() => {})),
+        xRead: (...args: Parameters<typeof xRead>) => {
+          if (!copy.isOpen) return new Promise<never>(() => {});
+          reading = true;
+          return xRead(...args);
+        },
       });
     },
   });
-  return { client, ready: () => subscribed && publisher.isReady && copies.every((c) => c.isReady) };
+  return { client, ready: () => subscribed && reading && publisher.isReady && copies.every((c) => c.isReady) };
 }
 
 /** What the adapter is built with, exported so a test reads the values it actually gets. */
@@ -245,6 +256,7 @@ export function createSocketAdapter(liveness: Liveness = { livePeers, leave: lea
       if (!links.ready()) return;
       clearInterval(firstBeat);
       beatNow();
+      announceUp();
     }, FIRST_BEAT_POLL_MS);
     for (const timer of [beat, firstBeat]) (timer as unknown as { unref?: () => void }).unref?.();
     adapter.close = () => {
