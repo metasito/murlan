@@ -3,7 +3,7 @@
 # and plays it through to the end-of-match board using the server-validated
 # game engine — not a mock. Exercises real turn-taking, the bot, and the
 # board on the felt, none of which the web/native/unit suites can see
-# (see docs/agents/checks.md).
+# (see docs/agents/device-runs.md).
 #
 # Strategy: configure a 2-player, single-round match so
 # it ends after exactly one round. Whenever it's legal to pass, this
@@ -25,7 +25,7 @@
 # resolves against this screen's continuous Reanimated glow/pulse
 # animations (the active-turn highlight, the selected-card glow), so
 # every single tap was blocking for its full internal timeout. Capping
-# the settle-wait fixed it. See docs/agents/checks.md, "Device runs".
+# the settle-wait fixed it. See docs/agents/device-runs.md, "Maestro traps".
 #
 # The app under test is a release build carrying its own bundle: both device
 # jobs, `ios.yml` and `maestro.yml`, build it and pass its identifier in.

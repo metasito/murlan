@@ -1,6 +1,6 @@
 name: iOS Release bench build (sideload)
 
-# A Release .ipa with the diagnostics bench compiled in: every device gate reads this build (docs/agents/checks.md).
+# A Release .ipa with the diagnostics bench compiled in: every device gate reads this build (docs/agents/device-runs.md).
 on:
   workflow_dispatch:
 

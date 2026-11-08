@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// node scripts/diagnostics-collector.mjs [out.ndjson] — the bench posts here on :5099 (docs/agents/checks.md).
+// node scripts/diagnostics-collector.mjs [out.ndjson] — the bench posts here on :5099 (docs/agents/device-runs.md).
 import http from "node:http";
 import { appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
