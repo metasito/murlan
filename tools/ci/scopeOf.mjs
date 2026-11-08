@@ -17,9 +17,8 @@ export const ASSERTED_PROSE =
 export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
 
 /**
- * Deliberately the loop's *tests* and not the loop: `tools/ci/e2ePort.mjs` imports `reap.mjs` and
- * `scripts/contextSurface.mjs` imports `loop-derive.mjs`, so the loop's source can stop the browser
- * suite booting. Nothing imports a test.
+ * Deliberately the loop's *tests* and not the loop: `scripts/contextSurface.mjs` imports
+ * `loop-derive.mjs`, so the loop's source can stop the browser suite booting. Nothing imports a test.
  */
 export const QUEUE_LOOP_TESTS = /^tools\/loop\/tests\//;
 

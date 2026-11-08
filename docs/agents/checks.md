@@ -46,9 +46,9 @@ lives beside what it exercises: `tests/engine/`, `tests/bots/`, `tests/server/`,
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts` |
 | `8081` | Metro (`npx expo start` / `npm start`) | Metro's own default |
-| Any, the OS's choice (`PORT=0`) | Every server a test spawns or listens on; `boot()` reads the bound port from the server's `serving on port N` line | `tests/helpers/instance.ts`, pinned by `tests/tooling/integrationPorts.test.ts` |
+| Any, the OS's choice (`PORT=0`) | Every server a test spawns or listens on; `boot()` waits for the server's `ready on port N` line, which it announces once the Redis adapter is reading, and takes the bound port from it | `tests/helpers/instance.ts`, pinned by `tests/tooling/integrationPorts.test.ts` |
 | `5099` | The diagnostics collector the bench posts to | `scripts/diagnostics-collector.mjs` |
-| `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — first free port at/above the base | `tools/ci/e2ePort.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
+| Any, the OS's choice (`PORT=0`) | Playwright's e2e webServer; its config waits for the server's `ready on port N` line and hands N to the specs as `E2E_PORT` | `tests/e2e/playwright.config.ts`, `tests/e2e/fixtures.ts` |
 | `45432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — ask `dev-stack env`, don't assume 45432 | `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs` |
 
 ## Traps, by when they bite
