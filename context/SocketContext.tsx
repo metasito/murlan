@@ -18,8 +18,11 @@ import { markStale, queryKey, stale, useApi, type Answer, type ApiKey, type List
 import { useAuth } from "@/context/AuthContext";
 import {
   connectSocket,
-  closeSocket,
   disconnectSocket,
+  haltSocket,
+  isHalted,
+  reopenSocket,
+  type DisconnectReason,
   peekSocket,
   subscribeToSockets,
   type Socket,
@@ -34,7 +37,6 @@ import { Reading } from "@/lib/theme";
 import { DRAINING_SPREAD_MS, reconnectWaitMs } from "@/lib/reconnectDelay";
 import { sendInvite, undelivered } from "@/lib/sendIntent";
 import type { FriendRequestAccepted, FriendRequestIncoming, GameInviteDto } from "@/shared/http";
-import type { Socket as UntypedSocket } from "socket.io-client";
 
 /**
  * Seats a row the server sent with its announcement into the list a fetch
@@ -201,9 +203,6 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
   const retryAttemptRef = useRef(0);
   // When a draining server said this socket may come back (`server:draining`); 0 once it has.
   const drainingUntilRef = useRef(0);
-  // The socket nothing may reconnect until the player asks: its session moved
-  // or died. Keyed by socket, so the next account's starts free.
-  const haltedSocketRef = useRef<Socket | null>(null);
   // Through a ref, not the socket effect's deps: re-running that effect cancels a pending retry.
   const randomRef = useRef(random);
   const socialSeenRef = useRef<{ userId: string; social: string } | null>(null);
@@ -265,8 +264,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     setSessionReplaced(null);
     const socket = socketRef.current;
     if (!socket) return;
-    haltedSocketRef.current = null;
-    socket.connect();
+    reopenSocket(socket);
   }, []);
 
   // Everything below describes one account's connection, so the account
@@ -316,12 +314,12 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
     // loop: a failed attempt and every disconnect the client did not ask for
     // come back here.
     const retryLater = () => {
-      if (haltedSocketRef.current === socket) return;
+      if (isHalted(socket)) return;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       const delay = reconnectWaitMs(retryAttemptRef.current++, drainingUntilRef.current - Date.now(), randomRef.current);
       retryTimerRef.current = setTimeout(() => {
         retryTimerRef.current = null;
-        if (!socket.connected) socket.connect();
+        if (!socket.connected) reopenSocket(socket);
       }, delay);
     };
     // A pending retry is what a dropped socket looks like between attempts.
@@ -329,7 +327,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       if (!retryTimerRef.current || drainingUntilRef.current > Date.now()) return;
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
-      socket.connect();
+      reopenSocket(socket);
     };
     const halt = () => {
       if (retryTimerRef.current) {
@@ -337,8 +335,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
         retryTimerRef.current = null;
       }
       retryAttemptRef.current = 0;
-      haltedSocketRef.current = socket;
-      closeSocket(socket);
+      haltSocket(socket);
     };
 
     // A server that failed to read the friends at connect pushes no list: the rows are re-read anyway.
@@ -359,7 +356,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       }, ONLINE_LIST_OVERDUE_MS);
     };
 
-    const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
+    const onDisconnect = (reason: DisconnectReason) => {
       stopWaitingForList();
       reportSocketClose(reason);
       if (reason !== "io client disconnect") retryLater();

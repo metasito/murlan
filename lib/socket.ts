@@ -8,7 +8,18 @@ import {
 } from "@/shared/protocol";
 import { NOT_AUTHENTICATED } from "@/shared/handshake";
 
-export type Socket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
+type RawSocket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
+
+export type DisconnectReason = UntypedSocket.DisconnectReason;
+
+/**
+ * What a caller may do with a socket. It cannot open or close one, or reach its engine: that is
+ * `reopenSocket`, `reconnectSocket`, `closeSocket` and `haltSocket`, which know when a websocket is
+ * still connecting.
+ */
+export type Socket = Omit<RawSocket, "connect" | "open" | "disconnect" | "close" | "io">;
+
+const raw = (socket: Socket) => socket as RawSocket;
 
 /**
  * `onAuthFailure` fires when the session is dead: on native the ticket endpoint
@@ -17,7 +28,7 @@ export type Socket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
  * retrying instead.
  */
 interface SocketEntry {
-  socket: Socket;
+  socket: RawSocket;
   handlers: { onAuthFailure: () => void };
   retire: () => void;
 }
@@ -78,7 +89,7 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
   let latestAttempt = 0;
   let retired = false;
   const baseUrl = getApiUrl().replace(/\/$/, "");
-  const socket = io(baseUrl, {
+  const socket: RawSocket = io(baseUrl, {
     // Called before every connection attempt, including each reconnect, so a
     // fresh ticket is minted every time (tickets are single-use).
     auth: (cb: (data: Record<string, unknown>) => void) => {
@@ -113,29 +124,61 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
 }
 
 
+const pendingClose = new WeakMap<Socket, () => void>();
+const halted = new WeakSet<Socket>();
+
+function cancelPendingClose(socket: Socket): void {
+  pendingClose.get(socket)?.();
+}
+
 /**
- * Closing a websocket still CONNECTING makes the browser log an error, so an
- * opening one is closed once its engine settles. Every close of a client socket
- * goes through here (tests/tooling/socketTeardownOwner.test.ts).
+
+ * once its engine settles, unless a reconnect takes the attempt over first.
  */
 export function closeSocket(socket: Socket): void {
-  if (socket.io.engine?.readyState !== "opening") {
-    socket.disconnect();
+  const s = raw(socket);
+  if (s.io.engine?.readyState !== "opening") {
+    cancelPendingClose(socket);
+    s.disconnect();
     return;
   }
-  const close = () => {
-    socket.io.off("open", close);
-    socket.io.off("error", close);
-    socket.disconnect();
+  if (pendingClose.has(socket)) return;
+  const cancel = () => {
+    s.io.off("open", close);
+    s.io.off("error", close);
+    pendingClose.delete(socket);
   };
-  socket.io.once("open", close);
-  socket.io.once("error", close);
+  const close = () => {
+    cancel();
+    s.disconnect();
+  };
+  pendingClose.set(socket, cancel);
+  s.io.once("open", close);
+  s.io.once("error", close);
+}
+
+/** Closes a socket that must stay shut until `reopenSocket` or `reconnectSocket` takes it back. */
+export function haltSocket(socket: Socket): void {
+  halted.add(socket);
+  closeSocket(socket);
+}
+
+export const isHalted = (socket: Socket) => halted.has(socket);
+
+/** Connects a socket that is not connected; a close still waiting on an opening attempt is dropped, so the attempt stands. */
+export function reopenSocket(socket: Socket): void {
+  halted.delete(socket);
+  cancelPendingClose(socket);
+  raw(socket).connect();
 }
 
 /** A fresh attempt; one already opening is that attempt, and closing it would only log. */
 export function reconnectSocket(socket: Socket): void {
-  if (socket.io.engine?.readyState === "opening") return;
-  socket.disconnect().connect();
+  halted.delete(socket);
+  cancelPendingClose(socket);
+  const s = raw(socket);
+  if (s.io.engine?.readyState === "opening") return;
+  s.disconnect().connect();
 }
 
 /**
