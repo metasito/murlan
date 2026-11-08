@@ -180,20 +180,35 @@ same commit that moves it, so the number and its cause travel together.
 
 ## The gate: `skiaPerf.spec.ts`
 
-What blocks a pull request is `tests/e2e/skiaPerf.spec.ts`, in the browser shards and so behind
-`CI gate`: the Skia felt on SwiftShader, motion on, 4x CPU throttle, 874x402 at DPR 1, seeded, on the
-virtual clock. It reads two 240-frame windows, the settled table and the viewer's throw with the three
-bots answering, and holds each against `tests/e2e/helpers/skiaPerfBudgets.ts`. A slow runner steps
-the same frames as a fast one, so the draw counts are the runner's to keep and only the script time
-moves with it.
+What blocks a pull request is `tests/e2e/skiaPerf.spec.ts`. It runs in the browser shards, so
+`CI gate` holds it. The setup:
 
-The budgets and the spec are targets (rule 52): a budget moves in a pull request of its own,
-touching nothing under `app/`, `components/` or `lib/`, and `@rotonmeta` owns both files. A change
-that needs more than the budget allows is either made cheaper or argued for there.
+- the Skia felt on SwiftShader, motion on, 4x CPU throttle;
+- 874x402 at DPR 1, seeded, on the virtual clock.
 
-Not gated, and why: long tasks through a turn (6 to 42 across runs of one build, the runner's load
-alone), task time (it carries the GPU process's waits), and DPR 3 (SwiftShader took over six minutes
-for the rest window alone).
+It reads two 240-frame windows. One is the settled table. The other is the viewer's throw with the
+three bots answering. Each window is held to `tests/e2e/helpers/skiaPerfBudgets.ts`, which counts:
+
+- WebGL draws per frame;
+- draws on canvases outside the document;
+- `readPixels` calls;
+- style writes inside the cards;
+- at rest, the frames the felt drew in.
+
+A slow runner steps the same frames as a fast one, so these counts do not move with the runner.
+
+Nothing timed gates, for the reasons in § Why this recorder does not gate CI. Script ms, task ms and
+long tasks go into the `skia perf at 4x` annotation only. Script ms would not catch much anyway.
+Under the virtual clock a frame's callbacks run inside `page.evaluate`, and CDP's `ScriptDuration`
+misses that work: a planted 1.5M `Math.sin` a frame moved it by 2%. **A regression that only burns
+CPU, with no extra draw, readback or style write, passes this gate.** Catching it would need a time
+budget, and this runner cannot hold one.
+
+The budgets and the spec are targets (rule 52), set by
+`docs/adr/0018-the-skia-table-is-held-to-counted-budgets.md`. A budget moves in a pull request of
+its own, touching nothing under `app/`, `components/` or `lib/`, and `@rotonmeta` owns both files.
+
+Not covered: DPR 3, where SwiftShader had not finished the rest window after six minutes.
 
 ## Why this recorder does not gate CI
 

@@ -1,19 +1,19 @@
-// What tests/e2e/skiaPerf.spec.ts lets the Skia table cost a stepped frame at 4x CPU (RULES.md 51).
-// A target (TARGETS, tools/ci/target-freeze.mjs): a budget moves only in a pull request of its own,
-// touching nothing under app/, components/ or lib/, that cites the owner's ruling moving it.
+// A target (RULES.md 52), set by docs/adr/0018-the-skia-table-is-held-to-counted-budgets.md.
 
+/** Per window of tests/e2e/skiaPerf.spec.ts: counts only, each the same seed draws on any runner. */
 export interface WindowBudget {
-  /** WebGL draw calls across every canvas, per frame: the same seed draws the same calls on any runner. */
+  /** WebGL draw calls on the page's canvases, per frame. */
   glDrawsPerFrame: number;
-  /** Main-thread script, CDP's `ScriptDuration`, per frame: the runner's speed moves it, so it holds twice the worst measured. */
-  scriptMsPerFrame: number;
+  /** Draws on canvases outside the document, through the window. */
+  offscreenDraws: number;
+  readPixels: number;
+  /** Style attribute writes inside a card's view, through the window. */
+  cardStyles: number;
   /** Frames, of the window's, the felt's canvas drew in. */
   feltFrames?: number;
-  /** Tasks over 50 ms through the window. */
-  longTasks?: number;
 }
 
 export const BUDGETS = {
-  rest: { feltFrames: 96, glDrawsPerFrame: 5.5, scriptMsPerFrame: 9, longTasks: 12 },
-  turn: { glDrawsPerFrame: 38, scriptMsPerFrame: 34 },
+  rest: { feltFrames: 96, glDrawsPerFrame: 5.5, offscreenDraws: 0, readPixels: 0, cardStyles: 0 },
+  turn: { glDrawsPerFrame: 38, offscreenDraws: 8, readPixels: 0, cardStyles: 18000 },
 } as const satisfies Record<string, WindowBudget>;

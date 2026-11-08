@@ -26,6 +26,9 @@ interface Measured {
   frames: number;
   feltFrames: number;
   glDrawsPerFrame: number;
+  offscreenDraws: number;
+  readPixels: number;
+  cardStyles: number;
   scriptMsPerFrame: number;
   taskMsPerFrame: number;
   longTasks: number;
@@ -40,10 +43,12 @@ async function metrics(cdp: CDPSession) {
 
 async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Page) => Promise<void>> = {}): Promise<Measured> {
   await page.evaluate(() => {
-    const w = window as unknown as { murlanLongTasks: number; murlanTrace: { frames: unknown[] } };
+    const w = window as unknown as { murlanLongTasks: number; murlanLongTaskObserver?: PerformanceObserver; murlanTrace: { frames: unknown[] } };
     w.murlanLongTasks = 0;
     w.murlanTrace.frames.length = 0;
-    new PerformanceObserver((list) => (w.murlanLongTasks += list.getEntries().length)).observe({ type: "longtask" });
+    w.murlanLongTaskObserver?.disconnect();
+    w.murlanLongTaskObserver = new PerformanceObserver((list) => (w.murlanLongTasks += list.getEntries().length));
+    w.murlanLongTaskObserver.observe({ type: "longtask" });
   });
   await stepThen(page, null, TAKE_RENDER_COUNTS);
   const from = await metrics(cdp);
@@ -57,12 +62,16 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
     const w = window as unknown as { murlanLongTasks: number; murlanTrace: { frames: TraceFrame[] } };
     return { longTasks: w.murlanLongTasks, felts: [...new Set(w.murlanTrace.frames.map((f) => f.felt))] };
   });
-  const gl = frames.reduce((s, f) => s + Object.entries(f.draws).reduce((t, [k, v]) => t + (k.endsWith(" webgl") ? v : 0), 0), 0);
+  const sum = (of: (f: RenderCounts) => number) => frames.reduce((s, f) => s + of(f), 0);
+  const gl = sum((f) => Object.entries(f.draws).reduce((t, [k, v]) => t + (k.endsWith(" webgl") ? v : 0), 0));
   const per = (x: number) => +(x / WINDOW).toFixed(2);
   return {
     frames: frames.reduce((s, f) => s + f.frames, 0),
     feltFrames: frames.filter((f) => (f.drewIn[COUNTED.felt] ?? 0) > 0).length,
     glDrawsPerFrame: per(gl),
+    offscreenDraws: sum((f) => f.draws.offscreen ?? 0),
+    readPixels: sum((f) => f.readPixels),
+    cardStyles: sum((f) => f.styles.cards ?? 0),
     scriptMsPerFrame: per(to.script - from.script),
     taskMsPerFrame: per(to.task - from.task),
     longTasks,
@@ -71,14 +80,14 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
 }
 
 function holds(m: Measured, budget: WindowBudget, what: string) {
-  expect(m.frames, `frames the counter saw through ${what}`).toBe(WINDOW);
-  expect(m.felts, `the felts the trace saw through ${what}`).toEqual(["skia"]);
-  expect(m.feltFrames, `the felt never drew through ${what}`).toBeGreaterThan(0);
-  expect(m.scriptMsPerFrame, `no script ran through ${what}`).toBeGreaterThan(0);
+  expect.soft(m.frames, `frames the counter saw through ${what}`).toBe(WINDOW);
+  expect.soft(m.felts, `the felts the trace saw through ${what}`).toEqual(["skia"]);
+  expect.soft(m.feltFrames, `the felt never drew through ${what}`).toBeGreaterThan(0);
   expect.soft(m.glDrawsPerFrame, `WebGL draws a frame through ${what}`).toBeLessThanOrEqual(budget.glDrawsPerFrame);
-  expect.soft(m.scriptMsPerFrame, `script ms a frame through ${what}`).toBeLessThanOrEqual(budget.scriptMsPerFrame);
+  expect.soft(m.offscreenDraws, `offscreen draws through ${what}`).toBeLessThanOrEqual(budget.offscreenDraws);
+  expect.soft(m.readPixels, `readPixels through ${what}`).toBeLessThanOrEqual(budget.readPixels);
+  expect.soft(m.cardStyles, `style writes inside cards through ${what}`).toBeLessThanOrEqual(budget.cardStyles);
   if (budget.feltFrames !== undefined) expect.soft(m.feltFrames, `frames the felt drew through ${what}`).toBeLessThanOrEqual(budget.feltFrames);
-  if (budget.longTasks !== undefined) expect.soft(m.longTasks, `long tasks through ${what}`).toBeLessThanOrEqual(budget.longTasks);
 }
 
 test("the Skia table at a phone's CPU stays inside its budgets, at rest and through a turn", async ({ browser, baseURL }, info) => {
@@ -106,6 +115,6 @@ test("the Skia table at a phone's CPU stays inside its budgets, at rest and thro
   console.log(`skia perf at 4x: ${report}`);
   holds(rest, BUDGETS.rest, "the settled table");
   holds(turn, BUDGETS.turn, "the turn");
-  expect(turn.feltFrames, "frames the felt drew while the lamp glided to each bot").toBeGreaterThanOrEqual(WINDOW * TURN_FELT_FLOOR);
+  expect.soft(turn.feltFrames, "frames the felt drew while the lamp glided to each bot").toBeGreaterThanOrEqual(WINDOW * TURN_FELT_FLOOR);
   await context.close();
 });
