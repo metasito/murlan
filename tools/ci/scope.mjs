@@ -28,7 +28,7 @@ export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
 export const QUEUE_LOOP_TESTS = /^tools\/loop\/tests\//;
 
 /**
- * What the loop's suite (docs/agents/checks.md) asserts on beyond its own code: the protocol
+ * What the loop's suite (docs/agents/loop-harness.md) asserts on beyond its own code: the protocol
  * files, `.claude/settings.json`'s hook paths, package.json's script names, and ci.yml, whose job
  * names `check-steps.mjs` pins each delegated step to. Derived by `tests/tooling/ciScope.test.ts`.
  */

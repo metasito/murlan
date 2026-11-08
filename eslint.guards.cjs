@@ -1,5 +1,5 @@
 // The one registry of forbidden-shape rules. Where a new one goes, and the floor every guard stands
-// on, is docs/agents/checks.md § Where a forbidden-shape rule goes.
+// on, is docs/agents/traps.md § Where a forbidden-shape rule goes.
 
 /**
  * @typedef {object} Guard
@@ -929,7 +929,7 @@ const GUARDS = [
   },
   {
     id: "native-mocks-name-their-module",
-    why: "A module mock names its module in a literal, so a guard can tell what it replaces (docs/agents/checks.md § Where a forbidden-shape rule goes): write the path out instead of building it.",
+    why: "A module mock names its module in a literal, so a guard can tell what it replaces (docs/agents/traps.md § Where a forbidden-shape rule goes): write the path out instead of building it.",
     selector: `${JEST_MOCK} > :first-child:not(Literal, TemplateLiteral[expressions.length=0])`,
     files: ["tests/native/**/*.{ts,tsx}"],
     plant: { file: "tests/native/plant.test.tsx", code: [

@@ -39,7 +39,7 @@ describe("the loop's instructions name only things that exist", () => {
   // for them.
 
   test("every tracker.mjs verb a recipe names is one its CLI runs", () => {
-    const docs = [QUEUE, "docs/agents/issue-tracker.md", "docs/agents/RULES.md", ".claude/commands/audit.md"];
+    const docs = [QUEUE, "docs/agents/issue-tracker.md", "docs/agents/writing-tickets.md", "docs/agents/RULES.md", ".claude/commands/audit.md"];
     const verbs = [...new Set(docs.flatMap((d) => [...read(d).matchAll(/tracker\.mjs ([a-z][\w-]*)/g)].map((m) => m[1])))];
     assert.ok(verbs.length >= 6, `only ${verbs.join(", ")}; the pattern has drifted`);
     const unknown = verbs.filter((verb) => {
@@ -345,10 +345,16 @@ describe("no instruction runs a suite rule 2 forbids", () => {
     assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith(".md")).flatMap((f) => found(`${dir}/${f}`)), []);
   });
 
-  test("checks.md tells no one to run one, in a table's Run column or a sentence", () => {
+  test("checks.md and the docs it routes to tell no one to run one, in a table's Run column or a sentence", () => {
     const told = (line: string, at: number) => /^\s*\||\b[Rr]un\b[^.;:|]*$/.test(line.slice(0, at));
     assert.ok(told("| x | `", 6) && told("**Run `", 7) && !told("`npm test`'s", 1), "the instruction test has drifted");
-    assert.deepEqual(found("docs/agents/checks.md", told), []);
+    const checks = "docs/agents/checks.md";
+    const routed = [...new Set([...read(checks).matchAll(/\b(?:docs\/agents\/)?([\w-]+\.md)\b/g)].map((m) => `docs/agents/${m[1]}`))]
+      .filter((f) => existsSync(f) && f !== "docs/agents/RULES.md");
+    for (const f of ["suites.md", "traps.md", "device-runs.md", "loop-harness.md", "target-freeze.md"]) {
+      assert.ok(routed.includes(`docs/agents/${f}`), `checks.md no longer routes to ${f}`);
+    }
+    assert.deepEqual([checks, ...routed, "docs/agents/writing-tickets.md"].flatMap((f) => found(f, told)), []);
   });
 });
 
