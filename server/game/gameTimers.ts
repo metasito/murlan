@@ -1,6 +1,7 @@
 import type { OnlineGameState } from "./gameRoom.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 import { BOT_THINK_MS } from "../../lib/game/turnSchedule.ts";
 import { clock, now } from "../http/clock.ts";
 
@@ -82,15 +83,20 @@ function clearByPrefix(kind: TimerKind, prefix: string) {
  * Which ones those are is an accident of who imports whom, and it changes
  * silently when anyone adds an import anywhere in `server/`.
  * Pinned by `tests/tooling/timerEnvIsLive.test.ts`.
+ *
+ * An override over `ceilingMs` throws: a test asking for more than the ceiling
+ * would be testing a clock no seat gets.
  */
-function timeoutFromEnv(name: string, defaultMs: number): number {
+function timeoutFromEnv(name: string, defaultMs: number, ceilingMs = Infinity): number {
   const raw = testOnlyEnv(name);
   if (!raw) return defaultMs;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMs;
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultMs;
+  if (parsed > ceilingMs) throw new Error(`${name}=${raw} is over its ${ceilingMs} ms ceiling`);
+  return parsed;
 }
 
-export const afkTimeoutMs = () => timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", TURN_TIMEOUT_MS);
+export const afkTimeoutMs = () => timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", TURN_TIMEOUT_MS, CLOCK_CEILING_MS);
 export const disconnectGraceMs = () => timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 60_000);
 /**
  * Shorter than the in-game grace on purpose. A player who drops mid-round is
@@ -127,7 +133,7 @@ export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 
  */
 export const autoStartDelayMs = () => timeoutFromEnv("MURLAN_AUTOSTART_DELAY_MS", 4_000);
 /** docs/GAME-RULES.md § Decisions, "The next-round vote deadline". */
-export const voteDeadlineMs = () => timeoutFromEnv("MURLAN_VOTE_DEADLINE_MS", 30_000);
+export const voteDeadlineMs = () => timeoutFromEnv("MURLAN_VOTE_DEADLINE_MS", 30_000, CLOCK_CEILING_MS);
 
 export function clearAutoStart(roomId: string) {
   clear("autoStart", roomId);

@@ -12,6 +12,7 @@ import { castRematchVote } from "../../server/game/matchLedger.ts";
 import { installClock } from "../../server/http/clock.ts";
 import { actingSeat, createDeck, startRound, type GameState, type Opening } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 const ROOM = "game-turn-room";
 const AFK_MS = 45_000;
@@ -84,6 +85,19 @@ describe("armTurn on a seat a person holds", () => {
     assert.deepEqual(deadlines(events), [{ turnDeadlineMs: clock.now() + AFK_MS, turnSecondsRemaining: AFK_MS / 1000 }]);
     assert.equal(pending("afk", seatKey(ROOM, NAMES[mover]!.toLowerCase())), true);
     assert.equal(pending("bot", ROOM), false, "a person's turn was handed to the bot");
+  });
+
+  test("never gives the clock more than its ceiling, the opening's gate and all", () => {
+    const { rt, clock, events } = setup();
+    seat(dealt([0, 1, 2, 3]), [0, 1, 2, 3]);
+    armTurn(rt, ROOM);
+    const gated = deadlines(events)[0]!.turnDeadlineMs! - clock.now() - AFK_MS;
+    assert.ok(gated > 0, "the opening held no gate, so this proves nothing");
+
+    clearRoomTimers(ROOM);
+    process.env.MURLAN_AFK_TIMEOUT_MS = String(CLOCK_CEILING_MS);
+    armTurn(rt, ROOM);
+    assert.deepEqual(deadlines(events).at(-1), { turnDeadlineMs: clock.now() + CLOCK_CEILING_MS, turnSecondsRemaining: CLOCK_CEILING_MS / 1000 });
   });
 
   test("lets the AFK window run to its end, then plays the seat at the floor and says so", () => {

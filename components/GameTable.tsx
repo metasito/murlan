@@ -66,7 +66,8 @@ import { matchDim } from "@/lib/timeline/matchEnding";
 import { scorePillHitBox, voteTop } from "@/components/table/scorePillModel";
 import { matchBoardFor, scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
-import { HudComboPill, WindowTurnChip, type ConnectionNote } from "@/components/table/notices/hud";
+import { HudComboPill, WindowTurnChip } from "@/components/table/notices/hud";
+import { tableConnection, type ConnectionNote } from "@/components/table/connectionNote";
 import { useCountdown } from "@/components/table/countdown";
 import { useDeviceOffline, useTableClaim } from "@/components/OfflineBanner";
 import {
@@ -81,6 +82,7 @@ import { WhoStartsPanel } from "@/components/table/notices/panels";
 import {
   comboLabel as comboText,
   lastPlayLabel,
+  playerLabel,
   tableStrings,
   topBarLabel,
 } from "@/components/table/spokenLabels";
@@ -337,8 +339,7 @@ export function GameTable({
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
   const deviceOffline = useDeviceOffline();
-  const connectionNote: ConnectionNote | null =
-    connection === undefined ? null : deviceOffline ? { state: "offline", text: t("offlineBanner.text") } : connection;
+  const connectionNote = tableConnection(connection, deviceOffline, t);
 
   // Whether the rail's settings sheet is open, and the two toggles it owns
   // that live nowhere else: focus mode and the left-handed swap are a
@@ -842,12 +843,7 @@ export function GameTable({
   // length of one throw. Spectating, the bottom seat is someone else's, so no
   // play on the felt is the watcher's own.
   const playedByViewer = viewerOwnsSeat(top?.playedBy ?? null, viewerSeat, spectating);
-  const lastPlayName =
-    top === null
-      ? ""
-      : playedByViewer
-        ? t("gameShared.you")
-        : (players[top.playedBy]?.name ?? "");
+  const lastPlayName = top === null ? "" : playerLabel(playedByViewer, players[top.playedBy]?.name ?? "", t);
 
   const topBarA11yLabel = pillNote?.text ?? topBarLabel(onTop, playedByViewer, lastPlayName, t);
 

@@ -7,6 +7,7 @@ import type { Socket } from "socket.io-client";
 import { hasDatabase, skipMessage, startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
 import { boot, stopInstance, type Instance } from "../helpers/instance.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 // Off: the rejoin alone must take the table over.
 process.env.MURLAN_SWEEP_INTERVAL_MS = "3600000";
@@ -34,7 +35,7 @@ describe("a rejoin after the table's owner was killed", { skip: hasDatabase() ? 
   });
 
   test("is answered with the table inside one try and the restore", { timeout: 90_000 }, async () => {
-    owner = await boot(process.env.DATABASE_URL!, { MURLAN_AFK_TIMEOUT_MS: "600000" });
+    owner = await boot(process.env.DATABASE_URL!, { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS) });
     const tag = Date.now() % 1e6;
     const host = await connectAs({ url: `http://127.0.0.1:${owner.port}` } as TestServer, `okr_h${tag}`);
     const guest = await connectAs(local, `okr_g${tag}`);

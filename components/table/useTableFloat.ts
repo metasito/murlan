@@ -4,7 +4,7 @@ import type { ServerError } from "@/context/OnlineGameContext";
 import { useTranslation } from "@/lib/i18n";
 import { moveSince } from "@/lib/game/moves";
 import { viewerOwnsSeat } from "@/components/seatLayout";
-import { nextFloat, raised, type Float } from "./floatModel";
+import { floatLabels, nextFloat, raised, type Float } from "./floatModel";
 
 /** The float over the pile: what each new state, refusal and auto-pass raises, and a refusal raised by hand. */
 export function useTableFloat(i: {
@@ -36,7 +36,7 @@ export function useTableFloat(i: {
         withdrawn,
         withdrew: withdrawn && !seen.withdrawn,
       },
-      { passed: t("gameShared.passedLabel"), autoPass: t("game.autoPassTitle") }
+      floatLabels(t)
     );
     if (shown !== float) setFloat(shown);
   }

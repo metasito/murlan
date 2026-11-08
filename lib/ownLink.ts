@@ -29,7 +29,8 @@ export const linkHeld = (link: OwnLink) => link === "dropped" || link === "recon
 
 export const holdGrey = (link: OwnLink) => (linkHeld(link) ? Reconnect.grey : 0);
 
-export type LinkPill = "lost" | "back" | "reconnecting" | "reconnected";
+export const LINK_PILLS = ["lost", "back", "reconnecting", "reconnected"] as const;
+export type LinkPill = (typeof LINK_PILLS)[number];
 
 /** `connected` is up with no drop since (`useOwnLink`), so a socket never up still reads as reconnecting; `otherBack` is another seat's return. */
 export function linkPill(link: OwnLink, connected: boolean, otherBack: boolean): LinkPill | null {
