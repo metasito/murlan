@@ -35,7 +35,7 @@ const DIRS = ["top", "bottom", "left", "right"] as const;
 describe("anchors", () => {
   // The rail makes the left and right pads differ, so a test that happens to pass only because the
   // table is centred cannot hide here.
-  const at = (scale = 1) => tableLayout({ width: 800, height: 390, insets: NO_INSETS, scale });
+  const at = (scale = 1) => tableLayout({ width: 800 * scale, height: 390 * scale, insets: NO_INSETS });
   const base = at();
   const midTop = (l: TableLayout) => l.frame.tableTop + topBandHeight(l.scale);
   const pileY = (l: TableLayout) => midTop(l) + (l.window.height - l.frame.surplus - midTop(l) - l.handZoneH) / 2;

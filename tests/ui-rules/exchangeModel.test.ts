@@ -340,7 +340,7 @@ describe("readExchangeLegs", () => {
     cardReceived: card("taken"),
     cardGiven: card("given"),
   });
-  const LAYOUT = tableLayout({ width: 844, height: 390, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale: 1 });
+  const LAYOUT = tableLayout({ width: 844, height: 390, insets: { top: 0, bottom: 0, left: 0, right: 0 } });
   const legs = (winnerIdx: number, loserIdx: number, table = players, origins?: Map<string, CardFrom>, jokers = false) =>
     readExchangeLegs(
       announced(winnerIdx, loserIdx, jokers),

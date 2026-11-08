@@ -5,7 +5,7 @@
 
 import type { Player } from "@/lib/game/gameEngine";
 import { Spacing } from "../lib/tokens.ts";
-import { CARD_H, FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
+import { CARD_H, cardScale, FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
 import { CHIP_H, HAND_ZONE_H, SEAT_DISC, seatLabelH } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
@@ -41,12 +41,22 @@ export interface TableLayout {
 }
 
 /**
+ * The window's own short edge, never that minus the safe-area insets: the rail absorbs the cutout
+ * and the hand zone carries the home indicator, and taking the insets off here instead shrinks the
+ * cards on a device only, away from the web table at the same size.
+ */
+export function tableScale(window: { width: number; height: number }): number {
+  return cardScale(Math.min(window.width, window.height));
+}
+
+/**
  * The bands are the drawn cap's (`topBandHeight`, `sideSlotHeight`), never a count's, so no seat
  * moves as a hand shrinks. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
  */
-export function tableLayout(i: { width: number; height: number; insets: EdgeInsets; scale: number }): TableLayout {
-  const { width, height, scale } = i;
-  const frame = computeTableFrame(i);
+export function tableLayout(i: { width: number; height: number; insets: EdgeInsets }): TableLayout {
+  const { width, height } = i;
+  const scale = tableScale(i);
+  const frame = computeTableFrame({ ...i, scale });
   const handCardH = CARD_H(scale * HAND_SCALE);
   const handZoneH = HAND_ZONE_H(handCardH, frame.bottomPad);
   const ring = SEAT_DISC * scale;
