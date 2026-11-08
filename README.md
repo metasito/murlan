@@ -49,7 +49,8 @@ not here.
 ## Tests
 
 Before running or picking a check — `docs/agents/checks.md`: which one catches what, what it
-costs, and the traps that pass every check and still ship broken. The commands themselves are
+costs, and an index of the traps that pass every check and still ship broken (written up in
+`docs/agents/traps.md`; each suite's recipe is in `docs/agents/suites.md`). The commands themselves are
 `package.json`'s scripts; `npm run verify` is the local sweep.
 
 ## Database

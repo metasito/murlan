@@ -38,12 +38,46 @@ test("the pointer list is read from the section itself, one target per bullet", 
   assert.deepEqual(pointerTargets("# no such section\n"), []);
 });
 
-test("CLAUDE.md still points at the docs a session reads first", () => {
-  assert.ok(targets.length >= 7, targets.join(", "));
-  for (const f of ["docs/agents/RULES.md", CHECKS, "docs/agents/issue-tracker.md", "CONTEXT.md"]) {
-    assert.ok(targets.includes(f), `${f} is no longer a pointer target`);
-  }
+// Exact, so a reworded bullet cannot swap one target for another and keep the count.
+const EXPECTED_TARGETS = [
+  "CONTEXT.md",
+  "components/CLAUDE.md",
+  "docs/adr/README.md",
+  "docs/agents/RULES.md",
+  CHECKS,
+  "docs/agents/issue-tracker.md",
+  "server/CLAUDE.md",
+];
+
+test("CLAUDE.md points at exactly the docs this cap was set for", () => {
+  assert.deepEqual([...targets].sort(), [...EXPECTED_TARGETS].sort());
   for (const f of mandatory) assert.ok(existsSync(path.join(root, f)) && bytes(f) > 0, `${f} is missing or empty`);
+});
+
+// An always-read file that sends the reader on, unconditionally, to a file outside the set
+// moves the bytes without removing them.
+function sendsOutside(file: string, text: string, inSet: Set<string>): string[] {
+  const unconditional = /\b(?:now|first|at once|immediately)\b|\bbefore (?:anything|starting|beginning|you (?:start|begin|do anything))\b/i;
+  return [...text.matchAll(/(\b(?:always|must|first)\s+)?\b[Rr]ead\s+`([^`\s]+\.md)`([^.\n]*)/g)]
+    .filter((m) => m[1] || unconditional.test(m[3]))
+    .map((m) => m[2])
+    .filter((p) => !inSet.has(p) && !inSet.has(path.posix.join(path.posix.dirname(file), p)))
+    .map((p) => `${file} → ${p}`);
+}
+
+test("the dodge scan sees an unconditional send-on and lets a conditional one through", () => {
+  const set = new Set(["CLAUDE.md", "docs/agents/RULES.md"]);
+  assert.deepEqual(sendsOutside("CLAUDE.md", "Read `docs/big.md` now, then work.", set), ["CLAUDE.md → docs/big.md"]);
+  assert.deepEqual(sendsOutside("CLAUDE.md", "You must read `docs/big.md`.", set), ["CLAUDE.md → docs/big.md"]);
+  assert.deepEqual(sendsOutside("CLAUDE.md", "Read `docs/big.md` before anything else.", set), ["CLAUDE.md → docs/big.md"]);
+  assert.deepEqual(sendsOutside("CLAUDE.md", "Read `docs/agents/RULES.md` now.", set), []);
+  assert.deepEqual(sendsOutside("docs/agents/x.md", "Read `RULES.md` first.", set), []);
+  assert.deepEqual(sendsOutside("CLAUDE.md", "Read `docs/big.md` when a shadow is wrong.", set), []);
+});
+
+test("no always-read file sends the reader, unconditionally, to a file outside the set", () => {
+  const inSet = new Set(mandatory);
+  assert.deepEqual(mandatory.flatMap((f) => sendsOutside(f, read(f), inSet)), []);
 });
 
 test(`docs/agents/checks.md stays a router, at most ${CHECKS_CAP} bytes`, () => {

@@ -226,7 +226,7 @@ Also check:
   },
   {
     key: 'tests-ci', model: 'opus', skills: [],
-    start: 'tests/, tools/loop/tests/, jest.config.js, tests/e2e/playwright.config.ts, .github/workflows/, docs/agents/checks.md, tools/loop/check-steps.mjs',
+    start: 'tests/, tools/loop/tests/, jest.config.js, tests/e2e/playwright.config.ts, .github/workflows/, docs/agents/checks.md, docs/agents/suites.md, tools/loop/check-steps.mjs',
     refs: 'docs/agents/traps.md ("What a green loop does not mean", "A scan needs a planted floor", "The native harness is async").',
     ask: `Check:
 - critical mechanisms with no test: socket auth, reconnect, engine rules, deletion;
