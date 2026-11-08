@@ -204,7 +204,7 @@ describe('the felt cloth', () => {
     expect(seen.every((w) => w !== null)).toBe(true);
     expect(seen[0]).toBeLessThan(0.5);
     expect(seen.at(-1)).toBe(1);
-    expect(Math.max(...steps(seen))).toBeLessThan(0.5);
+    expect(Math.max(...steps(seen))).toBeLessThan(0.75);
     seen.length = 0;
     await frames(3200, each);
     expect(seen.at(-1)).toBe(0);

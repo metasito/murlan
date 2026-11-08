@@ -359,9 +359,9 @@ function settledAim(s: Lamp): string {
 const CLOTH_ENDS = [-SWAY, SWAY] as const;
 const CACHED_TARGETS = 3;
 const CACHED_CLOTHS = CACHED_TARGETS * CLOTH_ENDS.length;
-/** How long a settled felt takes to hand the lit cloth over to its cross, and a flare to take it back. */
+/** How long a settled felt takes to hand the lit cloth over to its cross, and a flare to take it back: three frames, so the ramp does not dim the flash. */
 const SETTLE_MS = 500;
-const FLARE_RISE_MS = 100;
+const FLARE_RISE_MS = 48;
 const NEVER_REDUCED = { reduceMotion: ReduceMotion.Never };
 
 /** The cloth with the lamp `lean` points off its target, unflared, on the canvas's own device pixels: lit from the planes, or in one pass where there are none. */
