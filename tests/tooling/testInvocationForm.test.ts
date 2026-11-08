@@ -1,15 +1,18 @@
 // tests/tooling/testInvocationForm.test.ts
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isRecordedExclusion } from "../helpers/trackedFiles.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const at = (file: string) => join(ROOT, file);
 const CHECKS = "docs/agents/checks.md";
 const scripts: Record<string, string> = JSON.parse(readFileSync(at("package.json"), "utf8")).scripts;
+
+const isDirectory = (t: string) => existsSync(at(t)) && statSync(at(t)).isDirectory();
 
 const VALUE_FLAGS = new Set(["--import", "--require", "--test-reporter", "--test-reporter-destination", "--test-timeout", "--test-concurrency", "--test-name-pattern", "--test-shard"]);
 
@@ -24,22 +27,19 @@ function directoryForms(text: string): string[] {
         if (VALUE_FLAGS.has(t)) i++;
         continue;
       }
-      const pathLike = /^(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]*)*$/.test(t) && (t.includes("/") || t === "tests" || t === ".");
+      const pathLike = /^(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]*)*$/.test(t) && (t.includes("/") || t === "tests" || t === "." || isDirectory(t));
       if (pathLike && !/\.[cm]?[jt]sx?$/.test(t)) found.push(t);
     }
   }
   return found;
 }
 
-// A dated plan is a record of the commands its day used; rewriting them would falsify it
-// (the same exclusion as docReferences.test.ts).
-const DATED_PLAN = /^docs\/plans\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/;
-
 test("no doc, script or workflow runs node --test on a directory, which fails on Node 22", () => {
   const dirs = [
     "node --test tests/tooling",
     'node --test "tests/tooling/"',
     "node --test tests",
+    "node --test tools",
     "node --test --test-timeout=1 tests/tooling",
     "node --test --test-reporter spec tests/tooling",
     "node scripts/nodeTest.mjs --import ./x.mjs --test --test-reporter spec --test-reporter-destination stdout tests/tooling",
@@ -51,7 +51,7 @@ test("no doc, script or workflow runs node --test on a directory, which fails on
   }
   const files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
     .trim().split("\n").filter((f) => /\.(md|yml|yaml|mjs|sh|json)$/.test(f) && existsSync(at(f)))
-    .filter((f) => !f.startsWith(".claude/skills/") && !DATED_PLAN.test(f));
+    .filter((f) => !isRecordedExclusion(f));
   assert.ok(files.length > 100, `read ${files.length} files: the tracked set is not being listed`);
   const found = files.flatMap((f) => directoryForms(readFileSync(at(f), "utf8")).map((t) => `${f} -> ${t}`));
   assert.deepEqual(found, []);

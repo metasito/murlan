@@ -27,3 +27,12 @@ export function trackedFiles(repoRoot: string, ...pathspec: string[]): string[] 
 export function trackedRootFiles(repoRoot: string): string[] {
   return trackedFiles(repoRoot, ":(glob)*");
 }
+
+/**
+ * Doc scans leave out `.claude/skills/` (vendored upstream, never this repo's own claim) and a
+ * dated plan under `docs/plans/` (a record of the tree it was written against: a later move leaves
+ * its paths and commands stale by design).
+ */
+export function isRecordedExclusion(file: string): boolean {
+  return file.startsWith(".claude/skills/") || /^docs\/plans\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(file);
+}
