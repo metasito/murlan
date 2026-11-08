@@ -476,7 +476,11 @@ describe("which commit's judge the gate step runs, the step itself run over scra
     for (const tree of [always, ...commits]) {
       for (const [file, text] of Object.entries(tree)) {
         if (text === null) git("rm", "-q", file);
-        else (mkdirSync(path.dirname(path.join(dir, file)), { recursive: true }), writeFileSync(path.join(dir, file), text), git("add", file));
+        else {
+          mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+          writeFileSync(path.join(dir, file), text);
+          git("add", file);
+        }
       }
       git("commit", "-q", "--allow-empty", "-m", "c");
     }
