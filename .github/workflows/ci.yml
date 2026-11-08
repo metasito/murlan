@@ -1073,24 +1073,13 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: read
-      issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
-            tools
+            tools/ci
             scripts/lib
-            tests
       - name: Every job passed or was skipped by scope
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node tools/ci/gate.mjs
-      - name: Every flake ticket is open, and the quarantine list did not grow
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          EVENT: ${{ github.event_name }}
-        run: node tools/ci/flake-tickets.mjs

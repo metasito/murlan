@@ -61,7 +61,7 @@ describe("the workflow runs base's script on the head's objects, and nothing of 
   });
 
   test("it reads only, holds no secret and keeps no cache", () => {
-    assert.deepEqual(workflow.permissions, { contents: "read" });
+    assert.deepEqual(workflow.permissions, { contents: "read", issues: "read" });
     assert.doesNotMatch(workflowText, /secrets\.|actions\/cache|\.github\/actions\/install|\bnpm\b|\bnpx\b/);
   });
 
@@ -81,12 +81,14 @@ describe("the workflow runs base's script on the head's objects, and nothing of 
     assert.deepEqual(uses[1].with, { "package-manager-cache": false, "node-version-file": ".node-version" });
   });
 
-  test("its one run fetches the head as objects and runs the checked-out script on them, with the pull request's fields through env", () => {
+  test("its runs fetch the head as objects and run the checked-out scripts on them, with the pull request's fields through env", () => {
     const runs = steps().filter((s) => s.run);
-    assert.equal(runs.length, 1);
-    assert.equal(steps().length, 3);
+    assert.equal(runs.length, 2);
+    assert.equal(steps().length, 4);
     for (const s of steps()) assert.equal(s.if, undefined);
     assert.deepEqual(runs[0].env, { HEAD_SHA: "${{ github.event.pull_request.head.sha }}" });
+    assert.deepEqual(runs[1].env, { GH_TOKEN: "${{ github.token }}", DEFAULT_BRANCH: "${{ github.event.repository.default_branch }}" });
+    assert.equal(runs[1].run, "node tools/ci/flake-tickets.mjs HEAD refs/freeze/head");
     assert.equal(
       freezeRun(),
       [

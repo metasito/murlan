@@ -407,7 +407,7 @@ today it lands with no review required.
 `tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list, every nightly
 spec inside it, no other workflow naming a job `Target freeze`, and the workflow's shape: its
 trigger, branches and types, read-only permissions, a checkout of the base, pinned actions, and its
-one `run`, verbatim. It plants diffs in a scratch repository and judges them: mixed, target-only
+two `run`s, verbatim (the second is rule 53's ticket and quarantine check). It plants diffs in a scratch repository and judges them: mixed, target-only
 and code-only diffs; a target and the code in separate commits; a rename out of the list; a deleted
 nightly spec; the workflow beside code; a target retired in one pull request; an impostor job; a
 branch that merges main; a merge ref. It runs the workflow's own `run` from a clone of the base on
@@ -477,34 +477,52 @@ not a shape and stays a test.
 ## A flake is fixed, never retried or quietly skipped
 
 Rule 53, held by `tests/tooling/flakesAtSource.test.ts` (in `npm test`) and, for what needs the
-network, by the CI gate's last step (`tools/ci/flake-tickets.mjs`). It stays a test rather than a
-guard: whether a skip is allowed is a relation between the source and the workflow that runs it.
+network, by the Target freeze job's second step (`tools/ci/flake-tickets.mjs`), which runs main's
+copy on the head's git objects, as rule 52's does. It stays a test rather than a guard: whether a
+skip is allowed is a relation between the source and the workflow that runs it.
 
-- **Retries.** Red on a Playwright `retries` other than `0`, a jest `retryTimes`, a rerun flag in a
-  script or step, `gh run rerun` or an action named for retrying, `continue-on-error` on a job that
-  runs tests, and `continue-on-error` on a test step unless the step has an `id` that a later step
-  judges by `steps.<id>.outcome`. A test command inside a shell loop, or `a || a`, is red unless its
-  failure leaves the step (`|| exit 1`, `if ! …; then … exit 1; fi`). A test step run twice in one
-  job is allowed only behind `steps.<first>.outcome == 'failure' && steps.<probe>.outputs.started
-  == 'false'`: the first run never reached a test (`maestro.yml`'s boot retry).
+- **Retries.** Red on a Playwright project whose resolved `retries` is not `0` (each tracked config
+  is listed through Playwright's own CLI), any tracked file naming jest's retry knob or a
+  `describe.configure` with retries, a rerun flag in a script, step, `with:` or `env:`, `gh run
+  rerun` or an action named for retrying, and `continue-on-error` on a job that runs tests. A
+  `continue-on-error` test step needs an `id` and a later step whose `if` reads that
+  `steps.<id>.outcome` failing and that exits non-zero. A step or job that runs tests behind
+  `failure()` or an outcome test is red. A test step run twice in one job is allowed only behind
+  `steps.<first>.outcome == 'failure' && steps.<probe>.outputs.started == 'false'`: the first run
+  never reached a test (`maestro.yml`'s boot retry).
+- **Shell.** Every test step (by its effective shell: `bash -e`, or `-eo pipefail` when `shell:
+  bash`), every `package.json` script and every tracked `.sh` is parsed into statements, and a
+  test command is red when its failure can leave the script green: `||` to anything but `exit N`,
+  `&&` anywhere but the last statement, a `while`/`until` on it, `!`, `&`, `set +e`, an `if` on
+  it whose failure branch does not `exit` non-zero, a compound holding it that ends in `||`, a pipe
+  without pipefail, or, without errexit, any place but the last statement. A step under another
+  shell is red, since the parse cannot read it.
 - **Skips.** Every `.skip`/`.fixme`/`.fail`/`.todo`, `x`-prefixed call, `t.skip()` and `{ skip }`
-  option under a `tests/` directory is a site, and a site passes only when CI hears it: the reason
-  prints a phrase verify's "Assert the integration suites actually ran" step fails on; a `# skipped
-  0` step names or selects the file; it skips off a non-Linux platform in a suite CI runs on Linux;
-  it is a `Platform.OS` branch whose other jest project runs it; or `// flake: #<n>` sits on its line
-  or the one above. Each rule must hear at least one site, so a rule nothing uses goes red too.
+  option under a `tests/` directory is a site, read with comments blanked. A call or option passes
+  when CI hears it: its reason is a literal (`skip("…")`, `cond && "…"`, `cond ? "…" : false`,
+  `cond ? false : "…"`, or `skipMessage()`, whose literals all count) holding a phrase verify's
+  "Assert the integration suites actually ran" step fails on; a `# skipped 0` step names or selects
+  the file; or it is exactly `process.platform … && "…"` off Linux in a suite CI runs on Linux. A
+  `Platform.OS` branch whose other jest project runs it passes. Any other `test.skip(…)` member or
+  `x`-call passes only by `// flake: #<n>` on its line or the one above. Each rule must hear at least
+  one site, so a rule nothing uses goes red too.
 - **The quarantine list**, `tests/tooling/flakesAtSource.json`, counts per file what is neither:
-  the test asserts the counts exactly, and the CI step fails a pull request whose list has grown over
-  its base's. It holds `tests/e2e/browserErrors.spec.ts`'s self-test, `seatNameContrast.spec.ts`'s
-  ruled `test.fail()` and `ios.yml`'s simulator warm-up.
-- **Tickets.** The CI step reads every `// flake: #<n>` under `tests/` and `tools/` and fails unless
-  each is an open issue, not a pull request, with the job's `GITHUB_TOKEN`; the offline test only
-  checks that every tag sits on a skip.
+  the test asserts the counts exactly, and the Target freeze step fails a pull request whose list
+  has grown over its base's, or, where the base lacks the file, over the default branch's. It
+  holds `tests/e2e/browserErrors.spec.ts`'s self-test, `seatNameContrast.spec.ts`'s ruled
+  `test.fail()` and `ios.yml`'s simulator warm-up.
+- **Tickets.** The Target freeze step reads every `// flake: #<n>` under `tests/` and `tools/` at
+  the head and fails unless each is an open issue, not a pull request, carrying the `flake` label;
+  a missing `flake` label is red, with a message to create it. The offline test only checks that
+  every tag sits on a skip.
 
-**Limits.** No base exists on a `schedule` or `workflow_dispatch` run, so there the list is checked
-only for its tickets; a pull request with no base fails. Closing an issue does not fail `main`
-until the next run reaches the gate. A skip whose reason is built somewhere the scan cannot follow
-(a helper in another file) reads as unheard and must be ticketed or listed.
+**Limits.** The step runs on pull request events only: closing an issue reds every open pull
+request whose head still carries its tag, at that pull request's next run, and fails nothing on
+`main` until then. A skip is invisible to the scan when its reason is built in another file than
+`skipMessage()`, when it happens at runtime through a helper (an early `return`, a wrapper around
+`test`), or when it takes a shape outside the patterns above; those read as nothing, not as unheard.
+The shell parse does not follow functions, `eval`, `bash -c` strings or heredocs, and judges a
+nested `exit` as the enclosing branch's.
 
 ## The native harness is async
 

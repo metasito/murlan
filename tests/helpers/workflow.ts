@@ -9,6 +9,7 @@ export interface Step {
   id?: string;
   uses?: string;
   run?: string;
+  shell?: string;
   if?: string;
   with?: Record<string, unknown>;
   env?: Record<string, string>;
