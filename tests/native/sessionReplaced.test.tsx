@@ -16,7 +16,7 @@ import type { ServerPayload } from '@/shared/protocol';
 import { renderApp } from './harness/renderApp';
 import { lastSocket } from './mocks/socketIo';
 
-const mount = () => renderApp(<Text>child</Text>, { user: { id: 'u1', username: 'Ana' } });
+const mount = () => renderApp(<Text>child</Text>, { user: { id: 'u1', username: 'Ana' }, connected: true });
 
 const fireSocketError = async (payload: ServerPayload) => {
   await act(async () => {
