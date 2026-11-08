@@ -46,7 +46,7 @@ Why earlier fixes didn't hold:
   "this canvas doesn't rebuild"; none proves "the table costs X ms/frame". A new layer (gloss,
   foil, hand shade, motes) is not covered by any old pin.
 - Every e2e spec using `consoleErrors` (and the e2e build's `EXPO_PUBLIC_E2E_FAST`) runs with
-  motion reduced: `docs/agents/checks.md` § "What a green loop does not mean" admits it.
+  motion reduced: `docs/agents/traps.md` § "What a green loop does not mean" admits it.
 - The parity harness runs on **one virtual clock** (#1255) — every frame is rendered regardless
   of cost, so frame drops cannot show.
 - The device gates built in #1259 (`d0cb4073` "device gates for throw stalls, the table at rest")
@@ -113,7 +113,7 @@ Parallel UX thread: #533 rebuild around mockups → #602 owner (08-30): "Exchang
 the moment sucks … doesn't look like the mockup" → #665, #1806, #1833.
 Why: the test targets a transient overlay timed against wall clock on a janky emulator; each fix
 lengthened or removed the hold rather than fixing the jank; device runs never gate a PR
-(`docs/agents/checks.md` § Owner decisions).
+(`docs/agents/device-runs.md` § The device jobs).
 
 ### 1.5 Felt / lamp look (the material keeps being reimplemented)
 
