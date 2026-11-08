@@ -1,7 +1,6 @@
 // The table layout GameTable.tsx builds for a window and its safe-area insets, at the scale it
 // takes from the window. tests/e2e/lampSeats.spec.ts measures the laid-out
 // table; where the two disagree, the spec is right and this is stale.
-import { cardScale } from "../../components/cardFaceModel.ts";
 import type { EdgeInsets } from "../../components/tableFrame.ts";
 import { tableLayout, type TableLayout } from "../../components/tableLayout.ts";
 
@@ -15,5 +14,5 @@ export const INSETS: Record<string, EdgeInsets> = {
 };
 
 export function phoneTable(width: number, height: number, insets: EdgeInsets = NO_INSETS): TableLayout {
-  return tableLayout({ width, height, insets, scale: cardScale(Math.min(width, height)) });
+  return tableLayout({ width, height, insets });
 }

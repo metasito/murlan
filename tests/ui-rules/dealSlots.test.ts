@@ -6,7 +6,7 @@ import { arrangeOpponents } from "../../components/seatLayout.ts";
 import { tableLayout, type Seating } from "../../components/tableLayout.ts";
 import { dealLegs, dealSlots, legAt, type DealLeg } from "../../components/table/dealSlots.ts";
 
-const LAYOUT = tableLayout({ width: 844, height: 390, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale: 1 });
+const LAYOUT = tableLayout({ width: 844, height: 390, insets: { top: 0, bottom: 0, left: 0, right: 0 } });
 
 const seatingOf = (seats: number): Seating => {
   const players: Player[] = dealCards(seats).hands.map((hand, i) => ({ id: `p${i}`, name: `P${i}`, hand, type: "human" }));

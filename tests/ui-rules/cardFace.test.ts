@@ -24,6 +24,7 @@ import {
   SUIT_GLYPHS,
   suitMarksPath,
 } from "../../components/cardFaceModel.ts";
+import { tableScale } from "../../components/tableLayout.ts";
 
 // Every face card draws the full pip field and the index at whatever size the
 // table's own scale resolves to — checked across the realistic range, from a
@@ -180,14 +181,14 @@ describe("cardScale", () => {
 describe("chipScale", () => {
   test("leaves every phone's chips at the table's scale", () => {
     for (const [w, h] of [[667, 375], [844, 390], [932, 430], [640, 360], [568, 320]]) {
-      const scale = cardScale(Math.min(w, h));
+      const scale = tableScale({ width: w, height: h });
       assert.equal(chipScale(scale, w), scale, `${w}x${h}`);
     }
   });
 
   test("holds a tablet's chips to what its width can seat", () => {
     for (const [w, h] of [[1024, 768], [1112, 834]]) {
-      const scale = cardScale(h);
+      const scale = tableScale({ width: w, height: h });
       const chips = chipScale(scale, w);
       assert.ok(chips < scale, `${w}x${h} is held back`);
       assert.ok(Math.abs(chips - w / 690) < 1e-9, `${w}x${h} sits at 690 px of width per unit of scale`);

@@ -9,6 +9,7 @@ import { NoticeSource } from "@/components/table/TableNotice";
 import type { GameState } from "@/lib/game/gameEngine";
 import { Colors, FontSize, Layer, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { feltOnly, legibilityRing } from "@/components/table/legibilityRing";
+import { tableScale } from "@/components/tableLayout";
 import { benchHandles, diag } from "@/lib/diagnostics";
 import { LAMP_SIDES, annulusLuminance, type LampSide } from "@/lib/diagnostics/lampLegibility";
 import { benchTargetHost } from "@/lib/diagnostics/benchLaunch";
@@ -29,7 +30,7 @@ async function feltSample(): Promise<Record<LampSide, number>> {
   if (!table || !pixels) throw new Error(`no ${table ? "felt snapshot" : "table anchors"} to sample`);
   const perPt = pixels.width / table.width;
   const felt = feltOnly(pixels, perPt);
-  const ring = legibilityRing(table.width, table.height);
+  const ring = legibilityRing(table.width, table.height, tableScale(table));
   return Object.fromEntries(LAMP_SIDES.map((side) => [side, annulusLuminance(felt, table.anchors[side], perPt, ring)])) as Record<LampSide, number>;
 }
 

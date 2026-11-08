@@ -28,7 +28,7 @@ jest.mock('@/components/impact', () => {
 });
 
 import { GameTable } from '@/components/GameTable';
-import { cardScale } from '@/components/cardFaceModel';
+import { tableScale } from '@/components/tableLayout';
 import { BombFlash } from '@/components/table/moments';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 import { farthest, fireLanding, frameOfFirst } from './helpers/landing';
@@ -177,7 +177,7 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
   it('knocks the beaten pair 6 pt aside, sliding back linearly over 170 ms', async () => {
     const { r } = await bombLands();
     const { width, height } = Dimensions.get('window');
-    const scale = cardScale(Math.min(width, height));
+    const scale = tableScale({ width, height });
     await advance(BombFx.delayMs);
     const xs = [asideX()];
     for (let i = 0; i < 2; i++) {

@@ -17,7 +17,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { HAND_ZONE_H } from "../../components/seatLayout.ts";
 import { computeTableFrame, surplusHeight, topBandHeight } from "../../components/tableFrame.ts";
-import { cardScale, CARD_H, HAND_SCALE } from "../../components/cardFaceModel.ts";
+import { CARD_H, HAND_SCALE } from "../../components/cardFaceModel.ts";
+import { tableScale } from "../../components/tableLayout.ts";
 
 /** The ticket's own list: two phones, a large phone, and two tablets. */
 const VIEWPORTS = [
@@ -36,7 +37,7 @@ const NO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };
  * and the hand zone have taken theirs.
  */
 function band(width: number, height: number) {
-  const scale = cardScale(Math.min(width, height));
+  const scale = tableScale({ width, height });
   const frame = computeTableFrame({ width, height, insets: NO_INSETS, scale });
   const topSectionH = topBandHeight(scale);
   const handZoneH = HAND_ZONE_H(CARD_H(scale * HAND_SCALE), frame.bottomPad);
@@ -86,7 +87,7 @@ describe("the table keeps its proportions from phone to tablet", () => {
   // worst of the five.
   test("height the scale cap leaves over becomes pad, not band", () => {
     const pro = VIEWPORTS[4];
-    const scale = cardScale(Math.min(pro.width, pro.height));
+    const scale = tableScale(pro);
     const over = surplusHeight(pro.width, pro.height, scale);
     assert.ok(over > 0, "the iPad Pro is past the scale cap, or this test checks nothing");
 
@@ -104,7 +105,7 @@ describe("the table keeps its proportions from phone to tablet", () => {
 
   test("no phone has any surplus — the cap only bites on a large tablet", () => {
     for (const vp of VIEWPORTS.slice(0, 3)) {
-      const scale = cardScale(Math.min(vp.width, vp.height));
+      const scale = tableScale(vp);
       assert.equal(surplusHeight(vp.width, vp.height, scale), 0, vp.name);
     }
   });
@@ -114,7 +115,7 @@ describe("the table keeps its proportions from phone to tablet", () => {
   // the whole table off its own screen.
   test("portrait reports no surplus, whatever the window", () => {
     for (const vp of VIEWPORTS) {
-      const scale = cardScale(Math.min(vp.width, vp.height));
+      const scale = tableScale(vp);
       assert.equal(surplusHeight(vp.height, vp.width, scale), 0, `${vp.name} rotated`);
     }
   });
@@ -130,7 +131,7 @@ describe("the width the table does not use", () => {
 
   test("the rail is wide enough for its knob, and not much wider, at every size", () => {
     for (const vp of VIEWPORTS) {
-      const scale = cardScale(Math.min(vp.width, vp.height));
+      const scale = tableScale(vp);
       const { rail } = computeTableFrame({
         width: vp.width,
         height: vp.height,
