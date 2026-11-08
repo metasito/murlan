@@ -4,8 +4,8 @@
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { CLOTH_SKSL, FELT_K_CAP, LIT_SKSL, WEAVE_PLANES, WEAVE_SKSL, clothUniforms, weaveUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
-import { lightUniforms } from "../../components/table/lampRig.ts";
+import { CLOTH_SKSL, FELT_K_CAP, FLARE_SEEN, LIT_SKSL, REST_CLOTH_SKSL, REST_LIT_SKSL, WEAVE_PLANES, WEAVE_SKSL, clothUniforms, flareShare, weaveUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
+import { TABLE_CENTRE, lampControls, lightUniforms, restingLamp, stepLamp } from "../../components/table/lampRig.ts";
 import { FeltGradients } from "../../lib/tokens.ts";
 
 const require = createRequire(import.meta.url);
@@ -37,6 +37,8 @@ let ck: CK;
 let cloth: CK;
 let weave: CK;
 let lit: CK;
+let restLit: CK;
+let restCloth: CK;
 
 before(async () => {
   const init = require("canvaskit-wasm/bin/full/canvaskit.js");
@@ -50,6 +52,8 @@ before(async () => {
   cloth = make(CLOTH_SKSL, "the cloth");
   weave = make(WEAVE_SKSL, "the weave");
   lit = make(LIT_SKSL, "the lit cloth");
+  restLit = make(REST_LIT_SKSL, "the settled felt over the planes");
+  restCloth = make(REST_CLOTH_SKSL, "the settled felt over the cloth");
 });
 
 function flat(effect: CK, values: ClothUniforms): Float32Array {
@@ -135,6 +139,41 @@ function gap(stops: readonly string[], k: number, lamp: [number, number], light:
   return { worst, where, inside };
 }
 
+/** `vec4 cloth(...)` through the brace that closes it. */
+function clothOf(sksl: string): string {
+  const at = sksl.indexOf("vec4 cloth(");
+  assert.ok(at >= 0, "no vec4 cloth( in the shader");
+  let depth = 0;
+  for (let i = sksl.indexOf("{", at); i >= 0 && i < sksl.length; i++) {
+    if (sksl[i] === "{") depth++;
+    if (sksl[i] === "}" && --depth === 0) return sksl.slice(at, i + 1);
+  }
+  assert.fail("vec4 cloth( never closes");
+}
+
+const SWAY_ENDS = [
+  [0.2, 0.4, 0.6],
+  [0.7, 0.15, 0.3],
+] as const;
+
+/** The settled felt at `w`, against `w` of its own cloth over the cross of two flat ends, both on the CPU raster in floats. */
+function settledGap(stops: readonly string[], k: number, lamp: [number, number], w: number, over: boolean): number {
+  const lean = 0.3;
+  const values: ClothUniforms = { ...clothUniforms(stops as never, k), ...lightUniforms(1), uLamp: lamp, uFlare: 0.4, uLean: lean, uW: w };
+  const origin = [lamp[0] - TILE / 2, lamp[1] - TILE / 2] as const;
+  const ends = SWAY_ENDS.map(([r, g, b]) => ck.Shader.MakeColor(ck.Color4f(r, g, b, 1), ck.ColorSpace.SRGB));
+  const weave = over ? planes(k, origin) : [];
+  const own = over ? lit.makeShaderWithChildren(flat(lit, values), weave) : cloth.makeShader(flat(cloth, values));
+  const settled = over ? restLit.makeShaderWithChildren(flat(restLit, values), [...weave, ...ends]) : restCloth.makeShaderWithChildren(flat(restCloth, values), ends);
+  const want = floats(k, origin, own);
+  const got = floats(k, origin, settled);
+  [own, settled, ...weave, ...ends].forEach((s) => s.delete());
+  const cross = SWAY_ENDS[0].map((a, i) => a + (SWAY_ENDS[1][i] - a) * lean).concat(1);
+  let worst = 0;
+  for (let i = 0; i < want.length; i++) worst = Math.max(worst, Math.abs(cross[i % 4] * (1 - w) + want[i] * w - got[i]));
+  return worst;
+}
+
 describe("the felt lit from its baked weave is the cloth", () => {
   test("the lit pass reads the weave from its planes, not from the cloth's own noise", () => {
     assert.ok(LIT_SKSL.includes("uG0.eval(p)") && LIT_SKSL.includes(`uG${WEAVE_PLANES - 1}.eval(p)`), "the lit cloth reads no plane");
@@ -142,13 +181,19 @@ describe("the felt lit from its baked weave is the cloth", () => {
     assert.ok(!LIT_SKSL.includes("h21(floor(p*uK))"), "the lit cloth still draws the fuzz");
   });
 
-  test("every term the lamp does not move is baked, so a lit pixel costs two reads and the lamp's own terms", () => {
-    assert.equal(WEAVE_PLANES, 2);
-    const body = LIT_SKSL.slice(LIT_SKSL.indexOf("vec4 cloth("));
-    for (const term of ["prof", "tv", "mott", "vis", "uDepth", "uCover", "uFuzz", "uSheen", "uMott", "uTwo", "if(t<"]) {
-      assert.ok(!new RegExp(`\\b${term.replace("(", "\\(")}`).test(body), `the lit pass still computes ${term} per pixel`);
-    }
-  });
+  for (const [name, sksl] of [
+    ["the lit pass", LIT_SKSL],
+    ["the settled felt", REST_LIT_SKSL],
+  ] as const) {
+    test(`${name}: every term the lamp does not move is baked, so a lit pixel costs two reads and the lamp's own terms`, () => {
+      assert.equal(WEAVE_PLANES, 2);
+      const body = clothOf(sksl);
+      assert.ok(body.includes("uG0.eval(p)") && body.includes("uG1.eval(p)"), `${name}'s cloth reads no plane: ${body}`);
+      for (const term of ["prof", "tv", "mott", "vis", "uDepth", "uCover", "uFuzz", "uSheen", "uMott", "uTwo"]) {
+        assert.ok(!new RegExp(`\\b${term}\\b`).test(body), `${name} still computes ${term} per pixel`);
+      }
+    });
+  }
 
   for (const felt of FELTS) {
     const stops = FeltGradients[felt];
@@ -169,6 +214,33 @@ describe("the felt lit from its baked weave is the cloth", () => {
       assert.ok(inside > 0, "no tile drew any felt");
       assert.ok(worst.worst < LEVEL, `${(worst.worst / LEVEL).toFixed(3)} levels apart at ${worst.where}`);
       console.log(`${felt}: worst ${(worst.worst / LEVEL).toFixed(3)} levels at ${worst.where}`);
+    });
+  }
+
+  test("a fading flare hands a settled felt back to its cross a twentieth at a time, from all of it to none", () => {
+    const lamp = restingLamp(TABLE_CENTRE);
+    lampControls.flare(lamp, false);
+    const shares: number[] = [];
+    for (let frame = 0; frame < 600; frame++) {
+      stepLamp(lamp, 1 / 60, false);
+      shares.push(flareShare(lamp.f));
+    }
+    assert.equal(shares[0], 1);
+    assert.equal(shares.at(-1), 0);
+    assert.equal(flareShare(FLARE_SEEN), 0);
+    const steps = shares.slice(1).map((s, i) => shares[i] - s);
+    assert.ok(steps.every((d) => d >= 0), "the share rises while the flare fades");
+    assert.ok(Math.max(...steps) < 1 / 20, `a frame hands back ${Math.max(...steps)} of the felt`);
+  });
+
+  for (const over of [true, false]) {
+    test(`the settled felt ${over ? "over the planes" : "over the cloth"} is the cross at 0, its own cloth at 1, and the line between them`, () => {
+      for (const w of [0, 0.01, 0.3, 0.5, 0.99, 1]) {
+        for (const k of DENSITIES) {
+          const worst = settledGap(FeltGradients.verde, k, LAMPS[4], w, over);
+          assert.ok(worst < 1e-5, `w ${w}, k ${k}: ${worst / LEVEL} levels off`);
+        }
+      }
     });
   }
 });

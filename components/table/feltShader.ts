@@ -84,12 +84,16 @@ function once(body: string, line: string): number {
 
 const cut = (from: string, to: string) => CLOTH_BODY.slice(once(CLOTH_BODY, from), once(CLOTH_BODY, to));
 const swap = (body: string, from: string, to: string) => (once(body, from), body.replace(from, to));
+const swaps = (body: string, pairs: [from: string, to: string][]) => pairs.reduce((out, [from, to]) => swap(out, from, to), body);
 
 const HELPERS = cut("float h21(", "vec4 cloth(");
 const WEAVE = cut(" vec2 u=p/uPitch", " vec3 L=");
+const VIS = cut(" float vis=", " float ao=");
+const AO_SHADE = cut(" float ao=", " float mott=");
 const MOTT = cut(" float mott=", " vec3 col=");
+const COL = cut(" vec3 col=", " col+=mix(uS0");
+const SHEEN = cut(" col+=mix(uS0", " col*=1.+(h21(");
 const FUZZ = cut(" col*=1.+(h21(", " col+=vec3(1.,.78");
-const SHADE = cut(" float vis=", " col+=mix(uS0");
 
 /** The ranges the weave's planes hold in 8 bits: the shade's lamp-free and diffuse parts, the sheen's weight. */
 const A_LO = 0.375;
@@ -108,17 +112,17 @@ export const FELT_K_CAP = 2.5;
  * `alb*(A+B*diff)` and the sheen's weight `S`. Opaque, so an 8-bit surface keeps them unpremultiplied.
  */
 export const WEAVE_SKSL = `uniform float uK,uPitch,uType,uTwo,uMott,uDepth,uCover,uFuzz,uSheen,uPlane;
-${HELPERS}half4 main(vec2 p){
-${WEAVE}${MOTT} float vis=smoothstep(1.4,3.,uK*uPitch)*(1.-uCover);
- float F=(1.+(h21(floor(p*uK))-.5)*uFuzz),m=(1.+mott)*F,w=vis*mix(1.-uDepth,1.,prof)*(1.+tv)*m;
+${HELPERS}float shadeAt(float vis,float prof,float tv,float diff){
+${AO_SHADE} return shade;}
+half4 main(vec2 p){
+${WEAVE}${VIS}${MOTT}${swap(COL, " vec3 col=alb*shade*", " float m=")}${swap(FUZZ, " col*=", " float F=")}${swaps(SHEEN, [
+  [" col+=mix(uS0,vec3(1.,.88,.66),.4)*spec*", " float S="],
+  ["*I*smoothstep(0.,1.,d/250.)", ""],
+])} float s0=shadeAt(vis,prof,tv,0.)*m*F,s1=shadeAt(vis,prof,tv,1.)*m*F;
  if(uPlane<.5)return half4(n.xy*.5+.5,wo?1.:0.,1.);
- return half4(((1.-vis)*m+.8*w-${A_LO})/${A_SPAN},.4*w/${B_SPAN},mix(.4,prof,vis)*.45*uSheen*F/${S_SPAN},1.);}`;
+ return half4((s0-${A_LO})/${A_SPAN},(s1-s0)/${B_SPAN},S*F/${S_SPAN},1.);}`;
 
-const LIT_BODY = [
-  [
-    CLOTH_BODY.slice(0, once(CLOTH_BODY, "float h21(")),
-    "vec3 stops(float t){t=clamp(t,0.,1.)*4.;return mix(mix(mix(mix(uS0,uS1,clamp(t,0.,1.)),uS2,clamp(t-1.,0.,1.)),uS3,clamp(t-2.,0.,1.)),uS4,clamp(t-3.,0.,1.));}",
-  ],
+const LIT_BODY = swaps(CLOTH_BODY, [
   [HELPERS, ""],
   [
     WEAVE,
@@ -128,16 +132,41 @@ const LIT_BODY = [
  bool wo=g0.z>.5;
 `,
   ],
-  [SHADE, ` vec3 col=alb*(g1.x*${A_SPAN}+${A_LO}+g1.y*${B_SPAN}*diff);\n`],
-  ["*spec*uSheen*I*smoothstep(0.,1.,d/250.)*mix(.4,prof,vis)*.45;", `*spec*I*smoothstep(0.,1.,d/250.)*g1.z*${S_SPAN};`],
+  [`${VIS}${AO_SHADE}${MOTT}${COL}`, ` vec3 col=alb*(g1.x*${A_SPAN}+${A_LO}+g1.y*${B_SPAN}*diff);\n`],
+  ["*spec*uSheen*I*", "*spec*I*"],
+  ["*mix(.4,prof,vis)*.45;", `*g1.z*${S_SPAN};`],
   [FUZZ, ""],
-].reduce((body, [from, to]) => swap(body, from, to), CLOTH_BODY);
+]);
+
+const PLANES = "uniform shader uG0,uG1;\n";
 
 /** The cloth again, lit from the weave's planes `uG0`–`uG1`, sampled nearest at the device pixel they were baked on. */
-export const LIT_SKSL = `${UNIFORMS}\nuniform shader uG0,uG1;\n${LIT_BODY}\nhalf4 main(vec2 xy){return half4(cloth(xy));}`;
+export const LIT_SKSL = `${UNIFORMS}\n${PLANES}${LIT_BODY}\nhalf4 main(vec2 xy){return half4(cloth(xy));}`;
 
-/** A settled lamp's felt: the cloth lit at either end of its sway, `uA` and `uB`, crossed by where the lamp is. */
-export const REST_SKSL = `uniform shader uA,uB;\nuniform float uLean;\nhalf4 main(vec2 p){return mix(uA.eval(p),uB.eval(p),uLean);}`;
+/**
+ * A settled lamp's felt: the cloth lit at either end of its sway, `uA` and `uB`, crossed by where the
+ * lamp is, and `uW` of the cloth lit where it is. `uW` 1 is that cloth and 0 the cross, each exactly,
+ * and neither evaluates what it does not show.
+ */
+const restOver = (head: string, body: string) =>
+  `${UNIFORMS}\n${head}uniform shader uA,uB;\nuniform float uLean,uW;\n${body}\nhalf4 main(vec2 p){half4 r=half4(0.);if(uW<1.)r=mix(uA.eval(p),uB.eval(p),uLean);if(uW>0.)r=mix(r,half4(cloth(p)),uW);return r;}`;
+
+/** Over the planes: children `uG0`, `uG1`, `uA`, `uB`. */
+export const REST_LIT_SKSL = restOver(PLANES, LIT_BODY);
+/** Where no planes could be baked: children `uA`, `uB`. */
+export const REST_CLOTH_SKSL = restOver("", CLOTH_BODY);
+
+/** Below this the flare draws nothing an 8-bit felt shows. */
+export const FLARE_SEEN = 0.005;
+const FLARE_LIT = 0.25;
+
+/** How much of a settled felt a flare of `f` lights live: all of it from `FLARE_LIT` up, none under `FLARE_SEEN`, smoothly between. */
+export function flareShare(f: number): number {
+  "worklet";
+  const t = Math.min(1, Math.max(0, (f - FLARE_SEEN) / (FLARE_LIT - FLARE_SEEN)));
+  return t * t * (3 - 2 * t);
+}
+
 
 export function weaveUniforms(k: number, plane: number): ClothUniforms {
   const { uPitch, uType, uTwo, uMott, uDepth, uCover, uFuzz, uSheen } = TWILL;
