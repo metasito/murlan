@@ -9,9 +9,9 @@ import {
   SIDE_SECTION_W,
   HAND_WIDTH_SHARE,
 } from "../../components/seatLayout.ts";
-import { BASE_SHORT_EDGE } from "../../components/cardFaceModel.ts";
+import { drawnShortEdge } from "../../components/cardFaceModel.ts";
 import { bannerTop, computeTableFrame, railWidth } from "../../components/tableFrame.ts";
-import { tableLayout } from "../../components/tableLayout.ts";
+import { tableLayout, tableScale } from "../../components/tableLayout.ts";
 
 
 
@@ -22,7 +22,7 @@ describe("bannerTop", () => {
   const topPad = 47;
   const insets = { top: topPad, bottom: 0, left: 0, right: 0 };
   const landscape = (height: number, top = topPad) => bannerTop(tableLayout({ width: 2 * height, height, insets: { ...insets, top } }), top);
-  const atScale = (scale: number) => landscape(BASE_SHORT_EDGE * scale);
+  const atScale = (scale: number) => landscape(drawnShortEdge(scale));
 
   test("in landscape the banner starts below the HUD chips", () => {
     const top = atScale(1);
@@ -34,13 +34,13 @@ describe("bannerTop", () => {
   });
 
   test("a zero inset still clears the chips in landscape", () => {
-    assert.ok(landscape(BASE_SHORT_EDGE, 0) >= CHIP_H(1));
+    assert.ok(landscape(drawnShortEdge(1), 0) >= CHIP_H(1));
   });
 
   // The chips this clears are inside the table's frame, and on a window past
   // the scale cap that frame starts `surplus` lower than the safe pad does.
   test("a surplus moves the chips down, and the banner with them", () => {
-    const capped = 4 * BASE_SHORT_EDGE;
+    const capped = drawnShortEdge(4);
     assert.ok(Math.abs(landscape(capped + 2 * 62) - landscape(capped) - 62) < 1e-9);
   });
 
@@ -172,7 +172,7 @@ describe("computeTableFrame", () => {
   // own columns bind rather than the share.
   test("the seats' columns are what caps the field on the smallest phone", () => {
     const noInsets = { top: 0, bottom: 0, left: 0, right: 0 };
-    const small = computeTableFrame({ width: 568, height: 320, insets: noInsets, scale: 320 / 390 });
+    const small = computeTableFrame({ width: 568, height: 320, insets: noInsets, scale: tableScale({ width: 568, height: 320 }) });
     const tableW = 568 - small.tableLeft - small.tableRight;
     assert.equal(Math.round(tableW - SIDE_SECTION_W * 2), 260);
     assert.ok(

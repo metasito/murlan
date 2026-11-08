@@ -2,7 +2,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { BASE_SHORT_EDGE } from "./cardFaceModel.ts";
+import { drawnShortEdge } from "./cardFaceModel.ts";
 import {
   FIELD_WIDTH_SHARE,
   HAND_WIDTH_SHARE,
@@ -50,7 +50,7 @@ export function surplusHeight(width: number, height: number, scale: number): num
   // long edge — the subtraction below would read the whole difference between
   // the two edges as surplus.
   if (height > width) return 0;
-  return Math.max(0, height - BASE_SHORT_EDGE * scale);
+  return Math.max(0, height - drawnShortEdge(scale));
 }
 
 export interface ScreenPads {

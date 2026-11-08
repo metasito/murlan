@@ -35,7 +35,7 @@ const TABLE_CHIP = { padX: 11, gapX: 7, font: 9, tracking: 1.5, strongTracking: 
 /** The turn pill's Riprova key, `#turn u` in the mockup's px. */
 export const NOTICE_KEY = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
 
-const MOCKUP_STAGE_H = 402;
+export const MOCKUP_STAGE_H = 402;
 const RISE = 6;
 const DOT = 6;
 
