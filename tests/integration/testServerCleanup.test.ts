@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer.ts";
+import { connectAs, eventually, waitFor } from "../helpers/client.ts";
+import { pendingKeys, TIMER_KINDS } from "../../server/game/gameTimers.ts";
 
 /**
  * Proves startTestServer()'s cleanup-on-failure path actually runs. A failure
@@ -66,4 +68,24 @@ test("startTestServer() cleans up after a failure during boot", async (t) => {
     originalDatabaseUrl,
     "DATABASE_URL must be restored to its original value after a failed startTestServer()"
   );
+});
+
+test("stop() leaves no timer armed for the process to wait on", { skip: hasDatabase() ? false : skipMessage(), timeout: 60_000 }, async () => {
+  const server = await startTestServer();
+  const host = await connectAs(server, `tsc_h${Date.now() % 1e6}`);
+  try {
+    const created = waitFor(host.socket, "room:state");
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 4 });
+    await created;
+    const dealt = waitFor(host.socket, "game:state", 15_000);
+    host.socket.emit("room:start", { fillWithBots: true });
+    await dealt;
+    host.socket.close();
+    await eventually(() => pendingKeys("disconnect").length > 0, "the seat's disconnect grace to be armed", 10_000);
+  } finally {
+    host.socket.close();
+    await server.stop();
+  }
+  const armed = TIMER_KINDS.flatMap((kind) => pendingKeys(kind).map((key) => `${kind}:${key}`));
+  assert.deepEqual(armed, []);
 });
