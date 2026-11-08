@@ -1,7 +1,7 @@
 // node tests/differential/trace.ts <tree-root> [--seeds 1-150] [--tables 2,3,4,4-teams]
 // Plays seeded all-bot matches on the tree at <tree-root> and writes one JSON line per match
 // (round level) and, when that tree's `simulateOfflineMatch` offers `onTransition`, one per
-// committed state. `compare.ts` diffs two of these; docs/agents/checks.md has the workflow.
+// committed state. `compare.ts` diffs two of these; docs/agents/suites.md has the workflow.
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { teamForSeat, type GameMode, type GameState } from "../../lib/game/gameEngine.ts";

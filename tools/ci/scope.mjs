@@ -16,7 +16,7 @@ import { needsNative, patchReader } from "./nativeScope.mjs";
  * tsconfig.json. Derived by `tests/tooling/ciScope.test.ts`, which reds on a path it misses.
  */
 export const ASSERTED_PROSE =
-  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/.*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$)/;
+  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/adr\/README\.md$|docs\/.*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$|CONTEXT\.md$|README\.md$)/;
 
 export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
 
@@ -28,7 +28,7 @@ export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
 export const QUEUE_LOOP_TESTS = /^tools\/loop\/tests\//;
 
 /**
- * What the loop's suite (docs/agents/checks.md) asserts on beyond its own code: the protocol
+ * What the loop's suite (docs/agents/loop-harness.md) asserts on beyond its own code: the protocol
  * files, `.claude/settings.json`'s hook paths, package.json's script names, and ci.yml, whose job
  * names `check-steps.mjs` pins each delegated step to. Derived by `tests/tooling/ciScope.test.ts`.
  */

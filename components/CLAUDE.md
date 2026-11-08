@@ -30,7 +30,7 @@ Verify against source before changing any.
   `Layer.felt` (0) < `Layer.feltScrim` (the bomb's) < `Layer.table`;
   `tests/ui-rules/tokenRoles.test.ts` resolves every `zIndex` through its constant.
 - **Before proposing a fix for a native-only visual defect** — sample device pixels, not
-  reasoning, first (`docs/agents/checks.md`); code-only arguments keep failing on device.
+  reasoning, first (`docs/agents/device-runs.md`); code-only arguments keep failing on device.
 
 **UI components**
 
