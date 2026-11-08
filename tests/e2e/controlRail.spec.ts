@@ -10,6 +10,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
+import { cutoutBand } from "./helpers/cutout";
 import { setSafeArea } from "./helpers/safeArea";
 
 const VIEWPORT = { width: 844, height: 390 };
@@ -76,19 +77,6 @@ async function settledBoxes(page: Page): Promise<Box[]> {
     await page.waitForTimeout(150);
   }
   throw new Error("the table never settled into a stable layout");
-}
-
-/**
- * The vertical span a landscape cutout occupies. It is a bar on the short
- * edge, centred, never the whole column — which is the entire reason two
- * knobs can share the column with it. An iPhone X's notch is 209pt on a
- * 390pt edge; the Dynamic Island is smaller, so the notch is the worst case.
- */
-const CUTOUT_HEIGHT_SHARE = 209 / 390;
-
-function cutoutBand(viewportHeight: number): { top: number; bottom: number } {
-  const h = viewportHeight * CUTOUT_HEIGHT_SHARE;
-  return { top: (viewportHeight - h) / 2, bottom: (viewportHeight + h) / 2 };
 }
 
 /** The rail's own laid-out width — the column the cutout lives in. */

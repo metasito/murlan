@@ -26,6 +26,7 @@ import { concedeRound, type GameState } from "../../lib/game/gameEngine.ts";
 import { turnSchedule, type TurnSlot } from "../../lib/game/turnSchedule.ts";
 import { gateMs } from "../../lib/timeline/turnGates.ts";
 import { handCountOf } from "../../shared/protocol.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 /**
  * Tells the table how long the acting seat has left. Sent on its own as well
@@ -103,7 +104,8 @@ export function armTurn(rt: TableRuntime, roomId: string, announce = true) {
     return;
   }
   const username = game.gameState.players[slot.seat]?.name ?? "";
-  const timeoutMs = gatedMs + afkTimeoutMs();
+  // The seat's clock counts this whole window, gate included, and draws no more digits than the ceiling's.
+  const timeoutMs = Math.min(gatedMs + afkTimeoutMs(), CLOCK_CEILING_MS);
   game.turnDeadlineMs = now() + timeoutMs;
   startAfkTimer(rt, roomId, userId, username, timeoutMs);
   told();

@@ -17,7 +17,7 @@ jest.mock('react-native-worklets', () => {
 const CARDS: Card[] = [{ id: 'A_clubs', rank: 'A', suit: 'clubs', isJoker: false } as Card];
 const STORED_REDUCED = JSON.stringify({ motion: 'on' });
 
-function cardScale(view: Awaited<ReturnType<typeof render>>): number | undefined {
+function flightScale(view: Awaited<ReturnType<typeof render>>): number | undefined {
   const style = getAnimatedStyle(view.getByTestId('flying-card', { includeHiddenElements: true })) as { transform?: Record<string, number>[] };
   return style.transform?.find((t) => 'scale' in t)?.scale;
 }
@@ -38,13 +38,13 @@ test('a stored reduced-motion choice holds from launch, before any read lands an
   const flight = flightOf('k', CARDS, [{ x: 0, y: -100, rot: 0, scale: 0.4 }]);
   const view = await render(<SettingsProvider>{pileOf({ plays: [flight], flights: [flight] })}</SettingsProvider>);
   await act(async () => { jest.advanceTimersByTime(16); });
-  expect(cardScale(view)).toBe(1);
+  expect(flightScale(view)).toBe(1);
   expect(getMotionPreference()).toBe('on');
 
   await act(async () => { held.splice(0, preloads).forEach((r) => r(STORED_REDUCED)); });
   await act(async () => { jest.advanceTimersByTime(16); });
   expect(held.length).toBeGreaterThan(0);
-  expect(cardScale(view)).toBe(1);
+  expect(flightScale(view)).toBe(1);
   expect(getMotionPreference()).toBe('on');
 
   await act(async () => { held.splice(0).forEach((r) => r(STORED_REDUCED)); });

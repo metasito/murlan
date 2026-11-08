@@ -106,7 +106,9 @@ test("the ember pill keeps #1265's glow at every scale", () => {
 
 test("the turn pill is #turn's box at every scale, its count #turn b's 12 px", () => {
   for (const s of [...SCALES, 1.07]) {
-    assert.deepEqual(noticeBox("turn", s), selectorBox("#turn", s));
+    const { runtime, ...box } = noticeBox("turn", s);
+    assert.deepEqual({ ...box, runtime: {} }, selectorBox("#turn", s));
+    assert.deepEqual(runtime, { strong: { chars: 2 } });
     near(noticeBox("turn", s).strongFontSize, Math.max(at(12, s), 10), `#turn b at ${s}`);
   }
   assert.deepEqual([...NOTICES.turn.tones].sort(), ["bad", "lit", "neutral", "ok", "urgent"]);

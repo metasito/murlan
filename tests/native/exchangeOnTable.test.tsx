@@ -18,7 +18,7 @@ import { choiceOpensAt } from '@/lib/timeline/exchangeTimeline';
 import { getValidGivebackCards, emptyRankTally } from '@/lib/game/gameEngine';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 import { activate } from './tapHelpers';
-import type { ConnectionNote } from '@/components/table/notices/hud';
+import type { ConnectionNote } from '@/components/table/connectionNote';
 import { dealEndMs } from '@/lib/timeline/dealTimeline';
 
 const METRICS = {

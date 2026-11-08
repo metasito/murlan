@@ -92,7 +92,7 @@ export function turnState(i: { roundOver: boolean; matchOver: boolean; dealing: 
   return i.viewerOnMove ? "yourTurn" : "turnOf";
 }
 
-const CHIP_KEYS: Record<TurnState, TranslationKey> = {
+export const CHIP_KEYS: Record<TurnState, TranslationKey> = {
   matchOver: "gameShared.matchOver",
   roundOver: "gameShared.roundOver",
   dealing: "gameShared.dealing",

@@ -12,12 +12,13 @@ import { cardSpokenName } from '@/lib/cardNames';
 import type { ServerError } from '@/context/OnlineGameContext';
 import { useOnlineRoom, useServerError } from '@/context/onlineGameHooks';
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
-import { NOTICES, type NoticeKind } from '@/components/table/noticeModel';
+import { mockupPx, NOTICES, type NoticeKind } from '@/components/table/noticeModel';
 import { GameTable } from '@/components/GameTable';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { en } from '@/locales/en';
 import { SettingsProvider } from '@/context/SettingsContext';
-import { TurnChip, type ConnectionNote } from '@/components/table/notices/hud';
+import { TurnChip } from '@/components/table/notices/hud';
+import type { ConnectionNote } from '@/components/table/connectionNote';
 import { CHIP_H } from '@/components/seatLayout';
 import { CLOCK_RUNNING_OUT_SECONDS, urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { Colors, makeShadow, NoticePalette, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
@@ -113,7 +114,7 @@ describe('the HUD combination pill', () => {
 
 describe('the turn pill', () => {
   const S = 1.2;
-  const at = (px: number) => (px / (402 / 390)) * S;
+  const at = (px: number) => mockupPx(px, S);
   const TURN = {
     neutral: { lit: false, edge: Colors.goldBorder, label: Colors.textMuted, dot: Colors.gold, count: Colors.gold, glow: null, dotGlow: null },
     lit: {

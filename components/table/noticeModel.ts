@@ -2,6 +2,10 @@
 import { Hold, Motion, motionMs, Radius, type NoticePalette } from "../../lib/tokens.ts";
 import { cardScale, tableFontSize } from "../cardFaceModel.ts";
 import { CHIP_H } from "../seatLayout.ts";
+import { USERNAME_MAX } from "../../shared/username.ts";
+import { CLOCK_CEILING_MS, clockDigits } from "../../shared/clock.ts";
+import { SEATS_MAX } from "../../shared/seats.ts";
+import { createDeck, getCardDisplayRank } from "../../lib/game/gameEngine.ts";
 
 export type NoticeShape = "pill" | "chip" | "float" | "panel";
 export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad" | "solid" | "gold";
@@ -35,7 +39,7 @@ const TABLE_CHIP = { padX: 11, gapX: 7, font: 9, tracking: 1.5, strongTracking: 
 /** The turn pill's Riprova key, `#turn u` in the mockup's px. */
 export const NOTICE_KEY = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
 
-const MOCKUP_STAGE_H = 402;
+export const MOCKUP_STAGE_H = 402;
 const RISE = 6;
 const DOT = 6;
 
@@ -90,6 +94,29 @@ export type NoticeBox = {
   tracking: number;
   strongTracking: number;
   dot: number;
+  runtime: Partial<Record<NoticeRole, RuntimeBound>>;
+};
+
+/** What bounds a run whose words only render time knows: its length, or the width it is clipped to on the run itself or on the plate. */
+export type RuntimeBound = { chars: number } | { maxWidth: number; lines: number; on: "run" | "plate" };
+type RuntimePx = { chars: number } | { runMaxWidth: number } | "plate";
+
+/** The HUD combination pill's name run, in points at scale 1, so a long username ellipsizes rather than pushing the band wider than the felt has room for. */
+const HUD_NAME_MAX_W = 88;
+const CLOCK_CHARS = clockDigits(CLOCK_CEILING_MS);
+/** Only a suited card draws a tile. */
+const RANK_CHARS = Math.max(...createDeck().filter((card) => card.suit !== null).map((card) => getCardDisplayRank(card.rank).length));
+const TALLY_CHARS = `${SEATS_MAX}/${SEATS_MAX}`.length;
+
+const RUNTIME: { [K in NoticeKind]?: Partial<Record<NoticeRole, RuntimePx>> } = {
+  hudCombo: { text: { runMaxWidth: HUD_NAME_MAX_W } },
+  turn: { strong: { chars: CLOCK_CHARS } },
+  whoStarts: { name: { chars: USERNAME_MAX }, initial: { chars: 1 }, tile: { chars: RANK_CHARS } },
+  trickWinner: { text: { chars: USERNAME_MAX } },
+  rejectFloat: { text: "plate" },
+  errorToast: { text: "plate" },
+  roundVote: { badge: { chars: TALLY_CHARS } },
+  endMatchVote: { badge: { chars: TALLY_CHARS } },
 };
 
 export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox {
@@ -114,12 +141,22 @@ export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox 
     tracking: at(px.tracking, scale),
     strongTracking: at(px.tracking, scale),
     dot: at(DOT, scale),
+    runtime: {},
   };
 }
 
 export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
-  const spec: NoticeSpec = NOTICES[kind];
-  const box = selectorBox(spec.selector, scale);
+  const box = onTableChip(NOTICES[kind], selectorBox(NOTICES[kind].selector, scale), scale);
+  const runtime: NoticeBox["runtime"] = {};
+  for (const [role, bound] of Object.entries(RUNTIME[kind] ?? {}) as [NoticeRole, RuntimePx][]) {
+    if (bound !== "plate") runtime[role] = "chars" in bound ? bound : { maxWidth: bound.runMaxWidth * scale, lines: box.lines, on: "run" };
+    else if (box.maxWidth === undefined) throw new Error(`${kind} bounds its ${role} run by a plate with no maxWidth`);
+    else runtime[role] = { maxWidth: box.maxWidth, lines: box.lines, on: "plate" };
+  }
+  return { ...box, runtime };
+}
+
+function onTableChip(spec: NoticeSpec, box: NoticeBox, scale: number): NoticeBox {
   if (!spec.tableChip) return box;
   return {
     ...box,
@@ -130,6 +167,26 @@ export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
     tracking: TABLE_CHIP.tracking * scale,
     strongTracking: TABLE_CHIP.strongTracking * scale,
   };
+}
+
+export const NOTICE_FACES = {
+  regular: { fontFamily: "Rajdhani_600SemiBold" },
+  bold: { fontFamily: "Rajdhani_700Bold" },
+} as const;
+
+export type NoticeRun = { face: keyof typeof NOTICE_FACES; upper: boolean; tabular: boolean };
+
+/** What a notice sets in a run of words: `NoticeText`'s plain and counted runs, `NoticeKey`, `NoticeDisc`'s word and initial, `NoticeName`, `NoticeTile`'s rank, `NoticeBadge` and `NoticeLine`'s three. */
+export type NoticeRole = "text" | "strong" | "key" | "disc" | "initial" | "name" | "tile" | "badge" | PanelLine;
+
+export function noticeRun(box: NoticeBox, role: NoticeRole): NoticeRun {
+  if (role === "text" || role === "strong") {
+    return { face: role === "strong" || box.bold ? "bold" : "regular", upper: box.upper, tabular: role === "strong" };
+  }
+  if (role === "key" || role === "initial") return { face: "bold", upper: true, tabular: false };
+  if (role === "disc" || role === "name" || role === "tile") return { face: "bold", upper: false, tabular: false };
+  if (role === "badge") return { face: "bold", upper: false, tabular: true };
+  return { face: PANEL_LINES[role].weight === 700 ? "bold" : "regular", upper: role === "hint", tabular: false };
 }
 
 const MARK_AT = { top: { x: -60, y: -8 }, side: { x: 0, y: 27 } } as const;
@@ -153,9 +210,9 @@ const PANEL_LINES = {
 } as const;
 export type PanelLine = keyof typeof PANEL_LINES;
 
-export function panelLine(line: PanelLine, scale: number): { fontSize: number; tracking: number; bold: boolean } {
+export function panelLine(line: PanelLine, scale: number): { fontSize: number; tracking: number } {
   const px = PANEL_LINES[line];
-  return { fontSize: tableFontSize(at(px.font, 1), scale), tracking: at(px.tracking, scale), bold: px.weight === 700 };
+  return { fontSize: tableFontSize(at(px.font, 1), scale), tracking: at(px.tracking, scale) };
 }
 
 const PANEL_PARTS = { rowX: 7.5, subY: 2, tileW: 22, tileH: 30, tileRadius: 3, tileLip: 1.5, tileFont: 13, tileSuit: 11, disc: 24, discFont: 10 } as const;
