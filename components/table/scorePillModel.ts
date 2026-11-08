@@ -3,9 +3,10 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
+import { drawnShortEdge } from "../cardFaceModel.ts";
 import { CHIP_H } from "../seatLayout.ts";
 import type { TableFrame } from "../tableFrame.ts";
-import { mockupPx } from "./noticeModel.ts";
+import { MOCKUP_STAGE_H, mockupPx } from "./noticeModel.ts";
 
 const REST_W = 124;
 const OPEN_W = 236;
@@ -38,7 +39,7 @@ export function pillAnchorFor(frame: TableFrame, windowWidth: number, scale: num
     top: frame.tableTop,
     restH: CHIP_H(scale),
     centreX: (frame.tableLeft + windowWidth - frame.tableRight) / 2,
-    unit: mockupPx(1, scale),
+    unit: drawnShortEdge(scale) / MOCKUP_STAGE_H,
   };
 }
 
