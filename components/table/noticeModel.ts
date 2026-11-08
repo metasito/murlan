@@ -2,6 +2,7 @@
 import { Hold, Motion, motionMs, Radius, type NoticePalette } from "../../lib/tokens.ts";
 import { cardScale, tableFontSize } from "../cardFaceModel.ts";
 import { CHIP_H } from "../seatLayout.ts";
+import { USERNAME_MAX } from "../../shared/username.ts";
 
 export type NoticeShape = "pill" | "chip" | "float" | "panel";
 export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad" | "solid" | "gold";
@@ -90,6 +91,29 @@ export type NoticeBox = {
   tracking: number;
   strongTracking: number;
   dot: number;
+  runtime: Partial<Record<NoticeRole, RuntimeBound>>;
+};
+
+/** What bounds a run whose words only render time knows: its length, or the width it is clipped to on the run itself or on the plate. */
+export type RuntimeBound = { chars: number } | { maxWidth: number; lines: number; on: "run" | "plate" };
+type RuntimePx = { chars: number } | { runMaxWidth: number } | "plate";
+
+/** The HUD combination pill's name run, in points at scale 1, so a long username ellipsizes rather than pushing the band wider than the felt has room for. */
+const HUD_NAME_MAX_W = 88;
+/** A countdown's seconds, a card's rank ("10"), and a tally of at most four seats ("4/4"). */
+const CLOCK_CHARS = 2;
+const RANK_CHARS = 2;
+const TALLY_CHARS = 3;
+
+const RUNTIME: { [K in NoticeKind]?: Partial<Record<NoticeRole, RuntimePx>> } = {
+  hudCombo: { text: { runMaxWidth: HUD_NAME_MAX_W } },
+  turn: { strong: { chars: CLOCK_CHARS } },
+  whoStarts: { name: { chars: USERNAME_MAX }, disc: { chars: 1 }, tile: { chars: RANK_CHARS } },
+  trickWinner: { text: { chars: USERNAME_MAX } },
+  rejectFloat: { text: "plate" },
+  errorToast: { text: "plate" },
+  roundVote: { badge: { chars: TALLY_CHARS } },
+  endMatchVote: { badge: { chars: TALLY_CHARS } },
 };
 
 export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox {
@@ -114,12 +138,22 @@ export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox 
     tracking: at(px.tracking, scale),
     strongTracking: at(px.tracking, scale),
     dot: at(DOT, scale),
+    runtime: {},
   };
 }
 
 export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
-  const spec: NoticeSpec = NOTICES[kind];
-  const box = selectorBox(spec.selector, scale);
+  const box = onTableChip(NOTICES[kind], selectorBox(NOTICES[kind].selector, scale), scale);
+  const runtime: NoticeBox["runtime"] = {};
+  for (const [role, bound] of Object.entries(RUNTIME[kind] ?? {}) as [NoticeRole, RuntimePx][]) {
+    if (bound !== "plate") runtime[role] = "chars" in bound ? bound : { maxWidth: bound.runMaxWidth * scale, lines: box.lines, on: "run" };
+    else if (box.maxWidth === undefined) throw new Error(`${kind} bounds its ${role} run by a plate with no maxWidth`);
+    else runtime[role] = { maxWidth: box.maxWidth, lines: box.lines, on: "plate" };
+  }
+  return { ...box, runtime };
+}
+
+function onTableChip(spec: NoticeSpec, box: NoticeBox, scale: number): NoticeBox {
   if (!spec.tableChip) return box;
   return {
     ...box,
@@ -139,15 +173,16 @@ export const NOTICE_FACES = {
 
 export type NoticeRun = { face: keyof typeof NOTICE_FACES; upper: boolean; tabular: boolean };
 
-/** What a notice sets in a run of words: `NoticeText`'s plain and counted runs, `NoticeKey`, `NoticeDisc` and `NoticeLine`'s three. */
-export type NoticeRole = "text" | "strong" | "key" | "disc" | PanelLine;
+/** What a notice sets in a run of words: `NoticeText`'s plain and counted runs, `NoticeKey`, `NoticeDisc`, `NoticeName`, `NoticeTile`'s rank, `NoticeBadge` and `NoticeLine`'s three. */
+export type NoticeRole = "text" | "strong" | "key" | "disc" | "name" | "tile" | "badge" | PanelLine;
 
 export function noticeRun(box: NoticeBox, role: NoticeRole): NoticeRun {
   if (role === "text" || role === "strong") {
     return { face: role === "strong" || box.bold ? "bold" : "regular", upper: box.upper, tabular: role === "strong" };
   }
   if (role === "key") return { face: "bold", upper: true, tabular: false };
-  if (role === "disc") return { face: "bold", upper: false, tabular: false };
+  if (role === "disc" || role === "name" || role === "tile") return { face: "bold", upper: false, tabular: false };
+  if (role === "badge") return { face: "bold", upper: false, tabular: true };
   return { face: PANEL_LINES[role].weight === 700 ? "bold" : "regular", upper: role === "hint", tabular: false };
 }
 

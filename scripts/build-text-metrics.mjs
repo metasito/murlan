@@ -1,8 +1,8 @@
 /**
  * Writes components/table/textMetrics.generated.ts: the shaped width of every catalogue string a
  * table notice draws, in each locale, so the table's layout can know a notice's box before it
- * renders. A notice whose words exist only at runtime is in DYNAMIC_TEXT with what bounds it;
- * tests/tooling/textMetrics.test.ts holds both lists to the renderers.
+ * renders. A run whose words exist only at runtime is in `dynamic`, with the bound `noticeBox` puts
+ * on it; tests/native/noticeText.test.tsx holds both to what the notices draw.
  *
  *   node scripts/build-text-metrics.mjs
  *
@@ -19,15 +19,13 @@ import * as hb from "harfbuzzjs";
 import { subsetCharacters, WEB_FONTS } from "./fontSubsetChars.mjs";
 import { isInvokedDirectly } from "./lib/entry.mjs";
 import { SUPPORTED_LOCALES, catalogs, templateParts } from "../shared/i18n.ts";
-import { NOTICE_FACES, noticeBox, noticeRun } from "../components/table/noticeModel.ts";
+import { NOTICES, NOTICE_FACES, noticeBox, noticeRun } from "../components/table/noticeModel.ts";
+import { RECONNECT_CODES } from "../components/table/connectionNote.ts";
 import { CHIP_KEYS } from "../components/turnTimerUi.ts";
 import { COMBO_NAME_KEYS } from "../lib/comboName.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const OUT = path.join(ROOT, "components", "table", "textMetrics.generated.ts");
-
-/** The server payloads a connection note translates, by the expression the table passes to `translateServerPayload`. */
-export const SERVED_PAYLOADS = { "reconnectNotice.payload": ["PLAYER_RECONNECTED"] };
 
 /** The catalogue keys each notice kind draws, by the `noticeRun` role that sets them. */
 export const TABLE_TEXT = {
@@ -39,6 +37,7 @@ export const TABLE_TEXT = {
       "exchange.pileGivesYou",
       "exchange.pillNothing",
       "exchangeAnnouncement.noExchangeText",
+      "gameShared.you",
     ],
     strong: [...Object.values(COMBO_NAME_KEYS), "gameShared.comboMultiplier"],
   },
@@ -55,7 +54,7 @@ export const TABLE_TEXT = {
       "onlineGame.connectionLost",
       "onlineGame.backOnline",
       "onlineGame.reconnecting",
-      ...Object.values(SERVED_PAYLOADS).flat().map((code) => `server.${code}`),
+      ...RECONNECT_CODES.map((code) => `server.${code}`),
     ],
     key: ["common.retry"],
   },
@@ -81,13 +80,6 @@ export const TABLE_TEXT = {
   roundVote: { text: ["result.nextRound", "roundOverOverlay.nextRoundWaiting"] },
   endMatchVote: { text: ["game.endMatchVoteButton"] },
 };
-
-/**
- * The kinds whose words arrive only at runtime, and what bounds them: `name` is a username, at most
- * its length in the face's widest glyph; `box` is any refusal or server text, wrapped and clipped to
- * the kind's own `maxWidth` and `lines`.
- */
-export const DYNAMIC_TEXT = { trickWinner: "name", rejectFloat: "box", errorToast: "box" };
 
 // Browsers drop optional ligatures from a letter-spaced run, and every notice is letter-spaced.
 const SPACED = ["-liga", "-clig"];
@@ -146,6 +138,8 @@ export async function textMetrics({
           const glyphs = cased.flatMap((r) => shapeRun(loaded[set.face], r, set.tabular));
           runs[locale][kind][`${role}:${key}`] = {
             face: set.face,
+            upper: set.upper,
+            tabular: set.tabular,
             units: glyphs.reduce((sum, g) => sum + (g.gid === 0 ? 0 : g.advance), 0),
             chars: cased.reduce((sum, r) => sum + [...r].length, 0),
             fallback: glyphs.filter((g) => g.gid === 0).map((g) => hex(g.cp)),
@@ -155,9 +149,11 @@ export async function textMetrics({
       }
     }
   }
-  const dynamic = Object.fromEntries(
-    Object.entries(DYNAMIC_TEXT).map(([kind, bound]) => [kind, { face: noticeRun(noticeBox(kind, 1), "text").face, bound }])
-  );
+  const dynamic = {};
+  for (const kind of Object.keys(NOTICES)) {
+    const box = noticeBox(kind, 1);
+    for (const [role, bound] of Object.entries(box.runtime)) (dynamic[kind] ??= {})[role] = { ...noticeRun(box, role), bound };
+  }
   return { faces, runs, dynamic };
 }
 

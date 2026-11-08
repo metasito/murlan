@@ -17,6 +17,8 @@ export const TEXT_METRICS = {
       "hudCombo": {
         "text:gameShared.emptyTable": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7786,
           "chars": 17,
           "fallback": [],
@@ -24,6 +26,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileGives": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 2602,
           "chars": 7,
           "fallback": [],
@@ -35,6 +39,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileYouGive": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 2618,
           "chars": 7,
           "fallback": [],
@@ -45,6 +51,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileGivesYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 2503,
           "chars": 7,
           "fallback": [],
@@ -55,6 +63,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pillNothing": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 8694,
           "chars": 18,
           "fallback": [],
@@ -62,6 +72,8 @@ export const TEXT_METRICS = {
         },
         "text:exchangeAnnouncement.noExchangeText": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 14787,
           "chars": 32,
           "fallback": [
@@ -69,8 +81,19 @@ export const TEXT_METRICS = {
           ],
           "slots": []
         },
+        "text:gameShared.you": {
+          "face": "regular",
+          "upper": true,
+          "tabular": false,
+          "units": 991,
+          "chars": 2,
+          "fallback": [],
+          "slots": []
+        },
         "strong:term.combo.single": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 3494,
           "chars": 7,
           "fallback": [],
@@ -78,6 +101,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.pair": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 2974,
           "chars": 6,
           "fallback": [],
@@ -85,6 +110,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.triple": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 1796,
           "chars": 4,
           "fallback": [],
@@ -92,6 +119,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.straight": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 2640,
           "chars": 5,
           "fallback": [],
@@ -99,6 +128,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.bomb": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 3165,
           "chars": 7,
           "fallback": [
@@ -108,6 +139,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.royalStraight": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 5591,
           "chars": 13,
           "fallback": [
@@ -117,6 +150,8 @@ export const TEXT_METRICS = {
         },
         "strong:gameShared.comboMultiplier": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 741,
           "chars": 2,
           "fallback": [],
@@ -128,6 +163,8 @@ export const TEXT_METRICS = {
       "turn": {
         "text:gameShared.matchOver": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6050,
           "chars": 14,
           "fallback": [],
@@ -135,6 +172,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.roundOver": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6203,
           "chars": 13,
           "fallback": [],
@@ -142,6 +181,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.dealing": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6068,
           "chars": 13,
           "fallback": [],
@@ -149,6 +190,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.yourTurn": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5390,
           "chars": 12,
           "fallback": [],
@@ -156,6 +199,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.turnOf": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3952,
           "chars": 9,
           "fallback": [],
@@ -165,6 +210,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipTitle": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3708,
           "chars": 7,
           "fallback": [],
@@ -172,6 +219,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipGive": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 13578,
           "chars": 31,
           "fallback": [],
@@ -181,6 +230,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipOneWay": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 8040,
           "chars": 19,
           "fallback": [
@@ -192,6 +243,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipOneWayYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 8607,
           "chars": 19,
           "fallback": [],
@@ -199,6 +252,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.waitingForYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 14706,
           "chars": 32,
           "fallback": [],
@@ -208,6 +263,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.watching": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 13792,
           "chars": 30,
           "fallback": [],
@@ -218,6 +275,8 @@ export const TEXT_METRICS = {
         },
         "text:offlineBanner.text": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 14052,
           "chars": 31,
           "fallback": [
@@ -227,6 +286,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.connectionLost": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 8586,
           "chars": 17,
           "fallback": [],
@@ -234,6 +295,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.backOnline": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7429,
           "chars": 17,
           "fallback": [],
@@ -241,6 +304,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.reconnecting": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7098,
           "chars": 14,
           "fallback": [],
@@ -248,6 +313,8 @@ export const TEXT_METRICS = {
         },
         "text:server.PLAYER_RECONNECTED": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 9557,
           "chars": 23,
           "fallback": [],
@@ -257,6 +324,8 @@ export const TEXT_METRICS = {
         },
         "key:common.retry": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 3521,
           "chars": 7,
           "fallback": [],
@@ -266,6 +335,8 @@ export const TEXT_METRICS = {
       "offline": {
         "text:offlineBanner.text": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 14052,
           "chars": 31,
           "fallback": [
@@ -277,6 +348,8 @@ export const TEXT_METRICS = {
       "whoStarts": {
         "main:gameShared.startReasonCard": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 5499,
           "chars": 16,
           "fallback": [],
@@ -288,6 +361,8 @@ export const TEXT_METRICS = {
         },
         "main:gameShared.startReasonLostRound": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 10465,
           "chars": 27,
           "fallback": [],
@@ -297,6 +372,8 @@ export const TEXT_METRICS = {
         },
         "main:gameShared.startReasonWonNoExchange": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 14832,
           "chars": 36,
           "fallback": [],
@@ -306,6 +383,8 @@ export const TEXT_METRICS = {
         },
         "main:gameTable.startCardBannerSelf": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 5562,
           "chars": 17,
           "fallback": [],
@@ -316,6 +395,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonCardSub": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 11166,
           "chars": 31,
           "fallback": [
@@ -325,6 +406,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonOneWaySub": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 15896,
           "chars": 40,
           "fallback": [],
@@ -334,6 +417,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonOneWaySubYou": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 15445,
           "chars": 39,
           "fallback": [],
@@ -341,6 +426,8 @@ export const TEXT_METRICS = {
         },
         "hint:gameShared.startReasonDismiss": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 9712,
           "chars": 20,
           "fallback": [],
@@ -348,6 +435,8 @@ export const TEXT_METRICS = {
         },
         "disc:gameShared.you": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 966,
           "chars": 2,
           "fallback": [],
@@ -357,6 +446,8 @@ export const TEXT_METRICS = {
       "leftTable": {
         "main:onlineGame.leftTableTitle": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 12520,
           "chars": 31,
           "fallback": [],
@@ -364,6 +455,8 @@ export const TEXT_METRICS = {
         },
         "sub:onlineGame.leftTableBody": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 27687,
           "chars": 67,
           "fallback": [],
@@ -373,6 +466,8 @@ export const TEXT_METRICS = {
       "passed": {
         "text:gameShared.passedLabel": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 2717,
           "chars": 5,
           "fallback": [],
@@ -382,6 +477,8 @@ export const TEXT_METRICS = {
       "reconnecting": {
         "text:gameTable.seatReconnecting": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 7880,
           "chars": 16,
           "fallback": [],
@@ -393,6 +490,8 @@ export const TEXT_METRICS = {
       "vacated": {
         "text:game.seatLeft": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 3972,
           "chars": 9,
           "fallback": [],
@@ -404,6 +503,8 @@ export const TEXT_METRICS = {
       "passFloat": {
         "text:gameShared.passedLabel": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 2724,
           "chars": 5,
           "fallback": [],
@@ -411,6 +512,8 @@ export const TEXT_METRICS = {
         },
         "text:game.autoPassTitle": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 9982,
           "chars": 20,
           "fallback": [],
@@ -420,6 +523,8 @@ export const TEXT_METRICS = {
       "waitingOthers": {
         "text:gameTable.waitingOthers": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 12389,
           "chars": 32,
           "fallback": [],
@@ -429,6 +534,8 @@ export const TEXT_METRICS = {
       "emptyHand": {
         "text:gameShared.emptyHand": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5477,
           "chars": 13,
           "fallback": [],
@@ -438,6 +545,8 @@ export const TEXT_METRICS = {
       "roundVote": {
         "text:result.nextRound": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7912,
           "chars": 15,
           "fallback": [],
@@ -445,6 +554,8 @@ export const TEXT_METRICS = {
         },
         "text:roundOverOverlay.nextRoundWaiting": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3534,
           "chars": 8,
           "fallback": [],
@@ -457,6 +568,8 @@ export const TEXT_METRICS = {
       "endMatchVote": {
         "text:game.endMatchVoteButton": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 13411,
           "chars": 29,
           "fallback": [],
@@ -468,6 +581,8 @@ export const TEXT_METRICS = {
       "hudCombo": {
         "text:gameShared.emptyTable": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6932,
           "chars": 15,
           "fallback": [],
@@ -475,6 +590,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileGives": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4275,
           "chars": 11,
           "fallback": [],
@@ -486,6 +603,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileYouGive": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5344,
           "chars": 13,
           "fallback": [],
@@ -496,6 +615,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileGivesYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4668,
           "chars": 11,
           "fallback": [],
@@ -506,6 +627,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pillNothing": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 8020,
           "chars": 17,
           "fallback": [],
@@ -513,6 +636,8 @@ export const TEXT_METRICS = {
         },
         "text:exchangeAnnouncement.noExchangeText": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 12977,
           "chars": 28,
           "fallback": [
@@ -520,8 +645,19 @@ export const TEXT_METRICS = {
           ],
           "slots": []
         },
+        "text:gameShared.you": {
+          "face": "regular",
+          "upper": true,
+          "tabular": false,
+          "units": 1617,
+          "chars": 3,
+          "fallback": [],
+          "slots": []
+        },
         "strong:term.combo.single": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 2864,
           "chars": 6,
           "fallback": [],
@@ -529,6 +665,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.pair": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 1901,
           "chars": 4,
           "fallback": [],
@@ -536,6 +674,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.triple": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 2715,
           "chars": 6,
           "fallback": [],
@@ -543,6 +683,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.straight": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 3917,
           "chars": 8,
           "fallback": [],
@@ -550,6 +692,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.bomb": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 2608,
           "chars": 6,
           "fallback": [
@@ -559,6 +703,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.royalStraight": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 6979,
           "chars": 16,
           "fallback": [
@@ -568,6 +714,8 @@ export const TEXT_METRICS = {
         },
         "strong:gameShared.comboMultiplier": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 741,
           "chars": 2,
           "fallback": [],
@@ -579,6 +727,8 @@ export const TEXT_METRICS = {
       "turn": {
         "text:gameShared.matchOver": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5136,
           "chars": 10,
           "fallback": [],
@@ -586,6 +736,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.roundOver": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4585,
           "chars": 9,
           "fallback": [],
@@ -593,6 +745,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.dealing": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3412,
           "chars": 7,
           "fallback": [],
@@ -600,6 +754,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.yourTurn": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4513,
           "chars": 9,
           "fallback": [],
@@ -607,6 +763,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.turnOf": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3089,
           "chars": 7,
           "fallback": [],
@@ -616,6 +774,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipTitle": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4274,
           "chars": 8,
           "fallback": [],
@@ -623,6 +783,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipGive": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 14039,
           "chars": 31,
           "fallback": [],
@@ -632,6 +794,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipOneWay": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6983,
           "chars": 16,
           "fallback": [],
@@ -641,6 +805,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipOneWayYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 8600,
           "chars": 19,
           "fallback": [],
@@ -648,6 +814,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.waitingForYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 12272,
           "chars": 27,
           "fallback": [],
@@ -657,6 +825,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.watching": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 10655,
           "chars": 24,
           "fallback": [],
@@ -667,6 +837,8 @@ export const TEXT_METRICS = {
         },
         "text:offlineBanner.text": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 10738,
           "chars": 25,
           "fallback": [
@@ -676,6 +848,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.connectionLost": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7322,
           "chars": 15,
           "fallback": [],
@@ -683,6 +857,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.backOnline": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5327,
           "chars": 11,
           "fallback": [],
@@ -690,6 +866,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.reconnecting": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6714,
           "chars": 13,
           "fallback": [],
@@ -697,6 +875,8 @@ export const TEXT_METRICS = {
         },
         "text:server.PLAYER_RECONNECTED": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3664,
           "chars": 9,
           "fallback": [],
@@ -706,6 +886,8 @@ export const TEXT_METRICS = {
         },
         "key:common.retry": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 2533,
           "chars": 5,
           "fallback": [],
@@ -715,6 +897,8 @@ export const TEXT_METRICS = {
       "offline": {
         "text:offlineBanner.text": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 10738,
           "chars": 25,
           "fallback": [
@@ -726,6 +910,8 @@ export const TEXT_METRICS = {
       "whoStarts": {
         "main:gameShared.startReasonCard": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 7795,
           "chars": 20,
           "fallback": [],
@@ -737,6 +923,8 @@ export const TEXT_METRICS = {
         },
         "main:gameShared.startReasonLostRound": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 9529,
           "chars": 24,
           "fallback": [],
@@ -746,6 +934,8 @@ export const TEXT_METRICS = {
         },
         "main:gameShared.startReasonWonNoExchange": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 11498,
           "chars": 27,
           "fallback": [],
@@ -755,6 +945,8 @@ export const TEXT_METRICS = {
         },
         "main:gameTable.startCardBannerSelf": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 9622,
           "chars": 24,
           "fallback": [],
@@ -765,6 +957,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonCardSub": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 8528,
           "chars": 22,
           "fallback": [
@@ -774,6 +968,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonOneWaySub": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 15451,
           "chars": 38,
           "fallback": [],
@@ -783,6 +979,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonOneWaySubYou": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 16980,
           "chars": 41,
           "fallback": [],
@@ -790,6 +988,8 @@ export const TEXT_METRICS = {
         },
         "hint:gameShared.startReasonDismiss": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6954,
           "chars": 15,
           "fallback": [],
@@ -797,6 +997,8 @@ export const TEXT_METRICS = {
         },
         "disc:gameShared.you": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 1549,
           "chars": 3,
           "fallback": [],
@@ -806,6 +1008,8 @@ export const TEXT_METRICS = {
       "leftTable": {
         "main:onlineGame.leftTableTitle": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 9635,
           "chars": 23,
           "fallback": [],
@@ -813,6 +1017,8 @@ export const TEXT_METRICS = {
         },
         "sub:onlineGame.leftTableBody": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 24936,
           "chars": 61,
           "fallback": [],
@@ -822,6 +1028,8 @@ export const TEXT_METRICS = {
       "passed": {
         "text:gameShared.passedLabel": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 3197,
           "chars": 6,
           "fallback": [],
@@ -831,6 +1039,8 @@ export const TEXT_METRICS = {
       "reconnecting": {
         "text:gameTable.seatReconnecting": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 7509,
           "chars": 15,
           "fallback": [],
@@ -842,6 +1052,8 @@ export const TEXT_METRICS = {
       "vacated": {
         "text:game.seatLeft": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 2894,
           "chars": 7,
           "fallback": [],
@@ -853,6 +1065,8 @@ export const TEXT_METRICS = {
       "passFloat": {
         "text:gameShared.passedLabel": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3207,
           "chars": 6,
           "fallback": [],
@@ -860,6 +1074,8 @@ export const TEXT_METRICS = {
         },
         "text:game.autoPassTitle": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4575,
           "chars": 9,
           "fallback": [],
@@ -869,6 +1085,8 @@ export const TEXT_METRICS = {
       "waitingOthers": {
         "text:gameTable.waitingOthers": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 16603,
           "chars": 38,
           "fallback": [],
@@ -878,6 +1096,8 @@ export const TEXT_METRICS = {
       "emptyHand": {
         "text:gameShared.emptyHand": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5401,
           "chars": 11,
           "fallback": [],
@@ -887,6 +1107,8 @@ export const TEXT_METRICS = {
       "roundVote": {
         "text:result.nextRound": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4521,
           "chars": 9,
           "fallback": [],
@@ -894,6 +1116,8 @@ export const TEXT_METRICS = {
         },
         "text:roundOverOverlay.nextRoundWaiting": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3275,
           "chars": 7,
           "fallback": [],
@@ -906,6 +1130,8 @@ export const TEXT_METRICS = {
       "endMatchVote": {
         "text:game.endMatchVoteButton": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 8108,
           "chars": 17,
           "fallback": [],
@@ -917,6 +1143,8 @@ export const TEXT_METRICS = {
       "hudCombo": {
         "text:gameShared.emptyTable": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7947,
           "chars": 17,
           "fallback": [],
@@ -924,6 +1152,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileGives": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 2726,
           "chars": 8,
           "fallback": [],
@@ -935,6 +1165,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileYouGive": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3413,
           "chars": 10,
           "fallback": [],
@@ -945,6 +1177,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pileGivesYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3149,
           "chars": 8,
           "fallback": [],
@@ -955,6 +1189,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.pillNothing": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7293,
           "chars": 16,
           "fallback": [],
@@ -962,6 +1198,8 @@ export const TEXT_METRICS = {
         },
         "text:exchangeAnnouncement.noExchangeText": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 14856,
           "chars": 33,
           "fallback": [
@@ -969,8 +1207,19 @@ export const TEXT_METRICS = {
           ],
           "slots": []
         },
+        "text:gameShared.you": {
+          "face": "regular",
+          "upper": true,
+          "tabular": false,
+          "units": 687,
+          "chars": 2,
+          "fallback": [],
+          "slots": []
+        },
         "strong:term.combo.single": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 4576,
           "chars": 10,
           "fallback": [],
@@ -978,6 +1227,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.pair": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 2664,
           "chars": 5,
           "fallback": [],
@@ -985,6 +1236,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.triple": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 3063,
           "chars": 6,
           "fallback": [],
@@ -992,6 +1245,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.straight": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 3607,
           "chars": 7,
           "fallback": [],
@@ -999,6 +1254,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.bomb": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 4398,
           "chars": 10,
           "fallback": [
@@ -1008,6 +1265,8 @@ export const TEXT_METRICS = {
         },
         "strong:term.combo.royalStraight": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 9401,
           "chars": 20,
           "fallback": [
@@ -1017,6 +1276,8 @@ export const TEXT_METRICS = {
         },
         "strong:gameShared.comboMultiplier": {
           "face": "bold",
+          "upper": true,
+          "tabular": true,
           "units": 741,
           "chars": 2,
           "fallback": [],
@@ -1028,6 +1289,8 @@ export const TEXT_METRICS = {
       "turn": {
         "text:gameShared.matchOver": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7201,
           "chars": 14,
           "fallback": [],
@@ -1035,6 +1298,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.roundOver": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5597,
           "chars": 11,
           "fallback": [],
@@ -1042,6 +1307,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.dealing": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5961,
           "chars": 11,
           "fallback": [],
@@ -1049,6 +1316,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.yourTurn": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4984,
           "chars": 10,
           "fallback": [],
@@ -1056,6 +1325,8 @@ export const TEXT_METRICS = {
         },
         "text:gameShared.turnOf": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 3723,
           "chars": 8,
           "fallback": [],
@@ -1065,6 +1336,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipTitle": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 4385,
           "chars": 8,
           "fallback": [],
@@ -1072,6 +1345,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipGive": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 14456,
           "chars": 33,
           "fallback": [],
@@ -1081,6 +1356,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipOneWay": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7215,
           "chars": 17,
           "fallback": [],
@@ -1090,6 +1367,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.chipOneWayYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7038,
           "chars": 16,
           "fallback": [],
@@ -1097,6 +1376,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.waitingForYou": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 12133,
           "chars": 27,
           "fallback": [],
@@ -1106,6 +1387,8 @@ export const TEXT_METRICS = {
         },
         "text:exchange.watching": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 11191,
           "chars": 25,
           "fallback": [],
@@ -1116,6 +1399,8 @@ export const TEXT_METRICS = {
         },
         "text:offlineBanner.text": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 10603,
           "chars": 26,
           "fallback": [
@@ -1125,6 +1410,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.connectionLost": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6324,
           "chars": 13,
           "fallback": [],
@@ -1132,6 +1419,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.backOnline": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 6763,
           "chars": 15,
           "fallback": [],
@@ -1139,6 +1428,8 @@ export const TEXT_METRICS = {
         },
         "text:onlineGame.reconnecting": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5460,
           "chars": 12,
           "fallback": [],
@@ -1146,6 +1437,8 @@ export const TEXT_METRICS = {
         },
         "text:server.PLAYER_RECONNECTED": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 9670,
           "chars": 22,
           "fallback": [],
@@ -1155,6 +1448,8 @@ export const TEXT_METRICS = {
         },
         "key:common.retry": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 6310,
           "chars": 13,
           "fallback": [],
@@ -1164,6 +1459,8 @@ export const TEXT_METRICS = {
       "offline": {
         "text:offlineBanner.text": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 10603,
           "chars": 26,
           "fallback": [
@@ -1175,6 +1472,8 @@ export const TEXT_METRICS = {
       "whoStarts": {
         "main:gameShared.startReasonCard": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 4630,
           "chars": 13,
           "fallback": [],
@@ -1186,6 +1485,8 @@ export const TEXT_METRICS = {
         },
         "main:gameShared.startReasonLostRound": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 9466,
           "chars": 23,
           "fallback": [],
@@ -1195,6 +1496,8 @@ export const TEXT_METRICS = {
         },
         "main:gameShared.startReasonWonNoExchange": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 11522,
           "chars": 29,
           "fallback": [],
@@ -1204,6 +1507,8 @@ export const TEXT_METRICS = {
         },
         "main:gameTable.startCardBannerSelf": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 4773,
           "chars": 14,
           "fallback": [],
@@ -1214,6 +1519,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonCardSub": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 5366,
           "chars": 14,
           "fallback": [
@@ -1223,6 +1530,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonOneWaySub": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 17000,
           "chars": 43,
           "fallback": [],
@@ -1232,6 +1541,8 @@ export const TEXT_METRICS = {
         },
         "sub:gameShared.startReasonOneWaySubYou": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 17316,
           "chars": 44,
           "fallback": [],
@@ -1239,6 +1550,8 @@ export const TEXT_METRICS = {
         },
         "hint:gameShared.startReasonDismiss": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 9619,
           "chars": 20,
           "fallback": [],
@@ -1246,6 +1559,8 @@ export const TEXT_METRICS = {
         },
         "disc:gameShared.you": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 690,
           "chars": 2,
           "fallback": [],
@@ -1255,6 +1570,8 @@ export const TEXT_METRICS = {
       "leftTable": {
         "main:onlineGame.leftTableTitle": {
           "face": "bold",
+          "upper": false,
+          "tabular": false,
           "units": 9727,
           "chars": 25,
           "fallback": [],
@@ -1262,6 +1579,8 @@ export const TEXT_METRICS = {
         },
         "sub:onlineGame.leftTableBody": {
           "face": "regular",
+          "upper": false,
+          "tabular": false,
           "units": 22506,
           "chars": 54,
           "fallback": [],
@@ -1271,6 +1590,8 @@ export const TEXT_METRICS = {
       "passed": {
         "text:gameShared.passedLabel": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 2383,
           "chars": 5,
           "fallback": [],
@@ -1280,6 +1601,8 @@ export const TEXT_METRICS = {
       "reconnecting": {
         "text:gameTable.seatReconnecting": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 6249,
           "chars": 14,
           "fallback": [],
@@ -1291,6 +1614,8 @@ export const TEXT_METRICS = {
       "vacated": {
         "text:game.seatLeft": {
           "face": "bold",
+          "upper": true,
+          "tabular": false,
           "units": 5068,
           "chars": 11,
           "fallback": [],
@@ -1302,6 +1627,8 @@ export const TEXT_METRICS = {
       "passFloat": {
         "text:gameShared.passedLabel": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 2351,
           "chars": 5,
           "fallback": [],
@@ -1309,6 +1636,8 @@ export const TEXT_METRICS = {
         },
         "text:game.autoPassTitle": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7341,
           "chars": 15,
           "fallback": [],
@@ -1318,6 +1647,8 @@ export const TEXT_METRICS = {
       "waitingOthers": {
         "text:gameTable.waitingOthers": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 15850,
           "chars": 36,
           "fallback": [],
@@ -1327,6 +1658,8 @@ export const TEXT_METRICS = {
       "emptyHand": {
         "text:gameShared.emptyHand": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 7409,
           "chars": 15,
           "fallback": [],
@@ -1336,6 +1669,8 @@ export const TEXT_METRICS = {
       "roundVote": {
         "text:result.nextRound": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 5318,
           "chars": 11,
           "fallback": [],
@@ -1343,6 +1678,8 @@ export const TEXT_METRICS = {
         },
         "text:roundOverOverlay.nextRoundWaiting": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 2420,
           "chars": 6,
           "fallback": [],
@@ -1355,6 +1692,8 @@ export const TEXT_METRICS = {
       "endMatchVote": {
         "text:game.endMatchVoteButton": {
           "face": "regular",
+          "upper": true,
+          "tabular": false,
           "units": 15129,
           "chars": 31,
           "fallback": [],
@@ -1364,17 +1703,107 @@ export const TEXT_METRICS = {
     }
   },
   "dynamic": {
+    "hudCombo": {
+      "text": {
+        "face": "regular",
+        "upper": true,
+        "tabular": false,
+        "bound": {
+          "maxWidth": 88,
+          "lines": 1,
+          "on": "run"
+        }
+      }
+    },
+    "turn": {
+      "strong": {
+        "face": "bold",
+        "upper": true,
+        "tabular": true,
+        "bound": {
+          "chars": 2
+        }
+      }
+    },
+    "whoStarts": {
+      "name": {
+        "face": "bold",
+        "upper": false,
+        "tabular": false,
+        "bound": {
+          "chars": 30
+        }
+      },
+      "disc": {
+        "face": "bold",
+        "upper": false,
+        "tabular": false,
+        "bound": {
+          "chars": 1
+        }
+      },
+      "tile": {
+        "face": "bold",
+        "upper": false,
+        "tabular": false,
+        "bound": {
+          "chars": 2
+        }
+      }
+    },
     "trickWinner": {
-      "face": "bold",
-      "bound": "name"
+      "text": {
+        "face": "bold",
+        "upper": true,
+        "tabular": false,
+        "bound": {
+          "chars": 30
+        }
+      }
     },
     "rejectFloat": {
-      "face": "regular",
-      "bound": "box"
+      "text": {
+        "face": "regular",
+        "upper": false,
+        "tabular": false,
+        "bound": {
+          "maxWidth": 252.2388059701493,
+          "lines": 2,
+          "on": "plate"
+        }
+      }
     },
     "errorToast": {
-      "face": "regular",
-      "bound": "box"
+      "text": {
+        "face": "regular",
+        "upper": true,
+        "tabular": false,
+        "bound": {
+          "maxWidth": 407.4626865671642,
+          "lines": 1,
+          "on": "plate"
+        }
+      }
+    },
+    "endMatchVote": {
+      "badge": {
+        "face": "bold",
+        "upper": false,
+        "tabular": true,
+        "bound": {
+          "chars": 3
+        }
+      }
+    },
+    "roundVote": {
+      "badge": {
+        "face": "bold",
+        "upper": false,
+        "tabular": true,
+        "bound": {
+          "chars": 3
+        }
+      }
     }
   }
 } as const;

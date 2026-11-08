@@ -288,12 +288,14 @@ export function NoticeLine({ line, children }: { line: PanelLine; children: Reac
 }
 
 export function NoticeName({ children }: { children: ReactNode }) {
-  const { paint } = useInk("a panel part");
-  return <TableText style={[styles.bold, { color: paint.strong }]}>{children}</TableText>;
+  const { paint, box } = useInk("a panel part");
+  const run = noticeRun(box, "name");
+  return <TableText style={[NOTICE_FACES[run.face], run.upper && styles.upper, { color: paint.strong }]}>{children}</TableText>;
 }
 
 export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
-  const { scale } = useInk("a panel part");
+  const { box, scale } = useInk("a panel part");
+  const run = noticeRun(box, "tile");
   const part = panelParts(scale);
   const unit = mockupPx(1, scale);
   const ink = SUIT_COLORS[suit];
@@ -310,7 +312,7 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
         { boxShadow: `0px ${part.tileLip}px 0px ${Colors.cardLip}, 0px ${unit}px ${TILE_SHADOW * unit}px ${TILE_CAST}` },
       ]}
     >
-      <TableText style={[styles.bold, { color: ink, fontSize: part.tileFont }]}>{rank}</TableText>
+      <TableText style={[NOTICE_FACES[run.face], run.upper && styles.upper, { color: ink, fontSize: part.tileFont }]}>{rank}</TableText>
       <Svg width={part.tileSuit} height={part.tileSuit} viewBox={SUIT_BOX} preserveAspectRatio="xMidYMid meet">
         <SuitShape suit={suit} color={ink} />
       </Svg>
@@ -341,20 +343,23 @@ export function NoticeDisc({ children }: { children: ReactNode }) {
 export function NoticeText({
   strong = false,
   warn = false,
-  maxWidth,
+  runtime = false,
   align,
   testID,
   children,
 }: {
   strong?: boolean;
   warn?: boolean;
-  maxWidth?: number;
+  /** Its words exist only at runtime: the kind's `runtime` bound for the role clips it. */
+  runtime?: boolean;
   align?: "left" | "right";
   testID?: string;
   children: ReactNode;
 }) {
-  const { paint, box, scale } = useInk("NoticeText");
-  const run = noticeRun(box, strong ? "strong" : "text");
+  const { paint, box } = useInk("NoticeText");
+  const role = strong ? "strong" : "text";
+  const run = noticeRun(box, role);
+  const bound = runtime ? box.runtime[role] : undefined;
   return (
     <TableText
       numberOfLines={box.lines}
@@ -371,7 +376,7 @@ export function NoticeText({
           lineHeight: box.lineHeight,
           textAlign: align,
         },
-        maxWidth !== undefined && { maxWidth: maxWidth * scale },
+        bound && "on" in bound && bound.on === "run" && { maxWidth: bound.maxWidth },
       ]}
     >
       {children}
@@ -424,6 +429,7 @@ export function NoticeGlyph({ name, px }: { name: ComponentProps<typeof Ionicons
 /** A count on gold at the plate's end, as `#turn u`. */
 export function NoticeBadge({ children }: { children: ReactNode }) {
   const { box, scale } = useInk("NoticeBadge");
+  const run = noticeRun(box, "badge");
   return (
     <View
       style={[
@@ -431,7 +437,7 @@ export function NoticeBadge({ children }: { children: ReactNode }) {
         { paddingHorizontal: mockupPx(BADGE.padX, scale), paddingVertical: mockupPx(BADGE.padY, scale), borderRadius: mockupPx(BADGE.radius, scale) },
       ]}
     >
-      <TableText style={[styles.bold, styles.strong, { color: Colors.badgeInk, fontSize: box.fontSize, letterSpacing: mockupPx(BADGE.tracking, scale) }]}>
+      <TableText style={[NOTICE_FACES[run.face], run.upper && styles.upper, run.tabular && styles.strong, { color: Colors.badgeInk, fontSize: box.fontSize, letterSpacing: mockupPx(BADGE.tracking, scale) }]}>
         {children}
       </TableText>
     </View>
@@ -467,7 +473,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   sentence: { textTransform: "none" },
-  bold: { ...NOTICE_FACES.bold },
   strong: { fontVariant: ["tabular-nums"] },
   badge: { backgroundColor: Colors.gold },
 });

@@ -22,6 +22,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
+import { linkNote } from "@/components/table/connectionNote";
 import type { MatchRating } from "@/components/table/matchBoard";
 import { provisionalLeft } from "@/lib/game/rating";
 import { vacatedOf } from "@/shared/protocol";
@@ -262,24 +263,7 @@ export default function OnlineGameScreen() {
       error={error}
       ownLink={ownLink}
       catchUp={catchUp}
-      connection={
-        // The viewer's own connection outranks another player's notice: a
-        // table that has stopped updating is otherwise indistinguishable from
-        // an opponent taking their time.
-        pill === "lost"
-          ? {
-              state: "lost",
-              text: t("onlineGame.connectionLost"),
-              action: { label: t("common.retry"), onPress: retryConnection },
-            }
-          : pill === "back"
-            ? { state: "back", text: t("onlineGame.backOnline") }
-            : pill === "reconnecting"
-              ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
-              : pill === "reconnected" && reconnectNotice
-                ? { state: "reconnected", text: translateServerPayload(reconnectNotice.payload) }
-                : null
-      }
+      connection={linkNote(pill, reconnectNotice?.payload ?? null, { t, translateServerPayload, retry: retryConnection })}
       autoPassed={autoPassed}
       endMatchVote={
         anyVacatedSeat && !gameState.roundOver
