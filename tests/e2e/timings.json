@@ -61,6 +61,7 @@
   "seatFans.spec.ts": 9.4,
   "seatNameContrast.spec.ts": 61.3,
   "seatsDoNotMove.spec.ts": 13.4,
+  "skiaPerf.spec.ts": 55,
   "smokeFlowCopy.spec.ts": 0.7,
   "startAnnouncement.spec.ts": 1.7,
   "tableAtRest.spec.ts": 24,

@@ -1,4 +1,4 @@
-// The hands-free device bench's end: wait for the run, then one pass/fail table (docs/agents/checks.md).
+// The hands-free device bench's end: wait for the run, then one pass/fail table (docs/agents/device-runs.md).
 import { existsSync, readFileSync } from "node:fs";
 import { GATES, verdict } from "./diagnostics-verdict.mjs";
 

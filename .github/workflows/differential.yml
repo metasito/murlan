@@ -1,5 +1,5 @@
 # Replays seeded all-bot matches on a baseline commit and on this one and diffs the traces
-# (its row in docs/agents/checks.md's table). A search, so never on `pull_request`.
+# (docs/agents/suites.md § Differential). A search, so never on `pull_request`.
 name: Differential replay
 
 on:
@@ -74,6 +74,6 @@ jobs:
             echo '```'
             tail -40 "$RUNNER_TEMP/compare.txt" 2>/dev/null || echo "No comparison was printed; the run log names the step that failed."
             echo '```'
-            echo "Attribute each match with the bisect in docs/agents/checks.md's row for a change to how a round plays."
+            echo "Attribute each match with the bisect in docs/agents/suites.md, Differential: how a round plays."
           } > differential-failure.md
           bash tools/ci/report-to-tracker.sh "The differential replay found something (${{ matrix.accepted }})" differential-failure.md soak bug needs-triage
