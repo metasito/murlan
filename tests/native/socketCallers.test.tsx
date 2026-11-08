@@ -26,18 +26,25 @@ afterEach(() => {
 });
 
 describe('Riprova', () => {
-  it('leaves an attempt that is still opening alone', async () => {
+  it('abandons an attempt that is still opening for a fresh one, and closes the old one once it settles', async () => {
     const view = await mount(false);
     const socket = view.socket();
-    expect(socket.io.engine.readyState).toBe('opening');
+    const hung = socket.io.engine!;
+    expect(hung.readyState).toBe('opening');
     socket.reset();
 
     await act(async () => view.result.current.retryConnection());
 
-    expect(socket.disconnect).not.toHaveBeenCalled();
-    expect(socket.connect).not.toHaveBeenCalled();
+    const fresh = socket.io.engine!;
+    expect(socket.connect).toHaveBeenCalledTimes(1);
+    expect(fresh).not.toBe(hung);
+    expect(fresh.readyState).toBe('opening');
+    expect(hung.close).not.toHaveBeenCalled();
+    hung.open();
+    expect(hung.close).toHaveBeenCalledTimes(1);
     await act(async () => socket.open());
     expect(socket.connected).toBe(true);
+    expect(fresh.close).not.toHaveBeenCalled();
     await view.unmount();
   });
 
@@ -91,16 +98,18 @@ describe('a halt while the socket is opening', () => {
     await view.unmount();
   });
 
-  it('is cancelled by Riprova', async () => {
+  it('is cancelled by Riprova, which opens a fresh attempt', async () => {
     const view = await mount(false);
     const socket = view.socket();
+    const hung = socket.io.engine!;
     socket.reset();
     await act(async () => socket.serverEmit('socket:error', REPLACED));
 
     await act(async () => view.result.current.retryConnection());
+    hung.open();
     await act(async () => socket.open());
 
-    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(hung.close).toHaveBeenCalledTimes(1);
     expect(socket.connected).toBe(true);
     await view.unmount();
   });

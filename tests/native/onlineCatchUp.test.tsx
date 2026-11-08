@@ -133,7 +133,6 @@ describe("the online table on the viewer's own link", () => {
     await giveUp(view.socket());
     const { connection } = lastTable();
     expect(connection?.state).toBe('lost');
-    await act(async () => view.socket().failToOpen(new Error('websocket error')));
     view.socket().reset();
     connection?.action?.onPress();
     expect(view.socket().connect).toHaveBeenCalledTimes(1);
@@ -156,7 +155,6 @@ describe("the online table on the viewer's own link", () => {
     const { connection, matchActions } = lastTable();
     expect(matchActions).toBeDefined();
     expect(connection?.state).toBe('lost');
-    await act(async () => view.socket().failToOpen(new Error('websocket error')));
     view.socket().reset();
     connection?.action?.onPress();
     expect(view.socket().connect).toHaveBeenCalledTimes(1);

@@ -683,7 +683,7 @@ const GUARDS = [
   {
     id: "socket-owner",
     why: "lib/socket.ts holds the raw socket.io socket and hands out a `Socket` that cannot open, close or reach its engine, because closing one still connecting makes the browser log an error: reconnect through reopenSocket, reconnectSocket, closeSocket or haltSocket.",
-    selector: importsOf('"socket.io-client"'),
+    selector: importsOf("/^(socket|engine)\\.io-client(\\x2F|$)/"),
     files: CLIENT,
     ignores: [{ glob: "lib/socket.ts", reason: "the owner of the raw socket" }],
     plant: { file: "context/Plant.tsx", code: [
@@ -692,10 +692,13 @@ const GUARDS = [
       'export { io } from "socket.io-client";',
       'const s = import("socket.io-client");',
       'const m = require("socket.io-client");',
-    ].join("\n"), hits: 5 },
+      'import { Manager } from "socket.io-client/build/esm/manager";',
+      'import { Socket } from "engine.io-client";',
+    ].join("\n"), hits: 7 },
     spare: [
       'import { Socket } from "@/lib/socket";',
       'import { x } from "socket.io-client-shim";',
+      'import { y } from "engine.io-clients";',
       '// import "socket.io-client"\nconst s = "socket.io-client";',
     ].map((code) => ({ file: "context/Plant.tsx", code })),
   },

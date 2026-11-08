@@ -29,7 +29,7 @@ describe('signing out while the socket is still opening', () => {
     const socket = lastSocket();
     const onConnect = jest.fn();
     socket.on('connect', onConnect);
-    expect(socket.io.engine.readyState).toBe('opening');
+    expect(socket.io.engine?.readyState).toBe('opening');
 
     disconnectSocket('opening1');
 
@@ -97,17 +97,6 @@ describe('a halt or a retry while the socket is still opening', () => {
 
     socket.open();
     expect(socket.disconnect).toHaveBeenCalledTimes(1);
-  });
-
-  it('retrying leaves the attempt that is opening alone', () => {
-    connectSocket('retry1', { onAuthFailure: () => {} });
-    const socket = lastSocket();
-    const connects = socket.connect.mock.calls.length;
-
-    reconnectSocket(socket as unknown as Socket);
-
-    expect(socket.disconnect).not.toHaveBeenCalled();
-    expect(socket.connect.mock.calls.length).toBe(connects);
   });
 
   it('retrying a settled socket closes it and connects again', () => {
