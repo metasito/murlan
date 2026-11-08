@@ -14,19 +14,12 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { driveGameToCompletion } from "./helpers/bot";
 import { oneCardFromFinishing, resumeSaved } from "./helpers/offlineSeed";
+import { cutoutBand } from "./helpers/cutout";
 import { atRest } from "./helpers/settle";
 import { card } from "../support/game.ts";
 
 const VIEWPORT = { width: 844, height: 390 };
 const BOARD = '[data-testid="score-pill-layer"]';
-
-/**
- * The vertical span a landscape cutout occupies — a centred bar on the short
- * edge, never the whole column. An iPhone X's notch is 209pt on a 390pt edge
- * and the Dynamic Island is smaller, so the notch is the worst case.
- * Deliberately the same share tests/e2e/controlRail.spec.ts uses.
- */
-const CUTOUT_HEIGHT_SHARE = 209 / 390;
 
 /** Layout rounds; a sub-pixel overlap is not something anyone can see. */
 const TOLERANCE = 1;
@@ -37,11 +30,6 @@ interface Box {
   y: number;
   width: number;
   height: number;
-}
-
-function cutoutBand(viewportHeight: number): { top: number; bottom: number } {
-  const h = viewportHeight * CUTOUT_HEIGHT_SHARE;
-  return { top: (viewportHeight - h) / 2, bottom: (viewportHeight + h) / 2 };
 }
 
 /** Both horizontal insets at once — a rotation puts the cutout on either. */
