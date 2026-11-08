@@ -133,6 +133,7 @@
     "fast-check": "^4.10.2",
     "fontverter": "^2.0.0",
     "globals": "^17.14.0",
+    "harfbuzzjs": "^1.6.4",
     "jest": "^30.5.2",
     "jest-expo": "~58.0.13",
     "mpg123-decoder": "^1.0.3",

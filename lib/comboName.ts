@@ -1,7 +1,7 @@
 import type { CombinationType } from "./game/gameEngine.ts";
 import type { TFn, TranslationKey } from "./i18n.ts";
 
-const KEYS: Record<CombinationType, TranslationKey> = {
+export const COMBO_NAME_KEYS: Record<CombinationType, TranslationKey> = {
   single: "term.combo.single",
   pair: "term.combo.pair",
   triple: "term.combo.triple",
@@ -12,7 +12,7 @@ const KEYS: Record<CombinationType, TranslationKey> = {
 
 /** A combination's name in the player's language, glyph included. */
 export function comboName(type: CombinationType, t: TFn): string {
-  return t(KEYS[type]);
+  return t(COMBO_NAME_KEYS[type]);
 }
 
 /** The name as a screen reader should hear it: without the glyph the chip draws. */

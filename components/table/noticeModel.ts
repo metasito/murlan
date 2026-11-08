@@ -132,6 +132,17 @@ export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
   };
 }
 
+export const NOTICE_FACES = {
+  regular: { fontFamily: "Rajdhani_600SemiBold" },
+  bold: { fontFamily: "Rajdhani_700Bold" },
+} as const;
+
+export type NoticeRun = { face: keyof typeof NOTICE_FACES; upper: boolean; tabular: boolean };
+
+export function noticeRun(box: NoticeBox, strong: boolean): NoticeRun {
+  return { face: strong || box.bold ? "bold" : "regular", upper: box.upper, tabular: strong };
+}
+
 const MARK_AT = { top: { x: -60, y: -8 }, side: { x: 0, y: 27 } } as const;
 
 /** `.seat[data-side] .passo`: the mark's centre x and top edge, off the disc's centre. */

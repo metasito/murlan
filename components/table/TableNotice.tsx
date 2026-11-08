@@ -29,7 +29,9 @@ import {
   noticeRise,
   noticeTiming,
   mockupPx,
+  NOTICE_FACES,
   NOTICE_KEY,
+  noticeRun,
   panelLine,
   panelParts,
   type KindTone,
@@ -350,15 +352,16 @@ export function NoticeText({
   children: ReactNode;
 }) {
   const { paint, box, scale } = useInk("NoticeText");
+  const run = noticeRun(box, strong);
   return (
     <TableText
       numberOfLines={box.lines}
       testID={testID}
       style={[
         styles.text,
-        !box.upper && styles.sentence,
-        (strong || box.bold) && styles.bold,
-        strong && styles.strong,
+        !run.upper && styles.sentence,
+        NOTICE_FACES[run.face],
+        run.tabular && styles.strong,
         {
           color: warn ? (paint.warn ?? paint.strong) : strong ? paint.strong : paint.ink,
           fontSize: strong ? box.strongFontSize : box.fontSize,
@@ -454,12 +457,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.goldLitDisc,
   },
   text: {
-    fontFamily: "Rajdhani_600SemiBold",
+    ...NOTICE_FACES.regular,
     textTransform: "uppercase",
     flexShrink: 1,
   },
   sentence: { textTransform: "none" },
-  bold: { fontFamily: "Rajdhani_700Bold" },
+  bold: { ...NOTICE_FACES.bold },
   strong: { fontVariant: ["tabular-nums"] },
   badge: { backgroundColor: Colors.gold },
 });
