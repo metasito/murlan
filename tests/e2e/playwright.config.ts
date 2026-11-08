@@ -72,11 +72,6 @@ export default defineConfig({
     // The server binds PORT=0 and says where (scripts/e2e-server.mjs); Playwright puts the port it
     // captures in E2E_PORT, which the `baseURL` fixture reads (tests/e2e/fixtures.ts).
     wait: { stdout: /express server ready on port (?<e2e_port>\d+)/ },
-    // A stale server on this port — even one hours old, serving an old bundle
-    // — answers the health check and gets adopted, so a run can pass having
-    // exercised nothing. `E2E_SKIP_BUILD=1` (scripts/e2e-server.mjs) is the
-    // explicit local fast path when a fresh server is genuinely not needed.
-    reuseExistingServer: false,
     timeout: 3 * 60_000,
     env: {
       MURLAN_MAIL_SINK: MAIL_SINK,

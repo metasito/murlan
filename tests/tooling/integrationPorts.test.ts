@@ -34,6 +34,12 @@ const READY_LINE = "express server ready on port";
 test("the e2e webServer binds PORT=0 and Playwright waits for the server to say where", () => {
   const server = readFileSync("scripts/e2e-server.mjs", "utf8");
   assert.match(server, /^const PORT = String\(PLAY \? PLAY_PORT : 0\);$/m, "the e2e server is told a port to bind other than 0");
+  const assigned = server.split("\n").map((l) => l.trim()).filter((l) => /\bPORT\s*[:=](?!=)/.test(l));
+  assert.deepEqual(
+    assigned,
+    ["const PORT = String(PLAY ? PLAY_PORT : 0);", "process.env.PORT = PORT;"],
+    "the e2e server assigns PORT other than from the one line that binds 0"
+  );
   const config = readFileSync("tests/e2e/playwright.config.ts", "utf8");
   const webServer = config.slice(config.indexOf("webServer:"));
   assert.ok(webServer.length > "webServer:".length, "the scan no longer finds the webServer block");

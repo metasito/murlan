@@ -241,10 +241,11 @@ export async function startTestServer(
           // The room-ownership client is a second connection, held open for
           // the life of the process exactly as the pool is.
           await closeOwnership();
-          // Closing the sockets above arms the disconnect grace of every seat they held, and that
-          // timer is ref'd: left armed, it holds the process open for the grace's whole length.
-          for (const kind of TIMER_KINDS) for (const key of pendingKeys(kind)) clearTimer(kind, key);
         } finally {
+          // First, so a step above that threw cannot leave them armed: closing the sockets arms the
+          // disconnect grace of every seat they held, and that timer is ref'd, so left armed it
+          // holds the process open for the grace's whole length.
+          for (const kind of TIMER_KINDS) for (const key of pendingKeys(kind)) clearTimer(kind, key);
           // Always run, even if closing the server/pool above threw: a
           // failed shutdown must not also leak the schema or leave
           // DATABASE_URL pointed at the throwaway connection string.
