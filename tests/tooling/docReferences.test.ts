@@ -156,7 +156,7 @@ function headingsOf(file: string): string[] {
 test("every heading a doc, comment or prompt cites by title exists in the doc it cites", () => {
   const files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
     .trim().split("\n").filter((f) => /\.(md|ts|tsx|mjs|js|cjs)$/.test(f) && existsSync(at(f)))
-    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)) && !DATED_PLAN.test(f) && !f.startsWith("docs/research/"));
+    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)) && !DATED_PLAN.test(f) && !/^docs\/research\//.test(f));
   const broken: string[] = [];
   let checked = 0;
   for (const file of files) {
