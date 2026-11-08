@@ -137,9 +137,17 @@ function gap(stops: readonly string[], k: number, lamp: [number, number], light:
 
 describe("the felt lit from its baked weave is the cloth", () => {
   test("the lit pass reads the weave from its planes, not from the cloth's own noise", () => {
-    assert.ok(LIT_SKSL.includes("uG0.eval(p)") && LIT_SKSL.includes("uG2.eval(p)"), "the lit cloth reads no plane");
+    assert.ok(LIT_SKSL.includes("uG0.eval(p)") && LIT_SKSL.includes(`uG${WEAVE_PLANES - 1}.eval(p)`), "the lit cloth reads no plane");
     assert.ok(!LIT_SKSL.includes("vn(vec2(tid*1.7"), "the lit cloth still draws the slub");
     assert.ok(!LIT_SKSL.includes("h21(floor(p*uK))"), "the lit cloth still draws the fuzz");
+  });
+
+  test("every term the lamp does not move is baked, so a lit pixel costs two reads and the lamp's own terms", () => {
+    assert.equal(WEAVE_PLANES, 2);
+    const body = LIT_SKSL.slice(LIT_SKSL.indexOf("vec4 cloth("));
+    for (const term of ["prof", "tv", "mott", "vis", "uDepth", "uCover", "uFuzz", "uSheen", "uMott", "uTwo", "if(t<"]) {
+      assert.ok(!new RegExp(`\\b${term.replace("(", "\\(")}`).test(body), `the lit pass still computes ${term} per pixel`);
+    }
   });
 
   for (const felt of FELTS) {

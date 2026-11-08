@@ -89,45 +89,59 @@ const HELPERS = cut("float h21(", "vec4 cloth(");
 const WEAVE = cut(" vec2 u=p/uPitch", " vec3 L=");
 const MOTT = cut(" float mott=", " vec3 col=");
 const FUZZ = cut(" col*=1.+(h21(", " col+=vec3(1.,.78");
+const SHADE = cut(" float vis=", " col+=mix(uS0");
 
-/** Half-widths of what the weave's planes hold in 8 bits: the thread's tone, the mottle. */
-const TV_SPAN = 0.15;
-const MOTT_SPAN = 0.04;
+/** The ranges the weave's planes hold in 8 bits: the shade's lamp-free and diffuse parts, the sheen's weight. */
+const A_LO = 0.375;
+const A_SPAN = 0.75;
+const B_SPAN = 0.45;
+const S_SPAN = 0.45;
 
-export const WEAVE_PLANES = 3;
+export const WEAVE_PLANES = 2;
 
 /** The most device pixels a design point gets: the mockup's `V.K`, the owner's cap (2026-11-07). */
 export const FELT_K_CAP = 2.5;
 
 /**
- * The cloth's lamp-free terms, one plane each pass: the thread normal; its profile, tone and
- * mottle; the fuzz and which thread is on top. Opaque, so an 8-bit surface keeps them unpremultiplied.
+ * The cloth's lamp-free terms, one plane each pass: the thread normal's slope and which thread is on
+ * top; then everything that only scales a lamp term, folded per pixel, so the shade is
+ * `alb*(A+B*diff)` and the sheen's weight `S`. Opaque, so an 8-bit surface keeps them unpremultiplied.
  */
-export const WEAVE_SKSL = `uniform float uK,uPitch,uType,uTwo,uMott,uPlane;
+export const WEAVE_SKSL = `uniform float uK,uPitch,uType,uTwo,uMott,uDepth,uCover,uFuzz,uSheen,uPlane;
 ${HELPERS}half4 main(vec2 p){
-${WEAVE}${MOTT} float fuzz=h21(floor(p*uK));
- if(uPlane<.5)return half4(n*.5+.5,1.);
- if(uPlane<1.5)return half4(prof,tv/${2 * TV_SPAN}+.5,mott/${2 * MOTT_SPAN}+.5,1.);
- return half4(fuzz,wo?1.:0.,0.,1.);}`;
+${WEAVE}${MOTT} float vis=smoothstep(1.4,3.,uK*uPitch)*(1.-uCover);
+ float F=(1.+(h21(floor(p*uK))-.5)*uFuzz),m=(1.+mott)*F,w=vis*mix(1.-uDepth,1.,prof)*(1.+tv)*m;
+ if(uPlane<.5)return half4(n.xy*.5+.5,wo?1.:0.,1.);
+ return half4(((1.-vis)*m+.8*w-${A_LO})/${A_SPAN},.4*w/${B_SPAN},mix(.4,prof,vis)*.45*uSheen*F/${S_SPAN},1.);}`;
 
 const LIT_BODY = [
   [
+    CLOTH_BODY.slice(0, once(CLOTH_BODY, "float h21(")),
+    "vec3 stops(float t){t=clamp(t,0.,1.)*4.;return mix(mix(mix(mix(uS0,uS1,clamp(t,0.,1.)),uS2,clamp(t-1.,0.,1.)),uS3,clamp(t-2.,0.,1.)),uS4,clamp(t-3.,0.,1.));}",
+  ],
+  [HELPERS, ""],
+  [
     WEAVE,
-    ` vec4 g0=uG0.eval(p),g1=uG1.eval(p),g2=uG2.eval(p);
- vec3 n=g0.xyz*2.-1.;
- bool wo=g2.y>.5;
- float prof=g1.x,tv=(g1.y-.5)*${2 * TV_SPAN};
+    ` vec4 g0=uG0.eval(p),g1=uG1.eval(p);
+ vec2 nxy=g0.xy*2.-1.;
+ vec3 n=vec3(nxy,sqrt(max(0.,1.-dot(nxy,nxy))));
+ bool wo=g0.z>.5;
 `,
   ],
-  [MOTT, ` float mott=(g1.z-.5)*${2 * MOTT_SPAN};\n`],
-  [FUZZ, ` col*=1.+(g2.x-.5)*uFuzz;\n`],
+  [SHADE, ` vec3 col=alb*(g1.x*${A_SPAN}+${A_LO}+g1.y*${B_SPAN}*diff);\n`],
+  ["*spec*uSheen*I*smoothstep(0.,1.,d/250.)*mix(.4,prof,vis)*.45;", `*spec*I*smoothstep(0.,1.,d/250.)*g1.z*${S_SPAN};`],
+  [FUZZ, ""],
 ].reduce((body, [from, to]) => swap(body, from, to), CLOTH_BODY);
 
-/** The cloth again, lit from the weave's planes `uG0`–`uG2`, sampled nearest at the device pixel they were baked on. */
-export const LIT_SKSL = `${UNIFORMS}\nuniform shader uG0,uG1,uG2;\n${LIT_BODY}\nhalf4 main(vec2 xy){return half4(cloth(xy));}`;
+/** The cloth again, lit from the weave's planes `uG0`–`uG1`, sampled nearest at the device pixel they were baked on. */
+export const LIT_SKSL = `${UNIFORMS}\nuniform shader uG0,uG1;\n${LIT_BODY}\nhalf4 main(vec2 xy){return half4(cloth(xy));}`;
+
+/** A settled lamp's felt: the cloth lit at either end of its sway, `uA` and `uB`, crossed by where the lamp is. */
+export const REST_SKSL = `uniform shader uA,uB;\nuniform float uLean;\nhalf4 main(vec2 p){return mix(uA.eval(p),uB.eval(p),uLean);}`;
 
 export function weaveUniforms(k: number, plane: number): ClothUniforms {
-  return { uK: k, uPitch: TWILL.uPitch, uType: TWILL.uType, uTwo: TWILL.uTwo, uMott: TWILL.uMott, uPlane: plane };
+  const { uPitch, uType, uTwo, uMott, uDepth, uCover, uFuzz, uSheen } = TWILL;
+  return { uK: k, uPitch, uType, uTwo, uMott, uDepth, uCover, uFuzz, uSheen, uPlane: plane };
 }
 
 export type ClothUniforms = Record<string, number | number[]>;

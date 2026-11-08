@@ -27,16 +27,18 @@ import {
   type SkPath,
   type SkPicture,
   type SkRRect,
+  TileMode,
 } from "@shopify/react-native-skia";
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, withAlpha } from "@/lib/theme";
-import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
+import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
 import { useGreyLayer } from "./greyLayer";
-import { CLOTH_SKSL, clothUniforms, FELT_K_CAP, LIT_SKSL, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms } from "./feltShader";
+import { CLOTH_SKSL, clothUniforms, FELT_K_CAP, LIT_SKSL, REST_SKSL, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
@@ -60,6 +62,7 @@ export interface FeltCanvasProps {
 const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
 const WEAVE = Skia.RuntimeEffect.Make(WEAVE_SKSL);
 const LIT = Skia.RuntimeEffect.Make(LIT_SKSL);
+const REST = Skia.RuntimeEffect.Make(REST_SKSL);
 const NEAREST = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 
 // On Android `opaque` swaps the canvas for a SurfaceView; on iOS it needs the Skia patch.
@@ -336,6 +339,79 @@ function bakeWeave(k: number, gx: number, gy: number): SkImage[] | null {
   return null;
 }
 
+/** Where the lamp has come to rest, as a key: its glide spent, whatever its sway or flare. `""` while it still moves. */
+function settledAim(s: Lamp): string {
+  "worklet";
+  const near = Math.abs(s.x - s.tx) < 3 && Math.abs(s.y - s.ty) < 3 && Math.abs(s.r - s.tr) < 0.02;
+  return near ? `${s.tx},${s.ty},${s.tr}` : "";
+}
+
+const CLOTH_ENDS = [-SWAY, SWAY] as const;
+const CACHED_TARGETS = 3;
+const CACHED_CLOTHS = CACHED_TARGETS * CLOTH_ENDS.length;
+const FLARE_SEEN = 0.005;
+
+/** False only when the readback proves the lit cloth blank at the felt's centre; a build that cannot read pixels back keeps its bake. */
+function litAtCentre(image: SkImage, gx: number, gy: number): boolean {
+  const x = Math.min(image.width() - 1, Math.round((DESIGN.width / 2) * gx));
+  const y = Math.min(image.height() - 1, Math.round((DESIGN.height / 2) * gy));
+  const px = image.readPixels(x, y, { width: 1, height: 1, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul });
+  return !(px instanceof Uint8Array) || (px[3] > 0 && px[0] + px[1] + px[2] > 24);
+}
+
+/** The lit pass over the planes with the lamp `lean` points off its target, unflared, on the canvas's own device pixels. */
+function bakeLit(aim: Pool, base: ClothUniforms, planes: SkImage[], gx: number, gy: number, lean: number): SkImage | null {
+  if (!LIT) return null;
+  const surface = Skia.Surface.MakeOffscreen(Math.round(DESIGN.width * gx), Math.round(DESIGN.height * gy));
+  if (!surface) return null;
+  const [tx, ty, reach] = aim;
+  const texel = Skia.Matrix();
+  texel.scale(1 / gx, 1 / gy);
+  const children = planes.map((plane) => plane.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Nearest, MipmapMode.None, texel));
+  const uniforms = { ...base, uLamp: [tx + lean, ty - LIGHT_ABOVE], uFlare: 0, ...lightUniforms(reach) };
+  const shader = LIT.makeShaderWithChildren(processUniforms(LIT, uniforms), children);
+  const paint = Skia.Paint();
+  paint.setShader(shader);
+  const canvas = surface.getCanvas();
+  canvas.scale(gx, gy);
+  canvas.drawRect(Skia.XYWHRect(0, 0, DESIGN.width, DESIGN.height), paint);
+  surface.flush();
+  const snapshot = surface.makeImageSnapshot();
+  const image = snapshot.makeNonTextureImage();
+  snapshot.dispose();
+  const painted = image !== null && litAtCentre(image, gx, gy);
+  paint.dispose();
+  shader.dispose();
+  children.forEach((child) => child.dispose());
+  surface.dispose();
+  if (image && !painted) image.dispose();
+  return painted ? image : null;
+}
+
+/** The most recently used cloths, so a lamp that returns to a target it has lit already redraws nothing. */
+class ClothCache {
+  private images = new Map<string, SkImage>();
+
+  get(key: string, bake: () => SkImage | null): SkImage | null {
+    const hit = this.images.get(key) ?? bake();
+    this.images.delete(key);
+    if (!hit) return null;
+    this.images.set(key, hit);
+    for (const [oldest, image] of this.images) {
+      if (this.images.size <= CACHED_CLOTHS) break;
+      this.images.delete(oldest);
+      disposeAfterReactions(() => image.dispose());
+    }
+    return hit;
+  }
+
+  dispose() {
+    const all = [...this.images.values()];
+    for (const key of [...this.images.keys()]) this.images.delete(key);
+    disposeAfterReactions(() => all.forEach((image) => image.dispose()));
+  }
+}
+
 async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> {
   const image = await canvas?.makeImageSnapshotAsync();
   if (!image) return null;
@@ -375,6 +451,31 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     () => (c < 1 ? [StyleSheet.absoluteFill, { width: DESIGN.width * sx * c, height: DESIGN.height * sy * c, transform: [{ scale: 1 / c }], transformOrigin: "left top" }] : StyleSheet.absoluteFill),
     [c, sx, sy]
   );
+
+  const [aim, setAim] = useState("");
+  const [flaring, setFlaring] = useState(false);
+  useAnimatedReaction(
+    () => lamp.value.f > FLARE_SEEN,
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setFlaring, now);
+    }
+  );
+  useAnimatedReaction(
+    () => settledAim(lamp.value),
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setAim, now);
+    }
+  );
+  const [cloths] = useState(() => new ClothCache());
+  useEffect(() => () => cloths.dispose(), [cloths]);
+  const rest = useMemo(() => {
+    if (!aim || !planes || !REST) return null;
+    const target = aim.split(",").map(Number) as unknown as Pool;
+    const lit = (lean: number) => cloths.get(`${aim}|${gx}|${gy}|${stops.join()}|${lean}`, () => bakeLit(target, base, planes, gx, gy, lean));
+    const [left, right] = CLOTH_ENDS.map(lit);
+    return left && right ? { left, right } : null;
+  }, [cloths, aim, planes, gx, gy, stops, base]);
+  const lean = useDerivedValue(() => ({ uLean: Math.min(1, Math.max(0, 0.5 + (lamp.value.lx - lamp.value.tx) / (2 * SWAY))) }));
 
   const uniforms = useDerivedValue(() => ({
     ...base,
@@ -434,7 +535,14 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
           <RoundedRect rect={COAT} style="stroke" strokeWidth={RAIL_LIGHT.coatWidth}>
             <RadialGradient c={light} r={RAIL_LIGHT.coatRadius} colors={coat} />
           </RoundedRect>
-          {planes && LIT ? (
+          {rest && !flaring && REST ? (
+            <Rect x={0} y={0} width={width} height={height}>
+              <Shader source={REST} uniforms={lean}>
+                <ImageShader image={rest.left} tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+                <ImageShader image={rest.right} tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+              </Shader>
+            </Rect>
+          ) : planes && LIT ? (
             <Rect x={0} y={0} width={width} height={height}>
               <Shader source={LIT} uniforms={uniforms}>
                 {planes.map((plane, i) => (
