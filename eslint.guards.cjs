@@ -850,6 +850,28 @@ const GUARDS = [
     spare: ['import type { HapticType } from "react-native-turbo-haptics";'].map((code) => ({ file: "modules/murlan-orientation/plant.ts", code })),
   },
   {
+    id: "socket-owner",
+    why: "lib/socket.ts holds the raw socket.io socket and hands out a `Socket` that cannot open, close or reach its engine, because closing one still connecting makes the browser log an error: reconnect through reopenSocket, reconnectSocket, closeSocket or haltSocket.",
+    selector: importsOf("/^(socket|engine)\\.io-client(\\x2F|$)/"),
+    files: CLIENT,
+    ignores: [{ glob: "lib/socket.ts", reason: "the owner of the raw socket" }],
+    plant: { file: "context/Plant.tsx", code: [
+      'import { io } from "socket.io-client";',
+      'import type { Socket } from "socket.io-client";',
+      'export { io } from "socket.io-client";',
+      'const s = import("socket.io-client");',
+      'const m = require("socket.io-client");',
+      'import { Manager } from "socket.io-client/build/esm/manager";',
+      'import { Socket } from "engine.io-client";',
+    ].join("\n"), hits: 7 },
+    spare: [
+      'import { Socket } from "@/lib/socket";',
+      'import { x } from "socket.io-client-shim";',
+      'import { y } from "engine.io-clients";',
+      '// import "socket.io-client"\nconst s = "socket.io-client";',
+    ].map((code) => ({ file: "context/Plant.tsx", code })),
+  },
+  {
     id: "no-expo-audio",
     why: "ADR-0009 (docs/adr/0009-audio-and-haptics-libraries.md) chose react-native-audio-api and react-native-turbo-haptics over expo-audio and expo-haptics, so neither has an owner: play through lib/device/feedback.ts.",
     selector: importsOf("/^expo-(audio|haptics)(\\x2F|$)/", { values: true }),
