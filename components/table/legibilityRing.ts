@@ -3,17 +3,18 @@
 
 import type { Pixels, Ring } from "../../lib/diagnostics/lampLegibility.ts";
 import { SEAT_DISC } from "../seatLayout.ts";
+import { tableScale } from "../tableLayout.ts";
 import { designScale } from "./lampRig.ts";
 import { RAIL_BAND, ringRect } from "./rail.ts";
 
 /** The research model's outer edge, `zoneMean(…, 17, 45)` in murlan-plans/2026-09-28-1259-lantern-review/scripts/lamp3.mjs. */
 export const ANNULUS_OUTER = 45;
 
-/** Starts at the drawn disc's edge (`SEAT_DISC * scale`, as `tableLayout` draws it); reaches 45 design pt of the stretched table. */
-export function legibilityRing(width: number, height: number, scale: number): Ring {
+/** Starts at the drawn disc's edge (`SEAT_DISC * tableScale`, as `tableLayout` draws it); reaches 45 design pt of the stretched table. */
+export function legibilityRing(width: number, height: number): Ring {
   const { sx, sy } = designScale(width, height);
   return {
-    inner: (SEAT_DISC * scale) / 2,
+    inner: (SEAT_DISC * tableScale({ width, height })) / 2,
     outerX: ANNULUS_OUTER * sx,
     outerY: ANNULUS_OUTER * sy,
   };

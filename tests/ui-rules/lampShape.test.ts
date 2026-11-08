@@ -12,7 +12,6 @@ import { LAMP_FLOOR, LAMP_SYMMETRY, annulusLuminance, evenness, legibility } fro
 import { FeltGradients } from "../../lib/tokens.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { INSETS, phoneTable } from "../helpers/phoneTable.ts";
-import { tableScale } from "../../components/tableLayout.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -75,7 +74,7 @@ function seatMeans(width: number, height: number, anchors: Record<FlyDirection, 
   shader.delete();
   surface.delete();
   const pixels = feltOnly({ width: info.width, height: info.height, data }, PER_PT);
-  const ring = legibilityRing(width, height, tableScale({ width, height }));
+  const ring = legibilityRing(width, height);
   return Object.fromEntries(SEATS.map((s) => [s, annulusLuminance(pixels, anchors[s], PER_PT, ring)])) as Record<FlyDirection, number>;
 }
 

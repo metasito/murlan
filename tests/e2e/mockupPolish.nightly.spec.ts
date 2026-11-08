@@ -8,7 +8,6 @@ import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { captureGameState, captureStateById, seatedSituation, type CaptureState } from "../../lib/captureStates";
 import { CARD_H, cardScale, HAND_SCALE } from "../../components/cardFaceModel";
-import { tableScale } from "../../components/tableLayout";
 import { handVisibleH } from "../../components/seatLayout";
 import type { Card } from "../../lib/game/gameEngine";
 import { HAND_CARD_BOXES, HAND_SELECTED } from "./helpers/selectors.ts";
@@ -136,7 +135,7 @@ for (const phone of STAGES) {
     await app.close();
 
     expect(new Set(neighbours.map((n) => n.what)), "every kind of neighbour is on the table").toEqual(new Set(Object.keys(named)));
-    const want = (mockupGap * tableScale(phone)) / cardScale(402);
+    const want = (mockupGap * cardScale(Math.min(phone.width, phone.height))) / cardScale(402);
     const nearest = neighbours.map((n) => ({ ...n, gap: gap(pill, n.b) })).sort((a, b) => a.gap - b.gap)[0];
     expect(
       nearest.gap,
