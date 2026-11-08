@@ -164,8 +164,8 @@ every second.
 
 ### What counts as a regression
 
-There is no threshold in the test, deliberately. Compare against the table above
-by hand, and treat as a regression:
+The thresholds that block are the gate's (§ The gate). This recorder has none, deliberately.
+Compare against the table above by hand, and treat as a regression:
 
 - `fps` on `idle-4x` falling below ~45, or on `round-4x` below ~25
 - `janky` on `deal` rising above single figures
@@ -178,7 +178,41 @@ session, alternating, with the load average beside the figures.
 Re-record and update this table whenever the baseline legitimately moves, in the
 same commit that moves it, so the number and its cause travel together.
 
-## Why this does not gate CI
+## The gate: `skiaPerf.spec.ts`
+
+What blocks a pull request is `tests/e2e/skiaPerf.spec.ts`. It runs in the browser shards, so
+`CI gate` holds it. The setup:
+
+- the Skia felt on SwiftShader, motion on, 4x CPU throttle;
+- 874x402 at DPR 1, seeded, on the virtual clock.
+
+It reads two 240-frame windows. One is the settled table. The other is the viewer's throw with the
+three bots answering. Each window is held to `tests/e2e/helpers/skiaPerfBudgets.ts`, which counts:
+
+- WebGL draws per frame on the page's canvases;
+- 2D draws on the page's canvases;
+- draws on canvases outside the document;
+- `readPixels` calls;
+- style writes anywhere under `game-root`;
+- through the turn, style writes inside the cards, between a floor and a ceiling;
+- the frames the felt drew in: at rest a ceiling, through the turn a floor.
+
+A slow runner steps the same frames as a fast one, so these counts do not move with the runner.
+
+Nothing timed gates, for the reasons in § Why this recorder does not gate CI. Script ms, task ms and
+long tasks go into the `skia perf at 4x` annotation only. Script ms would not catch much anyway.
+Under the virtual clock a frame's callbacks run inside `page.evaluate`, and CDP's `ScriptDuration`
+misses that work: a planted 1.5M `Math.sin` a frame moved it by 2%. **A regression that only burns
+CPU, with no extra draw, readback or style write, passes this gate.** Catching it would need a time
+budget, and this runner cannot hold one.
+
+The budgets and the spec are targets (rule 52), set by
+`docs/adr/0018-the-skia-table-is-held-to-counted-budgets.md`. A budget moves in a pull request of
+its own, touching nothing under `app/`, `components/` or `lib/`, and `@rotonmeta` owns both files.
+
+Not covered: DPR 3, where SwiftShader had not finished the rest window after six minutes.
+
+## Why this recorder does not gate CI
 
 It records; it does not fail a build. That is a decision, not an omission.
 
