@@ -145,16 +145,11 @@ export const LIT_SKSL = `${UNIFORMS}\n${PLANES}${LIT_BODY}\nhalf4 main(vec2 xy){
 
 /**
  * A settled lamp's felt: the cloth lit at either end of its sway, `uA` and `uB`, crossed by where the
- * lamp is, and `uW` of the cloth lit where it is. `uW` 1 is that cloth and 0 the cross, each exactly,
- * and neither evaluates what it does not show.
+ * lamp is. Two reads and nothing else: the lit cloth is drawn over it at the paint's alpha, which Skia
+ * skips at 0. Not one shader branching on the weight: a masked rasteriser such as SwiftShader runs
+ * both sides of a uniform branch, so the lit cloth would cost every settled frame.
  */
-const restOver = (head: string, body: string) =>
-  `${UNIFORMS}\n${head}uniform shader uA,uB;\nuniform float uLean,uW;\n${body}\nhalf4 main(vec2 p){half4 r=half4(0.);if(uW<1.)r=mix(uA.eval(p),uB.eval(p),uLean);if(uW>0.)r=mix(r,half4(cloth(p)),uW);return r;}`;
-
-/** Over the planes: children `uG0`, `uG1`, `uA`, `uB`. */
-export const REST_LIT_SKSL = restOver(PLANES, LIT_BODY);
-/** Where no planes could be baked: children `uA`, `uB`. */
-export const REST_CLOTH_SKSL = restOver("", CLOTH_BODY);
+export const REST_SKSL = "uniform shader uA,uB;\nuniform float uLean;\nhalf4 main(vec2 p){return mix(uA.eval(p),uB.eval(p),uLean);}";
 
 /** Below this the flare draws nothing an 8-bit felt shows. */
 export const FLARE_SEEN = 0.005;

@@ -41,7 +41,7 @@ import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
 import { useGreyLayer } from "./greyLayer";
-import { CLOTH_SKSL, clothUniforms, FELT_K_CAP, flareShare, LIT_SKSL, REST_CLOTH_SKSL, REST_LIT_SKSL, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
+import { CLOTH_SKSL, clothUniforms, FELT_K_CAP, flareShare, LIT_SKSL, REST_SKSL, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
@@ -65,8 +65,7 @@ export interface FeltCanvasProps {
 const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
 const WEAVE = Skia.RuntimeEffect.Make(WEAVE_SKSL);
 const LIT = Skia.RuntimeEffect.Make(LIT_SKSL);
-const REST_LIT = Skia.RuntimeEffect.Make(REST_LIT_SKSL);
-const REST_CLOTH = Skia.RuntimeEffect.Make(REST_CLOTH_SKSL);
+const REST = Skia.RuntimeEffect.Make(REST_SKSL);
 const NEAREST = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 
 // On Android `opaque` swaps the canvas for a SurfaceView; on iOS it needs the Skia patch.
@@ -533,11 +532,9 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     uFlare: lamp.value.f,
     ...lightUniforms(lamp.value.r),
   }));
-  const settled = useDerivedValue(() => ({
-    ...uniforms.value,
-    uLean: Math.min(1, Math.max(0, 0.5 + (lamp.value.lx - lamp.value.tx) / (2 * SWAY))),
-    uW: Math.max(settle.value, flareShare(lamp.value.f)),
-  }));
+  const lean = useDerivedValue(() => ({ uLean: Math.min(1, Math.max(0, 0.5 + (lamp.value.lx - lamp.value.tx) / (2 * SWAY))) }));
+  const weight = useDerivedValue(() => Math.max(settle.value, flareShare(lamp.value.f)));
+  const under = useDerivedValue(() => (weight.value < 1 ? 1 : 0));
   const light = useDerivedValue(() => ({ x: lamp.value.lx, y: lamp.value.ly }));
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(lamp.value.f));
   const coat = useDerivedValue(() => RAIL_LIGHT.coat(lamp.value.f));
@@ -572,7 +569,6 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     return () => cancelAnimationFrame(id);
   }, [onReady]);
 
-  const restEffect = planes ? REST_LIT : REST_CLOTH;
   const { width, height } = DESIGN;
   return (
     // On web Skia's Canvas writes its style straight onto a div, so the scale lives on a View.
@@ -591,16 +587,17 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
           <RoundedRect rect={COAT} style="stroke" strokeWidth={RAIL_LIGHT.coatWidth}>
             <RadialGradient c={light} r={RAIL_LIGHT.coatRadius} colors={coat} />
           </RoundedRect>
-          {rest && restEffect ? (
-            <Rect x={0} y={0} width={width} height={height}>
-              <Shader source={restEffect} uniforms={settled}>
-                {[...(planes ?? []), rest.left, rest.right].map((image, i) => (
+          {rest && REST && (
+            <Rect x={0} y={0} width={width} height={height} opacity={under}>
+              <Shader source={REST} uniforms={lean}>
+                {[rest.left, rest.right].map((image, i) => (
                   <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
                 ))}
               </Shader>
             </Rect>
-          ) : planes && LIT ? (
-            <Rect x={0} y={0} width={width} height={height}>
+          )}
+          {planes && LIT ? (
+            <Rect x={0} y={0} width={width} height={height} opacity={rest ? weight : undefined}>
               <Shader source={LIT} uniforms={uniforms}>
                 {planes.map((plane, i) => (
                   <ImageShader key={i} image={plane} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
@@ -609,7 +606,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
             </Rect>
           ) : (
             CLOTH && (
-              <Rect x={0} y={0} width={width} height={height}>
+              <Rect x={0} y={0} width={width} height={height} opacity={rest ? weight : undefined}>
                 <Shader source={CLOTH} uniforms={uniforms} />
               </Rect>
             )

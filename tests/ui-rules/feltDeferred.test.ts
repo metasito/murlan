@@ -4,7 +4,7 @@
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { CLOTH_SKSL, FELT_K_CAP, FLARE_SEEN, LIT_SKSL, REST_CLOTH_SKSL, REST_LIT_SKSL, WEAVE_PLANES, WEAVE_SKSL, clothUniforms, flareShare, weaveUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
+import { CLOTH_SKSL, FELT_K_CAP, FLARE_SEEN, LIT_SKSL, REST_SKSL, WEAVE_PLANES, WEAVE_SKSL, clothUniforms, flareShare, weaveUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
 import { TABLE_CENTRE, lampControls, lightUniforms, restingLamp, stepLamp } from "../../components/table/lampRig.ts";
 import { FeltGradients } from "../../lib/tokens.ts";
 
@@ -37,8 +37,7 @@ let ck: CK;
 let cloth: CK;
 let weave: CK;
 let lit: CK;
-let restLit: CK;
-let restCloth: CK;
+let rest: CK;
 
 before(async () => {
   const init = require("canvaskit-wasm/bin/full/canvaskit.js");
@@ -52,8 +51,7 @@ before(async () => {
   cloth = make(CLOTH_SKSL, "the cloth");
   weave = make(WEAVE_SKSL, "the weave");
   lit = make(LIT_SKSL, "the lit cloth");
-  restLit = make(REST_LIT_SKSL, "the settled felt over the planes");
-  restCloth = make(REST_CLOTH_SKSL, "the settled felt over the cloth");
+  rest = make(REST_SKSL, "the settled felt");
 });
 
 function flat(effect: CK, values: ClothUniforms): Float32Array {
@@ -67,22 +65,27 @@ function flat(effect: CK, values: ClothUniforms): Float32Array {
   return out;
 }
 
-/** The tile at `origin`, `TILE` points square, drawn at `k` device pixels a point. */
-function draw(surface: CK, k: number, origin: readonly [number, number], shader: CK) {
+type Layer = [shader: CK, alpha: number];
+
+/** The tile at `origin`, `TILE` points square, drawn at `k` device pixels a point: each layer over the last, at its paint's alpha. */
+function draw(surface: CK, k: number, origin: readonly [number, number], layers: CK | Layer[]) {
   const canvas = surface.getCanvas();
   canvas.clear(ck.TRANSPARENT);
   canvas.save();
   canvas.scale(k, k);
   canvas.translate(-origin[0], -origin[1]);
-  const paint = new ck.Paint();
-  paint.setShader(shader);
-  canvas.drawRect(ck.XYWHRect(origin[0], origin[1], TILE, TILE), paint);
+  for (const [shader, alpha] of Array.isArray(layers) ? layers : [[layers, 1] as Layer]) {
+    const paint = new ck.Paint();
+    paint.setShader(shader);
+    paint.setAlphaf(alpha);
+    canvas.drawRect(ck.XYWHRect(origin[0], origin[1], TILE, TILE), paint);
+    paint.delete();
+  }
   canvas.restore();
   surface.flush();
-  paint.delete();
 }
 
-function floats(k: number, origin: readonly [number, number], shader: CK): Float32Array {
+function floats(k: number, origin: readonly [number, number], shader: CK | Layer[]): Float32Array {
   const side = Math.round(TILE * k);
   const info = { width: side, height: side, colorType: ck.ColorType.RGBA_F32, alphaType: ck.AlphaType.Premul, colorSpace: ck.ColorSpace.SRGB };
   const mem = ck.Malloc(Float32Array, side * side * 4);
@@ -156,17 +159,20 @@ const SWAY_ENDS = [
   [0.7, 0.15, 0.3],
 ] as const;
 
-/** The settled felt at `w`, against `w` of its own cloth over the cross of two flat ends, both on the CPU raster in floats. */
+/** The settled felt at `w` as the canvas layers it, against `w` of its own cloth over the cross of two flat ends, both on the CPU raster in floats. */
 function settledGap(stops: readonly string[], k: number, lamp: [number, number], w: number, over: boolean): number {
   const lean = 0.3;
-  const values: ClothUniforms = { ...clothUniforms(stops as never, k), ...lightUniforms(1), uLamp: lamp, uFlare: 0.4, uLean: lean, uW: w };
+  const values: ClothUniforms = { ...clothUniforms(stops as never, k), ...lightUniforms(1), uLamp: lamp, uFlare: 0.4, uLean: lean };
   const origin = [lamp[0] - TILE / 2, lamp[1] - TILE / 2] as const;
   const ends = SWAY_ENDS.map(([r, g, b]) => ck.Shader.MakeColor(ck.Color4f(r, g, b, 1), ck.ColorSpace.SRGB));
   const weave = over ? planes(k, origin) : [];
   const own = over ? lit.makeShaderWithChildren(flat(lit, values), weave) : cloth.makeShader(flat(cloth, values));
-  const settled = over ? restLit.makeShaderWithChildren(flat(restLit, values), [...weave, ...ends]) : restCloth.makeShaderWithChildren(flat(restCloth, values), ends);
+  const settled = rest.makeShaderWithChildren(flat(rest, { uLean: lean }), ends);
   const want = floats(k, origin, own);
-  const got = floats(k, origin, settled);
+  const got = floats(k, origin, [
+    [settled, w < 1 ? 1 : 0],
+    [own, w],
+  ]);
   [own, settled, ...weave, ...ends].forEach((s) => s.delete());
   const cross = SWAY_ENDS[0].map((a, i) => a + (SWAY_ENDS[1][i] - a) * lean).concat(1);
   let worst = 0;
@@ -181,19 +187,19 @@ describe("the felt lit from its baked weave is the cloth", () => {
     assert.ok(!LIT_SKSL.includes("h21(floor(p*uK))"), "the lit cloth still draws the fuzz");
   });
 
-  for (const [name, sksl] of [
-    ["the lit pass", LIT_SKSL],
-    ["the settled felt", REST_LIT_SKSL],
-  ] as const) {
-    test(`${name}: every term the lamp does not move is baked, so a lit pixel costs two reads and the lamp's own terms`, () => {
-      assert.equal(WEAVE_PLANES, 2);
-      const body = clothOf(sksl);
-      assert.ok(body.includes("uG0.eval(p)") && body.includes("uG1.eval(p)"), `${name}'s cloth reads no plane: ${body}`);
-      for (const term of ["prof", "tv", "mott", "vis", "uDepth", "uCover", "uFuzz", "uSheen", "uMott", "uTwo"]) {
-        assert.ok(!new RegExp(`\\b${term}\\b`).test(body), `${name} still computes ${term} per pixel`);
-      }
-    });
-  }
+  test("the lit pass: every term the lamp does not move is baked, so a lit pixel costs two reads and the lamp's own terms", () => {
+    assert.equal(WEAVE_PLANES, 2);
+    const body = clothOf(LIT_SKSL);
+    assert.ok(body.includes("uG0.eval(p)") && body.includes("uG1.eval(p)"), `the lit cloth reads no plane: ${body}`);
+    for (const term of ["prof", "tv", "mott", "vis", "uDepth", "uCover", "uFuzz", "uSheen", "uMott", "uTwo"]) {
+      assert.ok(!new RegExp(`\\b${term}\\b`).test(body), `the lit cloth still computes ${term} per pixel`);
+    }
+  });
+
+  test("a settled felt's shader is its two ends' reads and nothing else: the lit cloth is a layer over it, so a masked rasteriser never runs it at rest", () => {
+    assert.equal(REST_SKSL.match(/\.eval\(/g)?.length, 2);
+    for (const term of ["cloth(", "uG0", "uW", "if("]) assert.ok(!REST_SKSL.includes(term), `the settled felt carries ${term}`);
+  });
 
   for (const felt of FELTS) {
     const stops = FeltGradients[felt];

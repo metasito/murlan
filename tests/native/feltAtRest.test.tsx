@@ -15,17 +15,14 @@ import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
 
 type Kind = 'weave' | 'lit' | 'cloth' | '';
+type Layer = { kind: 'rest' | 'lit' | 'live'; opacity?: { value: number } };
 const mock = {
   bakes: [] as { size: [number, number]; kind: Kind }[],
   drawing: '' as Kind,
-  rest: 0,
-  lit: 0,
-  live: 0,
+  layers: new Set<Layer>(),
   images: [] as { dispose: jest.Mock; texture: boolean; dead: boolean; baked: boolean; kind: Kind }[],
   centre: [20, 120, 60, 255] as number[] | null,
   blank: '' as Kind,
-  over: '' as 'lit' | 'cloth' | '',
-  settled: null as { value: { uW: number } } | null,
 };
 
 jest.mock('@shopify/react-native-skia', () => {
@@ -74,21 +71,20 @@ jest.mock('@shopify/react-native-skia', () => {
             }
           : call,
   });
-  const Shader = ({ source, uniforms, children }: { source: { sksl: string }; uniforms?: unknown; children?: React.ReactNode }) => {
-    const kind = source.sksl.includes('uLean') ? 'rest' : source.sksl.includes('uG0') ? 'lit' : 'live';
-    if (kind === 'rest') {
-      mock.over = source.sksl.includes('uG0') ? 'lit' : 'cloth';
-      mock.settled = uniforms as typeof mock.settled;
-    }
+  // A felt layer is a Rect filled by one shader, drawn at the Rect's opacity.
+  const Rect = ({ opacity, children }: { opacity?: { value: number }; children?: React.ReactNode }) => {
+    const sksl = R.isValidElement(children) ? (children.props as { source?: { sksl: string } }).source?.sksl : undefined;
     R.useEffect(() => {
-      mock[kind]++;
-      return () => void mock[kind]--;
-    }, [kind]);
+      if (!sksl) return;
+      const layer: Layer = { kind: sksl.includes('uLean') ? 'rest' : sksl.includes('uG0') ? 'lit' : 'live', opacity };
+      mock.layers.add(layer);
+      return () => void mock.layers.delete(layer);
+    }, [sksl, opacity]);
     return R.createElement(R.Fragment, null, children);
   };
   const Canvas = ({ children, style, testID }: { children?: React.ReactNode; style?: unknown; testID?: string }) =>
     R.createElement(View, { style, testID } as object, children);
-  return new Proxy({ Skia, Shader, Canvas, PaintStyle: {}, FilterMode: {}, MipmapMode: {}, processUniforms: () => [], useCanvasRef: () => R.useRef(null) } as Record<string | symbol, unknown>, {
+  return new Proxy({ Skia, Rect, Canvas, PaintStyle: {}, FilterMode: {}, MipmapMode: {}, processUniforms: () => [], useCanvasRef: () => R.useRef(null) } as Record<string | symbol, unknown>, {
     get: (known, key) => (key === '__esModule' ? true : key in known ? known[key] : element),
   });
 });
@@ -118,14 +114,23 @@ const feltView = (canvas: Node) => {
 const held = (kind: Kind) => mock.images.filter((i) => i.baked && i.kind === kind && !i.texture && i.dispose.mock.calls.length === 0);
 const planesHeld = () => held('weave');
 const bakes = (kind: Kind) => mock.bakes.filter((b) => b.kind === kind).map((b) => b.size);
-const drawn = () => ({ rest: mock.rest, lit: mock.lit, live: mock.live });
+const layers = () => [...mock.layers];
+const drawn = () => {
+  const out = { rest: 0, lit: 0, live: 0 };
+  for (const l of layers()) if (!l.opacity || l.opacity.value > 0) out[l.kind]++;
+  return out;
+};
+const over = () => layers().find((l) => l.kind !== 'rest');
+const crossed = () => layers().some((l) => l.kind === 'rest');
+const overKind = () => ({ lit: 'lit', live: 'cloth', rest: '' })[over()?.kind ?? 'rest'];
+const weight = () => over()?.opacity?.value ?? null;
 const unfreed = () => mock.images.filter((i) => i.baked && i.dispose.mock.calls.length === 0);
-// The weight of the lit cloth over the settled cross on each frame the cross is drawn, as the lamp sways.
+// The weight of the lit cloth over the settled cross on each frame the cross is mounted, as the lamp sways.
 const watch = (lamp: ReturnType<typeof makeMutable<Lamp>>) => {
   const seen: (number | null)[] = [];
   const each = () => {
     sway(lamp)();
-    seen.push(mock.rest ? (mock.settled?.value.uW ?? null) : null);
+    seen.push(crossed() ? weight() : null);
   };
   return { seen, each };
 };
@@ -136,6 +141,8 @@ const flare = (lamp: ReturnType<typeof makeMutable<Lamp>>) =>
     lampControls.flare(s, false);
     return s;
   }, true);
+// Past the settled felt's hand-over, when only the cross still draws.
+const HANDED_OVER_MS = 600;
 // The cloth lit at either end of the lamp's sway, crossed by where the lamp is.
 const LIT_PER_TARGET = 2;
 const settle = (lamp: ReturnType<typeof makeMutable<Lamp>>, pool: readonly [number, number, number]) =>
@@ -150,14 +157,10 @@ beforeEach(() => {
   jest.spyOn(PixelRatio, 'get').mockReturnValue(2);
   mock.bakes.length = 0;
   mock.drawing = '';
-  mock.rest = 0;
-  mock.lit = 0;
-  mock.live = 0;
+  mock.layers.clear();
   mock.images.length = 0;
   mock.centre = [20, 120, 60, 255];
   mock.blank = '';
-  mock.over = '';
-  mock.settled = null;
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -173,7 +176,7 @@ describe('the felt cloth', () => {
     expect(planesHeld()).toHaveLength(WEAVE_PLANES);
     expect(bakes('lit')).toEqual(Array(LIT_PER_TARGET).fill([DESIGN.width * 2, DESIGN.height * 2]));
     expect(held('lit')).toHaveLength(LIT_PER_TARGET);
-    expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
+    expect(drawn()).toEqual({ rest: 1, lit: 1, live: 0 });
     await frames(1600, sway(lamp));
     expect(mock.bakes).toHaveLength(1 + LIT_PER_TARGET);
     expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
@@ -197,7 +200,7 @@ describe('the felt cloth', () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(1000, sway(lamp));
-    expect(mock.settled?.value.uW).toBe(0);
+    expect(weight()).toBe(0);
     const { seen, each } = watch(lamp);
     flare(lamp);
     await frames(160, each);
@@ -259,6 +262,7 @@ describe('the felt cloth', () => {
     ]);
     expect(first.every((i) => i.dispose.mock.calls.length > 0)).toBe(true);
     expect(planesHeld()).toHaveLength(WEAVE_PLANES);
+    await frames(HANDED_OVER_MS, sway(lamp));
     expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
     await view.unmount();
   });
@@ -299,8 +303,9 @@ describe('the felt cloth', () => {
     expect(planesHeld()).toEqual([]);
     expect(bakes('cloth')).toHaveLength(LIT_PER_TARGET);
     expect(held('cloth')).toHaveLength(LIT_PER_TARGET);
+    await frames(HANDED_OVER_MS, sway(lamp));
     expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
-    expect(mock.over).toBe('cloth');
+    expect(overKind()).toBe('cloth');
     await view.unmount();
   });
 
@@ -319,7 +324,7 @@ describe('the felt cloth', () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
-    expect(mock.over).toBe('lit');
+    expect(overKind()).toBe('lit');
     expect(unfreed().length).toBeGreaterThan(0);
     await view.unmount();
     await frames(64);
@@ -342,6 +347,7 @@ describe('the felt cloth', () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
+    await frames(HANDED_OVER_MS, sway(lamp));
     expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
     await view.unmount();
   });
