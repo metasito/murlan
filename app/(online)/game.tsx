@@ -25,8 +25,7 @@ import { GameTable } from "@/components/GameTable";
 import type { MatchRating } from "@/components/table/matchBoard";
 import { provisionalLeft } from "@/lib/game/rating";
 import { vacatedOf } from "@/shared/protocol";
-import { railWidth } from "@/components/tableFrame";
-import { cardScale } from "@/components/cardFaceModel";
+import { tableLayout } from "@/components/tableLayout";
 import {
   FloatingReactions,
   ReactionPanel,
@@ -160,7 +159,7 @@ export default function OnlineGameScreen() {
 
   // The tray opens beside the rail's own lower knob, which is where the
   // trigger it belongs to lives.
-  const rail = railWidth(insets.left, cardScale(Math.min(width, height)));
+  const rail = tableLayout({ width, height, insets }).frame.rail;
 
   const toggleReactionPanel = () => {
     setShowReactions((v) => !v);

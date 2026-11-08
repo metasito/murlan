@@ -19,7 +19,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
-  cardScale,
   FIELD_SCALE,
   handCardSize,
   HAND_NEAR_RATIO,
@@ -28,6 +27,7 @@ import {
 } from "../../components/cardFaceModel.ts";
 import { HAND_ZONE_GAP } from "../../components/seatLayout.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
+import { tableScale } from "../../components/tableLayout.ts";
 import { layoutHandRow, MIN_READABLE_STEP } from "../../components/handLayout.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";
@@ -64,7 +64,7 @@ describe("the hand's two sizes", () => {
   });
 
   for (const phone of PHONES) {
-    const scale = cardScale(Math.min(phone.width, phone.height));
+    const scale = tableScale(phone);
     const frame = computeTableFrame({
       width: phone.width,
       height: phone.height,

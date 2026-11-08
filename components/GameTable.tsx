@@ -59,7 +59,7 @@ import { ExchangeLegs, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnPresentation, type TurnTimerConfig } from "@/components/turnTimerUi";
 import { sideSlotHeight, topBandHeight } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
-import { cardScale, chipScale, physicalTouchTarget } from "@/components/cardFaceModel";
+import { chipScale, physicalTouchTarget } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
 import type { MatchBoardActions, MatchRating } from "@/components/table/matchBoard";
 import { matchDim } from "@/lib/timeline/matchEnding";
@@ -324,11 +324,11 @@ export function GameTable({
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useOrientedWindow();
   const portrait = usePortraitInterface();
-  // The window's own short edge, so a phone and a browser at the same size draw the same
-  // table. The safe area is the layout's job — the rail absorbs the cutout and the hand zone
-  // carries the home indicator — and taking it off here instead shrinks the cards on device
-  // only, which is the divergence from the web design, not a fit for it.
-  const scale = cardScale(Math.min(W, H));
+  const layout = React.useMemo(
+    () => tableLayout({ width: W, height: H, insets: { top: insets.top, bottom: insets.bottom, left: insets.left, right: insets.right } }),
+    [W, H, insets.top, insets.bottom, insets.left, insets.right]
+  );
+  const { scale } = layout;
   const chips = chipScale(scale, W);
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
   // the row reads as one band even though only the cards are cropped.
@@ -484,16 +484,6 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const layout = React.useMemo(
-    () =>
-      tableLayout({
-        width: W,
-        height: H,
-        insets: { top: insets.top, bottom: insets.bottom, left: insets.left, right: insets.right },
-        scale,
-      }),
-    [W, H, insets.top, insets.bottom, insets.left, insets.right, scale]
-  );
   const seating = React.useMemo<Seating>(() => ({ viewerSeat, players, opponents }), [viewerSeat, players, opponents]);
   const { frame, handCardH, pill: pillAnchor } = layout;
   const pillStandings =

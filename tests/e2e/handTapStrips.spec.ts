@@ -12,7 +12,8 @@
 // delivered to that element whatever its box says. Neither a press nor a
 // rendered box can see this.
 import type { Page } from "@playwright/test";
-import { cardScale, handCardSize } from "../../components/cardFaceModel";
+import { handCardSize } from "../../components/cardFaceModel";
+import { tableScale } from "../../components/tableLayout";
 import { layoutHandRow } from "../../components/handLayout";
 import { computeTableFrame } from "../../components/tableFrame";
 import { test, expect } from "./fixtures";
@@ -71,7 +72,7 @@ const TOLERANCE_PX = 1;
 
 /** The strips `layoutHandRow` lays out for `n` cards at this viewport, the hand at its turn size or not. */
 function expected(n: number, onTurn: boolean): { left: number; width: number }[] {
-  const scale = cardScale(Math.min(VIEWPORT.width, VIEWPORT.height));
+  const scale = tableScale(VIEWPORT);
   const frame = computeTableFrame({ ...VIEWPORT, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale });
   const { strips } = layoutHandRow({
     ids: Array.from({ length: n }, (_, i) => `c${i}`),

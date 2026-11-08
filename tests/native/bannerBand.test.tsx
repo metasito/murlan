@@ -11,7 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { CHIP_H } from '@/components/seatLayout';
 import { computeTableFrame } from '@/components/tableFrame';
-import { cardScale } from '@/components/cardFaceModel';
+import { tableScale } from '@/components/tableLayout';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { setMotion, setWindow } from './harness/env';
 import { aThreePlayed } from '../support/game';
@@ -23,7 +23,7 @@ const WIDE = { width: 932, height: 430, scale: 3, fontScale: 1 };
 const INSETS = { top: 0, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };
 const bandTop = (w: { width: number; height: number }) => {
-  const scale = cardScale(Math.min(w.width, w.height));
+  const scale = tableScale(w);
   const frame = computeTableFrame({ width: w.width, height: w.height, insets: INSETS, scale });
   return frame.tableTop + CHIP_H(scale) + frame.pad;
 };
