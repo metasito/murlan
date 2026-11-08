@@ -295,7 +295,9 @@ export function procFor({
    * reached the whole foreground group and a second one would be read as a second press.
    */
   function relay(file, args, { exit = (code) => process.exit(code), on = process } = {}) {
-    const child = startBin(file, args, { stdio: "inherit" });
+    // Listening before the spawn: a signal in between would end this process by its default action
+    // and leave the bin running with nothing to relay to it.
+    let child;
     const listeners = ["SIGINT", "SIGTERM", "SIGHUP"].map((sig) => {
       const pass = () => {
         if (sig === "SIGINT") return;
@@ -305,6 +307,7 @@ export function procFor({
       on.on(sig, pass);
       return [sig, pass];
     });
+    child = startBin(file, args, { stdio: "inherit" });
     const leave = (code) => {
       for (const [sig, pass] of listeners) on.off(sig, pass);
       exit(code);
