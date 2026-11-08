@@ -139,8 +139,16 @@ export const NOTICE_FACES = {
 
 export type NoticeRun = { face: keyof typeof NOTICE_FACES; upper: boolean; tabular: boolean };
 
-export function noticeRun(box: NoticeBox, strong: boolean): NoticeRun {
-  return { face: strong || box.bold ? "bold" : "regular", upper: box.upper, tabular: strong };
+/** What a notice sets in a run of words: `NoticeText`'s plain and counted runs, `NoticeKey`, `NoticeDisc` and `NoticeLine`'s three. */
+export type NoticeRole = "text" | "strong" | "key" | "disc" | PanelLine;
+
+export function noticeRun(box: NoticeBox, role: NoticeRole): NoticeRun {
+  if (role === "text" || role === "strong") {
+    return { face: role === "strong" || box.bold ? "bold" : "regular", upper: box.upper, tabular: role === "strong" };
+  }
+  if (role === "key") return { face: "bold", upper: true, tabular: false };
+  if (role === "disc") return { face: "bold", upper: false, tabular: false };
+  return { face: PANEL_LINES[role].weight === 700 ? "bold" : "regular", upper: role === "hint", tabular: false };
 }
 
 const MARK_AT = { top: { x: -60, y: -8 }, side: { x: 0, y: 27 } } as const;
@@ -164,9 +172,9 @@ const PANEL_LINES = {
 } as const;
 export type PanelLine = keyof typeof PANEL_LINES;
 
-export function panelLine(line: PanelLine, scale: number): { fontSize: number; tracking: number; bold: boolean } {
+export function panelLine(line: PanelLine, scale: number): { fontSize: number; tracking: number } {
   const px = PANEL_LINES[line];
-  return { fontSize: tableFontSize(at(px.font, 1), scale), tracking: at(px.tracking, scale), bold: px.weight === 700 };
+  return { fontSize: tableFontSize(at(px.font, 1), scale), tracking: at(px.tracking, scale) };
 }
 
 const PANEL_PARTS = { rowX: 7.5, subY: 2, tileW: 22, tileH: 30, tileRadius: 3, tileLip: 1.5, tileFont: 13, tileSuit: 11, disc: 24, discFont: 10 } as const;

@@ -269,13 +269,15 @@ export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: 
 }
 
 export function NoticeLine({ line, children }: { line: PanelLine; children: ReactNode }) {
-  const { paint, scale } = useInk("a panel part");
+  const { paint, box, scale } = useInk("a panel part");
   const type = panelLine(line, scale);
+  const run = noticeRun(box, line);
   return (
     <TableText
       style={[
         styles.line,
-        type.bold && styles.bold,
+        NOTICE_FACES[run.face],
+        run.upper && styles.upper,
         line === "hint" && styles.hint,
         { color: line === "main" ? paint.ink : paint.quiet ?? paint.ink, fontSize: type.fontSize, letterSpacing: type.tracking },
       ]}
@@ -317,7 +319,7 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
 }
 
 export function NoticeDisc({ children }: { children: ReactNode }) {
-  const { paint, scale } = useInk("a panel part");
+  const { paint, box, scale } = useInk("a panel part");
   const part = panelParts(scale);
   return (
     <LinearGradient
@@ -331,7 +333,7 @@ export function NoticeDisc({ children }: { children: ReactNode }) {
         makeShadow(Colors.goldLit, 0, 0, 0.3, mockupPx(DISC_GLOW, scale), 0),
       ]}
     >
-      <TableText style={[styles.bold, { color: paint.ink, fontSize: part.discFont }]}>{children}</TableText>
+      <TableText style={[NOTICE_FACES[noticeRun(box, "disc").face], { color: paint.ink, fontSize: part.discFont }]}>{children}</TableText>
     </LinearGradient>
   );
 }
@@ -352,7 +354,7 @@ export function NoticeText({
   children: ReactNode;
 }) {
   const { paint, box, scale } = useInk("NoticeText");
-  const run = noticeRun(box, strong);
+  const run = noticeRun(box, strong ? "strong" : "text");
   return (
     <TableText
       numberOfLines={box.lines}
@@ -380,13 +382,15 @@ export function NoticeText({
 /** A gold key inside the plate's run, naming the action a press on the plate takes. */
 export function NoticeKey({ testID, children }: { testID?: string; children: ReactNode }) {
   const { box, scale } = useInk("NoticeKey");
+  const run = noticeRun(box, "key");
   return (
     <TableText
       numberOfLines={1}
       testID={testID}
       style={[
         styles.text,
-        styles.bold,
+        !run.upper && styles.sentence,
+        NOTICE_FACES[run.face],
         {
           color: Colors.badgeInk,
           backgroundColor: Colors.gold,
@@ -442,8 +446,9 @@ const styles = StyleSheet.create({
   },
   panel: { borderWidth: 1 },
   dim: { ...StyleSheet.absoluteFill, backgroundColor: Scrim.medium, zIndex: DIM_Z },
-  line: { fontFamily: "Rajdhani_600SemiBold" },
-  hint: { textTransform: "uppercase", textAlign: "center" },
+  line: { ...NOTICE_FACES.regular },
+  upper: { textTransform: "uppercase" },
+  hint: { textAlign: "center" },
   tile: {
     alignItems: "center",
     justifyContent: "center",
