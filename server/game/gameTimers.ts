@@ -83,8 +83,10 @@ function clearByPrefix(kind: TimerKind, prefix: string) {
  * Which ones those are is an accident of who imports whom, and it changes
  * silently when anyone adds an import anywhere in `server/`.
  * Pinned by `tests/tooling/timerEnvIsLive.test.ts`.
+ *
+ * An override over `ceilingMs` throws: a test asking for more than the ceiling
+ * would be testing a clock no seat gets.
  */
-/** An override over `ceilingMs` throws: a test asking for more than the ceiling would be testing a clock no seat gets. */
 function timeoutFromEnv(name: string, defaultMs: number, ceilingMs = Infinity): number {
   const raw = testOnlyEnv(name);
   if (!raw) return defaultMs;
