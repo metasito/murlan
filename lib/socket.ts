@@ -183,31 +183,25 @@ export function reopenSocket(socket: Socket): void {
   raw(socket).connect();
 }
 
-interface Engine {
-  readyState: string;
-  once(event: "open" | "error", fn: () => void): unknown;
-  off(event: "open" | "error", fn: () => void): unknown;
-  close(): unknown;
-}
-
 /** A fresh attempt at once; an attempt still opening is let go of and closed when it settles. */
 export function reconnectSocket(socket: Socket): void {
   halted.delete(socket);
   cancelPendingClose(socket);
   const s = raw(socket);
-  const manager = s.io as unknown as { engine?: Engine };
-  const abandoned = manager.engine?.readyState === "opening" ? manager.engine : undefined;
+  const abandoned = s.io.engine?.readyState === "opening" ? s.io.engine : undefined;
   // The manager closes its engine with the socket; detached, it is not, so a connecting websocket is left to settle.
-  if (abandoned) manager.engine = undefined;
+  if (abandoned) Reflect.set(s.io, "engine", undefined);
   s.disconnect().connect();
   if (!abandoned) return;
   const close = () => {
     abandoned.off("open", close);
     abandoned.off("error", close);
+    abandoned.off("close", close);
     abandoned.close();
   };
   abandoned.once("open", close);
   abandoned.once("error", close);
+  abandoned.once("close", close);
 }
 
 /**
