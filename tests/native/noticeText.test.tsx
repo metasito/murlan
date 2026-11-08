@@ -15,6 +15,8 @@ import { HudComboPill, TurnChip } from '@/components/table/notices/hud';
 import { WhoStartsCard } from '@/components/table/notices/panels';
 import { PassFloat } from '@/components/table/notices/floats';
 import { EndMatchVote, RoundVote } from '@/components/table/notices/netNotes';
+import { TableNotice } from '@/components/table/TableNotice';
+import { BoardButton } from '@/components/table/matchBoard';
 import { GameTable } from '@/components/GameTable';
 import { linkNote, RECONNECT_CODES, tableConnection, type ConnectionNote } from '@/components/table/connectionNote';
 import { exchangeNotes, type ExchangeView } from '@/components/table/exchangeModel';
@@ -139,60 +141,63 @@ async function collect(where: string, element: ReactElement, words = true) {
   await view.unmount();
 }
 
-function scan(where: string, container: TestInstance, words: boolean, strict: boolean) {
+/** `spoken` and `control` mark words beside a notice, so they exempt only a Text no notice holds. */
+function scan(where: string, container: TestInstance, words: boolean, strict: boolean, sink = failures) {
   for (const host of container.queryAll((n) => n.type === 'Text')) {
     let role: NoticeRole | null = null;
     let notice: TestInstance | null = null;
-    let unseen = false;
+    let icon = false;
+    let beside = false;
     const style = { ...flat(host) };
     for (let up = host.parent; up && !notice; up = up.parent) {
-      if (up.props.icon || up.props.spoken || up.props.control) unseen = true;
+      if (up.props.icon) icon = true;
+      if (up.props.spoken || up.props.control) beside = true;
       if (role === null && up.props.noticeRole) role = up.props.noticeRole as NoticeRole;
       if (up.type === 'Text') for (const [k, v] of Object.entries(flat(up))) if (k !== 'maxWidth') style[k as keyof Style] ??= v as never;
       if (up.props.notice) notice = up;
     }
-    if (unseen) continue;
+    if (icon) continue;
     if (!notice) {
-      if (strict) failures.push(`${where}: draws a Text outside any TableNotice`);
+      if (strict && !beside) sink.push(`${where}: draws a Text outside any TableNotice`);
       continue;
     }
     const kind = notice.props.notice as NoticeKind;
     const at = `${where} (${kind})`;
     kindsSeen.add(kind);
     if (role === null) {
-      failures.push(`${at}: a Text sits under no role component`);
+      sink.push(`${at}: a Text sits under no role component`);
       continue;
     }
     rolesSeen.add(role);
     const want = STYLE.get(`${kind}|${role}`);
     const got = { face: FACE_OF.get(style.fontFamily ?? ''), upper: style.textTransform === 'uppercase', tabular: !!style.fontVariant?.includes('tabular-nums') };
-    if (!want) failures.push(`${at}: draws a ${role} run the metrics never measured`);
+    if (!want) sink.push(`${at}: draws a ${role} run the metrics never measured`);
     else if (got.face !== want.face || got.upper !== want.upper || got.tabular !== want.tabular)
-      failures.push(`${at}: ${role} draws ${JSON.stringify(got)}, measured as ${JSON.stringify({ face: want.face, upper: want.upper, tabular: want.tabular })}`);
+      sink.push(`${at}: ${role} draws ${JSON.stringify(got)}, measured as ${JSON.stringify({ face: want.face, upper: want.upper, tabular: want.tabular })}`);
     if (!words) continue;
     const text = host.children.filter((c): c is string => typeof c === 'string').join('');
     for (const [, key] of text.matchAll(/⟦([^⟧]+)⟧/g)) {
       drawn.add(`${kind}|${role}|${key}`);
-      if (!RUNS[kind]?.[`${role}:${key}`]) failures.push(`${at}: draws ${key} as ${role}, which is not measured there`);
+      if (!RUNS[kind]?.[`${role}:${key}`]) sink.push(`${at}: draws ${key} as ${role}, which is not measured there`);
     }
     const residue = text.replace(/⟦[^⟧]*⟧/g, '').replace(/⟨[^⟩]*⟩/g, '');
     if (residue === '') continue;
     if (want && !want.upper && /\p{L}.*\p{L}/u.test(residue) && !/\p{Ll}/u.test(residue))
-      failures.push(`${at}: ${JSON.stringify(residue)} is cased in the string, for a ${role} run measured as drawn in its own case`);
+      sink.push(`${at}: ${JSON.stringify(residue)} is cased in the string, for a ${role} run measured as drawn in its own case`);
     drawn.add(`${kind}|${role}|*`);
     const bound = DYNAMIC[kind]?.[role]?.bound;
     if (!bound) {
-      failures.push(`${at}: draws runtime words ${JSON.stringify(residue)} as ${role}, with no bound`);
+      sink.push(`${at}: draws runtime words ${JSON.stringify(residue)} as ${role}, with no bound`);
       continue;
     }
     const lines = host.props.numberOfLines as number | undefined;
     if ('chars' in bound) {
-      if ([...residue].length > bound.chars) failures.push(`${at}: ${JSON.stringify(residue)} is over ${bound.chars} chars`);
+      if ([...residue].length > bound.chars) sink.push(`${at}: ${JSON.stringify(residue)} is over ${bound.chars} chars`);
     } else {
       const plate = notice.queryAll((n) => n.type === 'View' && flat(n).maxWidth !== undefined)[0];
       const width = bound.on === 'run' ? flat(host).maxWidth : plate && flat(plate).maxWidth;
       if (width !== bound.maxWidth || lines !== bound.lines)
-        failures.push(`${at}: ${role} is clipped at ${width}×${lines} lines, bounded at ${bound.maxWidth}×${bound.lines}`);
+        sink.push(`${at}: ${role} is clipped at ${width}×${lines} lines, bounded at ${bound.maxWidth}×${bound.lines}`);
     }
   }
 }
@@ -378,5 +383,17 @@ describe('the text metrics are what the notices draw', () => {
     expect([...drawn].filter((entry) => !SPEC.has(entry)).sort()).toEqual([]);
     expect(Object.keys(NOTICES).filter((kind) => !kindsSeen.has(kind))).toEqual([]);
     expect(ROLES.filter((role) => !rolesSeen.has(role))).toEqual([]);
+  });
+
+  it('a control inside a notice is held to the notice', async () => {
+    const caught: string[] = [];
+    const view = await render(
+      <TableNotice kind="roundVote" tone="neutral" scale={1}>
+        <BoardButton label="Unmeasured plate words" testID="planted" onPress={() => {}} live unit={1} />
+      </TableNotice>,
+    );
+    scan('a board button on the vote plate', view.container, true, true, caught);
+    await view.unmount();
+    expect(caught).toContain('a board button on the vote plate (roundVote): a Text sits under no role component');
   });
 });

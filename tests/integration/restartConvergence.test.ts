@@ -24,6 +24,7 @@ import { connectSocket, eventually, nothingArrives, settled, waitFor, type TestS
 import { boot as bootInstance, stopInstance } from "../helpers/instance.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 /** The serving instance's, which a replacement changes. */
 let PORT: number;
@@ -41,7 +42,7 @@ interface Client {
 async function boot(databaseUrl: string, extraEnv: Record<string, string> = {}): Promise<ChildProcess> {
   // Nothing here plays a round, and an AFK auto-move between the two captures
   // would be a table that changed for a reason that is not the restart.
-  const instance = await bootInstance(databaseUrl, { MURLAN_AFK_TIMEOUT_MS: "600000", ...extraEnv });
+  const instance = await bootInstance(databaseUrl, { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS), ...extraEnv });
   PORT = instance.port;
   return instance.child;
 }

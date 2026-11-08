@@ -84,11 +84,14 @@ function clearByPrefix(kind: TimerKind, prefix: string) {
  * silently when anyone adds an import anywhere in `server/`.
  * Pinned by `tests/tooling/timerEnvIsLive.test.ts`.
  */
+/** An override over `ceilingMs` throws: a test asking for more than the ceiling would be testing a clock no seat gets. */
 function timeoutFromEnv(name: string, defaultMs: number, ceilingMs = Infinity): number {
   const raw = testOnlyEnv(name);
   if (!raw) return defaultMs;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, ceilingMs) : defaultMs;
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultMs;
+  if (parsed > ceilingMs) throw new Error(`${name}=${raw} is over its ${ceilingMs} ms ceiling`);
+  return parsed;
 }
 
 export const afkTimeoutMs = () => timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", TURN_TIMEOUT_MS, CLOCK_CEILING_MS);

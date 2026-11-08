@@ -131,16 +131,16 @@ test("no clock a seat is given counts from more digits than the turn chip reserv
   assert.deepEqual(TEXT_METRICS.dynamic.turn.strong.bound, { chars: clockDigits(CLOCK_CEILING_MS) });
   for (const [name, ms] of [["an offline turn", TURN_TIMEOUT_MS], ["the tutorial's clock", CLOCK_DEMO_SECONDS * 1000]] as const)
     assert.ok(ms <= CLOCK_CEILING_MS, `${name} counts from ${ms} ms, over the clock's ${CLOCK_CEILING_MS} ms ceiling`);
-  const envs = ["MURLAN_AFK_TIMEOUT_MS", "MURLAN_VOTE_DEADLINE_MS"] as const;
-  const saved = envs.map((env) => [env, process.env[env]] as const);
+  const knobs = [["MURLAN_AFK_TIMEOUT_MS", afkTimeoutMs], ["MURLAN_VOTE_DEADLINE_MS", voteDeadlineMs]] as const;
+  const saved = knobs.map(([env]) => [env, process.env[env]] as const);
   try {
-    for (const raw of [undefined, String(CLOCK_CEILING_MS * 10)]) {
-      for (const env of envs) {
-        if (raw === undefined) delete process.env[env];
-        else process.env[env] = raw;
-      }
-      for (const [name, ms] of [["afkTimeoutMs", afkTimeoutMs()], ["voteDeadlineMs", voteDeadlineMs()]] as const)
-        assert.ok(ms <= CLOCK_CEILING_MS, `${name} gives ${ms} ms with the environment ${raw ?? "unset"}, over the ${CLOCK_CEILING_MS} ms ceiling`);
+    for (const [env, read] of knobs) {
+      delete process.env[env];
+      assert.ok(read() <= CLOCK_CEILING_MS, `${env} unset gives ${read()} ms, over the ${CLOCK_CEILING_MS} ms ceiling`);
+      process.env[env] = String(CLOCK_CEILING_MS);
+      assert.equal(read(), CLOCK_CEILING_MS);
+      process.env[env] = String(CLOCK_CEILING_MS + 1);
+      assert.throws(read, new RegExp(`${env}=${CLOCK_CEILING_MS + 1} is over its ${CLOCK_CEILING_MS} ms ceiling`));
     }
   } finally {
     for (const [env, value] of saved) {

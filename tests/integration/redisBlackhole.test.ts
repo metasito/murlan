@@ -11,6 +11,7 @@ import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../help
 import { boot, type Instance } from "../helpers/instance.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 const REPLACED_WITHIN_MS = 15_000;
 
@@ -39,7 +40,7 @@ describe("a half-open Redis link", { skip: hasDatabase() ? false : skipMessage()
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
     proxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
-    const env = { MURLAN_AFK_TIMEOUT_MS: "600000" };
+    const env = { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS) };
     instances.push(await boot(scoped, { ...env, REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy) }));
     instances.push(await boot(scoped, env));
     ports = instances.map((i) => i.port);

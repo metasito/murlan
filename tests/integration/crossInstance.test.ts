@@ -32,6 +32,7 @@ import { playRoundOut } from "../helpers/gameDriver.ts";
 import { userStore } from "../../server/store/userStore.ts";
 import { mintAuthToken } from "../../server/http/authTokens.ts";
 import { closeDatabase, openDatabase } from "../../server/store/db.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 const PORTS: number[] = [];
 /** Short, so the "was it re-sent?" window below is seconds rather than tens. */
@@ -88,7 +89,7 @@ describe("broadcasts cross server instances", {
       MURLAN_STATE_ACK_TIMEOUT_MS: String(ACK_TIMEOUT_MS),
       // Nothing here plays a round; an AFK auto-move mid-assertion would be
       // state arriving for a reason that is not a re-send.
-      MURLAN_AFK_TIMEOUT_MS: "600000",
+      MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS),
     }));
     PORTS.push(...instances.map((i) => i.port));
 
