@@ -145,41 +145,66 @@ test("a decided rule is stated in GAME-RULES.md § Decisions alone, and nothing 
   assert.deepEqual(citing, [], "these still cite the moved §3.1 table by its old address");
 });
 
-/** A path followed by a quoted title, a parenthesised list of them, or `§ Title`: a citation by heading, which a moved section leaves dangling while the path still resolves. */
-const HEADING_CITATION = /(docs\/[\w./-]+\.md)(?:(?:,\s*|\s*\()((?:"[^"\n]+"(?:,\s*(?:and\s+)?)?)+)|\s+§\s*([A-Z][\w-]*))/g;
+/** A path, an optional closing backtick, then a quoted title, a parenthesised list of them, or `§ Title`: a citation by heading, which a moved section leaves dangling while the path still resolves. */
+const STOP = '[^)\\n,.;|:"`]';
+const HEADING_CITATION = new RegExp(
+  `(docs\\/[\\w./-]+\\.md)\`?(?:(?:,\\s*|\\s*\\()((?:"[^"\\n]+"(?:,\\s*(?:and\\s+)?)?)+)|\\s*§\\s*"?(${STOP}+)(?:\\n[ \\t]*(?:\\/\\/|\\*|#)?[ \\t]*(${STOP}+))?)`,
+  "g",
+);
 const QUOTED = /"([^"\n]+)"/g;
 
 function headingsOf(file: string): string[] {
   return [...readFileSync(at(file), "utf8").matchAll(/^#{1,6}\s+(.+?)\s*$/gm)].map((m) => m[1].replace(/`/g, ""));
 }
 
+/** Each citation as the candidate titles it could mean: a `§` title may wrap onto the next line. */
+function headingCitations(text: string): { doc: string; titles: string[]; form: "quoted" | "section" }[] {
+  return [...text.matchAll(HEADING_CITATION)].flatMap(([, doc, quoted, first, wrapped]) => {
+    if (quoted) return [...quoted.matchAll(QUOTED)].map((m) => ({ doc, titles: [m[1]], form: "quoted" as const }));
+    const one = first.trim();
+    if (/^[\d.]/.test(one)) return [];
+    return [{ doc, titles: [one, wrapped ? `${one} ${wrapped.trim()}` : one], form: "section" as const }];
+  });
+}
+
+const resolves = (have: string[], title: string) => {
+  const t = title.replace(/`/g, "").trim();
+  return have.some((h) => h.startsWith(t) || t.startsWith(h));
+};
+
 test("every heading a doc, comment or prompt cites by title exists in the doc it cites", () => {
   const files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
     .trim().split("\n").filter((f) => /\.(md|ts|tsx|mjs|js|cjs)$/.test(f) && existsSync(at(f)))
-    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)) && !DATED_PLAN.test(f) && !/^docs\/research\//.test(f));
+    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)) && !DATED_PLAN.test(f));
+  assert.ok(files.length > 100, `read ${files.length} files: the tracked set is not being listed`);
   const broken: string[] = [];
-  let checked = 0;
+  const read = { quoted: 0, section: 0 };
   for (const file of files) {
-    for (const [, doc, quoted, section] of readFileSync(at(file), "utf8").matchAll(HEADING_CITATION)) {
+    for (const { doc, titles, form } of headingCitations(readFileSync(at(file), "utf8"))) {
       if (!existsSync(at(doc))) continue;
-      const titles = quoted ? [...quoted.matchAll(QUOTED)].map((m) => m[1]) : [section];
+      read[form]++;
       const have = headingsOf(doc);
-      for (const title of titles) {
-        checked++;
-        const plain = title.replace(/`/g, "");
-        if (!have.some((h) => h === plain || h.startsWith(plain))) broken.push(`${file} -> ${doc} "${title}"`);
-      }
+      if (!titles.some((t) => resolves(have, t))) broken.push(`${file} -> ${doc} ${form === "section" ? "§" : ""} ${titles[0]}`);
     }
   }
-  assert.ok(checked >= 10, `read ${checked} heading citations: the pattern is not matching`);
+  assert.ok(read.quoted >= FLOOR.quoted && read.section >= FLOOR.section, `read ${JSON.stringify(read)} heading citations: a form stopped matching`);
   assert.deepEqual(broken, []);
 });
 
-test("the heading-citation scan reads a citation and misses a dangling one", () => {
-  const sample = ["see docs/agents/traps", '.md ("What a green loop does not mean", "Gone") and docs/GAME-RULES', ".md § Decisions"].join("");
-  const cited = [...sample.matchAll(HEADING_CITATION)];
-  assert.equal(cited.length, 2);
-  assert.deepEqual([...cited[0][2].matchAll(QUOTED)].map((m) => m[1]), ["What a green loop does not mean", "Gone"]);
-  assert.equal(cited[1][3], "Decisions");
-  assert.ok(!headingsOf("docs/agents/traps.md").includes("Gone"));
+const FLOOR = { quoted: 45, section: 80 };
+
+test("the heading-citation scan reads every form of citation and misses a dangling one", () => {
+  const join = (...p: string[]) => p.join("");
+  const cases: [string, string[]][] = [
+    [join("see docs/agents/traps", '.md ("What a green loop does not mean", "Gone")'), ["What a green loop does not mean", "Gone"]],
+    [join("see docs/GAME-RULES", ".md § Decisions"), ["Decisions"]],
+    [join("(`docs/agents/suites", ".md` § Effect parity)"), ["Effect parity"]],
+    [join("`docs/agents/checks", ".md` § Owner decisions, then"), ["Owner decisions"]],
+    [join("// docs/agents/checks", ".md § The viewer's own\n// connection: more"), ["The viewer's own", "The viewer's own connection"]],
+  ];
+  for (const [text, want] of cases) assert.deepEqual(headingCitations(text).flatMap((c) => c.titles).slice(0, want.length), want, text);
+  const have = headingsOf("docs/agents/traps.md");
+  assert.ok(resolves(have, "What a green loop does not mean"));
+  assert.ok(!resolves(have, "Gone"));
+  assert.ok(!resolves(have, "Owner decisions"));
 });

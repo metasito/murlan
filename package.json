@@ -34,7 +34,7 @@
     "preloop:test": "node tools/ci/preflightMemory.mjs",
     "loop:test": "node scripts/nodeTest.mjs --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test --test-timeout=120000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/helpers/timeoutHeadroomReporter.mjs --test-reporter-destination=stderr --test-reporter=./tests/helpers/filesRunReporter.mjs --test-reporter-destination=stderr \"tools/loop/tests/**/*.test.ts\"",
     "test": "node scripts/nodeTest.mjs --import ./tests/helpers/fileDeadline.mjs --test --test-concurrency=8 --test-timeout=120000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/helpers/timeoutHeadroomReporter.mjs --test-reporter-destination=stderr --test-reporter=./tests/helpers/filesRunReporter.mjs --test-reporter-destination=stderr \"tests/**/*.test.ts\"",
-    "test:tooling": "node scripts/nodeTest.mjs --test --test-concurrency=8 --test-timeout=120000 --test-force-exit \"tests/tooling/**/*.test.ts\"",
+    "test:tooling": "node scripts/nodeTest.mjs --import ./tests/helpers/fileDeadline.mjs --test --test-concurrency=8 --test-timeout=120000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/helpers/timeoutHeadroomReporter.mjs --test-reporter-destination=stderr --test-reporter=./tests/helpers/filesRunReporter.mjs --test-reporter-destination=stderr \"tests/tooling/**/*.test.ts\"",
     "test:native": "jest",
     "test:native:related": "node tools/loop/related-tests.mjs",
     "perf:web": "playwright test --config tests/e2e/playwright.perf.config.ts --reporter=line",
