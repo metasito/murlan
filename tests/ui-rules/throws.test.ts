@@ -28,7 +28,7 @@ describe("readThrownPlay", () => {
     return players;
   };
 
-  const layout = tableLayout({ width: 844, height: 390, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale: 1 });
+  const layout = tableLayout({ width: 844, height: 390, insets: { top: 0, bottom: 0, left: 0, right: 0 } });
   const { frame } = layout;
   const read = (players: Player[], playedBy: number, combo = PAIR) =>
     readThrownPlay({ combo, playedBy }, layout, { viewerSeat: 0, players, opponents: arrangeOpponents(players, 0) });

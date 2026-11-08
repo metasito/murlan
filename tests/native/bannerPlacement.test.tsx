@@ -16,13 +16,13 @@ const PORTRAIT = { width: 390, height: 844, scale: 2, fontScale: 1 };
 
 import NotificationBanner from '@/components/NotificationBanner';
 import { CHIP_H } from '@/components/seatLayout';
-import { cardScale } from '@/components/cardFaceModel';
+import { tableScale } from '@/components/tableLayout';
 import { setWindow } from './harness/env';
 
 const INSETS = { top: 24, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: INSETS };
 const topPad = INSETS.top;
-const SCALE = cardScale(Math.min(LANDSCAPE.width, LANDSCAPE.height));
+const SCALE = tableScale(LANDSCAPE);
 
 const noop = () => {};
 

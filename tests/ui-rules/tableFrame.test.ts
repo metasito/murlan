@@ -21,14 +21,11 @@ describe("bannerTop", () => {
   // notice is explaining, so the banner starts below them.
   const topPad = 47;
   const insets = { top: topPad, bottom: 0, left: 0, right: 0 };
-  const landscape = (scale: number, surplus = 0, top = topPad) =>
-    bannerTop(
-      tableLayout({ width: 2 * BASE_SHORT_EDGE * scale, height: BASE_SHORT_EDGE * scale + 2 * surplus, insets: { ...insets, top }, scale }),
-      top
-    );
+  const landscape = (height: number, top = topPad) => bannerTop(tableLayout({ width: 2 * height, height, insets: { ...insets, top } }), top);
+  const atScale = (scale: number) => landscape(BASE_SHORT_EDGE * scale);
 
   test("in landscape the banner starts below the HUD chips", () => {
-    const top = landscape(1);
+    const top = atScale(1);
     assert.ok(top >= topPad + CHIP_H(1), `${top} still overlaps the chips`);
   });
 
@@ -37,18 +34,19 @@ describe("bannerTop", () => {
   });
 
   test("a zero inset still clears the chips in landscape", () => {
-    assert.ok(landscape(1, 0, 0) >= CHIP_H(1));
+    assert.ok(landscape(BASE_SHORT_EDGE, 0) >= CHIP_H(1));
   });
 
   // The chips this clears are inside the table's frame, and on a window past
   // the scale cap that frame starts `surplus` lower than the safe pad does.
   test("a surplus moves the chips down, and the banner with them", () => {
-    assert.equal(landscape(1, 62) - landscape(1), 62);
+    const capped = 4 * BASE_SHORT_EDGE;
+    assert.ok(Math.abs(landscape(capped + 2 * 62) - landscape(capped) - 62) < 1e-9);
   });
 
   test("scales with the table, so a tablet's banner clears a tablet's chips", () => {
-    const one = landscape(1);
-    const two = landscape(2);
+    const one = atScale(1);
+    const two = atScale(2);
     assert.ok(two > one, `${two} is no lower than ${one}`);
     assert.ok(two >= topPad + CHIP_H(2), `${two} still overlaps a tablet's chips`);
   });

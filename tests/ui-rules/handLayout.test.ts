@@ -3,7 +3,8 @@
 // here — docs/agents/checks.md.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { CARD_H, CARD_W, cardScale, handCardSize } from "../../components/cardFaceModel.ts";
+import { CARD_H, CARD_W, handCardSize } from "../../components/cardFaceModel.ts";
+import { tableScale } from "../../components/tableLayout.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";
@@ -226,7 +227,7 @@ describe("which card a tap belongs to", () => {
   // from the step its neighbour's width is; the drift stays under this (0.08 px at most today).
   const ARC_DRIFT = 0.1;
   for (const phone of PHONES) {
-    const scale = cardScale(Math.min(phone.width, phone.height));
+    const scale = tableScale(phone);
     const frame = computeTableFrame({ width: phone.width, height: phone.height, insets: { top: 0, bottom: 0, left: 0, right: 0 }, scale });
     for (const seats of [2, 3, 4]) {
       const n = Math.max(...dealCards(seats).hands.map((h) => h.length));

@@ -9,6 +9,7 @@ import { feltPixels, seatAnchor, skiaOnSoftware, untilSkiaFelt } from "./helpers
 import type { FlyDirection } from "../../components/seatLayout";
 import type { TraceFrame } from "../../lib/e2eTrace";
 import { feltOnly, legibilityRing } from "../../components/table/legibilityRing";
+import { tableScale } from "../../components/tableLayout";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 import { LAMP_FLOOR, LAMP_SYMMETRY, annulusLuminance, evenness, legibility } from "../../lib/diagnostics/lampLegibility";
 
@@ -42,7 +43,8 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
   });
   const { pixels: box, perPt, origin } = await feltPixels(page);
   const pixels = feltOnly(box, perPt);
-  const ring = legibilityRing(pixels.width / perPt, pixels.height / perPt);
+  const felt = { width: pixels.width / perPt, height: pixels.height / perPt };
+  const ring = legibilityRing(felt.width, felt.height, tableScale(felt));
   return Object.fromEntries(
     SEATS.map((s) => [s, annulusLuminance(pixels, { x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt, ring)])
   ) as Record<FlyDirection, number>;
