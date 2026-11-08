@@ -1090,8 +1090,9 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node tools/ci/gate.mjs
-      # The base branch's judge, so a pull request cannot loosen the verdict on itself. A base that
-      # predates it has none to lend, and only then is the head's own copy used.
+      # The base branch's judge, so a pull request that leaves this workflow alone cannot loosen the
+      # verdict on itself; one that edits this step can (docs/agents/suites.md § A flake is fixed,
+      # Limits). `|| from=HEAD` is bootstrap for a base that predates the judge: remove it once on main.
       - name: Every test that ran passed, once, and none was skipped unheard
         if: ${{ !cancelled() }}
         env:

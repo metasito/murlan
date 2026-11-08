@@ -23,8 +23,9 @@ export default async function* results(source) {
     }
     const status = data.todo ? "todo" : data.skip ? "skipped" : type === "test:fail" ? "failed" : "passed";
     const title = [...stack.slice(0, data.nesting), data.name].join(" › ");
-    // A file whose every test was filtered away still passes, as a test named by its own path.
-    const wrapper = data.details?.type === "suite" || (data.nesting === 0 && data.name === data.file);
+    // A file that registered no test, or exited before reporting any, still passes as a test named by
+    // its own path, relative to the working directory while `file` is absolute.
+    const wrapper = data.details?.type === "suite" || (data.nesting === 0 && repoPath(data.name) === repoPath(data.file));
     out.write({ type: "test", file: repoPath(data.file), title, status, ...(wrapper && { suite: true }) });
   }
   out.write({ type: "end", ok: summary?.success === true, counts: summary?.counts });

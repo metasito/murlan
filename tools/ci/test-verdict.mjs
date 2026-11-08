@@ -1,7 +1,8 @@
 /**
  * RULES.md 53's verdict, over what the runners themselves reported: the files
  * tools/ci/results-writer.mjs collects in every test job. ci.yml's CI gate runs the base branch's
- * copy of this file, so a pull request cannot loosen the verdict that judges it.
+ * copy of this file, but ci.yml itself is the pull request's: a head that changes the workflow can
+ * still skip or replace this step (docs/agents/suites.md § A flake is fixed, Limits).
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
@@ -13,6 +14,12 @@ import { prSpec } from "../../tests/e2e/tiers.mjs";
 export const LEDGER = "tools/ci/quarantine.json";
 export const LABEL = "ci-flake";
 export const ARTIFACT_PREFIX = "test-results-";
+export const QUARANTINE_CAP = 5;
+export const QUARANTINE_DAYS = 14;
+const DAY = 86_400_000;
+
+/** The jobs CI gate needs that run no test suite; any other need is a test job, judged or red. */
+export const NON_TEST_JOBS = ["scope", "secrets", "lint", "android-build", "ios-build", "browser-report", "build", "timing-budget"];
 
 /**
  * Every suite a pull request's run executes, the jobs that run it, and the files it must have
@@ -30,7 +37,7 @@ export const SUITES = [
 /** `test-results-<job>-<shard>-<attempt>`, ci.yml's upload name. */
 const NAME = /^test-results-(.+)-(\d+)-(\d+)$/;
 
-/** @typedef {{ file: string, title: string, issue: number }} Quarantined */
+/** @typedef {{ file: string, title: string, issue: number, expires: string }} Quarantined */
 /** @typedef {{ name: string, runs: { file: string, records: any[] }[] }} Artifact */
 /** @typedef {{ open: boolean, labelled: boolean }} Ticket */
 /**
@@ -40,6 +47,8 @@ const NAME = /^test-results-(.+)-(\d+)-(\d+)$/;
  *   listing: string[],
  *   ledger: { head: unknown, base: unknown },
  *   tickets: Map<number, Ticket>,
+ *   changed: string[],
+ *   now: number,
  *   suites?: typeof SUITES,
  * }} VerdictInput
  */
@@ -51,11 +60,46 @@ export const escape = (/** @type {unknown} */ s) => String(s).slice(0, 400).repl
 export function entries(ledger) {
   const list = /** @type {any} */ (ledger)?.quarantine;
   if (!Array.isArray(list)) return `${LEDGER} has no "quarantine" list`;
-  const bad = list.find((e) => typeof e?.file !== "string" || typeof e?.title !== "string" || !Number.isInteger(e?.issue));
-  return bad === undefined ? list : `${LEDGER} has an entry that is not {file, title, issue}: ${JSON.stringify(bad)}`;
+  const bad = list.find(
+    (e) => typeof e?.file !== "string" || typeof e?.title !== "string" || !Number.isInteger(e?.issue) || typeof e?.expires !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(e.expires) || Number.isNaN(Date.parse(e.expires)),
+  );
+  return bad === undefined ? list : `${LEDGER} has an entry that is not {file, title, issue, expires: "YYYY-MM-DD"}: ${JSON.stringify(bad)}`;
 }
 
 const key = (/** @type {{ file: string, title: string }} */ r) => `${r.file}\0${r.title}`;
+
+/**
+ * Which head entries hold a skip. An entry the base does not hold exactly is an addition, which
+ * lands only in a pull request touching the ledger alone, expiring within QUARANTINE_DAYS.
+ * @param {Pick<VerdictInput, "ledger" | "tickets" | "changed" | "now">} input
+ */
+function quarantine({ ledger, tickets, changed, now }) {
+  /** @type {string[]} */
+  const problems = [];
+  const head = entries(ledger.head);
+  const base = ledger.base === null ? [] : entries(ledger.base);
+  for (const l of [head, base]) if (typeof l === "string") problems.push(l);
+  const list = typeof head === "string" ? [] : head;
+  const exact = (/** @type {Quarantined} */ e) => `${key(e)}\0${e.issue}\0${e.expires}`;
+  const held = new Set((typeof base === "string" ? [] : base).map(exact));
+  const alone = changed.length === 1 && changed[0] === LEDGER;
+  if (list.length > QUARANTINE_CAP) problems.push(`${LEDGER} holds ${list.length} entries, over its cap of ${QUARANTINE_CAP}`);
+  /** @type {Set<string>} */
+  const holds = new Set();
+  for (const e of list) {
+    const red = problems.length;
+    const expiry = Date.parse(e.expires) + DAY;
+    if (!held.has(exact(e))) {
+      if (!alone) problems.push(`${LEDGER} adds ${named(e)} (#${e.issue}) beside other changes; a quarantine lands in a pull request of its own`);
+      if (expiry - now > (QUARANTINE_DAYS + 1) * DAY) problems.push(`${LEDGER} quarantines ${named(e)} until ${e.expires}, more than ${QUARANTINE_DAYS} days out`);
+    }
+    if (now >= expiry) problems.push(`${LEDGER}'s quarantine of ${named(e)} expired on ${e.expires}`);
+    const t = tickets.get(e.issue);
+    if (!t?.open || !t.labelled) problems.push(`${LEDGER} holds ${named(e)} under #${e.issue}, which is not an open issue labelled ${LABEL}`);
+    if (problems.length === red && list.length <= QUARANTINE_CAP) holds.add(key(e));
+  }
+  return { problems, holds };
+}
 const named = (/** @type {{ file: string, title: string }} */ r) => `${r.file} › ${r.title}`;
 
 /**
@@ -82,19 +126,15 @@ function attempts(artifacts) {
  * @param {VerdictInput} input
  * @returns {string[]} every reason the run is red; none is green
  */
-export function verdict({ needs, artifacts, listing, ledger, tickets, suites = SUITES }) {
+export function verdict({ needs, artifacts, listing, ledger, tickets, changed, now, suites = SUITES }) {
   const { problems, parsed } = attempts(artifacts);
-  const head = entries(ledger.head);
-  const base = ledger.base === null ? [] : entries(ledger.base);
-  for (const l of [head, base]) if (typeof l === "string") problems.push(l);
-  const headList = typeof head === "string" ? [] : head;
-  const baseKeys = new Set((typeof base === "string" ? [] : base).map((e) => `${key(e)}\0${e.issue}`));
-  for (const e of headList) {
-    if (!baseKeys.has(`${key(e)}\0${e.issue}`)) problems.push(`${LEDGER} adds ${named(e)} (#${e.issue}); the quarantine only shrinks`);
-    const t = tickets.get(e.issue);
-    if (!t?.open || !t.labelled) problems.push(`${LEDGER} holds ${named(e)} under #${e.issue}, which is not an open issue labelled ${LABEL}`);
+  const { problems: ledgerProblems, holds: quarantined } = quarantine({ ledger, tickets, changed, now });
+  problems.push(...ledgerProblems);
+  const judged = new Set(suites.flatMap((s) => s.jobs));
+  for (const job of Object.keys(needs)) {
+    if (!judged.has(job) && !NON_TEST_JOBS.includes(job)) problems.push(`CI gate needs ${job}, which is neither a judged test job (SUITES) nor in NON_TEST_JOBS in tools/ci/test-verdict.mjs`);
   }
-  const quarantined = new Set(headList.filter((e) => baseKeys.has(`${key(e)}\0${e.issue}`) && tickets.get(e.issue)?.open && tickets.get(e.issue)?.labelled).map(key));
+  for (const a of parsed) if (!judged.has(a.job)) problems.push(`${a.name} is from ${a.job}, which no suite in SUITES judges`);
 
   /** @type {Set<string>} */
   const passed = new Set();
@@ -222,7 +262,8 @@ export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}
       tickets.set(n, { open: t.state === "open" && !t.pr, labelled: t.labels.includes(LABEL) });
     }
     const listing = at(["ls-tree", "-r", "-z", "--name-only", "HEAD"]).split("\0").filter(Boolean);
-    const problems = verdict({ needs, artifacts, listing, ledger, tickets });
+    const changed = env.BASE === "HEAD" ? [] : at(["diff", "--name-only", "-z", env.BASE, "HEAD"]).split("\0").filter(Boolean);
+    const problems = verdict({ needs, artifacts, listing, ledger, tickets, changed, now: Date.now() });
     const records = artifacts.reduce((n, a) => n + a.runs.reduce((m, r) => m + r.records.length, 0), 0);
     for (const p of problems.slice(0, 100)) log(`::error::${escape(p)}`);
     if (problems.length > 100) log(`::error::and ${problems.length - 100} more`);

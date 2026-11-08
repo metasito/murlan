@@ -137,24 +137,36 @@ such artifact of the run and fails on:
 - a test that ran with retries allowed or used (Playwright's `retries` and `retry`, a jest test
   invoked more than once by `jest.retryTimes`; `node --test` has no retry);
 - a skip or todo whose file and title never passed anywhere else in the run, unless
-  `tools/ci/quarantine.json` holds it in both the head and the base under an open issue labelled
-  `ci-flake`;
+  `tools/ci/quarantine.json` holds it (below);
 - a run filtered by name (`--test-name-pattern`, `--test-skip-pattern`, `--test-only`,
   `--test-shard`, jest's `-t` and changed-file modes, Playwright's `--grep`, `--grep-invert`,
   `--project`, `--last-failed`, `--only-changed`, `--test-list` and a config or project `grep`):
   a test filtered out reports nothing at all;
 - a job that ran and uploaded nothing, a results file that ends before its runner did or whose
-  runner called it red, an artifact that did not arrive, a job the gate does not need;
+  runner called it red, an artifact that did not arrive, a job the gate does not need, an artifact
+  from a job no suite judges, and a job the gate needs that is neither in `SUITES` nor in
+  `NON_TEST_JOBS` (so a new test job cannot pass by uploading nothing);
 - a test file in a suite's listing (from the head's tree) in which no test passed, and a listing
   under the suite's floor in `SUITES`.
 
 A skip that is fine passes elsewhere: the win32-only loop tests skip in `harness` and pass in
 `harness-windows`. A skip nothing else runs — an integration suite without Postgres, a test that
-needs `gh` without a token — is red, which is what replaced verify's grep of the log.
+needs `gh` without a token — is red, which is what replaced verify's grep of the log. A test is
+keyed by its spec file, not by where `test()` was called, so a test a shared helper registers in
+two specs is two tests; and a node test file that registered no test, or exited mid-run, is not
+counted as a pass for the wrapper node reports in its place.
+
+A flake that cannot be fixed the day it is seen may wait in the quarantine, bounded by base code:
+an entry the base does not hold verbatim is an addition, and an addition is red unless the pull
+request changes `tools/ci/quarantine.json` and nothing else, and unless its `expires` is at most
+`QUARANTINE_DAYS` (14) out. Every entry is red once its day has passed and unless its `issue` is
+open and labelled `ci-flake` (read from the API), and a ledger over `QUARANTINE_CAP` (5) holds
+nothing. Renewing an expiry is an addition. Loosening any bound is a change to
+`tools/ci/test-verdict.mjs`, which is a `JUDGES` file and takes effect only once it is the base.
 
 The gate runs the base's copy of `tools/ci/test-verdict.mjs` (`HEAD^1` of the merge commit on a
-pull request), extracted with `git archive`, never the head's; only where the base has none yet
-does it run the head's. The verdict, the ledger, the reporters, `gate.mjs`, `scope.mjs` and
+pull request), extracted with `git archive`. Where the base has none yet it runs the head's: that
+`|| from=HEAD` fallback is bootstrap only, and goes once this lands on main. The verdict, the ledger, the reporters, `gate.mjs`, `scope.mjs` and
 `ci.yml` are `JUDGES` in `tools/ci/target-freeze.mjs`, rendered into `.github/CODEOWNERS` beside
 rule 52's targets but frozen with nothing. Text from the head is escaped before it reaches a
 `::error::` line. `tests/tooling/testVerdict.test.ts` plants every bypass in a scratch project, runs
@@ -163,14 +175,19 @@ the real runner over it with its real reporter, and asserts the verdict over tha
 What still runs early, before any test: `murlan/no-focused-test` in `eslint.guards.cjs` and
 Playwright's `forbidOnly` on CI. Both are cheap signals; the gate is the guarantee.
 
-**Limits.** The quarantine only shrinks and starts empty, so no test can be quarantined: a flake is
-fixed, or the test is deleted in review. On a pull request the workflow itself is the head's: a
-change to `ci.yml` can drop a reporter, an upload or the gate step, and so can a test that forges
-or deletes its own results file. `JUDGES` routes such a change to the owner, but CODEOWNERS binds
+**Limits.** The judge is the base's, but on a pull request `ci.yml` is the head's, so the base's
+judge guards only a head that leaves the workflow alone: a change to `ci.yml` can drop a reporter,
+an upload, or the gate step itself, or run a judge of its own, and so can a test that forges or
+deletes its own results file. `JUDGES` routes such a change to the owner, but CODEOWNERS binds
 nothing until the ruleset requires code-owner review (`docs/agents/target-freeze.md`), so today
-review is the only thing in the way.
+review is the only thing in the way. The durable fix is a follow-up: a "Test verdict" check run
+from the default branch by a `workflow_run` trigger on CI, judging CI's artifacts with main's
+workflow and main's judge, required by the ruleset.
 The scope job skips suites a change does not reach, and the gate judges only what ran. A runner
-that stops at a test's own early `return` reports a pass, and Playwright's `test.fail()` is a pass
-when the test fails as declared. Every workflow but `ci.yml` (`maestro.yml`, `ios.yml`, the
+that stops at a test's own early `return` reports a pass; Playwright's `test.fail()` and jest's
+`test.failing` are passes when the test fails as declared. A skip is heard by file and title, not
+by project or platform: an android-only skip passes on the ios run of the same test
+(`tableRelocksAfterEntry.test.tsx`), and two tests of one title in one file share one key, so one
+skipped beside its passing twin is heard. Every workflow but `ci.yml` (`maestro.yml`, `ios.yml`, the
 nightly and soak runs) runs outside CI gate, and its results are not judged; `maestro.yml`'s retry
 re-runs a flow that never started because the emulator did not boot.

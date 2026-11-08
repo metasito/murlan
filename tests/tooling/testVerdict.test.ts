@@ -41,8 +41,15 @@ const NATIVE_ONLY = under("native/only.test.tsx");
 const NATIVE_CLEAN = under("native/clean.test.tsx");
 const E2E_PLANTS = under("e2e/plants.spec.ts");
 const E2E_CLEAN = under("e2e/clean.spec.ts");
+const E2E_SHARED = under("e2e/helpers/shared.ts");
+const E2E_RUNS = under("e2e/runs.spec.ts");
+const E2E_SKIPS = under("e2e/skips.spec.ts");
+const GLOB_OK = under("b/ok.test.ts");
+const GLOB_NONE = under("b/none.test.ts");
+const GLOB_EXIT = under("b/exit.test.ts");
 
 const nodeTest = (...files: string[]) => () => [process.execPath, "--test", `--test-reporter=${path.join(ci, "results-node-reporter.mjs")}`, "--test-reporter-destination=stderr", ...files];
+const npmTest = (glob: string) => () => [process.execPath, path.join(root, "scripts", "nodeTest.mjs"), "--test", `--test-reporter=${path.join(ci, "results-node-reporter.mjs")}`, "--test-reporter-destination=stderr", glob];
 const resolve = createRequire(import.meta.url).resolve;
 const jestConfig = `module.exports = { rootDir: __dirname, testEnvironment: ${JSON.stringify(resolve("jest-environment-node"))}, transform: {}, reporters: [${JSON.stringify(path.join(ci, "results-jest-reporter.mjs"))}] };\n`;
 const jest = () => [process.execPath, resolve("jest/bin/jest"), "--config", "jest.config.js", "--ci=false"];
@@ -57,10 +64,11 @@ const spec = (body: string) => `import { test, expect } from ${JSON.stringify(pw
 const suites = SUITES.map((s) => ({ ...s, floor: 1 }));
 const ran = (...jobs: string[]) => Object.fromEntries(SUITES.flatMap((s) => s.jobs).map((j) => [j, { result: jobs.includes(j) ? "success" : "skipped" }]));
 const empty = { head: { quarantine: [] }, base: { quarantine: [] } };
+const NOW = Date.parse("2026-11-08T12:00:00Z");
 const judge = (names: string[], over: Partial<Parameters<typeof verdict>[0]> = {}) => {
   const artifacts = readArtifacts(results).filter((a) => names.includes(a.name));
   const listing = [...new Set(artifacts.flatMap((a) => a.runs.flatMap((r) => r.records)).filter((r) => r.type === "test").map((r) => r.file as string))];
-  return verdict({ needs: ran("verify", "native", "browser"), artifacts, listing, ledger: empty, tickets: new Map(), suites, ...over });
+  return verdict({ needs: ran("verify", "native", "browser"), artifacts, listing, ledger: empty, tickets: new Map(), changed: [], now: NOW, suites, ...over });
 };
 const has = (problems: string[], pattern: RegExp) => assert.ok(problems.some((p) => pattern.test(p)), `nothing matched ${pattern}:\n${problems.join("\n")}`);
 
@@ -133,6 +141,26 @@ before(() => {
     playwright(),
     { PLANT_RETRIES: "1" },
   );
+  plant(
+    "test-results-browser-4-1",
+    {
+      "pw.config.mjs": pwConfig("0"),
+      [E2E_SHARED]: `import { test } from ${JSON.stringify(pw)};\nexport const shared = (skip: boolean) => test("shared", () => { test.skip(skip, "planted"); });\n`,
+      [E2E_RUNS]: `import { shared } from "./helpers/shared";\nshared(false);\n`,
+      [E2E_SKIPS]: `import { shared } from "./helpers/shared";\nshared(true);\n`,
+    },
+    playwright(),
+  );
+  plant(
+    "test-results-verify-1-1",
+    {
+      [GLOB_OK]: `import { test } from "node:test";\ntest("passes", () => {});\n`,
+      [GLOB_NONE]: `import { test } from "node:test";\nif (process.env.DATABASE_URL) test("needs a database", () => {});\n`,
+      [GLOB_EXIT]: `import { test } from "node:test";\ntest("passes", () => {});\ntest("exits", () => { process.exit(0); });\ntest("fails", () => { throw new Error("planted"); });\n`,
+    },
+    npmTest(under("b/**/*.test.ts")),
+    { DATABASE_URL: "" },
+  );
 });
 
 describe("the runners' own reports, judged", () => {
@@ -171,15 +199,35 @@ describe("the runners' own reports, judged", () => {
     assert.equal(problems.filter((p) => /clean\.spec\.ts › passes ran with retries/.test(p)).length, 2, problems.join("\n"));
     assert.ok(!problems.some((p) => /expected failure/.test(p)), "test.fail() is a pass: the test ran and failed as it says it must");
   });
+
+  test("playwright: a test a helper registers is the spec's, so one spec's skip is not heard through another's pass", () => {
+    const problems = judge(["test-results-browser-4-1"], { needs: ran("browser") });
+    assert.ok(!problems.some((p) => /helpers\/shared/.test(p)), problems.join("\n"));
+    assert.ok(!problems.some((p) => /runs\.spec\.ts/.test(p)), problems.join("\n"));
+    has(problems, /skips\.spec\.ts › shared was skipped/);
+  });
+
+  test("node, run as npm test runs it (nodeTest.mjs, a relative glob): a file that registers no test, or exits mid-run, passed nothing", () => {
+    const problems = judge(["test-results-verify-1-1"], { needs: ran("verify"), listing: [GLOB_OK, GLOB_NONE, GLOB_EXIT] });
+    has(problems, /b\/none\.test\.ts is in npm test's listing and no test in it passed/);
+    has(problems, /b\/exit\.test\.ts is in npm test's listing and no test in it passed/);
+    assert.ok(!problems.some((p) => /b\/ok\.test\.ts/.test(p)), problems.join("\n"));
+  });
 });
 
 describe("what the reports leave out", () => {
   const clean = () => readArtifacts(results).filter((a) => a.name === "test-results-verify-0-1");
   const listing = [CLEAN];
-  const base = { needs: ran("verify"), artifacts: clean(), listing, ledger: empty, tickets: new Map(), suites };
+  const base = { needs: ran("verify"), artifacts: clean(), listing, ledger: empty, tickets: new Map(), changed: [], now: NOW, suites };
 
   test("a job that ran and uploaded nothing is red", () => has(verdict({ ...base, artifacts: [] }), /verify ran \(success\) and uploaded no/));
   test("a gate that does not need a test job is red", () => has(verdict({ ...base, needs: { verify: { result: "success" } } }), /does not need native/));
+  test("a job the gate needs that is neither a judged test job nor a known non-test job is red, and so are results no suite judges", () => {
+    assert.deepEqual(verdict({ ...base, needs: { ...ran("verify"), lint: { result: "success" }, build: { result: "success" } } }), []);
+    has(verdict({ ...base, needs: { ...ran("verify"), "e2e-extra": { result: "success" } } }), /CI gate needs e2e-extra, which is neither a judged test job/);
+    has(verdict({ ...base, needs: { ...ran("verify"), "e2e-extra": { result: "skipped" } } }), /CI gate needs e2e-extra/);
+    has(verdict({ ...base, artifacts: [...clean(), { ...clean()[0]!, name: "test-results-e2e-extra-0-1" }] }), /test-results-e2e-extra-0-1 is from e2e-extra, which no suite in SUITES judges/);
+  });
 
   test("a results file cut short, or reported not green, is red", () => {
     const [a] = clean();
@@ -213,16 +261,59 @@ describe("what the reports leave out", () => {
     has(verdict({ ...loop, artifacts: [skip] }), /win32 only was skipped/);
   });
 
-  test("the quarantine holds a skip only under an open ci-flake issue already on the base's ledger", () => {
-    const entry = { file: PLANTS, title: "option skip", issue: 7 };
+  describe("the quarantine", () => {
+    const entry = { file: PLANTS, title: "option skip", issue: 7, expires: "2026-11-15" };
     const plants = readArtifacts(results).filter((a) => a.name === "test-results-verify-0-2");
-    const on = { head: { quarantine: [entry] }, base: { quarantine: [entry] } };
     const open = new Map([[7, { open: true, labelled: true }]]);
-    const q = { ...base, artifacts: plants, listing: [CLEAN, PLANTS] };
-    assert.ok(!verdict({ ...q, ledger: on, tickets: open }).some((p) => /option skip was skipped/.test(p)));
-    has(verdict({ ...q, ledger: { ...on, base: { quarantine: [] } }, tickets: open }), /adds .*option skip \(#7\); the quarantine only shrinks/);
-    has(verdict({ ...q, ledger: on, tickets: new Map([[7, { open: false, labelled: true }]]) }), /not an open issue labelled ci-flake/);
-    has(verdict({ ...q, ledger: { ...on, head: { quarantine: [{ ...entry, issue: "7" }] } }, tickets: open }), /not \{file, title, issue\}/);
+    const q = { ...base, artifacts: plants, listing: [CLEAN, PLANTS], tickets: open };
+    const held = { head: { quarantine: [entry] }, base: { quarantine: [entry] } };
+    const added = { head: { quarantine: [entry] }, base: { quarantine: [] } };
+    const skipRed = (problems: string[]) => problems.some((p) => /option skip was skipped/.test(p));
+    const ledgerRed = (problems: string[]) => problems.filter((p) => p.startsWith("tools/ci/quarantine.json"));
+
+    test("an entry on the base's ledger, under an open ci-flake issue, unexpired, holds its skip", () => {
+      const problems = verdict({ ...q, ledger: held });
+      assert.deepEqual(ledgerRed(problems), []);
+      assert.ok(!skipRed(problems), problems.join("\n"));
+    });
+
+    test("an entry lands in a pull request that changes the ledger alone, and nowhere else", () => {
+      const alone = verdict({ ...q, ledger: added, changed: ["tools/ci/quarantine.json"] });
+      assert.deepEqual(ledgerRed(alone), []);
+      for (const changed of [["tools/ci/quarantine.json", PLANTS], [PLANTS], []])
+        has(verdict({ ...q, ledger: added, changed }), /adds .*option skip \(#7\) beside other changes; a quarantine lands in a pull request of its own/);
+      assert.ok(skipRed(verdict({ ...q, ledger: added, changed: [PLANTS] })), "an addition that is refused holds nothing");
+    });
+
+    test("an entry expires at most 14 days out, and is red once it has", () => {
+      const ledger = (expires: string) => ({ head: { quarantine: [{ ...entry, expires }] }, base: { quarantine: [] } });
+      assert.deepEqual(ledgerRed(verdict({ ...q, ledger: ledger("2026-11-22"), changed: ["tools/ci/quarantine.json"] })), []);
+      has(verdict({ ...q, ledger: ledger("2026-11-23"), changed: ["tools/ci/quarantine.json"] }), /until 2026-11-23, more than 14 days out/);
+      const expired = { head: { quarantine: [{ ...entry, expires: "2026-11-07" }] }, base: { quarantine: [{ ...entry, expires: "2026-11-07" }] } };
+      const problems = verdict({ ...q, ledger: expired });
+      has(problems, /quarantine of .*option skip expired on 2026-11-07/);
+      assert.ok(skipRed(problems), "an expired entry holds nothing");
+      has(verdict({ ...q, ledger: { head: { quarantine: [entry] }, base: { quarantine: [{ ...entry, expires: "2026-11-09" }] } }, changed: [PLANTS] }), /beside other changes/);
+    });
+
+    test("an entry needs an open issue labelled ci-flake", () => {
+      for (const t of [{ open: false, labelled: true }, { open: true, labelled: false }, undefined]) {
+        const problems = verdict({ ...q, ledger: held, tickets: new Map(t ? [[7, t]] : []) });
+        has(problems, /under #7, which is not an open issue labelled ci-flake/);
+        assert.ok(skipRed(problems));
+      }
+    });
+
+    test("the ledger holds at most 5 entries, and none without its shape", () => {
+      const six = Array.from({ length: 6 }, (_, i) => ({ ...entry, title: i ? `other ${i}` : entry.title }));
+      const problems = verdict({ ...q, ledger: { head: { quarantine: six }, base: { quarantine: six } } });
+      has(problems, /holds 6 entries, over its cap of 5/);
+      assert.ok(skipRed(problems), "a ledger over its cap holds nothing");
+      const { expires: _, ...noExpiry } = entry;
+      for (const bad of [noExpiry, { ...entry, issue: "7" }, { ...entry, expires: "soon" }])
+        has(verdict({ ...q, ledger: { head: { quarantine: [bad] }, base: { quarantine: [] } }, changed: ["tools/ci/quarantine.json"] }), /not \{file, title, issue, expires/);
+      has(verdict({ ...q, ledger: { head: {}, base: { quarantine: [] } } }), /has no "quarantine" list/);
+    });
   });
 });
 

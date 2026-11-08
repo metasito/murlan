@@ -29,7 +29,7 @@ function deleteBranchOnMerge(): string {
 
 // `runSettle` deletes no merged branch: GitHub does, and only while this setting is on. A branch left on
 // origin with no open pull request strands its ticket (#294).
-// ci.yml's harness job runs this file alone and fails if it skipped, so a missing token cannot pass there.
+// A skip here passes nowhere else in CI, so CI gate's verdict is red on it (RULES.md 53).
 test("the repository deletes a branch when its pull request merges", { skip: !ghHasCredentials() && "no gh credentials" }, () => {
   assert.equal(deleteBranchOnMerge(), "true", "Settings › General › Automatically delete head branches is off");
 });

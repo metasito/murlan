@@ -15,7 +15,10 @@ export default class PlaywrightResults {
 
   /** @param {any} test */
   static key(test) {
-    return { file: repoPath(test.location.file), title: test.titlePath().slice(3).join(" › "), project: test.parent.project()?.name ?? "" };
+    // `test.location` is where `test()` was called, which for a test a helper registers is the helper.
+    let spec = test.parent;
+    while (spec.type !== "file") spec = spec.parent;
+    return { file: repoPath(spec.location.file), title: test.titlePath().slice(3).join(" › "), project: test.parent.project()?.name ?? "" };
   }
 
   /** @param {any} config @param {any} suite */
