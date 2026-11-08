@@ -116,7 +116,7 @@ const royalLastPlayed = buildCombination([
 
 const passLastPlayed = buildCombination([mk("2", "spades")])!;
 const stageLastPlayed = buildCombination([mk("7", "spades"), mk("7", "hearts")])!;
-const CLOCK_DEMO_SECONDS = 10;
+export const CLOCK_DEMO_SECONDS = 10;
 
 const exchangeWinnerCard = mk("5", "diamonds");
 const exchangeDeadCard = mk("K", "clubs");

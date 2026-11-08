@@ -320,9 +320,11 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
   );
 }
 
-export function NoticeDisc({ children }: { children: ReactNode }) {
+/** A word, or a name's `initial`, which it draws as the name's first letter. */
+export function NoticeDisc({ children, initial }: { children?: ReactNode; initial?: string }) {
   const { paint, box, scale } = useInk("a panel part");
   const part = panelParts(scale);
+  const run = noticeRun(box, initial === undefined ? "disc" : "initial");
   return (
     <LinearGradient
       testID="notice-disc"
@@ -335,7 +337,9 @@ export function NoticeDisc({ children }: { children: ReactNode }) {
         makeShadow(Colors.goldLit, 0, 0, 0.3, mockupPx(DISC_GLOW, scale), 0),
       ]}
     >
-      <TableText style={[NOTICE_FACES[noticeRun(box, "disc").face], { color: paint.ink, fontSize: part.discFont }]}>{children}</TableText>
+      <TableText style={[NOTICE_FACES[run.face], run.upper && styles.upper, { color: paint.ink, fontSize: part.discFont }]}>
+        {initial === undefined ? children : initial.slice(0, 1)}
+      </TableText>
     </LinearGradient>
   );
 }

@@ -55,8 +55,10 @@ export function WhoStartsCard({ gated, scale, ...who }: WhoStarts & { gated: boo
       <View style={[styles.row, { gap: part.rowGap }]}>
         {card?.suit ? (
           <NoticeTile rank={rank} suit={card.suit} />
+        ) : who.starterIsViewer ? (
+          <NoticeDisc>{t("gameShared.you")}</NoticeDisc>
         ) : (
-          <NoticeDisc>{who.starterIsViewer ? t("gameShared.you") : who.starterName.slice(0, 1).toUpperCase()}</NoticeDisc>
+          <NoticeDisc initial={who.starterName} />
         )}
         <View style={[styles.words, { gap: part.subGap }]}>
           <NoticeLine line="main">

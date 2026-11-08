@@ -17,6 +17,10 @@ import { RECONNECT_CODES } from "../../components/table/connectionNote.ts";
 import { CHIP_KEYS } from "../../components/turnTimerUi.ts";
 import { COMBO_NAME_KEYS } from "../../lib/comboName.ts";
 import { SUPPORTED_LOCALES, catalogs } from "../../shared/i18n.ts";
+import { CLOCK_CEILING_MS, clockDigits } from "../../shared/clock.ts";
+import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
+import { CLOCK_DEMO_SECONDS } from "../../lib/tutorial/beats.ts";
+import { afkTimeoutMs, voteDeadlineMs } from "../../server/game/gameTimers.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (file: string) => readFileSync(path.join(repoRoot, file), "utf8");
@@ -121,4 +125,27 @@ test("a locale missing a key the table draws stops the generator rather than fal
     () => textMetrics({ root: repoRoot, locales: { ...catalogs, sq } }),
     new RegExp(`locales/sq\\.ts has no "${key!.replace(/\./g, "\\.")}"`)
   );
+});
+
+test("no clock a seat is given counts from more digits than the turn chip reserves for its ceiling", () => {
+  assert.deepEqual(TEXT_METRICS.dynamic.turn.strong.bound, { chars: clockDigits(CLOCK_CEILING_MS) });
+  for (const [name, ms] of [["an offline turn", TURN_TIMEOUT_MS], ["the tutorial's clock", CLOCK_DEMO_SECONDS * 1000]] as const)
+    assert.ok(ms <= CLOCK_CEILING_MS, `${name} counts from ${ms} ms, over the clock's ${CLOCK_CEILING_MS} ms ceiling`);
+  const envs = ["MURLAN_AFK_TIMEOUT_MS", "MURLAN_VOTE_DEADLINE_MS"] as const;
+  const saved = envs.map((env) => [env, process.env[env]] as const);
+  try {
+    for (const raw of [undefined, String(CLOCK_CEILING_MS * 10)]) {
+      for (const env of envs) {
+        if (raw === undefined) delete process.env[env];
+        else process.env[env] = raw;
+      }
+      for (const [name, ms] of [["afkTimeoutMs", afkTimeoutMs()], ["voteDeadlineMs", voteDeadlineMs()]] as const)
+        assert.ok(ms <= CLOCK_CEILING_MS, `${name} gives ${ms} ms with the environment ${raw ?? "unset"}, over the ${CLOCK_CEILING_MS} ms ceiling`);
+    }
+  } finally {
+    for (const [env, value] of saved) {
+      if (value === undefined) delete process.env[env];
+      else process.env[env] = value;
+    }
+  }
 });

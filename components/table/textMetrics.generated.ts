@@ -1734,9 +1734,9 @@ export const TEXT_METRICS = {
           "chars": 30
         }
       },
-      "disc": {
+      "initial": {
         "face": "bold",
-        "upper": false,
+        "upper": true,
         "tabular": false,
         "bound": {
           "chars": 1

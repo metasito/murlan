@@ -3,6 +3,9 @@ import { Hold, Motion, motionMs, Radius, type NoticePalette } from "../../lib/to
 import { cardScale, tableFontSize } from "../cardFaceModel.ts";
 import { CHIP_H } from "../seatLayout.ts";
 import { USERNAME_MAX } from "../../shared/username.ts";
+import { CLOCK_CEILING_MS, clockDigits } from "../../shared/clock.ts";
+import { SEATS_MAX } from "../../shared/seats.ts";
+import { createDeck, getCardDisplayRank } from "../../lib/game/gameEngine.ts";
 
 export type NoticeShape = "pill" | "chip" | "float" | "panel";
 export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad" | "solid" | "gold";
@@ -100,15 +103,15 @@ type RuntimePx = { chars: number } | { runMaxWidth: number } | "plate";
 
 /** The HUD combination pill's name run, in points at scale 1, so a long username ellipsizes rather than pushing the band wider than the felt has room for. */
 const HUD_NAME_MAX_W = 88;
-/** A countdown's seconds, a card's rank ("10"), and a tally of at most four seats ("4/4"). */
-const CLOCK_CHARS = 2;
-const RANK_CHARS = 2;
-const TALLY_CHARS = 3;
+const CLOCK_CHARS = clockDigits(CLOCK_CEILING_MS);
+/** Only a suited card draws a tile. */
+const RANK_CHARS = Math.max(...createDeck().filter((card) => card.suit !== null).map((card) => getCardDisplayRank(card.rank).length));
+const TALLY_CHARS = `${SEATS_MAX}/${SEATS_MAX}`.length;
 
 const RUNTIME: { [K in NoticeKind]?: Partial<Record<NoticeRole, RuntimePx>> } = {
   hudCombo: { text: { runMaxWidth: HUD_NAME_MAX_W } },
   turn: { strong: { chars: CLOCK_CHARS } },
-  whoStarts: { name: { chars: USERNAME_MAX }, disc: { chars: 1 }, tile: { chars: RANK_CHARS } },
+  whoStarts: { name: { chars: USERNAME_MAX }, initial: { chars: 1 }, tile: { chars: RANK_CHARS } },
   trickWinner: { text: { chars: USERNAME_MAX } },
   rejectFloat: { text: "plate" },
   errorToast: { text: "plate" },
@@ -173,14 +176,14 @@ export const NOTICE_FACES = {
 
 export type NoticeRun = { face: keyof typeof NOTICE_FACES; upper: boolean; tabular: boolean };
 
-/** What a notice sets in a run of words: `NoticeText`'s plain and counted runs, `NoticeKey`, `NoticeDisc`, `NoticeName`, `NoticeTile`'s rank, `NoticeBadge` and `NoticeLine`'s three. */
-export type NoticeRole = "text" | "strong" | "key" | "disc" | "name" | "tile" | "badge" | PanelLine;
+/** What a notice sets in a run of words: `NoticeText`'s plain and counted runs, `NoticeKey`, `NoticeDisc`'s word and initial, `NoticeName`, `NoticeTile`'s rank, `NoticeBadge` and `NoticeLine`'s three. */
+export type NoticeRole = "text" | "strong" | "key" | "disc" | "initial" | "name" | "tile" | "badge" | PanelLine;
 
 export function noticeRun(box: NoticeBox, role: NoticeRole): NoticeRun {
   if (role === "text" || role === "strong") {
     return { face: role === "strong" || box.bold ? "bold" : "regular", upper: box.upper, tabular: role === "strong" };
   }
-  if (role === "key") return { face: "bold", upper: true, tabular: false };
+  if (role === "key" || role === "initial") return { face: "bold", upper: true, tabular: false };
   if (role === "disc" || role === "name" || role === "tile") return { face: "bold", upper: false, tabular: false };
   if (role === "badge") return { face: "bold", upper: false, tabular: true };
   return { face: PANEL_LINES[role].weight === 700 ? "bold" : "regular", upper: role === "hint", tabular: false };

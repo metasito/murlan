@@ -4,7 +4,8 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { ReactElement } from 'react';
 import { StyleSheet } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { act, render } from '@testing-library/react-native';
 import type { TestInstance } from 'test-renderer';
 import type { TFn } from '@/lib/i18n';
 import { TEXT_METRICS } from '@/components/table/textMetrics.generated';
@@ -13,6 +14,8 @@ import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/g
 import { HudComboPill, TurnChip } from '@/components/table/notices/hud';
 import { WhoStartsCard } from '@/components/table/notices/panels';
 import { PassFloat } from '@/components/table/notices/floats';
+import { EndMatchVote, RoundVote } from '@/components/table/notices/netNotes';
+import { GameTable } from '@/components/GameTable';
 import { linkNote, RECONNECT_CODES, tableConnection, type ConnectionNote } from '@/components/table/connectionNote';
 import { exchangeNotes, type ExchangeView } from '@/components/table/exchangeModel';
 import { comboLabel, playerLabel } from '@/components/table/spokenLabels';
@@ -20,7 +23,24 @@ import { floatLabels, nextFloat } from '@/components/table/floatModel';
 import { turnPresentation } from '@/components/turnTimerUi';
 import { LINK_PILLS } from '@/lib/ownLink';
 import { COMBO_NAME_KEYS } from '@/lib/comboName';
-import { START_CARD, type Card, type CombinationType, type Player, type StartReason } from '@/lib/game/gameEngine';
+import {
+  START_CARD,
+  TURN_TIMEOUT_MS,
+  createDeck,
+  type Card,
+  type Combination,
+  type CombinationType,
+  type GameState,
+  type Player,
+  type StartReason,
+} from '@/lib/game/gameEngine';
+import { CLOCK_DEMO_SECONDS } from '@/lib/tutorial/beats';
+import { CLOCK_CEILING_MS } from '@/shared/clock';
+import { SEATS_MAX } from '@/shared/seats';
+import { Motion } from '@/lib/theme';
+import { bootFeedback } from './helpers/feedback';
+import { setMotion } from './harness/env';
+import { aThreePlayed } from '../support/game';
 import type { ExchangeAnnounceData } from '@/lib/game/sharedGameFlow';
 import type { LegStage } from '@/lib/timeline/exchangeTimeline';
 
@@ -58,12 +78,26 @@ jest.mock('@/components/table/TableNotice', () => {
     NoticeGlyph: mark('NoticeGlyph', () => ({ icon: true })),
     NoticeText: mark('NoticeText', (p) => ({ noticeRole: p.strong ? 'strong' : 'text' })),
     NoticeKey: mark('NoticeKey', () => ({ noticeRole: 'key' })),
-    NoticeDisc: mark('NoticeDisc', () => ({ noticeRole: 'disc' })),
+    NoticeDisc: mark('NoticeDisc', (p) => ({ noticeRole: p.initial === undefined ? 'disc' : 'initial' })),
     NoticeName: mark('NoticeName', () => ({ noticeRole: 'name' })),
     NoticeTile: mark('NoticeTile', () => ({ noticeRole: 'tile' })),
     NoticeBadge: mark('NoticeBadge', () => ({ noticeRole: 'badge' })),
     NoticeLine: mark('NoticeLine', (p) => ({ noticeRole: p.line })),
   };
+});
+
+// A live region is spoken, never drawn.
+jest.mock('@/lib/a11y', () => {
+  const { createElement } = jest.requireActual<typeof import('react')>('react');
+  const actual = jest.requireActual<typeof import('@/lib/a11y')>('@/lib/a11y');
+  return { ...actual, A11yStatus: (props: never) => createElement('mock-mark', { spoken: true }, createElement(actual.A11yStatus, props)) };
+});
+
+// The board's own buttons, which a notice stands beside and which are not a notice's words.
+jest.mock('@/components/table/matchBoard', () => {
+  const { createElement } = jest.requireActual<typeof import('react')>('react');
+  const actual = jest.requireActual<typeof import('@/components/table/matchBoard')>('@/components/table/matchBoard');
+  return { ...actual, BoardButton: (props: never) => createElement('mock-mark', { control: true }, createElement(actual.BoardButton, props)) };
 });
 
 const t = mockTag as unknown as TFn;
@@ -82,7 +116,7 @@ const STYLE = new Map<string, Measured>();
 for (const [kind, runs] of Object.entries(RUNS)) for (const [rk, run] of Object.entries(runs)) STYLE.set(`${kind}|${rk.split(':')[0]}`, run);
 for (const [kind, roles] of Object.entries(DYNAMIC)) for (const [role, run] of Object.entries(roles)) STYLE.set(`${kind}|${role}`, run);
 
-const ROLES = ['text', 'strong', 'key', 'disc', 'name', 'tile', 'badge', 'main', 'sub', 'hint'] as const satisfies readonly NoticeRole[];
+const ROLES = ['text', 'strong', 'key', 'disc', 'initial', 'name', 'tile', 'badge', 'main', 'sub', 'hint'] as const satisfies readonly NoticeRole[];
 const everyRole: [Exclude<NoticeRole, (typeof ROLES)[number]>] extends [never] ? true : never = true;
 
 const FACE_OF = new Map(Object.entries(NOTICE_FACES).map(([face, f]) => [f.fontFamily as string, face]));
@@ -95,21 +129,33 @@ const failures: string[] = [];
 type Style = { fontFamily?: string; textTransform?: string; fontVariant?: string[]; maxWidth?: number };
 const flat = (node: TestInstance) => (StyleSheet.flatten(node.props.style) ?? {}) as Style;
 
-/** `words` false for a fixture whose words are placeholders the gallery passes in: only its faces count then. */
+/**
+ * `words` false for a fixture whose words are placeholders the gallery passes in: only its faces count then.
+ * `strict` false for a whole table, where most Text is not a notice's.
+ */
 async function collect(where: string, element: ReactElement, words = true) {
   const view = await render(element);
-  for (const host of view.container.queryAll((n) => n.type === 'Text')) {
+  scan(where, view.container, words, true);
+  await view.unmount();
+}
+
+function scan(where: string, container: TestInstance, words: boolean, strict: boolean) {
+  for (const host of container.queryAll((n) => n.type === 'Text')) {
     let role: NoticeRole | null = null;
     let notice: TestInstance | null = null;
-    let icon = false;
+    let unseen = false;
     const style = { ...flat(host) };
     for (let up = host.parent; up && !notice; up = up.parent) {
-      if (up.props.icon) icon = true;
+      if (up.props.icon || up.props.spoken || up.props.control) unseen = true;
       if (role === null && up.props.noticeRole) role = up.props.noticeRole as NoticeRole;
       if (up.type === 'Text') for (const [k, v] of Object.entries(flat(up))) if (k !== 'maxWidth') style[k as keyof Style] ??= v as never;
       if (up.props.notice) notice = up;
     }
-    if (!notice || icon) continue;
+    if (unseen) continue;
+    if (!notice) {
+      if (strict) failures.push(`${where}: draws a Text outside any TableNotice`);
+      continue;
+    }
     const kind = notice.props.notice as NoticeKind;
     const at = `${where} (${kind})`;
     kindsSeen.add(kind);
@@ -131,6 +177,8 @@ async function collect(where: string, element: ReactElement, words = true) {
     }
     const residue = text.replace(/⟦[^⟧]*⟧/g, '').replace(/⟨[^⟩]*⟩/g, '');
     if (residue === '') continue;
+    if (want && !want.upper && /\p{L}.*\p{L}/u.test(residue) && !/\p{Ll}/u.test(residue))
+      failures.push(`${at}: ${JSON.stringify(residue)} is cased in the string, for a ${role} run measured as drawn in its own case`);
     drawn.add(`${kind}|${role}|*`);
     const bound = DYNAMIC[kind]?.[role]?.bound;
     if (!bound) {
@@ -147,7 +195,6 @@ async function collect(where: string, element: ReactElement, words = true) {
         failures.push(`${at}: ${role} is clipped at ${width}×${lines} lines, bounded at ${bound.maxWidth}×${bound.lines}`);
     }
   }
-  await view.unmount();
 }
 
 const PLACEHOLDER_WORDS = new Set<NoticeKind>(['hudCombo', 'turn', 'passFloat']);
@@ -211,8 +258,8 @@ const presented = (o: Partial<Parameters<typeof turnPresentation>[0]>) =>
     ...o,
   }).chip.text;
 
-const chip = (chipText: string, connection: ConnectionNote | null = null, active = false) => (
-  <TurnChip scale={1} lit={false} chipText={chipText} spokenSeat="" seconds={30} resetKey="r" frozen active={active} connection={connection} />
+const chip = (chipText: string, connection: ConnectionNote | null = null, active = false, seconds = 30) => (
+  <TurnChip scale={1} lit={false} chipText={chipText} spokenSeat="" seconds={seconds} resetKey="r" frozen active={active} connection={connection} />
 );
 
 const START: StartReason = { type: 'start_card', card: card('7', 'hearts'), playerIdx: 1 };
@@ -243,7 +290,12 @@ async function renderEverything() {
     ['their turn', {}],
   ] as const)
     await collect(`the chip, ${name}`, chip(presented(o)));
-  await collect('the clock', chip(presented({ shownTurnIsMine: true }), null, true));
+  for (const [name, ms] of [
+    ['the ceiling', CLOCK_CEILING_MS],
+    ['an offline turn', TURN_TIMEOUT_MS],
+    ["the tutorial's", CLOCK_DEMO_SECONDS * 1000],
+  ] as const)
+    await collect(`the clock at ${name}`, chip(presented({ shownTurnIsMine: true }), null, true, Math.ceil(ms / 1000)));
   const reconnects = RECONNECT_CODES.map((code) => ({ code, params: { username: 'Besnik' } }));
   for (const pill of LINK_PILLS)
     for (const reconnect of reconnects) {
@@ -256,6 +308,12 @@ async function renderEverything() {
   const auto = nextFloat(passed, { autoPassed: true, withdrawn: false }, floatLabels(t))!;
   for (const float of [passed, auto]) await collect(`the ${float.kind} float`, <PassFloat scale={1} text={float.text} />);
 
+  for (const rank of new Set(createDeck().filter((c) => c.suit !== null).map((c) => c.rank)))
+    await collect(`a seat holds the ${rank}`, who({ type: 'start_card', card: card(rank, 'clubs'), playerIdx: 1 }, false, false));
+  const full = { votes: SEATS_MAX, total: SEATS_MAX, onPress: () => {} };
+  await collect('every seat voted to end', <EndMatchVote scale={1} voted={false} {...full} />);
+  await collect('every seat is ready', <RoundVote scale={1} voted={false} {...full} />);
+
   for (const gated of [true, false]) {
     await collect('a seat holds a card', who(START, false, gated));
     await collect('you hold a card', who(START, true, gated));
@@ -267,10 +325,54 @@ async function renderEverything() {
   }
 }
 
+const TABLE_METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
+const KING: Card = card('K', 'hearts');
+const LED: Combination = { type: 'single', cards: [KING], strength: 13 };
+const tableAt = (over: Partial<GameState>): GameState => ({
+  players: [player('Ana'), player('Besnik')],
+  currentTurnIndex: 0,
+  lastPlayedCombination: null,
+  lastPlayedBy: 1,
+  passCount: 0,
+  gameMode: 'free_for_all',
+  roundOver: false,
+  finishingOrder: [],
+  openingCard: null,
+  playedRanks: aThreePlayed(),
+  lastMove: { seq: 0, kind: 'deal' },
+  ...over,
+});
+
+/** The table names who played and who took the trick itself, so its own words are held to the metrics too. */
+async function renderTables() {
+  await setMotion('on');
+  jest.useFakeTimers();
+  await bootFeedback();
+  for (const [name, gameState] of [
+    ['you took the trick', tableAt({ lastPlayedBy: 0, currentTurnIndex: 0, lastMove: { seq: 2, kind: 'pass', seat: 1, closedTrick: true } })],
+    ['another seat took the trick', tableAt({ lastPlayedBy: 1, lastMove: { seq: 2, kind: 'pass', seat: 0, closedTrick: true } })],
+    ['your play on the pile', tableAt({ lastPlayedCombination: LED, lastPlayedBy: 0, currentTurnIndex: 1, lastMove: { seq: 1, kind: 'play', seat: 0 } })],
+    ["another seat's play on the pile", tableAt({ lastPlayedCombination: LED, lastPlayedBy: 1, lastMove: { seq: 1, kind: 'play', seat: 1 } })],
+  ] as const) {
+    const view = await render(
+      <SafeAreaProvider initialMetrics={TABLE_METRICS}>
+        <GameTable gameState={gameState} viewerSeat={0} onPlay={() => {}} onPass={() => {}} onQuit={() => {}} onExchangeGive={() => {}} scrubbed />
+      </SafeAreaProvider>,
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(Motion.mark.enter + 16);
+    });
+    scan(`the table, ${name}`, view.container, true, false);
+    await view.unmount();
+  }
+  jest.useRealTimers();
+}
+
 describe('the text metrics are what the notices draw', () => {
   it('every Text a notice draws is measured, in its face and case, and every measured entry is drawn', async () => {
     expect(everyRole).toBe(true);
     await renderEverything();
+    await renderTables();
     expect(failures).toEqual([]);
     expect([...SPEC].filter((entry) => !drawn.has(entry)).sort()).toEqual([]);
     expect([...drawn].filter((entry) => !SPEC.has(entry)).sort()).toEqual([]);
