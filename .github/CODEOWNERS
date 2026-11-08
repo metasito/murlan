@@ -28,6 +28,6 @@
 /tools/ci/quarantine.json               @rotonmeta
 /tools/ci/results-*.mjs                 @rotonmeta
 /tools/ci/gate.mjs                      @rotonmeta
-/tools/ci/scope.mjs                     @rotonmeta
+/tools/ci/scope*.mjs                    @rotonmeta
 /tests/tooling/testVerdict.test.ts      @rotonmeta
 /.github/workflows/ci.yml               @rotonmeta

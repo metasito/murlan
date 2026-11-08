@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { prSpec } from "../../tests/e2e/tiers.mjs";
+import { scopeOf } from "./scopeOf.mjs";
 
 export const LEDGER = "tools/ci/quarantine.json";
 export const LABEL = "ci-flake";
@@ -22,16 +23,18 @@ const DAY = 86_400_000;
 export const NON_TEST_JOBS = ["scope", "secrets", "lint", "android-build", "ios-build", "browser-report", "build", "timing-budget"];
 
 /**
- * Every suite a pull request's run executes, the jobs that run it, and the files it must have
- * heard pass. A floor is the fewest files the listing may hold: a listing that shrinks past it is
- * a suite moved out of sight, not a smaller suite.
- * @type {{ name: string, jobs: string[], runner: "node" | "jest" | "playwright", lists: (file: string) => boolean, floor: number }[]}
+ * Every suite a pull request's run executes, the jobs that run it, the files it must have heard
+ * pass, and the scope (tools/ci/scopeOf.mjs) under which it must run: ci.yml's job conditions. A
+ * floor is the fewest files the listing may hold: a listing that shrinks past it is a suite moved
+ * out of sight, not a smaller suite.
+ * @typedef {{ app: boolean, harness: boolean, scans: boolean }} Scope
+ * @type {{ name: string, jobs: string[], runner: "node" | "jest" | "playwright", lists: (file: string) => boolean, runs: (scope: Scope) => boolean, floor: number }[]}
  */
 export const SUITES = [
-  { name: "npm test", jobs: ["verify"], runner: "node", lists: (f) => /^tests\/.+\.test\.ts$/.test(f), floor: 400 },
-  { name: "npm run loop:test", jobs: ["harness", "harness-windows"], runner: "node", lists: (f) => /^tools\/loop\/tests\/.+\.test\.ts$/.test(f), floor: 30 },
-  { name: "npm run test:native", jobs: ["native"], runner: "jest", lists: (f) => /^tests\/native\/.+\.test\.tsx$/.test(f), floor: 200 },
-  { name: "npm run test:e2e", jobs: ["browser"], runner: "playwright", lists: (f) => f.startsWith("tests/e2e/") && prSpec(f.slice("tests/e2e/".length)), floor: 80 },
+  { name: "npm test", jobs: ["verify"], runner: "node", lists: (f) => /^tests\/.+\.test\.ts$/.test(f), runs: (s) => s.app || s.scans, floor: 400 },
+  { name: "npm run loop:test", jobs: ["harness", "harness-windows"], runner: "node", lists: (f) => /^tools\/loop\/tests\/.+\.test\.ts$/.test(f), runs: (s) => s.harness, floor: 30 },
+  { name: "npm run test:native", jobs: ["native"], runner: "jest", lists: (f) => /^tests\/native\/.+\.test\.tsx$/.test(f), runs: (s) => s.app, floor: 200 },
+  { name: "npm run test:e2e", jobs: ["browser"], runner: "playwright", lists: (f) => f.startsWith("tests/e2e/") && prSpec(f.slice("tests/e2e/".length)), runs: (s) => s.app, floor: 80 },
 ];
 
 /** `test-results-<job>-<shard>-<attempt>`, ci.yml's upload name. */
@@ -39,8 +42,9 @@ const NAME = /^test-results-(.+)-(\d+)-(\d+)$/;
 
 /** @typedef {{ file: string, title: string, issue: number, expires: string }} Quarantined */
 /** @typedef {{ name: string, runs: { file: string, records: any[] }[] }} Artifact */
-/** @typedef {{ open: boolean, labelled: boolean }} Ticket */
+/** @typedef {{ open: boolean, labelled: boolean, created: number }} Ticket */
 /**
+ * `scope` is null only on a push to main, whose scope job may skip a tree its pull request passed.
  * @typedef {{
  *   needs: Record<string, { result?: string } | undefined>,
  *   artifacts: Artifact[],
@@ -48,6 +52,8 @@ const NAME = /^test-results-(.+)-(\d+)-(\d+)$/;
  *   ledger: { head: unknown, base: unknown },
  *   tickets: Map<number, Ticket>,
  *   changed: string[],
+ *   renamed: [string, string][],
+ *   scope: Scope | null,
  *   now: number,
  *   suites?: typeof SUITES,
  * }} VerdictInput
@@ -70,7 +76,9 @@ const key = (/** @type {{ file: string, title: string }} */ r) => `${r.file}\0${
 
 /**
  * Which head entries hold a skip. An entry the base does not hold exactly is an addition, which
- * lands only in a pull request touching the ledger alone, expiring within QUARANTINE_DAYS.
+ * lands only in a pull request touching the ledger alone. Every entry expires within
+ * QUARANTINE_DAYS of its issue being opened, and an issue holds one test, so renewing means a new
+ * issue for a test the base holds under none.
  * @param {Pick<VerdictInput, "ledger" | "tickets" | "changed" | "now">} input
  */
 function quarantine({ ledger, tickets, changed, now }) {
@@ -80,8 +88,9 @@ function quarantine({ ledger, tickets, changed, now }) {
   const base = ledger.base === null ? [] : entries(ledger.base);
   for (const l of [head, base]) if (typeof l === "string") problems.push(l);
   const list = typeof head === "string" ? [] : head;
+  const baseList = typeof base === "string" ? [] : base;
   const exact = (/** @type {Quarantined} */ e) => `${key(e)}\0${e.issue}\0${e.expires}`;
-  const held = new Set((typeof base === "string" ? [] : base).map(exact));
+  const held = new Set(baseList.map(exact));
   const alone = changed.length === 1 && changed[0] === LEDGER;
   if (list.length > QUARANTINE_CAP) problems.push(`${LEDGER} holds ${list.length} entries, over its cap of ${QUARANTINE_CAP}`);
   /** @type {Set<string>} */
@@ -89,13 +98,16 @@ function quarantine({ ledger, tickets, changed, now }) {
   for (const e of list) {
     const red = problems.length;
     const expiry = Date.parse(e.expires) + DAY;
-    if (!held.has(exact(e))) {
-      if (!alone) problems.push(`${LEDGER} adds ${named(e)} (#${e.issue}) beside other changes; a quarantine lands in a pull request of its own`);
-      if (expiry - now > (QUARANTINE_DAYS + 1) * DAY) problems.push(`${LEDGER} quarantines ${named(e)} until ${e.expires}, more than ${QUARANTINE_DAYS} days out`);
-    }
+    if (!held.has(exact(e)) && !alone) problems.push(`${LEDGER} adds ${named(e)} (#${e.issue}) beside other changes; a quarantine lands in a pull request of its own`);
     if (now >= expiry) problems.push(`${LEDGER}'s quarantine of ${named(e)} expired on ${e.expires}`);
+    for (const other of [...list, ...baseList]) {
+      if (other.issue === e.issue && key(other) !== key(e)) problems.push(`${LEDGER} holds ${named(e)} under #${e.issue}, which already holds ${named(other)}; an issue quarantines one test`);
+      if (other.issue !== e.issue && key(other) === key(e) && baseList.includes(other)) problems.push(`${LEDGER} moves ${named(e)} from #${other.issue} to #${e.issue}; a quarantine is not renewed under a new issue`);
+    }
     const t = tickets.get(e.issue);
     if (!t?.open || !t.labelled) problems.push(`${LEDGER} holds ${named(e)} under #${e.issue}, which is not an open issue labelled ${LABEL}`);
+    else if (Date.parse(e.expires) > Math.floor(t.created / DAY) * DAY + QUARANTINE_DAYS * DAY)
+      problems.push(`${LEDGER} quarantines ${named(e)} until ${e.expires}, more than ${QUARANTINE_DAYS} days after #${e.issue} was opened`);
     if (problems.length === red && list.length <= QUARANTINE_CAP) holds.add(key(e));
   }
   return { problems, holds };
@@ -126,10 +138,12 @@ function attempts(artifacts) {
  * @param {VerdictInput} input
  * @returns {string[]} every reason the run is red; none is green
  */
-export function verdict({ needs, artifacts, listing, ledger, tickets, changed, now, suites = SUITES }) {
+export function verdict({ needs, artifacts, listing, ledger, tickets, changed, renamed, scope, now, suites = SUITES }) {
   const { problems, parsed } = attempts(artifacts);
   const { problems: ledgerProblems, holds: quarantined } = quarantine({ ledger, tickets, changed, now });
   problems.push(...ledgerProblems);
+  for (const [from, to] of renamed)
+    for (const s of suites) if (s.lists(from) && !s.lists(to)) problems.push(`${from} is renamed to ${to}, out of ${s.name}'s listing`);
   const judged = new Set(suites.flatMap((s) => s.jobs));
   for (const job of Object.keys(needs)) {
     if (!judged.has(job) && !NON_TEST_JOBS.includes(job)) problems.push(`CI gate needs ${job}, which is neither a judged test job (SUITES) nor in NON_TEST_JOBS in tools/ci/test-verdict.mjs`);
@@ -146,6 +160,7 @@ export function verdict({ needs, artifacts, listing, ledger, tickets, changed, n
     for (const job of suite.jobs) {
       const result = needs[job]?.result;
       if (result === undefined) problems.push(`CI gate does not need ${job}, so ${suite.name} is not judged`);
+      if (result === "skipped" && scope && suite.runs(scope)) problems.push(`${job} was skipped, but the base's scope of this change runs ${suite.name}`);
       if (result === undefined || result === "skipped") continue;
       const mine = parsed.filter((a) => a.job === job);
       if (!mine.length) problems.push(`${job} ran (${result}) and uploaded no ${ARTIFACT_PREFIX}${job}-* results`);
@@ -160,11 +175,16 @@ export function verdict({ needs, artifacts, listing, ledger, tickets, changed, n
           else if (!Array.isArray(first.filters) || first.filters.length) problems.push(`${where} ran filtered by name (${[first.filters].flat().join(", ") || "unrecorded"}); a filtered-out test reports nothing at all`);
           if (a.newest && last?.type !== "end") problems.push(`${where} ends before its runner finished`);
           else if (a.newest && last.ok !== true) problems.push(`${where}: ${suite.runner} reported the run as not green`);
+          /** @type {Set<string>} */
+          const seen = new Set();
           for (const r of run.records) {
             if (r?.type !== "test") {
               if (r?.type !== "run" && r?.type !== "end") problems.push(`${where} holds a record that is not a result (${String(r?.type)})`);
               continue;
             }
+            const once = `${key(r)}\0${r.project ?? ""}\0${r.attempt ?? 0}`;
+            if (!r.suite && seen.has(once)) problems.push(`${named(r)} is reported twice in ${where}; one title's pass would be heard for the other`);
+            seen.add(once);
             const tried = a.attempt > 1 ? ` (in run attempt ${a.attempt}; re-running a failed job is a retry)` : "";
             if (r.status === "failed") problems.push(`${named(r)} failed${tried}`);
             if ((r.attempt ?? 0) > 0 || (r.retries ?? 0) > 0) problems.push(`${named(r)} ran with retries (attempt ${r.attempt ?? 0}, ${r.retries ?? 0} allowed); a flake is fixed, never retried`);
@@ -222,6 +242,21 @@ const gh = (args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignor
 /** @type {Exec} */
 const git = (args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
 
+/** @param {string} status `git diff --name-status -z`, whose renames carry two paths */
+export function renames(status) {
+  const f = status.split("\0");
+  /** @type {[string, string][]} */
+  const out = [];
+  for (let i = 0; i < f.length - 1; ) {
+    const s = f[i] ?? "";
+    if (/^[RC]/.test(s)) {
+      if (s[0] === "R") out.push([f[i + 1] ?? "", f[i + 2] ?? ""]);
+      i += 3;
+    } else i += 2;
+  }
+  return out;
+}
+
 /**
  * @param {Exec} at
  * @param {string} rev
@@ -232,8 +267,9 @@ function ledgerAt(at, rev) {
 }
 
 /**
- * `HEAD` is the commit the run tested; `BASE` the base branch's tip it merges onto, or `HEAD` on a
- * push. `NEEDS` is the workflow's `toJSON(needs)`.
+ * `HEAD` is the commit the run tested; `BASE` the base branch's tip it merges onto, main's tip for
+ * a dispatch or a schedule, or `HEAD` on a push to main alone. `NEEDS` is the workflow's
+ * `toJSON(needs)`; `EVENT` and `REF` are the run's `github.event_name` and `github.ref`.
  * @param {Record<string, string | undefined>} env
  * @param {{ gh?: Exec, git?: Exec, log?: (line: string) => void }} [io]
  */
@@ -242,6 +278,11 @@ export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}
   const runId = Number(env.GITHUB_RUN_ID);
   if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || !Number.isInteger(runId) || runId <= 0 || !env.BASE) {
     log("::error::GITHUB_REPOSITORY, GITHUB_RUN_ID and BASE must name the run and the base it merges onto.");
+    return 1;
+  }
+  const mainPush = env.EVENT === "push" && env.REF === "refs/heads/main";
+  if (env.BASE === "HEAD" && !mainPush) {
+    log(`::error::BASE is HEAD on a ${escape(env.EVENT)} of ${escape(env.REF)}; only a push to main is its own base.`);
     return 1;
   }
   const dir = mkdtempSync(path.join(tmpdir(), "test-results-"));
@@ -258,12 +299,15 @@ export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}
     /** @type {Map<number, Ticket>} */
     const tickets = new Map();
     for (const n of issues) {
-      const t = JSON.parse(hub(["api", `repos/${repo}/issues/${n}`, "--jq", `{state, pr: (.pull_request != null), labels: [.labels[].name]}`]));
-      tickets.set(n, { open: t.state === "open" && !t.pr, labelled: t.labels.includes(LABEL) });
+      const t = JSON.parse(hub(["api", `repos/${repo}/issues/${n}`, "--jq", `{state, created_at, pr: (.pull_request != null), labels: [.labels[].name]}`]));
+      tickets.set(n, { open: t.state === "open" && !t.pr, labelled: t.labels.includes(LABEL), created: Date.parse(t.created_at) });
     }
     const listing = at(["ls-tree", "-r", "-z", "--name-only", "HEAD"]).split("\0").filter(Boolean);
-    const changed = env.BASE === "HEAD" ? [] : at(["diff", "--name-only", "-z", env.BASE, "HEAD"]).split("\0").filter(Boolean);
-    const problems = verdict({ needs, artifacts, listing, ledger, tickets, changed, now: Date.now() });
+    const own = env.BASE === "HEAD";
+    const changed = own ? [] : at(["diff", "--name-only", "-z", env.BASE, "HEAD"]).split("\0").filter(Boolean);
+    const renamed = own ? [] : renames(at(["diff", "-M", "--name-status", "-z", env.BASE, "HEAD"]));
+    const scope = own ? null : scopeOf(changed);
+    const problems = verdict({ needs, artifacts, listing, ledger, tickets, changed, renamed, scope, now: Date.now() });
     const records = artifacts.reduce((n, a) => n + a.runs.reduce((m, r) => m + r.records.length, 0), 0);
     for (const p of problems.slice(0, 100)) log(`::error::${escape(p)}`);
     if (problems.length > 100) log(`::error::and ${problems.length - 100} more`);

@@ -36,7 +36,8 @@ export default class PlaywrightResults {
   /** @param {any} test @param {any} result */
   onTestEnd(test, result) {
     this.ended.add(test.id);
-    const status = result.status === "skipped" ? "skipped" : result.status === test.expectedStatus ? "passed" : "failed";
+    // A `test.fail()` that fails as declared is Playwright's pass, but it shows nothing works.
+    const status = result.status === "skipped" ? "skipped" : result.status !== test.expectedStatus ? "failed" : test.expectedStatus === "passed" ? "passed" : "todo";
     this.out.write({ type: "test", ...PlaywrightResults.key(test), status, attempt: result.retry, retries: test.retries });
   }
 

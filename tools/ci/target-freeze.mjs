@@ -47,7 +47,7 @@ export const JUDGES = Object.freeze([
   { pattern: "tools/ci/quarantine.json", what: "the skips the verdict excuses" },
   { pattern: "tools/ci/results-*.mjs", what: "the runners' results reporters" },
   { pattern: "tools/ci/gate.mjs", what: "the needs CI gate requires" },
-  { pattern: "tools/ci/scope.mjs", what: "which suites a change runs" },
+  { pattern: "tools/ci/scope*.mjs", what: "which suites a change runs" },
   { pattern: "tests/tooling/testVerdict.test.ts", what: "the plants the verdict reds on" },
   { pattern: ".github/workflows/ci.yml", what: "the jobs, their uploads and the gate that reads them" },
 ]);

@@ -2,7 +2,7 @@
 import { openResults, repoPath } from "./results-writer.mjs";
 
 /** @type {Record<string, import("./results-writer.mjs").Status>} */
-const STATUS = { passed: "passed", failed: "failed", todo: "todo", pending: "skipped", skipped: "skipped", disabled: "skipped", focused: "passed" };
+const STATUS = { passed: "passed", failed: "failed", todo: "todo", pending: "skipped", skipped: "skipped", disabled: "skipped" };
 
 export default class JestResults {
   /** @param {any} globalConfig */
@@ -20,7 +20,7 @@ export default class JestResults {
     if (result.testExecError) this.out.write({ type: "test", file, title: "(the file did not run)", status: "failed", project });
     for (const t of result.testResults) {
       const title = [...t.ancestorTitles, t.title].join(" › ");
-      this.out.write({ type: "test", file, title, status: STATUS[t.status] ?? "failed", attempt: Math.max(0, (t.invocations ?? 1) - 1), project });
+      this.out.write({ type: "test", file, title, status: t.failing && t.status === "passed" ? "todo" : (STATUS[t.status] ?? "failed"), attempt: Math.max(0, (t.invocations ?? 1) - 1), project });
     }
   }
 

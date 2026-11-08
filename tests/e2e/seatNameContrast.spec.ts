@@ -227,9 +227,9 @@ for (const phone of PHONES) test.describe(phone.name, () => {
     for (const { what, ratio } of unlit) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);
   });
 
-  test(`${phone.name}: the lit seat name clears 4.5:1 over the lamp's pool`, () => {
+  test(`${phone.name}: the lit seat name reads short of 4.5:1 over the lamp's pool, as ruled`, () => {
     // Owner ruling 2026-10-07: the felt is not dimmed under the names, so the lit name may read short.
-    test.fail();
-    for (const { what, ratio } of byPhone.get(phone.name)!.filter((n) => n.lit).flatMap((n) => n.ratios)) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);
+    const lit = byPhone.get(phone.name)!.filter((n) => n.lit).flatMap((n) => n.ratios.map((r) => r.ratio));
+    expect(Math.min(...lit), "every lit name now clears 4.5:1: retire this ruling's test").toBeLessThan(BODY_MIN);
   });
 });

@@ -1092,18 +1092,28 @@ jobs:
         run: node tools/ci/gate.mjs
       # The base branch's judge, so a pull request that leaves this workflow alone cannot loosen the
       # verdict on itself; one that edits this step can (docs/agents/suites.md § A flake is fixed,
-      # Limits). `|| from=HEAD` is bootstrap for a base that predates the judge: remove it once on main.
+      # Limits). Only a base without tools/ci/results-writer.mjs, which predates the results the
+      # judge reads, lets the head judge itself.
       - name: Every test that ran passed, once, and none was skipped unheard
         if: ${{ !cancelled() }}
         env:
           NEEDS: ${{ toJSON(needs) }}
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
-          base=HEAD
-          [ "$EVENT" = pull_request ] && base=HEAD^1
+          case "$EVENT $REF" in
+            "pull_request "*) base=HEAD^1 ;;
+            "push refs/heads/main") base=HEAD ;;
+            *) git fetch --no-tags --depth=1 origin main && base=$(git rev-parse FETCH_HEAD) ;;
+          esac
           mkdir -p "$RUNNER_TEMP/judge"
-          from=$base
-          git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null || from=HEAD
+          if git cat-file -e "$base:tools/ci/results-writer.mjs" 2>/dev/null; then
+            git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null || { echo "::error::base has no judge"; exit 1; }
+            from=$base
+          else
+            echo "::warning::the base predates the runners' results, so the head judges its own run"
+            from=HEAD
+          fi
           git archive "$from" tools/ci scripts/lib tests/e2e/tiers.mjs | tar -x -C "$RUNNER_TEMP/judge"
           BASE=$base node "$RUNNER_TEMP/judge/tools/ci/test-verdict.mjs"

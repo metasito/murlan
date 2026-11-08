@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect } from "./fixtures";
+import { test, expect, failOnBrowserErrors } from "./fixtures";
 
 const REDUCED = "(prefers-reduced-motion: reduce)";
 
@@ -7,20 +7,26 @@ async function plant(page: Page, kind: "error" | "warn"): Promise<void> {
   await Promise.all([page.waitForEvent("console"), page.evaluate((k) => console[k]("planted"), kind)]);
 }
 
-test.describe("a browser error fails a test that never names a fixture", () => {
-  test.fail();
+/** What the auto fixture's teardown would throw, emptied after so the test itself passes. */
+function teardownFails(browserErrors: { entries: string[] }): void {
+  expect(() => failOnBrowserErrors(browserErrors.entries)).toThrow(/Browser reported 1 error/);
+  browserErrors.entries.length = 0;
+}
 
-  test("on the page fixture", async ({ page }) => {
+test.describe("a browser error fails the test, on every page", () => {
+  test("on the page fixture", async ({ page, browserErrors }) => {
     await plant(page, "error");
+    teardownFails(browserErrors);
   });
 
-  test("on a page of a context the spec opened", async ({ browser }) => {
+  test("on a page of a context the spec opened", async ({ browser, browserErrors }) => {
     const context = await browser.newContext();
     await plant(await context.newPage(), "warn");
     await context.close();
+    teardownFails(browserErrors);
   });
 
-  test("on a page the browser opened directly", async ({ browser }) => {
+  test("on a page the browser opened directly", async ({ browser, browserErrors }) => {
     const page = await browser.newPage();
     await Promise.all([
       page.waitForEvent("pageerror"),
@@ -29,6 +35,7 @@ test.describe("a browser error fails a test that never names a fixture", () => {
       }),
     ]);
     await page.close();
+    teardownFails(browserErrors);
   });
 });
 

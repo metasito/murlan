@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { parse } from "yaml";
-import { escape, readArtifacts, run, SUITES, verdict } from "../../tools/ci/test-verdict.mjs";
+import { escape, LEDGER, readArtifacts, renames, run, SUITES, verdict } from "../../tools/ci/test-verdict.mjs";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const ci = path.join(root, "tools", "ci");
@@ -47,6 +47,8 @@ const E2E_SKIPS = under("e2e/skips.spec.ts");
 const GLOB_OK = under("b/ok.test.ts");
 const GLOB_NONE = under("b/none.test.ts");
 const GLOB_EXIT = under("b/exit.test.ts");
+const EXITS = under("c/exits.test.ts");
+const TWINS = under("c/twins.test.ts");
 
 const nodeTest = (...files: string[]) => () => [process.execPath, "--test", `--test-reporter=${path.join(ci, "results-node-reporter.mjs")}`, "--test-reporter-destination=stderr", ...files];
 const npmTest = (glob: string) => () => [process.execPath, path.join(root, "scripts", "nodeTest.mjs"), "--test", `--test-reporter=${path.join(ci, "results-node-reporter.mjs")}`, "--test-reporter-destination=stderr", glob];
@@ -68,7 +70,7 @@ const NOW = Date.parse("2026-11-08T12:00:00Z");
 const judge = (names: string[], over: Partial<Parameters<typeof verdict>[0]> = {}) => {
   const artifacts = readArtifacts(results).filter((a) => names.includes(a.name));
   const listing = [...new Set(artifacts.flatMap((a) => a.runs.flatMap((r) => r.records)).filter((r) => r.type === "test").map((r) => r.file as string))];
-  return verdict({ needs: ran("verify", "native", "browser"), artifacts, listing, ledger: empty, tickets: new Map(), changed: [], now: NOW, suites, ...over });
+  return verdict({ needs: ran("verify", "native", "browser"), artifacts, listing, ledger: empty, tickets: new Map(), changed: [], renamed: [], scope: null, now: NOW, suites, ...over });
 };
 const has = (problems: string[], pattern: RegExp) => assert.ok(problems.some((p) => pattern.test(p)), `nothing matched ${pattern}:\n${problems.join("\n")}`);
 
@@ -95,7 +97,15 @@ before(() => {
     { [ONLY]:`import { test } from "node:test";\ntest.only("focused", () => {});\ntest("filtered out", () => {});\n` },
     nodeTest("--test-only", ONLY),
   );
-  plant("test-results-verify-0-4", { [CLEAN]:`import { test } from "node:test";\ntest("passes", () => {});\ntest("dropped", () => {});\n` }, nodeTest("--test-name-pattern=passes", "--test-skip-pattern=dropped", CLEAN));
+  plant(
+    "test-results-verify-0-5",
+    {
+      [EXITS]: `import { test } from "node:test";\ntest("p", () => {});\nsetTimeout(() => process.exit(0), 0);\ntest("slow", async () => { await new Promise((r) => setTimeout(r, 200)); throw new Error("planted"); });\n`,
+      [TWINS]: `import { test } from "node:test";\ntest("twin", () => {});\ntest("twin", () => {});\n`,
+    },
+    nodeTest(EXITS, TWINS),
+  );
+  plant("test-results-verify-0-4",{ [CLEAN]:`import { test } from "node:test";\ntest("passes", () => {});\ntest("dropped", () => {});\n` }, nodeTest("--test-name-pattern=passes", "--test-skip-pattern=dropped", CLEAN));
   plant(
     "test-results-native-1-1",
     {
@@ -107,6 +117,7 @@ before(() => {
         `test.concurrent.skip("concurrent skip", async () => {});`,
         `test["skip"]("bracket skip", () => {});`,
         `test.todo("left todo");`,
+        `test.failing("declared failing", () => { throw new Error("planted"); });`,
       ].join("\n"),
       [NATIVE_ONLY]:`it.only("focused", () => {});\nit("filtered out", () => {});\n`,
     },
@@ -177,14 +188,20 @@ describe("the runners' own reports, judged", () => {
     has(judge(["test-results-verify-0-4"], { needs: ran("verify") }), /ran filtered by name \(--test-name-pattern=passes, --test-skip-pattern=dropped\)/);
   });
 
-  test("jest: a retried pass, it.only, test.concurrent.skip, test['skip'] and a todo are each red", () => {
+  test("node: a file that exits mid-run fails the tests it cut off, and a title reported twice is red", () => {
+    const problems = judge(["test-results-verify-0-5"], { needs: ran("verify") });
+    has(problems, /exits\.test\.ts › slow \(exited before it finished\) failed/);
+    has(problems, /twins\.test\.ts › twin is reported twice/);
+  });
+
+  test("jest: a retried pass, it.only, test.concurrent.skip, test['skip'], a todo and test.failing are each red", () => {
     const problems = judge(["test-results-native-1-1"], { needs: ran("native") });
-    for (const p of [/flaky ran with retries \(attempt 1/, /only\.test\.tsx › filtered out was skipped/, /concurrent skip was skipped/, /bracket skip was skipped/, /left todo was left todo/])
+    for (const p of [/flaky ran with retries \(attempt 1/, /only\.test\.tsx › filtered out was skipped/, /concurrent skip was skipped/, /bracket skip was skipped/, /left todo was left todo/, /declared failing was left todo/])
       has(problems, p);
     has(judge(["test-results-native-2-1"], { needs: ran("native") }), /ran filtered by name \(testNamePattern passes\)/);
   });
 
-  test("playwright: retries by describe.configure, the CLI and a config ternary, a step skip, a skip, a fixme, a failure and a grep are each red", () => {
+  test("playwright: retries by describe.configure, the CLI and a config ternary, a step skip, a skip, a fixme, a failure, test.fail() and a grep are each red", () => {
     const problems = judge(["test-results-browser-1-1", "test-results-browser-2-1", "test-results-browser-3-1"], { needs: ran("browser") });
     for (const p of [
       /configured › retried ran with retries \(attempt 0, 2 allowed/,
@@ -192,12 +209,12 @@ describe("the runners' own reports, judged", () => {
       /body skip was skipped/,
       /fixme was skipped/,
       /plants\.spec\.ts › fails failed/,
+      /expected failure was left todo/,
       /browser-2-1\/.* ran filtered by name \(--grep=passes\)/,
       /browser-3-1\/.* ran filtered by name \(grep-invert \/dropped\/\)/,
     ])
       has(problems, p);
     assert.equal(problems.filter((p) => /clean\.spec\.ts › passes ran with retries/.test(p)).length, 2, problems.join("\n"));
-    assert.ok(!problems.some((p) => /expected failure/.test(p)), "test.fail() is a pass: the test ran and failed as it says it must");
   });
 
   test("playwright: a test a helper registers is the spec's, so one spec's skip is not heard through another's pass", () => {
@@ -218,7 +235,21 @@ describe("the runners' own reports, judged", () => {
 describe("what the reports leave out", () => {
   const clean = () => readArtifacts(results).filter((a) => a.name === "test-results-verify-0-1");
   const listing = [CLEAN];
-  const base = { needs: ran("verify"), artifacts: clean(), listing, ledger: empty, tickets: new Map(), changed: [], now: NOW, suites };
+  const base = { needs: ran("verify"), artifacts: clean(), listing, ledger: empty, tickets: new Map(), changed: [], renamed: [] as [string, string][], scope: null, now: NOW, suites };
+
+  test("a test job skipped while the base's scope of the change runs its suite is red", () => {
+    const docsOnly = { app: false, harness: false, scans: true };
+    assert.deepEqual(verdict({ ...base, scope: docsOnly }), []);
+    has(verdict({ ...base, scope: { ...docsOnly, app: true } }), /native was skipped, but the base's scope of this change runs npm run test:native/);
+    const all = verdict({ ...base, needs: ran(), artifacts: [], scope: { app: true, harness: true, scans: true } });
+    for (const job of SUITES.flatMap((s) => s.jobs)) has(all, new RegExp(`^${job} was skipped, but the base's scope`));
+  });
+
+  test("a test file renamed out of its suite's listing is red", () => {
+    assert.deepEqual(renames(`M\0a.ts\0R087\0${CLEAN}\0tests/a/clean.ts\0C100\0p\0q\0`), [[CLEAN, "tests/a/clean.ts"]]);
+    has(verdict({ ...base, renamed: [[CLEAN, "tests/a/clean.ts"]] }), /clean\.test\.ts is renamed to tests\/a\/clean\.ts, out of npm test's listing/);
+    assert.deepEqual(verdict({ ...base, renamed: [[NEVER, CLEAN]] }), []);
+  });
 
   test("a job that ran and uploaded nothing is red", () => has(verdict({ ...base, artifacts: [] }), /verify ran \(success\) and uploaded no/));
   test("a gate that does not need a test job is red", () => has(verdict({ ...base, needs: { verify: { result: "success" } } }), /does not need native/));
@@ -264,7 +295,8 @@ describe("what the reports leave out", () => {
   describe("the quarantine", () => {
     const entry = { file: PLANTS, title: "option skip", issue: 7, expires: "2026-11-15" };
     const plants = readArtifacts(results).filter((a) => a.name === "test-results-verify-0-2");
-    const open = new Map([[7, { open: true, labelled: true }]]);
+    const opened = (on: string) => ({ open: true, labelled: true, created: Date.parse(on) });
+    const open = new Map([[7, opened("2026-11-05T09:00:00Z")]]);
     const q = { ...base, artifacts: plants, listing: [CLEAN, PLANTS], tickets: open };
     const held = { head: { quarantine: [entry] }, base: { quarantine: [entry] } };
     const added = { head: { quarantine: [entry] }, base: { quarantine: [] } };
@@ -285,10 +317,15 @@ describe("what the reports leave out", () => {
       assert.ok(skipRed(verdict({ ...q, ledger: added, changed: [PLANTS] })), "an addition that is refused holds nothing");
     });
 
-    test("an entry expires at most 14 days out, and is red once it has", () => {
+    test("an entry expires at most 14 days after its issue was opened, even one the base holds, and is red once it has", () => {
+      const tickets = new Map([[7, opened("2026-11-08T23:00:00Z")]]);
       const ledger = (expires: string) => ({ head: { quarantine: [{ ...entry, expires }] }, base: { quarantine: [] } });
-      assert.deepEqual(ledgerRed(verdict({ ...q, ledger: ledger("2026-11-22"), changed: ["tools/ci/quarantine.json"] })), []);
-      has(verdict({ ...q, ledger: ledger("2026-11-23"), changed: ["tools/ci/quarantine.json"] }), /until 2026-11-23, more than 14 days out/);
+      assert.deepEqual(ledgerRed(verdict({ ...q, tickets, ledger: ledger("2026-11-22"), changed: [LEDGER] })), []);
+      has(verdict({ ...q, tickets, ledger: ledger("2026-11-23"), changed: [LEDGER] }), /until 2026-11-23, more than 14 days after #7 was opened/);
+      const renewed = { ...entry, expires: "2026-11-30" };
+      const late = verdict({ ...q, ledger: { head: { quarantine: [renewed] }, base: { quarantine: [renewed] } } });
+      has(late, /until 2026-11-30, more than 14 days after #7 was opened/);
+      assert.ok(skipRed(late), "an entry past its issue's fourteenth day holds nothing");
       const expired = { head: { quarantine: [{ ...entry, expires: "2026-11-07" }] }, base: { quarantine: [{ ...entry, expires: "2026-11-07" }] } };
       const problems = verdict({ ...q, ledger: expired });
       has(problems, /quarantine of .*option skip expired on 2026-11-07/);
@@ -296,8 +333,17 @@ describe("what the reports leave out", () => {
       has(verdict({ ...q, ledger: { head: { quarantine: [entry] }, base: { quarantine: [{ ...entry, expires: "2026-11-09" }] } }, changed: [PLANTS] }), /beside other changes/);
     });
 
+    test("an issue quarantines one test, and a test the base holds cannot move to a new issue", () => {
+      const twin = { ...entry, title: "context skip" };
+      has(verdict({ ...q, ledger: { head: { quarantine: [entry, twin] }, base: { quarantine: [entry, twin] } } }), /under #7, which already holds .*option skip/);
+      const moved = verdict({ ...q, tickets: new Map([...open, [8, opened("2026-11-08T09:00:00Z")]]), ledger: { head: { quarantine: [{ ...entry, issue: 8 }] }, base: { quarantine: [entry] } }, changed: [LEDGER] });
+      has(moved, /moves .*option skip from #7 to #8; a quarantine is not renewed under a new issue/);
+      assert.ok(skipRed(moved));
+    });
+
     test("an entry needs an open issue labelled ci-flake", () => {
-      for (const t of [{ open: false, labelled: true }, { open: true, labelled: false }, undefined]) {
+      const created = Date.parse("2026-11-05T09:00:00Z");
+      for (const t of [{ open: false, labelled: true, created }, { open: true, labelled: false, created }, undefined]) {
         const problems = verdict({ ...q, ledger: held, tickets: new Map(t ? [[7, t]] : []) });
         has(problems, /under #7, which is not an open issue labelled ci-flake/);
         assert.ok(skipRed(problems));
@@ -339,18 +385,46 @@ describe("the gate step", () => {
     assert.ok(said.some((l) => l.startsWith("::error::") && l.includes("%0A::warning::forged")), said.join("\n"));
   });
 
-  test("a run whose test jobs were all skipped by scope has nothing to judge, and is green", () => {
+  test("a push to main whose test jobs were all skipped by scope has nothing to judge, and is green", () => {
     const gh = (args: string[]) => (args[0] === "api" ? "" : assert.fail(`downloaded with no artifact: ${args.join(" ")}`));
     const git = () => "";
-    assert.equal(run({ GITHUB_REPOSITORY: "o/r", GITHUB_RUN_ID: "5", BASE: "HEAD", NEEDS: JSON.stringify(ran()) }, { gh, git, log: () => {} }), 0);
+    const env = { GITHUB_REPOSITORY: "o/r", GITHUB_RUN_ID: "5", BASE: "HEAD", NEEDS: JSON.stringify(ran()) };
+    assert.equal(run({ ...env, EVENT: "push", REF: "refs/heads/main" }, { gh, git, log: () => {} }), 0);
+    for (const [EVENT, REF] of [["workflow_dispatch", "refs/heads/main"], ["schedule", "refs/heads/main"], ["push", "refs/heads/other"], ["pull_request", "refs/pull/1/merge"]]) {
+      const said: string[] = [];
+      assert.equal(run({ ...env, EVENT, REF }, { gh, git, log: (l: string) => void said.push(l) }), 1);
+      has(said, /BASE is HEAD on a .*; only a push to main is its own base/);
+    }
+  });
+
+  test("a dispatch is judged against main: a 300-day entry beside code is red, and so is every suite its scope runs and skipped", () => {
+    const said: string[] = [];
+    const long = { file: PLANTS, title: "option skip", issue: 7, expires: "2027-09-04" };
+    const gh = (args: string[]) =>
+      args[1]!.includes("/issues/") ? JSON.stringify({ state: "open", created_at: "2026-11-08T00:00:00Z", pr: false, labels: ["ci-flake"] }) : args[0] === "api" ? "" : assert.fail(args.join(" "));
+    const git = (args: string[]) => {
+      if (args[0] === "ls-tree" && !args.includes("-r")) return args[2] === "HEAD" ? LEDGER : "";
+      if (args[0] === "show") return JSON.stringify({ quarantine: [long] });
+      if (args[0] === "diff") return args.includes("--name-status") ? "" : `lib/game/gameEngine.ts\0${LEDGER}\0`;
+      return "";
+    };
+    const env = { GITHUB_REPOSITORY: "o/r", GITHUB_RUN_ID: "5", BASE: "0123abc", EVENT: "workflow_dispatch", REF: "refs/heads/feature", NEEDS: JSON.stringify(ran()) };
+    assert.equal(run(env, { gh, git, log: (l: string) => void said.push(l) }), 1);
+    has(said, /adds .*option skip \(#7\) beside other changes/);
+    has(said, /until 2027-09-04, more than 14 days after #7 was opened/);
+    has(said, /native was skipped, but the base's scope of this change runs/);
   });
 
   test("CI gate runs the base branch's verdict over every test job's uploaded results", () => {
     const jobs = parse(readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8")).jobs as Record<string, { steps?: { run?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; if?: string }[]; env?: Record<string, string> }>;
     const gate = jobs["ci-gate"]!.steps!.map((s) => s.run ?? "").join("\n");
-    assert.match(gate, /\[ "\$EVENT" = pull_request \] && base=HEAD\^1/);
-    assert.match(gate, /git cat-file -e "\$base:tools\/ci\/test-verdict\.mjs" 2>\/dev\/null \|\| from=HEAD\n\s*git archive "\$from"/);
+    assert.match(gate, /"pull_request "\*\) base=HEAD\^1 ;;/);
+    assert.match(gate, /"push refs\/heads\/main"\) base=HEAD ;;/);
+    assert.match(gate, /\*\) git fetch --no-tags --depth=1 origin main && base=\$\(git rev-parse FETCH_HEAD\) ;;/);
+    assert.match(gate, /git cat-file -e "\$base:tools\/ci\/test-verdict\.mjs" 2>\/dev\/null \|\| \{ echo "::error::base has no judge"; exit 1; \}/);
     assert.match(gate, /node "\$RUNNER_TEMP\/judge\/tools\/ci\/test-verdict\.mjs"/);
+    const step = jobs["ci-gate"]!.steps!.find((s) => s.run?.includes("test-verdict.mjs"))!;
+    assert.deepEqual([step.env!.EVENT, step.env!.REF], ["${{ github.event_name }}", "${{ github.ref }}"]);
     for (const job of SUITES.flatMap((s) => s.jobs)) {
       const upload = jobs[job]!.steps!.find((s) => String(s.with?.name ?? "").startsWith("test-results-"));
       assert.ok(upload, `${job} uploads no test-results-* artifact`);

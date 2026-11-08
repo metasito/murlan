@@ -91,6 +91,15 @@ function watchContext(context: BrowserContext, entries: string[]): void {
   context.on("page", (page) => collectConsoleErrors(page, entries));
 }
 
+export function failOnBrowserErrors(entries: string[]): void {
+  if (entries.length > 0) {
+    throw new Error(
+      `Browser reported ${entries.length} error(s)/warning(s) during the test:\n\n` +
+        entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
+    );
+  }
+}
+
 export const test = base.extend<{ browserErrors: ConsoleErrors; consoleErrors: ConsoleErrors }>({
   // Every test, every page it opens: the `context` fixture's, and any from `browser.newContext`
   // or `browser.newPage` (which goes through `newContext`). No media emulation here — parity,
@@ -110,12 +119,7 @@ export const test = base.extend<{ browserErrors: ConsoleErrors; consoleErrors: C
         browser.newContext = newContext;
       }
 
-      if (entries.length > 0) {
-        throw new Error(
-          `Browser reported ${entries.length} error(s)/warning(s) during the test:\n\n` +
-            entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
-        );
-      }
+      failOnBrowserErrors(entries);
     },
     { auto: true },
   ],
