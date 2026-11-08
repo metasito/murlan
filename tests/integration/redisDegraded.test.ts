@@ -31,7 +31,6 @@ describe("Redis stopped mid-game", { skip: hasDatabase() ? false : skipMessage()
     proxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
     instance = await boot(scoped, {
       REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy),
-      LOG_LEVEL: "error",
       MURLAN_AFK_TIMEOUT_MS: "600000",
     });
     port = instance.port;

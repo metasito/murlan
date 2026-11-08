@@ -92,6 +92,9 @@ function watchContext(context: BrowserContext, entries: string[]): void {
 }
 
 export const test = base.extend<{ browserErrors: ConsoleErrors; consoleErrors: ConsoleErrors }>({
+  baseURL: async ({ baseURL }, use) => {
+    await use(baseURL ?? `http://127.0.0.1:${process.env.E2E_PORT}`);
+  },
   // Every test, every page it opens: the `context` fixture's, and any from `browser.newContext`
   // or `browser.newPage` (which goes through `newContext`). No media emulation here — parity,
   // flight and timing specs measure real motion.
