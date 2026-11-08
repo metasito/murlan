@@ -8,7 +8,7 @@
  * @property {string} selector esquery over the AST, several shapes joined with ", "; never raw text.
  * @property {string[]} files Flat-config globs the guard applies to.
  * @property {{ glob: string, reason: string }[]} [ignores] The only exemption form.
- * @property {{ file: string, code: string, hits: number }} plant Fires exactly `hits` times, linted as `file`.
+ * @property {{ file: string, code: string, hits: number } | { file: string, code: string, hits: number }[]} plant Each fires exactly `hits` times, linted as its `file`.
  * @property {{ file: string, code: string }[]} spare Shapes the guard must not catch.
  */
 
@@ -17,6 +17,7 @@ const SCREENS = ["{app,components,context,lib}/**/*.{ts,tsx}"];
 const DRAWN = ["{app,components}/**/*.tsx"];
 const TEST_RUNNERS = "/^(it|test|describe|suite)$/";
 const TABLE_TEXT_SIZE = ":matches(Identifier[name=/_FS$/i], MemberExpression[object.name=/^FontSize$/i], MemberExpression[object.property.name=/^FontSize$/i])";
+const SHORT_EDGES = "/^(BASE|MAX)_SHORT_EDGE$/";
 const SEAT_IDENTITY ="/^(viewerSeat|mySeatIndex)$/";
 const AUDIO_LAYERED = ["{app,components,context,lib,modules}/**/*.{ts,tsx}"];
 const CHANNEL_KEYS = `/^(${Object.keys(require("./lib/harnessChannels.ts").CHANNELS).join("|")})$/`;
@@ -299,7 +300,7 @@ const GUARDS = [
   },
   {
     id: "one-table-scale",
-    why: "The table's scale is components/tableLayout.ts's decision: read `tableLayout(…).scale`, ask `tableScale(window)`, or take the scale as a parameter, never `cardScale` of a short edge worked out again here.",
+    why: "The table's scale is components/tableLayout.ts's decision: read `tableLayout(…).scale`, ask `tableScale(window)`, or take the scale as a parameter, never `cardScale` of a short edge, or a short edge over the base one, worked out again here.",
     selector: [
       'ImportSpecifier[imported.name="cardScale"]',
       'ExportSpecifier[local.name="cardScale"]',
@@ -307,28 +308,70 @@ const GUARDS = [
       'MemberExpression[property.name="cardScale"]',
       'MemberExpression[property.value="cardScale"]',
       'VariableDeclarator > ObjectPattern > Property[key.name="cardScale"]',
+      `Identifier[name=${SHORT_EDGES}]:not(ImportSpecifier[imported.name=${SHORT_EDGES}] > .local, ExportSpecifier[local.name=${SHORT_EDGES}] > .exported, Property[shorthand=true] > .value)`,
+      `MemberExpression[property.value=${SHORT_EDGES}]`,
+      'BinaryExpression[operator="/"][right.type="Literal"][right.value=390]',
+      'VariableDeclarator[init.type="Literal"][init.value=390]',
     ].join(", "),
-    files: CLIENT,
+    files: [...CLIENT, "tests/**/*.{ts,tsx}"],
     ignores: [
+      { glob: "components/cardFaceModel.ts", reason: "cardScale and the base short edge it divides by are declared here" },
       { glob: "components/tableLayout.ts", reason: "tableScale is the one place the table's scale is taken from a window" },
       { glob: "components/table/noticeModel.ts", reason: "the mockup's own stage height, a design constant the notices are authored at, not a window" },
+      { glob: "tests/ui-rules/cardFace.test.ts", reason: "pins cardScale itself, short edge in and scale out" },
+      { glob: "tests/ui-rules/tableLayoutPin.test.ts", reason: "the deliberate independent copy of tableScale, which a regression in the owner cannot move" },
+      { glob: "tests/ui-rules/noticeModel.test.ts", reason: "restates the mockup's unit as literals, never read back from the module, so a drifted mockupPx cannot move them" },
+      { glob: "tests/e2e/helpers/cutout.ts", reason: "an iPhone notch's 209 pt over its own 390-pt edge, a device's measurement rather than the table's base" },
     ],
-    plant: { file: "components/Plant.tsx", code: [
-      'import { cardScale as s } from "@/components/cardFaceModel";',
-      "const a = cardScale(Math.min(width, height));",
-      "const b = face.cardScale(h);",
-      'const c = face["cardScale"];',
-      'export { cardScale } from "./cardFaceModel";',
-      "const { cardScale: d } = face;",
-    ].join("\n"), hits: 6 },
+    plant: [
+      { file: "components/Plant.tsx", code: [
+        'import { cardScale as s } from "@/components/cardFaceModel";',
+        "const a = cardScale(Math.min(width, height));",
+        "const b = face.cardScale(h);",
+        'const c = face["cardScale"];',
+        'export { cardScale } from "./cardFaceModel";',
+        "const { cardScale: d } = face;",
+        "const e = Math.min(width, height, 900) / BASE_SHORT_EDGE;",
+        'import { BASE_SHORT_EDGE as BASE } from "@/components/cardFaceModel";',
+        'import { BASE_SHORT_EDGE } from "../cardFaceModel";',
+        'export { BASE_SHORT_EDGE } from "./cardFaceModel";',
+        "const f = face.BASE_SHORT_EDGE;",
+        'const g = face["MAX_SHORT_EDGE"];',
+        "const { BASE_SHORT_EDGE: k } = face;",
+        "const { MAX_SHORT_EDGE } = face;",
+        "const m = Math.min(width, height) / 390;",
+        "const n = edge / 390.0;",
+        "const o = 320 / 390;",
+        "const BASE = 390;",
+      ].join("\n"), hits: 18 },
+      { file: "tests/ui-rules/plant.test.ts", code: [
+        'import { cardScale } from "../../components/cardFaceModel.ts";',
+        "const a = cardScale(Math.min(844, 390));",
+        "const b = Math.min(w, h) / BASE_SHORT_EDGE;",
+      ].join("\n"), hits: 3 },
+      { file: "tests/e2e/plant.spec.ts", code: [
+        "const scale = Math.min(vp.width, vp.height) / 390;",
+        "const BASE_EDGE = 390;",
+      ].join("\n"), hits: 2 },
+      { file: "tests/native/plant.test.tsx", code: "const { cardScale: at } = require('@/components/cardFaceModel');", hits: 1 },
+    ],
     spare: [
-      "const cardScale = scale * FIELD_SCALE;",
-      "const e = <PlayCard cardScale={cardScale} />;",
-      "const f = catchLift(c, cardScale);",
-      "const g = { cardScale: r.size.scale };",
-      "const h = tableScale({ width, height });",
-      '// cardScale(Math.min(w, h))\nconst i = "cardScale";',
-    ].map((code) => ({ file: "components/Plant.tsx", code })),
+      ...[
+        "const cardScale = scale * FIELD_SCALE;",
+        "const e = <PlayCard cardScale={cardScale} />;",
+        "const f = catchLift(c, cardScale);",
+        "const g = { cardScale: r.size.scale };",
+        "const h = tableScale({ width, height });",
+        '// cardScale(Math.min(w, h))\nconst i = "cardScale";',
+        "const j = height - drawnShortEdge(scale);",
+        '// Math.min(w, h) / BASE_SHORT_EDGE\nconst k = "BASE_SHORT_EDGE";',
+      ].map((code) => ({ file: "components/Plant.tsx", code })),
+      ...[
+        "const VIEWPORT = { width: 844, height: 390 };",
+        "const tall = 390 * scale;",
+        "const half = width / 2;",
+      ].map((code) => ({ file: "tests/e2e/plant.spec.ts", code })),
+    ],
   },
   {
     id: "field-not-random",

@@ -6,27 +6,13 @@ import { TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { event, silence } from "@/lib/device/feedback";
 import type { PillNote } from "../exchangeModel";
+import type { ConnectionNote } from "../connectionNote";
 import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/turnTimerUi";
 import { NoticeDot, NoticeKey, NoticeText, TableNotice } from "../TableNotice";
 import { noticeBox } from "../noticeModel";
 import { useClockFade } from "../useClockFade";
 import { useCountdown, useSecondsLeft, type CountdownClock } from "../countdown";
 
-/**
- * The name run, capped so a long username ellipsizes rather than pushing the
- * band wider than the felt has room for.
- */
-const HUD_NAME_MAX_W = 88;
-
-/**
- * The connection as the turn pill carries it (Q8): the lantern mockup's `renderTurn` with `S.net` set.
- * `reconnected` is another seat back; `back` and `lost` are the viewer's own.
- */
-export type ConnectionNote = {
-  state: "offline" | "reconnecting" | "reconnected" | "back" | "lost";
-  text: string;
-  action?: { label: string; onPress: () => void };
-};
 const CONNECTION_TONE = { offline: "bad", reconnecting: "neutral", reconnected: "ok", back: "ok", lost: "bad" } as const;
 
 export function OfflinePill({ scale, shown = true }: { scale: number; shown?: boolean }) {
@@ -57,7 +43,7 @@ export function HudComboPill({
         <NoticeText>{t("gameShared.emptyTable")}</NoticeText>
       ) : (
         <>
-          <NoticeText maxWidth={HUD_NAME_MAX_W}>{play.name}</NoticeText>
+          <NoticeText runtime>{play.name}</NoticeText>
           <NoticeText strong>{play.combo}</NoticeText>
         </>
       )}

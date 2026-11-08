@@ -14,6 +14,7 @@ import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../help
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { keyspace } from "../../server/store/redis.ts";
 import { accountOn, at, befriendOn, boot, stopInstance, type Instance } from "../helpers/instance.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 const PORTS: number[] = [];
 
@@ -31,7 +32,7 @@ describe("an instance killed outright", { skip: hasDatabase() ? false : skipMess
     const admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.end();
-    for (let n = 0; n < 2; n++) instances.push(await boot(scoped, { MURLAN_AFK_TIMEOUT_MS: "600000" }));
+    for (let n = 0; n < 2; n++) instances.push(await boot(scoped, { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS) }));
     PORTS.push(...instances.map((i) => i.port));
   });
 

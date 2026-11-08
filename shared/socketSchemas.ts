@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { gameModeSchema, matchLengthSchema } from "./gameStateSchema.ts";
+import { SEATS_MAX, SEATS_MIN } from "./seats.ts";
 
 /**
  * Runtime schemas for every inbound socket event.
@@ -19,7 +20,7 @@ export const NoPayloadSchema = z
 
 export const RoomCreateSchema = z.object({
   gameMode: gameModeSchema,
-  maxPlayers: z.number().int().min(2).max(4),
+  maxPlayers: z.number().int().min(SEATS_MIN).max(SEATS_MAX),
 });
 
 export const RoomJoinSchema = z.object({
@@ -46,7 +47,7 @@ export const RoomSetVisibilitySchema = z.object({
 });
 
 export const RoomQuickmatchSchema = z.object({
-  maxPlayers: z.number().int().min(2).max(4),
+  maxPlayers: z.number().int().min(SEATS_MIN).max(SEATS_MAX),
   gameMode: gameModeSchema,
 });
 

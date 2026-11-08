@@ -15,7 +15,8 @@ const require = createRequire(import.meta.url);
 
 type Ignore = { glob: string; reason: string };
 type Sample = { file: string; code: string };
-type Guard = { id: string; why: string; selector: string; files: string[]; ignores?: Ignore[]; plant: Sample & { hits: number }; spare: Sample[] };
+type Plant = Sample & { hits: number };
+type Guard = { id: string; why: string; selector: string; files: string[]; ignores?: Ignore[]; plant: Plant | Plant[]; spare: Sample[] };
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
 const { GUARDS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
@@ -56,18 +57,20 @@ describe("the guard registry's floor", () => {
   test("1. every guard's plant fires it exactly `hits` times under the real config, and no spare fires it", async () => {
     const doubled: string[] = [];
     for (const guard of GUARDS) {
-      const { file, code, hits } = guard.plant;
-      assert.ok(hits > 0 && guard.spare.length > 0, `${guard.id} needs a plant that fires and a spare`);
-      for (const sample of [guard.plant, ...guard.spare]) {
+      const plants = [guard.plant].flat();
+      assert.ok(plants.length > 0 && plants.every((p) => p.hits > 0) && guard.spare.length > 0, `${guard.id} needs a plant that fires and a spare`);
+      for (const sample of [...plants, ...guard.spare]) {
         assert.ok(
           matches(sample.file, guard.files) && !matches(sample.file, globsOf(guard)),
           `${guard.id}: ${sample.file} is outside what it reads, so its sample tests nothing`
         );
       }
-      const hit = await reported(guarded, code, file, ruleOf(guard));
-      assert.equal(hit.length, hits, `${guard.id}'s plant at ${file}:\n${code}`);
-      const lines = hit.map((m) => m.line);
-      doubled.push(...lines.filter((line, i) => lines.indexOf(line) !== i).map((line) => `${guard.id}: line ${line}`));
+      for (const { file, code, hits } of plants) {
+        const hit = await reported(guarded, code, file, ruleOf(guard));
+        assert.equal(hit.length, hits, `${guard.id}'s plant at ${file}:\n${code}`);
+        const lines = hit.map((m) => m.line);
+        doubled.push(...lines.filter((line, i) => lines.indexOf(line) !== i).map((line) => `${guard.id}: ${file} line ${line}`));
+      }
       for (const spare of guard.spare) {
         assert.equal(await reports(guarded, spare.code, spare.file, ruleOf(guard)), 0, `${guard.id} reports its spare at ${spare.file}:\n${spare.code}`);
       }
