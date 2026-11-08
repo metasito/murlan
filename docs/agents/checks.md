@@ -363,6 +363,101 @@ comments first. Where a scan needs a reasoned exception, `tests/ui-rules/touchTa
 **This is a rule, not a check** — neither failure above was ever a committed check at all, so no
 repo-level gate could have seen either. The enforcement point is your own loop.
 
+## The target never moves with the code
+
+Rule 52. `TARGETS` in `tools/ci/target-freeze.mjs` is the only list of targets. The invariant: the
+guard is decided by base-defined code and enforced by the ruleset. `.github/workflows/target-freeze.yml`
+runs on `pull_request_target` into `main`, so GitHub runs main's copy of the workflow and of the
+script, never the pull request's. A change that loosens the script, empties the list, edits its
+test or rewrites the workflow is judged by the list it started from; its edits take effect only
+once it has merged. A check inside `ci.yml` cannot do this: on `pull_request` the head's `ci.yml`
+runs, and it decides whether any step of it runs at all.
+
+**Nothing of the head runs.** The job checks out main's tip without persisting its token, fetches
+the event's `head.sha` by SHA as git objects (a fork's commits are reachable from the base
+repository through `refs/pull/<n>/head`, which can lag the event; a fetch that fails or lands
+elsewhere is red), and runs main's
+script on `HEAD...<head>` with renames off, so a target moved out of its path still counts where it
+was. The head is read only through `git diff`, `git ls-tree` and `git show`: no checkout, install or
+import of its files, no secret, read-only `contents`, and the pull request's fields reach the shell
+through `env:`. Running the head's code there would be a pwn-request. `edited` is among its types,
+so a stack retargeted onto `main` is judged again on its new base.
+
+**The ruleset makes it binding, and what stays spoofable.** The `main` ruleset routes every change
+through a pull request, with no bypass actors. The owner is to require `Target freeze` there once
+this workflow has merged; the pull request adding it is not judged by it, since main has no copy
+yet. A ruleset's "Require workflows to pass" rule would bind the check to this file on `main`, and
+GitHub's docs say it accepts `pull_request_target` workflows, but it exists only in organization
+rulesets, and `metasito/murlan` belongs to a user account. So the requirement is a status check,
+matched by name, and any workflow's job can report a check of that name: a head's `ci.yml` runs on
+`pull_request` and could add a green `Target freeze` of its own. On a mixed pull request the real check is red
+from the verdict already, so whether a spoof gets through rests on how GitHub resolves a red and a
+green check of one name, which is not measured. Main's script also refuses a head whose workflows
+name a job or step `Target freeze` outside this file (`impostors`); that only keeps a spoof from
+landing on `main` through a clean pull request, and flags one that carries it. This file is exempt
+because editing it is a target change, which a mixed pull request is refused for already. The scan
+reads lines, so it misses a name built by an expression, YAML it does not parse (flow mappings,
+block scalars, anchors, escapes, a quoted `name` key), and a check run or commit status posted
+through the API with `GITHUB_TOKEN`. Moving the repository to an organization with the workflows
+rule is what closes this.
+
+A change to the guard (the script, this workflow, its test, CODEOWNERS) is a target change, and
+today it lands with no review required.
+
+`tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list, every nightly
+spec inside it, no other workflow naming a job `Target freeze`, and the workflow's shape: its
+trigger, branches and types, read-only permissions, a checkout of the base, pinned actions, and its
+one `run`, verbatim. It plants diffs in a scratch repository and judges them: mixed, target-only
+and code-only diffs; a target and the code in separate commits; a rename out of the list; a deleted
+nightly spec; the workflow beside code; a target retired in one pull request; an impostor job; a
+branch that merges main; a merge ref. It runs the workflow's own `run` from a clone of the base on
+a head fetched by SHA: one that tampers the verdict or empties the list, which head's copy passes
+and base's refuses; one that merged a newer main; and a SHA it cannot fetch, or none. The
+guard is floored: a pattern that names no file in the base turns it red, and so does a base or head
+that is missing, cannot be read, or is the same commit.
+
+**What it leaves out, on purpose.** These change with the code by design, and freezing them would
+make every intended change unlandable:
+
+- `tests/fixtures/tableLayout.json` and `handRow.json` pin the code's own output.
+- The polish-audit captures (`tests/e2e/57-polish-audit/captures/`) and `.txt` surveys are
+  readings of the app. The captures are written under `AUDIT_UPDATE=1` and never compared. The
+  survey is compared, and it is regenerated with every layout change.
+- Thresholds that live in unit tests that also judge the app:
+  - `tests/ui-rules/lampRig.test.ts`'s 1.2-point mockup-seat tolerance.
+  - `tests/ui-rules/cardShadows.test.ts`'s shadow bounds, which are the owner's 2026-11-03 ruling.
+- `tests/e2e/pileBeaten.spec.ts` and `reconnect.spec.ts`, which mostly assert app behaviour.
+- A threshold written inside app code. The list covers only the files it names.
+
+Some targets take their values from the app, so a code change moves them without touching the
+list:
+
+- `tests/e2e/helpers/lanternDepartures.ts` injects `LIGHT_ABOVE`, `GLIDE`, `LAMP_LIGHT` and
+  `lampPools` from `components/table/lampRig.ts`.
+- `tests/e2e/helpers/handParity.ts` asserts `HAND_NEAR_RATIO` from `components/cardFaceModel.ts`.
+
+**Landing a target change.** First, open a pull request that touches only targets and cites the
+decision. Then open the code pull request, which meets the new target. A pull-request test that
+compares the app with the mockup can go red in between: `tests/helpers/lanternFixture.ts`'s
+oracles, `pileBeaten.spec.ts`, `reconnect.spec.ts`, and `handParity.spec.ts`, which is itself a
+target. If the test that goes red is not a target, the target pull request may mark it
+expected-failing, citing the decision, and the code pull request removes the mark. If it is a
+target, a third, target-only pull request follows the code pull request. Never move the code and
+the target together to dodge this. A ratchet that loosens itself is what rule 52 exists to stop.
+
+**A target helper that imports an app module** (an export's name, the `OfflineSave` shape, a
+`testID`) changes in three steps, expand and contract:
+
+1. A code pull request adds the new name beside the old one.
+2. A target-only pull request switches the targets to the new name.
+3. A code pull request removes the old name.
+
+**CODEOWNERS is routing, not the guard.** It routes target changes to the repository owner, `OWNER`
+in the script. The owner also authors the pull requests, so it adds no required review today, and
+it binds only under branch protection that requires code-owner review. The script is the guard.
+CODEOWNERS is there for a future second reviewer. GitHub silently ignores an entry for an account
+without write access, so check it with `gh api repos/metasito/murlan/codeowners/errors`.
+
 ## Where a forbidden-shape rule goes
 
 A rule that says "this shape of code must not appear here" — a call, an import, a JSX element, a
@@ -381,7 +476,7 @@ not a shape and stays a test.
 
 ## A flake is fixed, never retried or quietly skipped
 
-Rule 52, held by `tests/tooling/flakesAtSource.test.ts` (in `npm test`) and, for what needs the
+Rule 53, held by `tests/tooling/flakesAtSource.test.ts` (in `npm test`) and, for what needs the
 network, by the CI gate's last step (`tools/ci/flake-tickets.mjs`). It stays a test rather than a
 guard: whether a skip is allowed is a relation between the source and the workflow that runs it.
 

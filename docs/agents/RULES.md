@@ -1,8 +1,7 @@
 # Rules
 
-Every rule an agent must follow, numbered; others cite the numbers, so never renumber — a rule
-that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAUDE.md` and
-`docs/agents/`. A prompt disagreeing with a rule is stale: fix it.
+Every rule an agent must follow, cited by number; never renumber: a rule that goes stays as `*(retired)*`, uncited.
+The *why* lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is stale: fix it.
 
 ## Checking your work
 
@@ -115,4 +114,5 @@ Another agent is working in this repository, on this machine, right now.
 49. **A new guard, check or scan lands proven and floored**: it meets rule 6, and it fails when what it inspects is gone, empty or renamed, so it cannot pass by not looking.
 50. **No seam, interface or adapter layer until a second adapter exists.**
 51. **The table costs nothing at rest, and its speed is measured as it is played.** A frame loop, mapper or canvas that redraws when what it draws has not changed is a defect, and so is a full-screen canvas sized above DPR 1 that does not need the detail. A speed number taken under reduced motion, or only at full CPU speed, measures nothing: measure with motion on and at 4x CPU throttle, before and after, in the PR body (`docs/research/2026-11-03-table-perf/REPORT.md`). The owner's ruling, 2026-11-03.
-52. **A flake is fixed at its source the day it is seen.** No runner, step or action retries a failing test, and a test is skipped only where CI fails on that skip, or with `// flake: #<open issue>` on its line: `tests/tooling/flakesAtSource.test.ts` holds both, and its quarantine list only shrinks.
+52. **The target never moves with the code.** A change set that touches a parity target (`TARGETS` in `tools/ci/target-freeze.mjs`: the mockups, their staging, exemptions and thresholds) touches nothing under `app/`, `components/` or `lib/`; `Target freeze`, decided by main's copy in a `pull_request_target` workflow, refuses one that does; the ruleset is to require it. A target moves only in a pull request of its own that cites the decision moving it (a `docs/GAME-RULES.md` decision, an ADR, or an owner ruling); the code that meets the new target lands after it, in another (`docs/agents/checks.md` § The target never moves with the code).
+53. **A flake is fixed at its source the day it is seen.** No runner, step or action retries a failing test, and a test is skipped only where CI fails on that skip, or with `// flake: #<open issue>` on its line: `tests/tooling/flakesAtSource.test.ts` holds both, and its quarantine list only shrinks.

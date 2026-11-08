@@ -168,11 +168,11 @@ A rule holds only when a machine refuses its breach. Each item below is a mechan
 |---|---|---|---|
 | S1 | A change the player can see is checked by looking. | A PR touching `components/`, `lib/tokens.ts`, `lib/theme.ts` or the table's assets needs a green parity run on its head (dispatched `parity-nightly.yml`) before `CI gate` passes. | declined by the owner, 2026-11-07 |
 | S2 | A red nightly stops visual merges. | While a `parity` issue is open, `CI gate` refuses a PR touching those paths unless that PR's own parity run is green. The nightly is bisected and the culprit PR's ticket reopened. No auto-close. | declined by the owner, 2026-11-07 |
-| S3 | The target never moves with the code. | CI refuses a diff touching both the parity targets (`tests/e2e/fixtures/`, mockup exemptions, captures, thresholds) and `app/`, `components/` or `lib/`; CODEOWNERS on the targets. | proposed |
+| S3 | The target never moves with the code. | CI refuses a diff touching both the parity targets (`tests/e2e/fixtures/`, mockup exemptions, captures, thresholds) and `app/`, `components/` or `lib/`; CODEOWNERS on the targets. | built: `Target freeze` (`.github/workflows/target-freeze.yml`), decided by main's copy in a `pull_request_target` workflow; the ruleset is to require it once it has merged, as a status check, since the workflows rule is organization-only and a same-named check stays spoofable (`docs/agents/checks.md`); `TARGETS` in `tools/ci/target-freeze.mjs`; rule 52. The captures are left out: they are a reading of the app, never compared. CODEOWNERS (`@rotonmeta`) is routing only, since the owner authors the pull requests |
 | S4 | The table costs nothing at rest. | A blocking spec counts paints and frame callbacks over a settled 2 s window and fails on any. | proposed: needs the renderer rebuild first |
 | S5 | Speed is measured on the renderer players get. | `perf:web` on the Skia path, motion on, 4x throttle, with owner-held budgets, blocking on table changes. | proposed |
 | S6 | A flake is fixed at its source the day it is seen. | No reruns (already rule-backed for device jobs); a flaky test is fixed or quarantined with a ticket by the agent who saw it. | partly: this change fixes the five known causes |
-| S7 | Every invisible default is named. | Lint guards for defaults that change meaning with the window (`skia-image-fit`, added here); one per class found. | started |
+| S7 | Every invisible default is named. | Lint guards for defaults that change meaning with the window, one per class found, in `eslint.guards.cjs`: `skia-image-fit` (a Skia `<Image>`'s `contain`, an `<ImageShader>`'s `none`), `image-resize-mode` (React Native's `cover`), `svg-aspect` (an `<Svg>` viewBox's `xMidYMid meet`), `onlayout-size-only` (web's `onLayout` fires on size alone, so its x/y go stale), with `native-event-in-place` refusing the alias that would hide a read from it, and `window-through-orientation` (`useWindowDimensions`, which iOS can hand over in the wrong orientation; two callers read it beside `useOrientedWindow`). | in place |
 | S8 | No feature work until S1–S3 hold and the renderer rebuild lands. | The queue takes only `bug`, `ci`, `perf` tickets. | undecided |
 
 ## Everything noticed, to repair
@@ -183,6 +183,8 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 
 - Felt cloth letterboxed on any window not shaped 874×402 (iPad: black bands, side seats dark). *fixed here*.
 - lampSeats floor asserted a pile move the centring design removed. *fixed here*.
+- The online game screen sized its rail, and the offline pill its place, from `useWindowDimensions` while the table read `useOrientedWindow`: two reads of the window that can disagree on a cold start (#819, #821). *fixed here* (S7).
+- A modal's contents read the window measured behind it, which can go stale while the modal is up (#1378); `AppModal` now measures its own window. *fixed here* (S7).
 - The baked-cloth cache (3 targets) misses every turn in a 4-player game: two full-resolution bakes
   with GPU readback, synchronous in render, each turn ([performance.md](performance.md) §1).
 - The felt runs the live procedural shader during every lamp glide (~2 s), which is most of play.
@@ -195,7 +197,7 @@ Grouped by area. *fixed here* means this change fixes it; everything else is ope
 - Layout has no owner; the chip row and hand fan have each been re-fixed many times.
 - #1977 moved the app and only part of the lantern mockup: the mockup kept the cards' lit lip and face
   gloss, the standings board's old centre and the old felt base fill. Each surfaced as a red nightly
-  moment. *fixed here*, in commits that change the mockup alone. The class stays open until S3 holds.
+  moment. *fixed here*, in commits that change the mockup alone. The class stays open until S3 holds. Run over the 389 merges since 2026-09-24, S3's guard refuses 55, #1977 and #1986 among them.
 - The online room at phone landscape pushed its format controls below the fold for any name over
   about 12 characters (names may be 30): the status line wrapped. *fixed here*. The tap-target sweep
   had used 12-character names, so the fixture's gentleness hid it; the sweep now uses the longest name.
