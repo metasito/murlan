@@ -359,9 +359,8 @@ function settledAim(s: Lamp): string {
 const CLOTH_ENDS = [-SWAY, SWAY] as const;
 const CACHED_TARGETS = 3;
 const CACHED_CLOTHS = CACHED_TARGETS * CLOTH_ENDS.length;
-/** How long a settled felt takes to hand the lit cloth over to its cross, and a flare to take it back: three frames, so the ramp does not dim the flash. */
+/** How long a settled felt takes to hand the lit cloth over to its cross. */
 const SETTLE_MS = 500;
-const FLARE_RISE_MS = 48;
 const NEVER_REDUCED = { reduceMotion: ReduceMotion.Never };
 
 /** The cloth with the lamp `lean` points off its target, unflared, on the canvas's own device pixels: lit from the planes, or in one pass where there are none. */
@@ -516,15 +515,6 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
       scheduleOnRN(setAim, now);
     }
   );
-  const rise = useSharedValue(1);
-  useAnimatedReaction(
-    () => lamp.value.f,
-    (now, before) => {
-      if (before === null || now <= before) return;
-      rise.set(Math.min(rise.get(), flareShare(before)));
-      rise.set(withTiming(1, { duration: FLARE_RISE_MS, ...NEVER_REDUCED }));
-    }
-  );
   const rest = useMemo(() => {
     if (!aim || !weave) return null;
     const target = aim.split(",").map(Number) as unknown as Pool;
@@ -546,7 +536,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const settled = useDerivedValue(() => ({
     ...uniforms.value,
     uLean: Math.min(1, Math.max(0, 0.5 + (lamp.value.lx - lamp.value.tx) / (2 * SWAY))),
-    uW: Math.max(settle.value, Math.min(rise.value, flareShare(lamp.value.f))),
+    uW: Math.max(settle.value, flareShare(lamp.value.f)),
   }));
   const light = useDerivedValue(() => ({ x: lamp.value.lx, y: lamp.value.ly }));
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(lamp.value.f));

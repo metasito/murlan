@@ -193,7 +193,7 @@ describe('the felt cloth', () => {
     await view.unmount();
   });
 
-  it('ramps a flare up and back down over the same two cloths, lighting nothing else', async () => {
+  it('lights a flare in full on its first frame and ramps back down over the same two cloths, lighting nothing else', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(1000, sway(lamp));
@@ -201,10 +201,7 @@ describe('the felt cloth', () => {
     const { seen, each } = watch(lamp);
     flare(lamp);
     await frames(160, each);
-    expect(seen.every((w) => w !== null)).toBe(true);
-    expect(seen[0]).toBeLessThan(0.5);
-    expect(seen.at(-1)).toBe(1);
-    expect(Math.max(...steps(seen))).toBeLessThan(0.75);
+    expect(seen.every((w) => w === 1)).toBe(true);
     seen.length = 0;
     await frames(3200, each);
     expect(seen.at(-1)).toBe(0);
