@@ -6,12 +6,12 @@ export interface Instance {
   child: ChildProcess;
 }
 
-const SERVING = /serving on port (\d+)\D/;
+const READY = /express server ready on port (\d+)\D/;
 const OUTPUT_KEPT = 16 * 1024;
 
 /**
- * A real server process against `databaseUrl`, on the port the OS gave it; killed if it never
- * comes up. Its output is kept, and printed if it fails to start or later exits non-zero.
+ * A real server process against `databaseUrl`, on the port the OS gave it, returned once the server
+ * says it is ready; killed if it never comes up. Its output is kept, and printed if it fails to start or later exits non-zero.
  */
 export async function boot(databaseUrl: string, env: Record<string, string> = {}): Promise<Instance> {
   const child = spawn(
@@ -44,13 +44,11 @@ export async function boot(databaseUrl: string, env: Record<string, string> = {}
       child.once("exit", (code, signal) => fail(`exited with ${code ?? signal} before it came up`));
       child.once("error", (err) => fail(`did not start: ${err.message}`));
       const watch = () => {
-        const bound = SERVING.exec(output);
+        const bound = READY.exec(output);
         if (!bound) return;
         child.stdout?.off("data", watch);
         clearTimeout(giveUp);
-        // The port is logged from the listen callback; the socket server is
-        // attached by then, but the adapter's first read from Redis is still in flight.
-        setTimeout(() => resolve(Number(bound[1])), 600);
+        resolve(Number(bound[1]));
       };
       child.stdout?.on("data", watch);
     });

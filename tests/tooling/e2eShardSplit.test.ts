@@ -43,7 +43,7 @@ function playwrightLists(config: string): string[] {
   const out = execFileSync(
     process.execPath,
     [createRequire(import.meta.url).resolve("@playwright/test/cli"), "test", "--list", "--reporter=json", "-c", path.join(E2E_DIR, config)],
-    { cwd: repoRoot, encoding: "utf8", env: { ...process.env, E2E_PORT: "5199", MURLAN_MAIL_SINK: path.join(tmpdir(), "e2e-shard-split-mail.jsonl") } },
+    { cwd: repoRoot, encoding: "utf8", env: { ...process.env, MURLAN_MAIL_SINK: path.join(tmpdir(), "e2e-shard-split-mail.jsonl") } },
   );
   const listing = JSON.parse(out.slice(out.indexOf("{"))) as { suites: { file: string }[]; errors: unknown[] };
   assert.deepEqual(listing.errors, [], `${config} does not load`);
