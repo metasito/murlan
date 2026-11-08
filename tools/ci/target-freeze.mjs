@@ -30,6 +30,8 @@ export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/helpers/lampSeat.ts", what: "the lamp-over-seat tolerance" },
   { pattern: "tools/ci/feltPixels.mjs", what: "the device felt's pixel thresholds" },
   { pattern: "tools/ci/edgePixels.mjs", what: "the device card edges' pixel thresholds" },
+  { pattern: "tests/e2e/helpers/skiaPerfBudgets.ts", what: "the Skia table's speed budgets" },
+  { pattern: "tests/e2e/skiaPerf.spec.ts", what: "the windows, throttle and seed the speed budgets are read in" },
   { pattern: "tools/ci/target-freeze.mjs", what: "this list" },
   { pattern: ".github/workflows/target-freeze.yml", what: "the workflow that runs this list" },
   { pattern: "tests/tooling/targetFreeze.test.ts", what: "this list's floor and the workflow's shape" },
@@ -70,7 +72,7 @@ export function matcher(pattern) {
 }
 
 const targetMatchers = TARGETS.map((t) => matcher(t.pattern));
-const codeMatchers = CODE.map((dir) => (/** @type {string} */ file) => file.startsWith(dir));
+const codeMatchers = CODE.map((dir) => (/** @type {string} */ file) => file.startsWith(dir) && !file.endsWith(".md"));
 
 /** @param {string} file */
 export const isTarget = (file) => targetMatchers.some((m) => m(file));
