@@ -7,9 +7,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { cmdArg, killTree, sleepSync, spawnBin } from "../../scripts/lib/proc.mjs";
+import { cmdArg, killTree, procFor, sleepSync, spawnBin } from "../../scripts/lib/proc.mjs";
 import { blankComments, blankCommentsAndStrings } from "../helpers/sourceScan.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { posixWorld, windowsWorld } from "../helpers/processWorlds.ts";
@@ -224,6 +225,23 @@ describe("on POSIX, modelled", () => {
     assert.deepEqual(world.alive(), [grandchild]);
     assert.deepEqual(world.stopped(), []);
     assert.deepEqual(world.signals.filter(([p, s]) => p === grandchild && s === "SIGKILL"), []);
+  });
+
+  test("the relay listens before its run exists, so a signal on the run's heels still reaches it", () => {
+    const on = new EventEmitter();
+    const listening: number[] = [];
+    const killed: string[] = [];
+    const run = Object.assign(new EventEmitter(), { pid: 7, kill: (sig: string) => killed.push(sig) });
+    const { relay } = procFor({
+      platform: "linux",
+      spawn: (() => {
+        listening.push(on.listenerCount("SIGTERM"));
+        return run;
+      }) as never,
+    });
+    relay("node", ["a.js"], { on: on as never, exit: (() => undefined) as never });
+    on.emit("SIGTERM");
+    assert.deepEqual([listening, killed], [[1], ["SIGTERM"]]);
   });
 
   test("a zombie and a pid that is gone have no identity", () => {
