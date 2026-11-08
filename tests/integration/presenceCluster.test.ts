@@ -15,6 +15,7 @@ import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../help
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { keyspace } from "../../server/store/redis.ts";
 import { accountOn, at, befriendOn, boot, stopInstance, type Instance } from "../helpers/instance.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 const PORTS: number[] = [];
 const FETCH_SOCKETS = "7";
@@ -77,7 +78,7 @@ describe("presence across two instances", { skip: hasDatabase() ? false : skipMe
       },
       true
     );
-    for (let n = 0; n < 2; n++) instances.push(await boot(scoped, { MURLAN_AFK_TIMEOUT_MS: "600000" }));
+    for (let n = 0; n < 2; n++) instances.push(await boot(scoped, { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS) }));
     PORTS.push(...instances.map((i) => i.port));
   });
 

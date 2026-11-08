@@ -30,6 +30,7 @@ import { useTranslation } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { TurnChip } from "@/components/table/notices/hud";
+import { CHIP_KEYS } from "@/components/turnTimerUi";
 
 function FeedbackBox({ feedback }: { feedback: { ok: boolean; text: string } | null }) {
   return (
@@ -200,7 +201,7 @@ export default function TutorialScreen() {
                 onExpire={() => setClockRun((n) => n + 1)}
                 scale={1}
                 lit
-                chipText={t("gameShared.yourTurn")}
+                chipText={t(CHIP_KEYS.yourTurn)}
                 spokenSeat={t("gameTable.a11yYourTurn")}
               />
             </View>

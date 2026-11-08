@@ -95,12 +95,26 @@ test("every event-shaped literal on either end is in a typed map", () => {
 
 const SOCKET_CAST = /\b(?:socket|io|_io)\b[^\n;]*\bas (?:any|unknown|never)\b|\bas (?:any|unknown|never)\b[^\n;]*\.(?:emit|on|once|off)\(/;
 
+const OWNER = "lib/socket.ts";
+const OWNER_CASTS = [
+  "const raw = (socket: Socket) => socket as unknown as RawSocket;",
+  "const owned = (socket: RawSocket) => socket as unknown as Socket;",
+];
+
 test("no socket call is cast past the typed maps", () => {
   assert.ok(SOCKET_CAST.test(`(socket as any).emit("x", 1);`) && SOCKET_CAST.test(`io.to(r).emit(e as never);`));
   const cast = [...server, ...client].flatMap(([file, source]) =>
-    source.split("\n").flatMap((line, i) => (SOCKET_CAST.test(line) ? [`${file}:${i + 1}`] : []))
+    source.split("\n").flatMap((line, i) => (SOCKET_CAST.test(line) && !(file === OWNER && OWNER_CASTS.includes(line)) ? [`${file}:${i + 1}`] : []))
   );
   assert.deepEqual(cast, []);
+});
+
+test("the owner module's two casts are the only ones exempted, each still there", () => {
+  const owner = [...server, ...client].find(([file]) => file === OWNER)?.[1] ?? "";
+  for (const cast of OWNER_CASTS) {
+    assert.ok(SOCKET_CAST.test(cast), `${cast} no longer needs an exemption`);
+    assert.equal(owner.split("\n").filter((line) => line === cast).length, 1, `${cast} is not in ${OWNER} exactly once`);
+  }
 });
 
 const PROBE_HEADER = [

@@ -1,5 +1,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
+import type { TFn } from "@/lib/i18n";
+
 /** `live` while the state that raised it stands: the region's text goes with it, so the next float is a change. */
 export type Float = { id: number; kind: "pass" | "autoPass" | "reject" | "toast"; text: string; live: boolean };
 
@@ -22,10 +24,12 @@ export const raised = (standing: Float | null, kind: Float["kind"], text: string
   live,
 });
 
+export const floatLabels = (t: TFn) => ({ passed: t("gameShared.passedLabel"), autoPass: t("game.autoPassTitle") });
+
 export function nextFloat(
   prev: Float | null,
   input: FloatInput,
-  labels: { passed: string; autoPass: string },
+  labels: ReturnType<typeof floatLabels>,
 ): Float | null {
   let float = prev;
   if (input.viewerPassed) float = raised(float, "pass", labels.passed, !input.withdrawn);

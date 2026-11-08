@@ -1,7 +1,8 @@
 import { afterEach, describe, it, expect, jest } from '@jest/globals';
 import { Platform } from 'react-native';
 
-import { connectSocket, disconnectSocket, peekSocket } from '@/lib/socket';
+import type { Socket } from '@/lib/socket';
+import { closeSocket, connectSocket, disconnectSocket, peekSocket, reconnectSocket } from '@/lib/socket';
 import { lastSocket } from './mocks/socketIo';
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -28,7 +29,7 @@ describe('signing out while the socket is still opening', () => {
     const socket = lastSocket();
     const onConnect = jest.fn();
     socket.on('connect', onConnect);
-    expect(socket.io.engine.readyState).toBe('opening');
+    expect(socket.io.engine?.readyState).toBe('opening');
 
     disconnectSocket('opening1');
 
@@ -83,5 +84,30 @@ describe('signing out once the socket has opened', () => {
 
     expect(socket.disconnect).toHaveBeenCalledTimes(1);
     expect(socket.connected).toBe(false);
+  });
+});
+
+describe('a halt or a retry while the socket is still opening', () => {
+  it('halting waits for the websocket to settle before closing it', () => {
+    connectSocket('halt1', { onAuthFailure: () => {} });
+    const socket = lastSocket();
+
+    closeSocket(socket as unknown as Socket);
+    expect(socket.disconnect).not.toHaveBeenCalled();
+
+    socket.open();
+    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('retrying a settled socket closes it and connects again', () => {
+    connectSocket('retry2', { onAuthFailure: () => {} });
+    const socket = lastSocket();
+    socket.open();
+    const connects = socket.connect.mock.calls.length;
+
+    reconnectSocket(socket as unknown as Socket);
+
+    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+    expect(socket.connect.mock.calls.length).toBe(connects + 1);
   });
 });

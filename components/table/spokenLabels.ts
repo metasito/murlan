@@ -22,6 +22,9 @@ import { straightTopRankChar } from "./straightTopRank.ts";
 import { PLAY_SPOKEN_KEYS, playRefusalLabel } from "../../lib/table/playRefusal.ts";
 import type { TableA11yStrings } from "@/components/tableA11y";
 
+/** Who the HUD pill names for the play on top. */
+export const playerLabel = (viewers: boolean, name: string, t: TFn): string => (viewers ? t("gameShared.you") : name);
+
 /** The HUD pill's combination text: its kind, and how many cards once there are more than two. */
 export function comboLabel(combo: Combination | null, t: TFn): string | null {
   if (!combo) return null;
