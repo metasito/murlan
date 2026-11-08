@@ -512,8 +512,8 @@ skip is allowed is a relation between the source and the workflow that runs it.
   holds `tests/e2e/browserErrors.spec.ts`'s self-test, `seatNameContrast.spec.ts`'s ruled
   `test.fail()` and `ios.yml`'s simulator warm-up.
 - **Tickets.** The Target freeze step reads every `// flake: #<n>` under `tests/` and `tools/` at
-  the head and fails unless each is an open issue, not a pull request, carrying the `flake` label;
-  a missing `flake` label is red, with a message to create it. The offline test only checks that
+  the head and fails unless each is an open issue, not a pull request, carrying the `ci-flake` label;
+  a missing `ci-flake` label is red, with a message to ask the owner to add it. The offline test only checks that
   every tag sits on a skip.
 
 **Limits.** The step runs on pull request events only: closing an issue reds every open pull

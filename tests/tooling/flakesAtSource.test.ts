@@ -599,9 +599,9 @@ describe("the quarantine list only shrinks, and its tickets stay open and labell
       assert.match(fresh.out, /is new/);
       assert.match((await verdict(base, shrunk, { issues: { 7: open, 8: { ...open, state: "closed" } } })).out, /#8 is closed/);
       assert.match((await verdict(base, shrunk, { issues: { 7: open, 8: { ...open, pull_request: {} } } })).out, /#8 is a pull request/);
-      assert.match((await verdict(base, shrunk, { issues: { 7: open, 8: { state: "open", labels: [] } } })).out, /#8 has no flake label/);
+      assert.match((await verdict(base, shrunk, { issues: { 7: open, 8: { state: "open", labels: [] } } })).out, /#8 has no ci-flake label/);
       assert.match((await verdict(base, shrunk, { issues: { 7: open } })).out, /#8: HTTP 404/);
-      assert.match((await verdict(base, shrunk, { label: 404 })).out, /label does not exist; create it/);
+      assert.match((await verdict(base, shrunk, { label: 404 })).out, /label does not exist; ask the owner to add ci-flake/);
       assert.match((await verdict(base, noList)).out, /has no tests\/tooling\/flakesAtSource\.json/);
       assert.match((await verdict(base, thin)).out, /only 1 sources/);
       assert.match((await verdict(undefined, head)).out, /needs the base and head/);

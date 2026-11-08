@@ -9,7 +9,7 @@ import { firstLine, git } from "../loop/cli.mjs";
 export const QUARANTINE = "tests/tooling/flakesAtSource.json";
 export const TICKETED_DIRS = ["tests", "tools"];
 export const SOURCE = /\.(?:tsx?|mjs|js)$/;
-export const LABEL = "flake";
+export const LABEL = "ci-flake";
 const FLOOR = 100;
 
 /** @param {string} text */
@@ -106,7 +106,7 @@ export async function run(base, head, { at = git(), env = process.env, fetch: ge
   const api = (at) =>
     get(`https://api.github.com/repos/${env.GITHUB_REPOSITORY}/${at}`, { headers: { authorization: `Bearer ${env.GH_TOKEN}`, accept: "application/vnd.github+json" } });
   const label = await api(`labels/${LABEL}`);
-  if (label.status === 404) findings.push(`the ${LABEL} label does not exist; create it, so a flake ticket can carry it`);
+  if (label.status === 404) findings.push(`the ${LABEL} label does not exist; ask the owner to add ${LABEL}, so a flake ticket can carry it`);
   else if (!label.ok) findings.push(`the ${LABEL} label: HTTP ${label.status}`);
   for (const n of tickets) {
     const res = await api(`issues/${n}`);
