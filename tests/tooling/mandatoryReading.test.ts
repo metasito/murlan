@@ -13,6 +13,7 @@ const bytes = (p: string) => statSync(path.join(root, p)).size;
 // reference material belongs behind a pointer in a doc nobody is told to read first.
 const TOTAL_CAP = 77_000;
 const CHECKS_CAP = 9_000;
+const CHECKS = "docs/agents/checks.md";
 
 function pointerTargets(claudeMd: string): string[] {
   const section = /^## Where the rest lives\n([\s\S]*?)(?=^## )/m.exec(claudeMd)?.[1] ?? "";
@@ -39,14 +40,15 @@ test("the pointer list is read from the section itself, one target per bullet", 
 
 test("CLAUDE.md still points at the docs a session reads first", () => {
   assert.ok(targets.length >= 7, targets.join(", "));
-  for (const f of ["docs/agents/RULES.md", "docs/agents/checks.md", "docs/agents/issue-tracker.md", "CONTEXT.md"]) {
+  for (const f of ["docs/agents/RULES.md", CHECKS, "docs/agents/issue-tracker.md", "CONTEXT.md"]) {
     assert.ok(targets.includes(f), `${f} is no longer a pointer target`);
   }
   for (const f of mandatory) assert.ok(existsSync(path.join(root, f)) && bytes(f) > 0, `${f} is missing or empty`);
 });
 
 test(`docs/agents/checks.md stays a router, at most ${CHECKS_CAP} bytes`, () => {
-  assert.ok(bytes("docs/agents/checks.md") <= CHECKS_CAP, `checks.md is ${bytes("docs/agents/checks.md")} bytes`);
+  const size = bytes(CHECKS);
+  assert.ok(size <= CHECKS_CAP, `${CHECKS} is ${size} bytes`);
 });
 
 test(`the docs every session is pointed at first total at most ${TOTAL_CAP} bytes`, () => {
