@@ -13,7 +13,7 @@ import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 // the device's short edge — no breakpoints, no tablet branch. 390 is the
 // short edge the base sizes below are authored at (an iPhone-standard
 // viewport); an SE runs ~0.82, a 17 Pro Max ~1.13.
-export const BASE_SHORT_EDGE = 390;
+const BASE_SHORT_EDGE = 390;
 // Caps scale on a maximized desktop browser, where the short edge keeps
 // growing with the window — a real device's short edge tops out well below
 // this (tableFit.spec.ts's own tablet-landscape fixture is 834).
@@ -21,6 +21,11 @@ const MAX_SHORT_EDGE = 900;
 
 export function cardScale(shortEdge: number): number {
   return Math.min(shortEdge, MAX_SHORT_EDGE) / BASE_SHORT_EDGE;
+}
+
+/** The short edge a table at `scale` is drawn for: past the cap, less than the window's own. */
+export function drawnShortEdge(scale: number): number {
+  return BASE_SHORT_EDGE * scale;
 }
 
 // The window width one unit of scale needs to seat the last-played pill and the turn chip in one row.

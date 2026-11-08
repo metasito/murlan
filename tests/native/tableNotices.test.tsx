@@ -12,7 +12,7 @@ import { cardSpokenName } from '@/lib/cardNames';
 import type { ServerError } from '@/context/OnlineGameContext';
 import { useOnlineRoom, useServerError } from '@/context/onlineGameHooks';
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
-import { NOTICES, type NoticeKind } from '@/components/table/noticeModel';
+import { mockupPx, NOTICES, type NoticeKind } from '@/components/table/noticeModel';
 import { GameTable } from '@/components/GameTable';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { en } from '@/locales/en';
@@ -114,7 +114,7 @@ describe('the HUD combination pill', () => {
 
 describe('the turn pill', () => {
   const S = 1.2;
-  const at = (px: number) => (px / (402 / 390)) * S;
+  const at = (px: number) => mockupPx(px, S);
   const TURN = {
     neutral: { lit: false, edge: Colors.goldBorder, label: Colors.textMuted, dot: Colors.gold, count: Colors.gold, glow: null, dotGlow: null },
     lit: {

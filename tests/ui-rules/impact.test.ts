@@ -19,6 +19,7 @@ import {
   type ImpactTier,
   type FlareKind,
 } from "../../components/impact.ts";
+import { tableScale } from "../../components/tableLayout.ts";
 import { blankComments, blankCommentsAndStrings } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -472,12 +473,10 @@ describe("the lamp's flare (#765)", () => {
 
 describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () => {
   const DECAY_MS = Motion.duration.shake;
-  // The base short edge `cardScale` (components/cardFaceModel.ts) is authored
-  // at, and the phone/tablet short edges the critic on #795 read the
-  // regression at.
-  const BASE_EDGE = 390;
-  const PHONE_EDGE = 320;
-  const TABLET_EDGE = 834;
+  // The base scale, and the phone's and tablet's the critic on #795 read the regression at.
+  const BASE_SCALE = 1;
+  const PHONE_SCALE = tableScale({ width: 568, height: 320 });
+  const TABLET_SCALE = tableScale({ width: 1194, height: 834 });
 
   const ALL_TIERS: ImpactTier[] = ["ordinary", "straight", "bomb", "roundWon", "matchWon"];
 
@@ -505,20 +504,19 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     assert.ok(bomb.y > shared.y, `expected the bomb's y peak (${bomb.y}) to exceed the shared one (${shared.y})`);
   });
 
-  function bombShake(shortEdge: number, elapsedMs: number) {
-    const scale = shortEdge / BASE_EDGE;
+  function bombShake(scale: number, elapsedMs: number) {
     return shakeOffset(Trauma.bomb, elapsedMs, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
   }
 
   test("only the bomb rotates, peaking at 1.2° and out of phase with the translation", () => {
     const samples = Array.from({ length: 200 }, (_, i) => (i / 200) * DECAY_MS);
-    const bombTurns = samples.map((ms) => bombShake(BASE_EDGE, ms).rotate);
+    const bombTurns = samples.map((ms) => bombShake(BASE_SCALE, ms).rotate);
     const peak = Math.max(...bombTurns.map(Math.abs));
     assert.ok(peak > 0 && peak <= 1.2, `the bomb's rotation peak was ${peak}°`);
-    assert.equal(bombShake(BASE_EDGE, 0).rotate, 0, "the rotation is phase-shifted off the jolt at impact");
+    assert.equal(bombShake(BASE_SCALE, 0).rotate, 0, "the rotation is phase-shifted off the jolt at impact");
     const quarterCycle = DECAY_MS / 12;
     assert.ok(
-      Math.abs(Math.abs(bombShake(BASE_EDGE, quarterCycle).rotate) - shakeMagnitude(Trauma.bomb, quarterCycle, DECAY_MS) * 1.2) < 1e-9,
+      Math.abs(Math.abs(bombShake(BASE_SCALE, quarterCycle).rotate) - shakeMagnitude(Trauma.bomb, quarterCycle, DECAY_MS) * 1.2) < 1e-9,
       "a quarter cycle in, the rotation is the whole decayed magnitude times the 1.2° peak"
     );
     for (const tier of ALL_TIERS) {
@@ -540,13 +538,13 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
   const PRE_CORRECTION_SHAKE_X = Trauma.bomb * 16;
   const PRE_CORRECTION_SHAKE_Y = Trauma.bomb * 10;
 
-  for (const [label, shortEdge] of [
-    ["phone", PHONE_EDGE],
-    ["base", BASE_EDGE],
-    ["tablet", TABLET_EDGE],
+  for (const [label, scale] of [
+    ["phone", PHONE_SCALE],
+    ["base", BASE_SCALE],
+    ["tablet", TABLET_SCALE],
   ] as const) {
     test(`a bomb's own shake, at contact, is at least what it displaced before #789's curve correction — ${label}`, () => {
-      const after = bombShake(shortEdge, 0);
+      const after = bombShake(scale, 0);
       assert.ok(
         Math.abs(after.x) >= PRE_CORRECTION_SHAKE_X,
         `${label}: expected the re-tuned peak to clear the pre-correction floor of ${PRE_CORRECTION_SHAKE_X.toFixed(2)}px on x, got ${Math.abs(after.x).toFixed(2)}px`
@@ -560,9 +558,8 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
 
   test("a round or match closed by an ordinary combination — no kick to lean on — keeps exactly the shake it had before this ticket", () => {
     for (const tier of ["roundWon", "matchWon"] as const) {
-      const scale = PHONE_EDGE / BASE_EDGE;
-      const untouched = shakeOffset(traumaFor(tier, false, false), 0, DECAY_MS, scale);
-      const withThisTicketsHelper = shakeOffset(traumaFor(tier, false, false), 0, DECAY_MS, scale, shakeAmplitudeFor(tier));
+      const untouched = shakeOffset(traumaFor(tier, false, false), 0, DECAY_MS, PHONE_SCALE);
+      const withThisTicketsHelper = shakeOffset(traumaFor(tier, false, false), 0, DECAY_MS, PHONE_SCALE, shakeAmplitudeFor(tier));
       assert.deepEqual(
         withThisTicketsHelper,
         untouched,
@@ -572,9 +569,9 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
   });
 
   test("the bomb's re-tuned shake still decays to rest across its own window, not to a raised floor", () => {
-    const atContact = bombShake(PHONE_EDGE, 0);
-    const midway = bombShake(PHONE_EDGE, DECAY_MS / 2);
-    const spent = bombShake(PHONE_EDGE, DECAY_MS);
+    const atContact = bombShake(PHONE_SCALE, 0);
+    const midway = bombShake(PHONE_SCALE, DECAY_MS / 2);
+    const spent = bombShake(PHONE_SCALE, DECAY_MS);
     assert.ok(
       Math.abs(midway.x) < Math.abs(atContact.x),
       `expected the boosted peak to have decayed by the midpoint, got ${midway.x} against a peak of ${atContact.x}`
@@ -590,9 +587,8 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     // would pass no matter what `traumaFor` answered, boosted amplitude or
     // not. A non-zero decay window here means only `traumaFor`'s own answer,
     // run through the bomb's larger peak, is under test.
-    const scale = PHONE_EDGE / BASE_EDGE;
     const trauma = traumaFor("bomb", true, false);
-    const { x, y } = shakeOffset(trauma, 0, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
+    const { x, y } = shakeOffset(trauma, 0, DECAY_MS, PHONE_SCALE, shakeAmplitudeFor("bomb"));
     assert.equal(x, 0, "the boosted amplitude must not turn a leaked trauma into visible displacement");
     assert.equal(y, 0, "the boosted amplitude must not turn a leaked trauma into visible displacement");
   });
