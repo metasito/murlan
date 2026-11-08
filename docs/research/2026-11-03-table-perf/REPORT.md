@@ -74,7 +74,7 @@ Native: `particleLayer.tsx` is a separate full-screen Skia Atlas that rebuilds 2
 ### 2. The lamp sway re-poses every card's gloss forever
 
 `useLampRig.ts:30-39` runs a frame callback for as long as the table is mounted; the sway
-(`lampRig.ts:174`, +-20 pt) crosses `GLOSS_POINT_STEP` (`cardGloss.ts:26`, 0.5 pt) 20-35 times a
+(`lampRig.ts:174`, +-20 pt) crosses `GLOSS_POINT_STEP` (`cardGloss.ts:26`, 0.5 pt when measured; 2 pt since #1987) 20-35 times a
 second, and each step re-runs the mappers in `LampGloss.tsx:42-53,95-107,129` for 139 layers
 (35 gloss spots, 35 streaks, 17 foil inks, 17 foil bands, 35 level shades).
 

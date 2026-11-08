@@ -39,6 +39,8 @@ instead of sitting unguarded in prose.
 `tests/integration/` folds in and self-skips without `DATABASE_URL` or `REDIS_URL`. A unit test
 lives beside what it exercises: `tests/engine/`, `tests/bots/`, `tests/server/`, `tests/ui-rules/`,
 `tests/tooling/` — none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
+`npm run test:tooling` runs `tests/tooling/` alone; a directory handed to `node --test` fails on Node 22, so
+nothing shows that form (`tests/tooling/testInvocationForm.test.ts`).
 
 ## Local ports
 
@@ -71,8 +73,7 @@ Open the section when its trigger applies; each is in `docs/agents/traps.md` unl
   `docs/agents/device-runs.md`, with what no automated layer covers and the manual release
   checklist.
 - **A test is flaky, skipped or filtered, or CI gate's results step is red** —
-  `docs/agents/suites.md` § A flake is fixed, never retried or quietly skipped. Re-running only
-  the failed jobs cannot turn it green, since the first attempt's failure still counts: push a fix.
+  `docs/agents/suites.md` § A flake is fixed. A re-run cannot green it: push a fix.
 - **A module a `node --test` file loads imports JSX, `@/` or `react-native`** — below.
 
 ## Node's TypeScript loader reaches plain `.ts` only
