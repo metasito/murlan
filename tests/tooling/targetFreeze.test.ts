@@ -56,6 +56,25 @@ describe("the list looks at the repository as it is", () => {
     assert.equal(freezeVerdict([target, "components/x.tsx"]).ok, false);
   });
 
+  test("every e2e helper a target spec imports is a target or named here as plumbing, so a new measuring helper must be decided", () => {
+    const plumbing = new Set(["fixtures", "offlineSeed", "press", "phones", "selectors", "settle", "bot", "cardOnCardCss", "navigation", "online", "safeArea"].map((n) => (n === "fixtures" ? "tests/e2e/fixtures.ts" : `tests/e2e/helpers/${n}.ts`)));
+    const imported = new Set<string>();
+    for (const spec of tracked.filter((f) => isTarget(f) && /^tests\/e2e\/[^/]+\.ts$/.test(f))) {
+      for (const [, rel] of fs.readFileSync(path.join(root, spec), "utf8").matchAll(/from\s+"(\.\/[^"]+)"/g)) {
+        const base = path.posix.join("tests/e2e", rel).replace(/\.ts$/, "");
+        const file = tracked.find((f) => f === `${base}.ts`);
+        if (file) imported.add(file);
+      }
+    }
+    assert.ok(imported.size >= 8, `only ${imported.size} helpers found`);
+    assert.deepEqual([...imported].filter((f) => !isTarget(f) && !plumbing.has(f)), []);
+  });
+
+  test("the measuring helpers are targets", () => {
+    for (const f of ["renderCounters", "virtualClock", "tableTrace"]) assert.ok(isTarget(`tests/e2e/helpers/${f}.ts`), f);
+    assert.equal(freezeVerdict(["tests/e2e/helpers/renderCounters.ts", "components/table/lampRig.ts"]).ok, false);
+  });
+
   test(".github/CODEOWNERS is the list's own rendering", () => {
     assert.equal(fs.readFileSync(path.join(root, ".github", "CODEOWNERS"), "utf8"), codeowners());
   });
@@ -212,6 +231,12 @@ describe("planted diffs", () => {
       fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
       edit(SELF, '  { pattern: "tests/e2e/tiers.mjs", what: "which specs are nightly" },\n', "");
     });
+    at()(["switch", "-q", "--orphan", "unrelated"]);
+    at()(["checkout", "main", "--", "."]);
+    commit("unrelated history");
+    branch("emptied-kept", () => {
+      fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
+    });
     branch("spoof", () => {
       write(".github/workflows/ci.yml", "jobs:\n  fake:\n    name: Target freeze\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n");
       write("components/GameTable.tsx", "moved\n");
@@ -297,8 +322,14 @@ describe("planted diffs", () => {
     for (const [base, head] of [["no-such-ref", "mixed"], ["main", "no-such-ref"]]) {
       const bad = judge(head, base);
       assert.equal(bad.code, 1);
-      assert.match(bad.out, /^::error::could not read \S+ or \S+, so nothing was judged: /);
+      assert.match(bad.out, /^::error::could not read \S+ or \S+, or they share no merge base, so nothing was judged: /);
     }
+  });
+
+  test("a head sharing no history with the base is red, not green", () => {
+    const bad = judge("unrelated");
+    assert.equal(bad.code, 1);
+    assert.match(bad.out, /or they share no merge base, so nothing was judged: Command failed: git diff /);
   });
 
   test("a pattern that names no file in the base turns it red", () => {
@@ -311,10 +342,16 @@ describe("planted diffs", () => {
     assert.deepEqual(judge("retired"), { code: 0, out: "targets only (2 files)" });
   });
 
+  test("a head that deletes a target's last file but keeps its pattern is red, not left to every later pull request", () => {
+    const { code, out } = judge("emptied-kept");
+    assert.equal(code, 1);
+    assert.match(out, /^::error::these patterns name no file in emptied-kept but its list still holds them, so the freeze would no longer see them: tests\/e2e\/tiers\.mjs$/);
+  });
+
   test("a head whose other workflow names a job Target freeze is refused", () => {
     assert.deepEqual(judge("spoof"), {
       code: 1,
-      out: "::error::.github/workflows/ci.yml names a job or step Target freeze, whose check would stand in for this one (RULES.md 52).",
+      out: "::error::.github/workflows/ci.yml names a job or step Target freeze; a job so named reports a check that would stand in for this one (RULES.md 52).",
     });
   });
 
@@ -331,6 +368,7 @@ describe("planted diffs", () => {
     for (const sha of ["1".repeat(40), ""]) {
       const bad = asPullRequest("code-only", sha);
       assert.notEqual(bad.code, 0, bad.out);
+      assert.match(bad.out, sha ? /fatal: .*not our ref 1{40}/ : /^::error::the fetched head is not \.$/m);
       assert.doesNotMatch(bad.out, /^(code only|targets only|no file changed)/m);
     }
   });

@@ -1,23 +1,23 @@
 # The target never moves with the code
 
 Rule 52 in `docs/agents/RULES.md`, explained. Read before a change that touches a parity target or
-the guard itself. `TARGETS` in `tools/ci/target-freeze.mjs` is the only list of targets. The invariant: the
-guard is decided by base-defined code and enforced by the ruleset. `.github/workflows/target-freeze.yml`
-runs on `pull_request_target` into `main`, so GitHub runs main's copy of the workflow and of the
-script, never the pull request's. A change that loosens the script, empties the list, edits its
-test or rewrites the workflow is judged by the list it started from; its edits take effect only
-once it has merged. A check inside `ci.yml` cannot do this: on `pull_request` the head's `ci.yml`
-runs, and it decides whether any step of it runs at all.
+the guard itself. `TARGETS` in `tools/ci/target-freeze.mjs` is the only list of targets. The
+invariant: the guard is decided by base-defined code and enforced by the ruleset.
+`.github/workflows/target-freeze.yml` runs on `pull_request_target` into `main`, so GitHub runs
+main's copy of the workflow and of the script, never the pull request's. A change that loosens the
+script, empties the list, edits its test or rewrites the workflow is judged by the list it started
+from; its edits take effect only once it has merged. A check inside `ci.yml` cannot do this: on
+`pull_request` the head's `ci.yml` runs, and it decides whether any step of it runs at all.
 
 **Nothing of the head runs.** The job checks out main's tip without persisting its token, fetches
 the event's `head.sha` by SHA as git objects (a fork's commits are reachable from the base
-repository through `refs/pull/<n>/head`, which can lag the event; a fetch that fails or lands
-elsewhere is red), and runs main's
-script on `HEAD...<head>` with renames off, so a target moved out of its path still counts where it
-was. The head is read only through `git diff`, `git ls-tree` and `git show`: no checkout, install or
-import of its files, no secret, read-only `contents`, and the pull request's fields reach the shell
-through `env:`. Running the head's code there would be a pwn-request. `edited` is among its types,
-so a stack retargeted onto `main` is judged again on its new base.
+repository through `refs/pull/<n>/head`, which can lag the event, and a lag makes the fetch fail, so
+the check goes red until the ref catches up; a fetch that fails or lands elsewhere is red), and runs
+main's script on `HEAD...<head>` with renames off, so a target moved out of its path still counts
+where it was. The head is read only through `git diff`, `git ls-tree` and `git show`: no checkout,
+install or import of its files, no secret, read-only `contents`, and the pull request's fields reach
+the shell through `env:`. Running the head's code there would be a pwn-request. `edited` is among
+its types, so a stack retargeted onto `main` is judged again on its new base.
 
 **The ruleset makes it binding, and what stays spoofable.** The `main` ruleset routes every change
 through a pull request, with no bypass actors. The owner is to require `Target freeze` there once
@@ -26,16 +26,16 @@ yet. A ruleset's "Require workflows to pass" rule would bind the check to this f
 GitHub's docs say it accepts `pull_request_target` workflows, but it exists only in organization
 rulesets, and `metasito/murlan` belongs to a user account. So the requirement is a status check,
 matched by name, and any workflow's job can report a check of that name: a head's `ci.yml` runs on
-`pull_request` and could add a green `Target freeze` of its own. On a mixed pull request the real check is red
-from the verdict already, so whether a spoof gets through rests on how GitHub resolves a red and a
-green check of one name, which is not measured. Main's script also refuses a head whose workflows
-name a job or step `Target freeze` outside this file (`impostors`); that only keeps a spoof from
-landing on `main` through a clean pull request, and flags one that carries it. This file is exempt
-because editing it is a target change, which a mixed pull request is refused for already. The scan
-reads lines, so it misses a name built by an expression, YAML it does not parse (flow mappings,
-block scalars, anchors, escapes, a quoted `name` key), and a check run or commit status posted
-through the API with `GITHUB_TOKEN`. Moving the repository to an organization with the workflows
-rule is what closes this.
+`pull_request` and could add a green `Target freeze` of its own. On a mixed pull request the real
+check is red from the verdict already, so whether a spoof gets through rests on how GitHub resolves
+a red and a green check of one name, which is not measured. Main's script also refuses a head whose
+workflows name a job or step `Target freeze` outside this file (`impostors`); that only keeps a
+spoof from landing on `main` through a clean pull request, and flags one that carries it. This file
+is exempt because editing it is a target change, which a mixed pull request is refused for already.
+The scan reads lines, so it misses a name built by an expression, YAML it does not parse (flow
+mappings, block scalars, anchors, escapes, a quoted `name` key), and a check run or commit status
+posted through the API with `GITHUB_TOKEN`. Moving the repository to an organization with the
+workflows rule is what closes this.
 
 A change to the guard (the script, this workflow, its test, CODEOWNERS) is a target change, and
 today it lands with no review required.
@@ -50,7 +50,9 @@ branch that merges main; a merge ref. It runs the workflow's own `run` from a cl
 a head fetched by SHA: one that tampers the verdict or empties the list, which head's copy passes
 and base's refuses; one that merged a newer main; and a SHA it cannot fetch, or none. The
 guard is floored: a pattern that names no file in the base turns it red, and so does a base or head
-that is missing, cannot be read, or is the same commit.
+that is missing, cannot be read, shares no merge base or is the same commit. A pattern that names no
+file in the head but is still in the head's copy of the list turns it red too, so a pull request
+cannot delete a target's last file and keep its pattern; retiring one removes both.
 
 **What it leaves out, on purpose.** These change with the code by design, and freezing them would
 make every intended change unlandable:
@@ -64,6 +66,9 @@ make every intended change unlandable:
   - `tests/ui-rules/cardShadows.test.ts`'s shadow bounds, which are the owner's 2026-11-03 ruling.
 - `tests/e2e/pileBeaten.spec.ts` and `reconnect.spec.ts`, which mostly assert app behaviour.
 - A threshold written inside app code. The list covers only the files it names.
+
+The measuring helpers (`tableTrace.ts`, `renderCounters.ts`, `virtualClock.ts`) are targets, and
+`targetFreeze.test.ts` makes every other helper a target spec imports be named as plumbing.
 
 Some targets take their values from the app, so a code change moves them without touching the
 list:

@@ -30,6 +30,9 @@ export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/helpers/lampSeat.ts", what: "the lamp-over-seat tolerance" },
   { pattern: "tools/ci/feltPixels.mjs", what: "the device felt's pixel thresholds" },
   { pattern: "tools/ci/edgePixels.mjs", what: "the device card edges' pixel thresholds" },
+  { pattern: "tests/e2e/helpers/tableTrace.ts", what: "the trace every lamp and felt spec reads the app through" },
+  { pattern: "tests/e2e/helpers/renderCounters.ts", what: "what the speed budgets count as a render" },
+  { pattern: "tests/e2e/helpers/virtualClock.ts", what: "the clock the speed budgets are read in" },
   { pattern: "tests/e2e/helpers/skiaPerfBudgets.ts", what: "the Skia table's speed budgets" },
   { pattern: "tests/e2e/skiaPerf.spec.ts", what: "the windows, throttle and seed the speed budgets are read in" },
   { pattern: "tools/ci/target-freeze.mjs", what: "this list" },
@@ -43,6 +46,7 @@ export const CODE = Object.freeze(["app/", "components/", "lib/"]);
 export const OWNER = "@rotonmeta";
 
 export const WORKFLOW = ".github/workflows/target-freeze.yml";
+const SELF = "tools/ci/target-freeze.mjs";
 export const CHECK = "Target freeze";
 
 /** @param {string} pattern */
@@ -138,6 +142,12 @@ export function run(base, head, at = git(), log = console.log) {
       log(`::error::these patterns name no file in ${base}, so the freeze no longer sees them: ${missing.join(", ")}`);
       return 1;
     }
+    const kept = at.text(["show", `${head}:${SELF}`]);
+    const emptied = unmatched(at.text(["ls-tree", "-r", "-z", "--name-only", head]).split("\0").filter(Boolean)).filter((p) => kept.includes(`"${p}"`));
+    if (emptied.length) {
+      log(`::error::these patterns name no file in ${head} but its list still holds them, so the freeze would no longer see them: ${emptied.join(", ")}`);
+      return 1;
+    }
     changed = changedSince(base, head, at);
     const workflows = at
       .text(["ls-tree", "-z", "--name-only", head, "--", ".github/workflows/"])
@@ -146,11 +156,11 @@ export function run(base, head, at = git(), log = console.log) {
       .map((f) => ({ path: f, text: at.text(["show", `${head}:${f}`]) }));
     const spoofs = impostors(workflows);
     if (spoofs.length) {
-      log(`::error::${spoofs.join(", ")} ${spoofs.length === 1 ? "names" : "name"} a job or step ${CHECK}, whose check would stand in for this one (RULES.md 52).`);
+      log(`::error::${spoofs.join(", ")} ${spoofs.length === 1 ? "names" : "name"} a job or step ${CHECK}; a job so named reports a check that would stand in for this one (RULES.md 52).`);
       return 1;
     }
   } catch (err) {
-    log(`::error::could not read ${base} or ${head}, so nothing was judged: ${String(err?.message ?? err).split("\n")[0]}`);
+    log(`::error::could not read ${base} or ${head}, or they share no merge base, so nothing was judged: ${String(err?.message ?? err).split("\n")[0]}`);
     return 1;
   }
   const verdict = freezeVerdict(changed);
