@@ -5,22 +5,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isRecordedExclusion } from "../helpers/trackedFiles.ts";
 import { classify } from "../../scripts/lib/commentShape.ts";
 
 // .claude/skills is vendored upstream (the plan's Global Constraints forbid touching it), so a
 // code snippet inside it is not a claim this repo's own docs make. A dated plan in docs/plans/ is
 // a record of the tree it was written against: a later move leaves its paths stale by design, and
-// rewriting them would falsify the record. Excluded here, not silently: this comment is the
+// rewriting them would falsify the record. Excluded by `isRecordedExclusion` (tests/helpers), not silently: this comment is the
 // exclusions' record.
-const EXCLUDED_DIRS = [".claude/skills/"];
-const DATED_PLAN = /^docs\/plans\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const at = (file: string) => join(ROOT, file);
 
 const docs = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
   .trim().split("\n").filter((f) => !f.startsWith("node_modules/"))
-  .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)))
-  .filter((f) => !DATED_PLAN.test(f));
+  .filter((f) => !isRecordedExclusion(f));
 const scripts = new Set(Object.keys(JSON.parse(readFileSync(at("package.json"), "utf8")).scripts));
 const RULES = "docs/agents/RULES.md";
 const ruleNumbers = new Set(
@@ -103,8 +101,7 @@ test("every docs/ path a comment in tracked source, or a workflow prompt, names 
   const broken: string[] = [];
   const sourceFiles = execFileSync("git", ["ls-files", "*.ts", "*.tsx", "*.mjs"], { cwd: ROOT, encoding: "utf8" })
     .trim().split("\n").filter(Boolean)
-    .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)))
-  .filter((f) => !DATED_PLAN.test(f));
+    .filter((f) => !isRecordedExclusion(f));
   for (const file of sourceFiles) {
     const lines = classify(readFileSync(at(file), "utf8"), file);
     for (const line of lines) {
@@ -143,4 +140,69 @@ test("a decided rule is stated in GAME-RULES.md § Decisions alone, and nothing 
     .filter((f) => !/^docs\/(adr|plans|research|specs|design)\//.test(f) && existsSync(at(f)))
     .filter((f) => staleCitation.test(readFileSync(at(f), "utf8")));
   assert.deepEqual(citing, [], "these still cite the moved §3.1 table by its old address");
+});
+
+/** A path, an optional closing backtick, then a quoted title, a parenthesised list of them, or `§ Title`: a citation by heading, which a moved section leaves dangling while the path still resolves. */
+const STOP = '[^)\\n,.;|:"`]';
+const HEADING_CITATION = new RegExp(
+  `(docs\\/[\\w./-]+\\.md)\`?(?:(?:,\\s*|\\s*\\()((?:"[^"\\n]+"(?:,\\s*(?:and\\s+)?)?)+)|\\s*§\\s*"?(${STOP}+)(?:\\n[ \\t]*(?:\\/\\/|\\*|#)?[ \\t]*(${STOP}+))?)`,
+  "g",
+);
+const QUOTED = /"([^"\n]+)"/g;
+
+function headingsOf(file: string): string[] {
+  return [...readFileSync(at(file), "utf8").matchAll(/^#{1,6}\s+(.+?)\s*$/gm)].map((m) => m[1].replace(/`/g, ""));
+}
+
+/** Each citation as the candidate titles it could mean: a `§` title may wrap onto the next line. */
+type Citation = { doc: string; titles: string[]; form: "quoted" | "section" };
+function headingCitations(text: string): Citation[] {
+  return [...text.matchAll(HEADING_CITATION)].flatMap(([, doc, quoted, first, wrapped]): Citation[] => {
+    if (quoted) return [...quoted.matchAll(QUOTED)].map((m) => ({ doc, titles: [m[1]], form: "quoted" as const }));
+    const one = first.trim();
+    if (/^[\d.]/.test(one)) return [];
+    return [{ doc, titles: [one, wrapped ? `${one} ${wrapped.trim()}` : one], form: "section" as const }];
+  });
+}
+
+const resolves = (have: string[], title: string) => {
+  const t = title.replace(/`/g, "").trim();
+  return have.some((h) => h.startsWith(t) || t.startsWith(h));
+};
+
+test("every heading a doc, comment or prompt cites by title exists in the doc it cites", () => {
+  const files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
+    .trim().split("\n").filter((f) => /\.(md|ts|tsx|mjs|js|cjs)$/.test(f) && existsSync(at(f)))
+    .filter((f) => !isRecordedExclusion(f));
+  assert.ok(files.length > 100, `read ${files.length} files: the tracked set is not being listed`);
+  const broken: string[] = [];
+  const read = { quoted: 0, section: 0 };
+  for (const file of files) {
+    for (const { doc, titles, form } of headingCitations(readFileSync(at(file), "utf8"))) {
+      if (!existsSync(at(doc))) continue;
+      read[form]++;
+      const have = headingsOf(doc);
+      if (!titles.some((t) => resolves(have, t))) broken.push(`${file} -> ${doc} ${form === "section" ? "§" : ""} ${titles[0]}`);
+    }
+  }
+  assert.ok(read.quoted >= FLOOR.quoted && read.section >= FLOOR.section, `read ${JSON.stringify(read)} heading citations: a form stopped matching`);
+  assert.deepEqual(broken, []);
+});
+
+const FLOOR = { quoted: 45, section: 80 };
+
+test("the heading-citation scan reads every form of citation and misses a dangling one", () => {
+  const join = (...p: string[]) => p.join("");
+  const cases: [string, string[]][] = [
+    [join("see docs/agents/traps", '.md ("What a green loop does not mean", "Gone")'), ["What a green loop does not mean", "Gone"]],
+    [join("see docs/GAME-RULES", ".md § Decisions"), ["Decisions"]],
+    [join("(`docs/agents/suites", ".md` § Effect parity)"), ["Effect parity"]],
+    [join("`docs/agents/checks", ".md` § Owner decisions, then"), ["Owner decisions"]],
+    [join("// docs/agents/checks", ".md § The viewer's own\n// connection: more"), ["The viewer's own", "The viewer's own connection"]],
+  ];
+  for (const [text, want] of cases) assert.deepEqual(headingCitations(text).flatMap((c) => c.titles).slice(0, want.length), want, text);
+  const have = headingsOf("docs/agents/traps.md");
+  assert.ok(resolves(have, "What a green loop does not mean"));
+  assert.ok(!resolves(have, "Gone"));
+  assert.ok(!resolves(have, "Owner decisions"));
 });

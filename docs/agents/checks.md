@@ -39,6 +39,8 @@ instead of sitting unguarded in prose.
 `tests/integration/` folds in and self-skips without `DATABASE_URL` or `REDIS_URL`. A unit test
 lives beside what it exercises: `tests/engine/`, `tests/bots/`, `tests/server/`, `tests/ui-rules/`,
 `tests/tooling/` — none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
+`npm run test:tooling` runs `tests/tooling/` alone; a directory handed to `node --test` fails on Node 22, so
+nothing shows that form (`tests/tooling/testInvocationForm.test.ts`).
 
 ## Local ports
 
