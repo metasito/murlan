@@ -16,7 +16,7 @@ import { needsNative, patchReader } from "./nativeScope.mjs";
  * tsconfig.json. Derived by `tests/tooling/ciScope.test.ts`, which reds on a path it misses.
  */
 export const ASSERTED_PROSE =
-  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/.*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$)/;
+  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/adr\/README\.md$|docs\/.*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$|CONTEXT\.md$|README\.md$)/;
 
 export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
 

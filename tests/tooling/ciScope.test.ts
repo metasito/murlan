@@ -22,12 +22,13 @@ function docsTestsRead(): string[] {
   for (const file of tracked.filter((f) => f.startsWith("tests/") && SOURCE.test(f))) {
     const src = read(file);
     for (const m of src.matchAll(/["'](?:\.\.\/)*(docs\/[^"'\s]*?)\/?["']/g)) named.add(m[1]);
+    for (const m of src.matchAll(/["'](?:\.\.\/)*([\w-]+\.md)["']/g)) named.add(m[1]);
     for (const m of src.matchAll(/"docs"((?:,\s*"[^"]+")+)/g)) {
       named.add(["docs", ...[...m[1].matchAll(/"([^"]+)"/g)].map((s) => s[1])].join("/"));
     }
   }
   return tracked.filter(
-    (f) => f.startsWith("docs/") && [...named].some((n) => f === n || f.startsWith(`${n}/`)),
+    (f) => (f.startsWith("docs/") || /^[\w-]+\.md$/.test(f)) && [...named].some((n) => f === n || f.startsWith(`${n}/`)),
   );
 }
 
@@ -138,7 +139,8 @@ describe("scopeOf runs the suite that reads a change", () => {
 describe("scopeOf, change by change", () => {
   const rows: [string, string[], { app: boolean; harness: boolean; scans: boolean }][] = [
     ["prose alone skips the app suites and still runs the scans", ["docs/research/a-note.md"], { app: false, harness: false, scans: true }],
-    ["a README is prose", ["README.md"], { app: false, harness: false, scans: true }],
+    ["a nested README is prose", ["tests/e2e/57-polish-audit/README.md"], { app: false, harness: false, scans: true }],
+    ["the root README is asserted on, by licence.test.ts", ["README.md"], { app: true, harness: false, scans: true }],
     ["docs TypeScript is in tsconfig.json", ["docs/research/a-note.ts"], { app: true, harness: false, scans: true }],
     ["docs TSX too", ["docs/research/a-note.tsx"], { app: true, harness: false, scans: true }],
     ["a doc the suite asserts on is not prose", ["docs/GAME-RULES.md"], { app: true, harness: false, scans: true }],
