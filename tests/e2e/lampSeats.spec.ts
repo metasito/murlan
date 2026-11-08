@@ -3,7 +3,7 @@
 // The light sits straight inside the seat the table laid out, as the owner's G1 answers place it
 // (`settledLight`), measured off the rings and the hand zone at every phone; the states come from
 // `lib/captureStates.ts`, so this run and the iOS capture `app/capture.tsx` takes are of the same
-// states. Chromium is the only renderer this spec reaches; `docs/agents/checks.md` has what that
+// states. Chromium is the only renderer this spec reaches; `docs/agents/traps.md` has what that
 // does and does not prove. The felt's own pixels are lampSeats.nightly.spec.ts's.
 import { test, expect } from "./fixtures";
 import { PHONES } from "./helpers/phones";
