@@ -7,7 +7,8 @@ import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } f
 import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { captureGameState, captureStateById, seatedSituation, type CaptureState } from "../../lib/captureStates";
-import { CARD_H, cardScale, HAND_SCALE } from "../../components/cardFaceModel";
+import { CARD_H, HAND_SCALE } from "../../components/cardFaceModel";
+import { mockupPx } from "../../components/table/noticeModel";
 import { tableScale } from "../../components/tableLayout";
 import { handVisibleH } from "../../components/seatLayout";
 import type { Card } from "../../lib/game/gameEngine";
@@ -136,7 +137,7 @@ for (const phone of STAGES) {
     await app.close();
 
     expect(new Set(neighbours.map((n) => n.what)), "every kind of neighbour is on the table").toEqual(new Set(Object.keys(named)));
-    const want = (mockupGap * tableScale(phone)) / cardScale(402);
+    const want = mockupPx(mockupGap, tableScale(phone));
     const nearest = neighbours.map((n) => ({ ...n, gap: gap(pill, n.b) })).sort((a, b) => a.gap - b.gap)[0];
     expect(
       nearest.gap,
@@ -496,7 +497,7 @@ test("waiting: a seat gone out waits on G2's gold pill, centred on the hand row"
 
   samePaint(got, want);
   const centre = (b: Rect) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
-  const row = got.beside.y + got.beside.h - handVisibleH(CARD_H(cardScale(DESIGN.height) * HAND_SCALE)) / 2;
+  const row = got.beside.y + got.beside.h - handVisibleH(CARD_H(tableScale(DESIGN) * HAND_SCALE)) / 2;
   expect.soft(Math.abs(centre(got.box).x - centre(want.box).x), `the centre, ${centre(got.box).x} against ${centre(want.box).x}`).toBeLessThanOrEqual(ONE_PT);
   expect.soft(Math.abs(centre(got.box).y - row), `the middle, ${centre(got.box).y} against the hand row's ${row}`).toBeLessThanOrEqual(HALF_PT);
   // G2 says "the centre of the hand row", and an out seat's row is the off-turn one, about 8 pt under G2's y.
