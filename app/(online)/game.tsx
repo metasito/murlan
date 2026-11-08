@@ -6,7 +6,7 @@
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { leaveNavigation } from "@/context/onlineRouting";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -34,6 +34,7 @@ import {
 import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
+import { useOrientedWindow } from "@/lib/device/orientation";
 import { useTranslation } from "@/lib/i18n";
 import { useCatchUp } from "@/lib/useOwnLink";
 
@@ -48,7 +49,7 @@ const OVERLAY_LAYER_Z = Layer.overlay;
 
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useOrientedWindow();
   const { t, translateServerPayload } = useTranslation();
   const { user } = useAuth();
   const {

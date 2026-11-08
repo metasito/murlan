@@ -59,6 +59,17 @@ const seamsOf = ({ modules, packages }) => {
   ].join(", ");
 };
 
+// An element passing `attr` by name: one handed in through a spread, or as undefined, is drawn the default.
+const namesProp = (attr) => `:has(> JSXAttribute[name.name="${attr}"]:not([value.expression.type="Identifier"][value.expression.name="undefined"]))`;
+const RN_IMAGE = "/^(Image|ImageBackground)$/";
+const RN_WINDOW = "/^(useWindowDimensions|Dimensions)$/";
+const REQUIRE_RN = 'CallExpression[callee.name="require"][arguments.0.value="react-native"]';
+const LAYOUT = 'MemberExpression:matches([property.name="layout"], [property.value="layout"]):matches([object.property.name="nativeEvent"], [object.name="nativeEvent"])';
+const SIZE_ONLY = 'ObjectPattern:not(:has(> Property:not([computed=false][key.name=/^(width|height)$/][value.type="Identifier"]))):not(:has(> RestElement))';
+const NATIVE_EVENT = 'MemberExpression:matches([property.name="nativeEvent"], [property.value="nativeEvent"])';
+const DEEP_RN_WINDOW = "/^react-native\\x2FLibraries\\x2FUtilities\\x2F(useWindowDimensions|Dimensions)(\\.js)?$/";
+const EVENT_PATTERN = ':matches(Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]) > ObjectPattern, VariableDeclarator:matches([init.property.name="nativeEvent"], [init.name="nativeEvent"]) > ObjectPattern)';
+
 /** @type {readonly Guard[]} */
 const GUARDS = [
   {
@@ -85,11 +96,188 @@ const GUARDS = [
   },
   {
     id: "skia-image-fit",
-    why: "A Skia <Image> with no `fit` is drawn `contain`: an image whose aspect differs from its box is letterboxed, and only on windows shaped unlike the one it was checked on. Name the fit; an image laid over a design rect is `fill`, as components/table/feltCanvas.tsx draws its cloth.",
-    selector: 'JSXOpeningElement[name.name="Image"]:has(JSXAttribute[name.name="image"]):not(:has(JSXAttribute[name.name="fit"]))',
+    why: "A Skia <Image> with no `fit` is drawn `contain`, and an <ImageShader> `none`: an image whose aspect or pixel size differs from its box is letterboxed or cropped, and only on windows shaped unlike the one it was checked on. Pass the fit by name, never through a spread or as undefined; an image laid over a design rect is `fill`, as components/table/feltCanvas.tsx draws its cloth.",
+    selector: `JSXOpeningElement[name.name=/^(Image|ImageShader)$/]:has(> JSXAttribute[name.name="image"]):not(${namesProp("fit")})`,
     files: DRAWN,
-    plant: { file: "components/Plant.tsx", code: ["const a = <Image image={cloth} x={0} y={0} width={w} height={h} />;", "const b = <Image\n  image={rail}\n  width={w}\n  height={h}\n/>;"].join("\n"), hits: 2 },
-    spare: ['const a = <Image image={cloth} fit="fill" width={w} height={h} />;', 'const b = <Image source={art} resizeMode="stretch" />;', "const c = <Atlas image={sheet} sprites={s} transforms={t} />;"].map((code) => ({ file: "components/Plant.tsx", code })),
+    plant: { file: "components/Plant.tsx", code: [
+      "const a = <Image image={cloth} x={0} y={0} width={w} height={h} />;",
+      "const b = <Image\n  image={rail}\n  width={w}\n  height={h}\n/>;",
+      "const c = <ImageShader image={weave} rect={r} />;",
+      "const d = <Image image={cloth} fit={undefined} width={w} height={h} />;",
+      'const e = <Image image={cloth} {...{ fit: "fill" }} width={w} height={h} />;',
+    ].join("\n"), hits: 5 },
+    spare: [
+      'const a = <Image image={cloth} fit="fill" width={w} height={h} />;',
+      'const b = <Image source={art} resizeMode="stretch" />;',
+      "const c = <Atlas image={sheet} sprites={s} transforms={t} />;",
+      'const d = <ImageShader image={weave} fit="fill" rect={r} />;',
+      "const e = <Image image={cloth} fit={fit} width={w} height={h} />;",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "image-resize-mode",
+    why: "A React Native <Image> or <ImageBackground> with no `resizeMode` is drawn `cover`: art whose aspect differs from its box is cropped, and only in boxes shaped unlike the one it was checked in. Pass it as the prop, by name, on an image under its own name (Image, Animated.Image), as components/CardView.tsx draws its card art.",
+    selector: [
+      `JSXOpeningElement:matches([name.name=${RN_IMAGE}], [name.property.name=${RN_IMAGE}]):has(> JSXAttribute[name.name="source"]):not(${namesProp("resizeMode")})`,
+      `ImportDeclaration[source.value="react-native"] > ImportSpecifier[imported.name=${RN_IMAGE}]:not([local.name=${RN_IMAGE}])`,
+      `VariableDeclarator:has(> ${REQUIRE_RN}.init) > ObjectPattern > Property[key.name=${RN_IMAGE}]:not([value.name=${RN_IMAGE}])`,
+      `MemberExpression[property.name=${RN_IMAGE}]:has(> ${REQUIRE_RN}.object)`,
+      `CallExpression:matches([callee.name="createAnimatedComponent"], [callee.property.name="createAnimatedComponent"])[arguments.0.name=${RN_IMAGE}]`,
+    ].join(", "),
+    files: DRAWN,
+    plant: { file: "components/Plant.tsx", code: [
+      "const a = <Image source={art} style={ART_FILL} />;",
+      "const b = <ImageBackground\n  source={felt}\n  style={s}\n/>;",
+      "const c = <MaskedView maskElement={<Image source={art} style={s} />} />;",
+      "const d = <Animated.Image source={s} />;",
+      'const e = <Image source={art} resizeMode={undefined} style={{ resizeMode: "cover" }} />;',
+      'import { Image as RNImage } from "react-native";',
+      'const { Image: Pic } = require("react-native");',
+      "const F = Animated.createAnimatedComponent(Image);",
+      'const G = require("react-native").Image;',
+    ].join("\n"), hits: 9 },
+    spare: [
+      'const a = <Image source={art} style={ART_FILL} resizeMode="stretch" />;',
+      'const b = <Image image={cloth} fit="fill" width={w} height={h} />;',
+      'const c = <ImageBackground source={felt} resizeMode="cover" style={s} />;',
+      'const d = <Animated.Image source={s} resizeMode="stretch" />;',
+      'import { Image, View } from "react-native";',
+      'import { Image as SkImage } from "@shopify/react-native-skia";',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "svg-aspect",
+    why: "An <Svg> with a `viewBox` and no `preserveAspectRatio` is drawn `xMidYMid meet`: a box whose aspect drifts from the viewBox's letterboxes the drawing inside it. Pass it by name, never through a spread or as undefined, as components/table/scorePill.tsx draws its icons.",
+    selector: `JSXOpeningElement[name.name="Svg"]:has(> JSXAttribute[name.name="viewBox"]):not(${namesProp("preserveAspectRatio")})`,
+    files: DRAWN,
+    plant: { file: "components/Plant.tsx", code: [
+      'const a = <Svg width={w} height={h} viewBox="0 0 7 5" />;',
+      "const b = <Svg\n  viewBox={BOX}\n  width={s}\n  height={s}\n>{x}</Svg>;",
+      'const c = <Svg viewBox="0 0 7 5" preserveAspectRatio={undefined} />;',
+      'const d = <Svg viewBox="0 0 7 5" {...{ preserveAspectRatio: "none" }} />;',
+    ].join("\n"), hits: 4 },
+    spare: [
+      'const a = <Svg width={w} height={h} viewBox="0 0 7 5" preserveAspectRatio="xMidYMid meet" />;',
+      "const b = <Svg width={w} height={h} style={s} />;",
+      'const c = <View viewBox="0 0 1 1" />;',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "onlayout-size-only",
+    why: "On web `onLayout` is a ResizeObserver, which fires on a change of size and never of position, so an x or y read from it goes stale the first time the box moves at the same size: read `nativeEvent.layout.width` or `.height` directly, or destructure `{ width, height }` from it, as components/NotificationBanner.tsx does; every other read or binding of it is refused.",
+    selector: [
+      `MemberExpression:not([computed=false][property.name=/^(width|height)$/]) > ${LAYOUT}.object`,
+      `:not(MemberExpression, VariableDeclarator) > ${LAYOUT}`,
+      `MemberExpression > ${LAYOUT}.property`,
+      `VariableDeclarator:not(:has(> ${SIZE_ONLY}.id)) > ${LAYOUT}.init`,
+      `${EVENT_PATTERN} > Property:matches([key.name="layout"], [key.value="layout"]):not(:has(> ${SIZE_ONLY}.value))`,
+      `${EVENT_PATTERN} > RestElement`,
+    ].join(", "),
+    files: SCREENS,
+    plant: { file: "components/Plant.tsx", code: [
+      "const a = (e) => setTop(e.nativeEvent.layout.y);",
+      "const { x, width } = e.nativeEvent.layout;",
+      "const c = ({ nativeEvent: { layout: { y } } }) => setTop(y);",
+      "const d = ({ nativeEvent }) => nativeEvent.layout.top;",
+      "function f(e) { const { layout } = e.nativeEvent; return layout.y; }",
+      "function g(e) { const { nativeEvent } = e; return nativeEvent.layout.y; }",
+      "const { layout: { y } } = e.nativeEvent;",
+      "function h(e) { const L = e.nativeEvent.layout; return L.y; }",
+      "function k(e) { const { layout } = e.nativeEvent; return layout['y']; }",
+      "keep(e.nativeEvent.layout);",
+      "const m = e.nativeEvent.layout['height'];",
+      "const { ...rest } = e.nativeEvent;",
+      "const n = e?.nativeEvent?.layout;",
+    ].join("\n"), hits: 13 },
+    spare: [
+      "const a = (e) => setH(e.nativeEvent.layout.height);",
+      "const { width, height } = e.nativeEvent.layout;",
+      "const c = (e) => setY(e.nativeEvent.contentOffset.y);",
+      "const d = seat.layout.x;",
+      "const e = ({ nativeEvent: { layout: { width } } }) => setW(width);",
+      "function g(e) { const { nativeEvent } = e; return nativeEvent.contentOffset.y; }",
+      "const { layout } = props; const x = layout.x;",
+      "const w = e?.nativeEvent.layout.width;",
+      "function t(e) { const { pageX } = e.nativeEvent; return seat.layout.x + pageX; }",
+      "function G(e) { const ne = e.nativeEvent; return seat.layout.x; }",
+      "function H(props) { const onPress = (e) => { const ne = e.nativeEvent; }; return props.layout.width; }",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "native-event-in-place",
+    why: "An event's `nativeEvent` bound to a name of its own hides every later read through it from onlayout-size-only, which can follow only the name `nativeEvent`: destructure what the handler needs from it where it is read, as components/GameTable.tsx does.",
+    selector: [
+      `VariableDeclarator[id.type="Identifier"] > ${NATIVE_EVENT}.init`,
+      `AssignmentExpression > ${NATIVE_EVENT}.right`,
+      `:matches(VariableDeclarator[id.type="Identifier"], AssignmentExpression) > :matches(ChainExpression, TSAsExpression, TSNonNullExpression, TSSatisfiesExpression) > ${NATIVE_EVENT}.expression`,
+      'VariableDeclarator[id.type="Identifier"] > Identifier.init[name="nativeEvent"]',
+      'AssignmentExpression > Identifier.right[name="nativeEvent"]',
+      'ObjectPattern > Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]):not([value.type="Identifier"][value.name="nativeEvent"]):not([value.type="ObjectPattern"])',
+    ].join(", "),
+    files: SCREENS,
+    plant: { file: "components/Plant.tsx", code: [
+      "function p(e) { const ne = e.nativeEvent; return ne.layout.y; }",
+      "function q(e) { const ne = e.nativeEvent; keep(ne.layout); }",
+      "function u(e) { let ne; ne = e.nativeEvent; const { layout: { y } } = ne; }",
+      "const v = ({ nativeEvent: ne }) => ne.layout.y;",
+      "function w(e) { const ne = e?.nativeEvent; }",
+      "function x(e) { const ne = e.nativeEvent as LayoutEvent; }",
+      "function y(e) { const ne = e.nativeEvent!; }",
+      "function z(e) { const ne = e.nativeEvent satisfies object; }",
+      "function A(e) { let ne; ne = e.nativeEvent as LayoutEvent; }",
+      "function B(e) { const { nativeEvent } = e; const ne = nativeEvent; }",
+      "function C(e) { const { nativeEvent } = e; let ne; ne = nativeEvent; }",
+    ].join("\n"), hits: 11 },
+    spare: [
+      "function t(e) { const { pageX } = e.nativeEvent; return seat.layout.x + pageX; }",
+      "const a = (e) => setH(e.nativeEvent.layout.height);",
+      "const b = ({ nativeEvent }) => nativeEvent.layout.width;",
+      "const c = ({ nativeEvent: { layout: { width } } }) => setW(width);",
+      "const d = seat.nativeEventCount;",
+      "const f = (e) => setW(e?.nativeEvent?.layout?.width);",
+      "const g = (e) => (e.nativeEvent as any).key;",
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
+  {
+    id: "window-through-orientation",
+    why: "useWindowDimensions reads a size iOS can hand over in the wrong orientation on a cold start, and a second read of it drifts from the first: read the window with useOrientedWindow() or useIsLandscape() from lib/device/orientation.tsx, which measures the app's own root view.",
+    selector: [
+      `ImportDeclaration[source.value="react-native"]:not([importKind="type"]) > ImportSpecifier[imported.name=${RN_WINDOW}]:not([importKind="type"])`,
+      `ExportNamedDeclaration[source.value="react-native"]:not([exportKind="type"]) > ExportSpecifier[local.name=${RN_WINDOW}]:not([exportKind="type"])`,
+      `VariableDeclarator:has(> ${REQUIRE_RN}.init) > ObjectPattern > Property[key.name=${RN_WINDOW}]`,
+      `MemberExpression[property.name=${RN_WINDOW}]:has(> ${REQUIRE_RN}.object)`,
+      importsOf(DEEP_RN_WINDOW, { values: true }),
+      `Program:has(ImportDeclaration[source.value="react-native"] > :matches(ImportNamespaceSpecifier, ImportDefaultSpecifier), VariableDeclarator[id.type="Identifier"] > ${REQUIRE_RN}.init) MemberExpression[object.type="Identifier"][property.name=${RN_WINDOW}]`,
+    ].join(", "),
+    files: SCREENS,
+    ignores: [{ glob: "lib/device/orientation.tsx", reason: "the one reader of the window, falling back to it until the root view is measured" }],
+    plant: { file: "components/Plant.tsx", code: [
+      'import { View, useWindowDimensions } from "react-native";',
+      'import { Dimensions as D } from "react-native";',
+      'import * as RN from "react-native";',
+      "const { width } = RN.useWindowDimensions();",
+      'export { useWindowDimensions } from "react-native";',
+      'const { Dimensions: Dims } = require("react-native");',
+      'const s = require("react-native").Dimensions.get("window");',
+      'import useWD from "react-native/Libraries/Utilities/useWindowDimensions";',
+      'const Dm = require("react-native/Libraries/Utilities/Dimensions");',
+      'export { default as useWD2 } from "react-native/Libraries/Utilities/useWindowDimensions";',
+      'export * from "react-native/Libraries/Utilities/Dimensions";',
+      'const lazy = import("react-native/Libraries/Utilities/Dimensions.js");',
+    ].join("\n"), hits: 11 },
+    spare: [
+      'import { useOrientedWindow } from "@/lib/device/orientation";',
+      "const { width, height } = useOrientedWindow();",
+      'type Size = ScaledSize;\nconst s = "useWindowDimensions";',
+      'import type { Dimensions } from "react-native";',
+      'import { type Dimensions, View } from "react-native";',
+      'export type { Dimensions } from "react-native";',
+      'import { useWindowDimensions } from "./fakeWindow";',
+      'import type Dims2 from "react-native/Libraries/Utilities/Dimensions";',
+      'import { useWindowDimensions as u2 } from "react-native-web-hooks/Libraries/Utilities/useWindowDimensions";',
+      "const d = layout.Dimensions;",
+      'import RN from "react-native";\nconst w = RN.PixelRatio.get();',
+    ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "intents-through-send",
