@@ -316,6 +316,10 @@ jobs:
             echo "This is the only test proving a dump actually restores; see the 'Install postgresql-client' step above."
             exit 1
           fi
+          if grep -qE "pwsh is not on PATH" test-output.txt; then
+            echo "::error::The shell-floor test skipped: the runner has no pwsh to hold to the floor docs/agents/checks.md states."
+            exit 1
+          fi
           # A narrowed glob loads no integration file and prints no skip, so the files that ran are counted.
           expected=$(ls tests/integration/*.test.ts | wc -l)
           ran=$(grep -oE "^test files run in tests/integration: [0-9]+" test-output.txt | grep -oE "[0-9]+$" || echo 0)
@@ -1069,13 +1073,24 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
-            tools/ci
+            tools
             scripts/lib
+            tests
       - name: Every job passed or was skipped by scope
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node tools/ci/gate.mjs
+      - name: Every flake ticket is open, and the quarantine list did not grow
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: node tools/ci/flake-tickets.mjs

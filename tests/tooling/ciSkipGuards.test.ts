@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { unloaded } from "../helpers/filesRunReporter.mjs";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
-import { allSteps, loadWorkflow, stepIn } from "../helpers/workflow.ts";
+import { allSteps, grepPhrases, loadWorkflow, stepIn } from "../helpers/workflow.ts";
 
 /**
  * A suite that skips still exits 0, so ci.yml reads the test log for the
@@ -24,19 +24,11 @@ const readRepoFile = (...parts: string[]) =>
   readFileSync(path.join(repoRoot, ...parts), "utf8");
 
 /** The files allowed to contain a phrase, because they are the ones printing it. */
-const OWNERS = ["tests/helpers/testServer.ts", "tests/server/backupDb.test.ts"];
+const OWNERS = ["tests/helpers/testServer.ts", "tests/server/backupDb.test.ts", "tests/tooling/shellClaims.test.ts"];
 
 const CI = loadWorkflow("ci.yml");
 /** The step that fails on a silent skip; `stepIn` throws when ci.yml no longer has it. */
 const assertStep = () => stepIn(CI, "Assert the integration suites actually ran").step.run ?? "";
-
-/** Every alternative inside the `grep -q…"…"` calls of the assert step. */
-function grepPhrases(step: string): string[] {
-  return [...step.matchAll(/grep -q[a-zA-Z]* "([^"]+)"/g)]
-    .flatMap((m) => m[1].split("|"))
-    .map((phrase) => phrase.trim())
-    .filter(Boolean);
-}
 
 describe("what CI greps for is what the suites actually print", () => {
   const phrases = grepPhrases(assertStep());

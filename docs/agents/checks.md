@@ -379,6 +379,38 @@ selector entry, and its `why` names a path that exists. A stale directive is an 
 review, never a comment's at the site. A rule about prose, JSON, or a relation between two files is
 not a shape and stays a test.
 
+## A flake is fixed, never retried or quietly skipped
+
+Rule 52, held by `tests/tooling/flakesAtSource.test.ts` (in `npm test`) and, for what needs the
+network, by the CI gate's last step (`tools/ci/flake-tickets.mjs`). It stays a test rather than a
+guard: whether a skip is allowed is a relation between the source and the workflow that runs it.
+
+- **Retries.** Red on a Playwright `retries` other than `0`, a jest `retryTimes`, a rerun flag in a
+  script or step, `gh run rerun` or an action named for retrying, `continue-on-error` on a job that
+  runs tests, and `continue-on-error` on a test step unless the step has an `id` that a later step
+  judges by `steps.<id>.outcome`. A test command inside a shell loop, or `a || a`, is red unless its
+  failure leaves the step (`|| exit 1`, `if ! …; then … exit 1; fi`). A test step run twice in one
+  job is allowed only behind `steps.<first>.outcome == 'failure' && steps.<probe>.outputs.started
+  == 'false'`: the first run never reached a test (`maestro.yml`'s boot retry).
+- **Skips.** Every `.skip`/`.fixme`/`.fail`/`.todo`, `x`-prefixed call, `t.skip()` and `{ skip }`
+  option under a `tests/` directory is a site, and a site passes only when CI hears it: the reason
+  prints a phrase verify's "Assert the integration suites actually ran" step fails on; a `# skipped
+  0` step names or selects the file; it skips off a non-Linux platform in a suite CI runs on Linux;
+  it is a `Platform.OS` branch whose other jest project runs it; or `// flake: #<n>` sits on its line
+  or the one above. Each rule must hear at least one site, so a rule nothing uses goes red too.
+- **The quarantine list**, `tests/tooling/flakesAtSource.json`, counts per file what is neither:
+  the test asserts the counts exactly, and the CI step fails a pull request whose list has grown over
+  its base's. It holds `tests/e2e/browserErrors.spec.ts`'s self-test, `seatNameContrast.spec.ts`'s
+  ruled `test.fail()` and `ios.yml`'s simulator warm-up.
+- **Tickets.** The CI step reads every `// flake: #<n>` under `tests/` and `tools/` and fails unless
+  each is an open issue, not a pull request, with the job's `GITHUB_TOKEN`; the offline test only
+  checks that every tag sits on a skip.
+
+**Limits.** No base exists on a `schedule` or `workflow_dispatch` run, so there the list is checked
+only for its tickets; a pull request with no base fails. Closing an issue does not fail `main`
+until the next run reaches the gate. A skip whose reason is built somewhere the scan cannot follow
+(a helper in another file) reads as unheard and must be ticketed or listed.
+
 ## The native harness is async
 
 `@testing-library/react-native` is v14 here: `render` and every `fireEvent` return promises. Miss
