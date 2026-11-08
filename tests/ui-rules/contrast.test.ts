@@ -1,31 +1,24 @@
 // WCAG 2.x contrast audit for lib/theme.ts text colors. Palette-wide tokens
-// are measured against bg, bgCard and the felt's middle stop; every style that
-// draws inside the table is measured against every stop of every felt, which
-// is the only place the gradient's 2x luminance range can be seen.
+// are measured against bg, bgCard and the felt's middle stop. The styles that draw inside the
+// table are measured against every stop of every felt by tests/native/tableTextContrast.test.tsx,
+// which reads them from the modules' own StyleSheets.
 //
 // This exists so a future palette edit can't silently regress accessibility —
 // see lib/theme.ts "Text colors" section.
 //
 // Imports lib/tokens — the same palette — not lib/theme, whose Shadow helper pulls
 // react-native in; that and the extension — docs/agents/checks.md, "Node's TypeScript loader".
-import { Colors, Garnet, Gradient, Scrim, FeltGradients, LastCard, NoticePalette, Type } from "../../lib/tokens.ts";
+import { Colors, Garnet, Gradient, FeltGradients, NoticePalette } from "../../lib/tokens.ts";
 import { contrastRatio, relativeLuminance } from "../../lib/contrast.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { BODY_MIN, LARGE_MIN, resolve, sourceArrays } from "../helpers/contrastColours.ts";
+
+const sourceArray = sourceArrays(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".."));
 
 // --- WCAG 2.x contrast math -------------------------------------------------
-
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  return [
-    parseInt(h.substring(0, 2), 16),
-    parseInt(h.substring(2, 4), 16),
-    parseInt(h.substring(4, 6), 16),
-  ];
-}
 
 test("lib/contrast reads hex pairs either way round, from 1:1 to 21:1", () => {
   assert.equal(relativeLuminance([255, 255, 255]), 1);
@@ -38,292 +31,11 @@ test("lib/contrast reads hex pairs either way round, from 1:1 to 21:1", () => {
   }
 });
 
-/** Flattens `rgba(r,g,b,a)` (as used by several Colors entries) onto an opaque
- *  hex background, returning the resulting opaque hex — this is what actually
- *  reaches the screen once React Native composites the color. */
-function flattenRgba(rgba: string, bgHex: string): string {
-  const m = rgba.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
-  if (!m) throw new Error(`Not an rgba() string: ${rgba}`);
-  const [, r, g, b, a] = m;
-  const alpha = parseFloat(a);
-  const [br, bg, bb] = hexToRgb(bgHex);
-  const flat: [number, number, number] = [
-    Math.round(Number(r) * alpha + br * (1 - alpha)),
-    Math.round(Number(g) * alpha + bg * (1 - alpha)),
-    Math.round(Number(b) * alpha + bb * (1 - alpha)),
-  ];
-  return "#" + flat.map((x) => x.toString(16).padStart(2, "0")).join("");
-}
-
-/** Resolves any Colors.* value (solid hex or rgba string) to an opaque hex,
- *  as actually composited over the given background. */
-function resolve(color: string, bgHex: string): string {
-  return color.startsWith("rgba(") ? flattenRgba(color, bgHex) : color;
-}
-
-const BODY_MIN = 4.5; // WCAG AA, normal text
-const LARGE_MIN = 3.0; // WCAG AA, large (>=18pt or >=14pt bold) text
-
 const SURFACES = {
   bg: Colors.bg,
   bgCard: Colors.bgCard,
   felt: Colors.felt,
 } as const;
-
-// --- The felt is a gradient, and Colors.felt is only its middle stop --------
-// components/table/feltShader.ts lays the five stops along the lamp's own falloff.
-// The cloth directly under the lamp is several times the relative luminance of
-// the stop this file used to measure, so a token could pass here at 4.60 and
-// render at 3.43 where it is actually drawn.
-//
-// Both colours are read out of the table's own components rather than repeated
-// here, so a plate that is removed from a style is a failure rather than a
-// silent pass against a fill nothing paints.
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-const PALETTES: Record<string, Record<string, string>> = { Colors, Scrim, Garnet, LastCard };
-
-const COMPONENT_FILES: [string, string][] = readdirSync(path.join(repoRoot, "components"), { recursive: true, encoding: "utf8" })
-  .filter((f) => f.endsWith(".tsx"))
-  .map((f) => [f.split(path.sep).join("/"), readFileSync(path.join(repoRoot, "components", f), "utf8")]);
-const COMPONENTS = COMPONENT_FILES.map(([, src]) => src).join("\n");
-
-/** From an opening bracket at `at` to its matching closer, inclusive. */
-function balanced(src: string, at: number): string {
-  let depth = 0;
-  for (let i = at; i < src.length; i++) {
-    if ("{[(".includes(src[i])) depth++;
-    else if ("}])".includes(src[i]) && --depth === 0) return src.slice(at, i + 1);
-  }
-  throw new Error(`unbalanced from ${at}`);
-}
-
-/**
- * `sheet.key`'s body as written. `styles` is file-local, so it is looked up in
- * the call site's own file; a named sheet may be exported from another.
- */
-function styleEntry(file: string, ref: string): string {
-  const [sheet, key] = ref.split(".");
-  const files = sheet === "styles" ? COMPONENT_FILES.filter(([f]) => f === file) : COMPONENT_FILES;
-  const defs = files.flatMap(([, src]) => {
-    const at = src.search(new RegExp(String.raw`\bconst ${sheet} = StyleSheet\.create\(`));
-    return at === -1 ? [] : [balanced(src, src.indexOf("{", at))];
-  });
-  assert.equal(defs.length, 1, `${file}: ${sheet} is declared ${defs.length} times`);
-  const m = new RegExp(String.raw`\n\s*${key}: \{`).exec(defs[0]);
-  assert.ok(m, `${file}: ${ref} is not declared`);
-  return balanced(defs[0], m.index + m[0].length - 1);
-}
-
-const COLOUR = String.raw`(withAlpha\([A-Za-z]+\.[A-Za-z]+, [\d.]+\)|[A-Za-z]+\.[A-Za-z]+|"[^"]+"|'[^']+')`;
-
-function colourValue(written: string): string {
-  if (/^["']/.test(written)) return written.slice(1, -1);
-  const alpha = /^withAlpha\((\S+), ([\d.]+)\)$/.exec(written);
-  if (alpha) {
-    const rgb = parseInt(colourValue(alpha[1]).slice(1), 16);
-    return `rgba(${rgb >> 16},${(rgb >> 8) & 255},${rgb & 255},${alpha[2]})`;
-  }
-  const [ns, key] = written.split(".");
-  const val = PALETTES[ns]?.[key];
-  assert.ok(val, `unresolved colour ${written}`);
-  return val;
-}
-
-/** A style's `backgroundColor`, resolved. */
-function styleFill(file: string, ref: string): string | null {
-  const m = new RegExp(String.raw`\bbackgroundColor: ${COLOUR}`).exec(styleEntry(file, ref));
-  return m ? colourValue(m[1]) : null;
-}
-
-/** A style's ink with its own `opacity` folded in, or null for a style that sets neither. */
-function styleInk(file: string, ref: string): string | null {
-  const body = styleEntry(file, ref);
-  const own = new RegExp(String.raw`(?<![A-Za-z])color: ${COLOUR}`).exec(body);
-  const typed = /\.\.\.Type\.(\w+)/.exec(body);
-  const ink = own ? colourValue(own[1]) : typed ? (Type as Record<string, { color?: string }>)[typed[1]]?.color : undefined;
-  const opacity = /\bopacity: ([\d.]+)/.exec(body);
-  if (!ink) {
-    assert.ok(!opacity, `${file}: ${ref} sets an opacity but no colour`);
-    return null;
-  }
-  return opacity ? withOpacity(ink, Number(opacity[1])) : ink;
-}
-
-function withOpacity(color: string, opacity: number): string {
-  const m = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(color);
-  const [r, g, b] = m ? [m[1], m[2], m[3]].map(Number) : hexToRgb(color);
-  return `rgba(${r},${g},${b},${(m ? Number(m[4]) : 1) * opacity})`;
-}
-
-function openingTag(src: string, at: number): string {
-  let depth = 0;
-  for (let i = at; i < src.length; i++) {
-    if (src[i] === "{") depth++;
-    else if (src[i] === "}") depth--;
-    else if (src[i] === ">" && depth === 0) return src.slice(at, i);
-  }
-  throw new Error(`unclosed tag at ${at}`);
-}
-
-/** `[file, sheet.key]` for every style a `<TableText>` element names. */
-function tableTextStyles(): [string, string][] {
-  const out = new Map<string, [string, string]>();
-  for (const [file, src] of COMPONENT_FILES) {
-    for (const m of src.matchAll(/<TableText\b/g)) {
-      const tag = openingTag(src, m.index);
-      const style = /\bstyle=\{/.exec(tag);
-      if (!style) continue;
-      const expr = balanced(tag, style.index + style[0].length - 1);
-      for (const ref of expr.matchAll(/\b(\w*[sS]tyles)\.(\w+)/g)) {
-        out.set(`${file}:${ref[1]}.${ref[2]}`, [file, `${ref[1]}.${ref[2]}`]);
-      }
-    }
-  }
-  return [...out.values()];
-}
-
-/**
- * A `NAME = [ ... ]` array literal declared in component source — a pressed
- * gradient's own stops — resolved to token values. A stop a component adds is
- * covered by construction; nothing here needs to be told about it.
- */
-function sourceArray(name: string): string[] {
-  const m = new RegExp(String.raw`\b${name}\s*=\s*\[([^\]]*)\]`).exec(COMPONENTS);
-  assert.ok(m, `no component declares an array named ${name}`);
-  // A stop is either a token reference (Colors.gold) or a raw literal
-  // ("#6B5220") slipped in directly — both must be caught, since the second
-  // is exactly the shape of a stop nobody meant to leave unresolved.
-  const items = m[1].match(/[A-Za-z]+\.[A-Za-z]+|"[^"]+"|'[^']+'/g) ?? [];
-  assert.ok(items.length > 0, `${name} has no gradient stops`);
-  return items.map((item) => {
-    if (item.startsWith('"') || item.startsWith("'")) return item.slice(1, -1);
-    const [ns, key] = item.split(".");
-    const val = PALETTES[ns]?.[key];
-    assert.ok(val, `${name}: unresolved token ${item}`);
-    return val;
-  });
-}
-
-/** Which falloff stops an element can sit over. */
-const ANY_STOP = [0, 1, 2, 3, 4];
-
-/**
- * What each inked `<TableText>` style is painted over, keyed `file:sheet.key`.
- * `plate` is a style whose fill sits between it and the felt; `gradient` is a
- * fill given as `colors`, which no style can name. Neither means bare felt.
- */
-type Backdrop = { plate?: string | string[]; gradient?: readonly string[]; stops?: number[]; measuredBy?: string };
-const MEASURED = { measuredBy: "tests/e2e/seatNameContrast.spec.ts" };
-const GIOCA = [...Gradient.playButton, ...sourceArray("GIOCA_GRADIENT_PRESSED")];
-const PASSA = [...Gradient.garnet, ...sourceArray("PASS_GRADIENT_PRESSED")];
-const SHEET = sourceArray("SHEET_GRADIENT");
-const SCORE_PILL = { gradient: [Colors.scorePillTop, Colors.scorePillFoot] };
-const SCORE_ROW = { ...SCORE_PILL, plate: "styles.rowMine" };
-const ON_TABLE: Record<string, Backdrop> = {
-  "table/actions.tsx:styles.playBtnLabel": { gradient: GIOCA },
-  "table/actions.tsx:styles.playBtnSub": { gradient: GIOCA },
-  // PASSA's dim fill is a sibling of its label, not an ancestor; both buttons draw the same one.
-  "table/actions.tsx:styles.btnDimLabel": { plate: "styles.btnDimFace" },
-  "table/actions.tsx:styles.passBtnLabel": { gradient: PASSA },
-  "table/scorePill.tsx:styles.you": SCORE_PILL,
-  "table/scorePill.tsx:styles.total": SCORE_PILL,
-  "table/scorePill.tsx:styles.of": SCORE_PILL,
-  "table/scorePill.tsx:styles.badgeText": { gradient: Gradient.playButton },
-  "table/scorePill.tsx:styles.head": SCORE_PILL,
-  "table/scorePill.tsx:styles.sub": SCORE_PILL,
-  "table/scorePill.tsx:styles.place": SCORE_ROW,
-  "table/scorePill.tsx:styles.discText": { gradient: [Colors.seatDisc, Colors.seatDiscDeep] },
-  "table/scorePill.tsx:styles.name": SCORE_ROW,
-  "table/scorePill.tsx:styles.nameMine": SCORE_ROW,
-  "table/scorePill.tsx:styles.gain": SCORE_ROW,
-  "table/scorePill.tsx:styles.gainNone": SCORE_ROW,
-  "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
-  "table/scorePill.tsx:styles.placeWon": SCORE_ROW,
-  "table/matchBoard.tsx:styles.label": SCORE_PILL,
-  "table/matchBoard.tsx:styles.name": SCORE_PILL,
-  "table/matchBoard.tsx:styles.nameMine": SCORE_PILL,
-  "table/matchBoard.tsx:styles.ratingLine": SCORE_PILL,
-  "table/matchBoard.tsx:styles.ratingGain": SCORE_PILL,
-  "table/matchBoard.tsx:styles.ratingLoss": SCORE_PILL,
-  "table/matchBoard.tsx:styles.btnText": { plate: "styles.btn" },
-  "table/matchBoard.tsx:styles.btnTextPrimary": { gradient: Gradient.playButton },
-  "table/rotateOverlay.tsx:portraitOverlayStyles.title": { plate: "portraitOverlayStyles.overlay" },
-  "table/rotateOverlay.tsx:portraitOverlayStyles.sub": { plate: "portraitOverlayStyles.overlay" },
-  // The disc's own gradient is darker than both stand-in stops.
-  "table/seats.tsx:seatStyles.discInitials": { stops: [3, 4] },
-  "table/seats.tsx:seatStyles.countBubbleText": { plate: "seatStyles.countBubble" },
-  "table/seats.tsx:seatStyles.countBubbleTextLast": { plate: "seatStyles.countBubbleLast" },
-  "table/seats.tsx:seatStyles.oppName": MEASURED,
-  "table/seats.tsx:seatStyles.oppNameActive": MEASURED,
-  "table/settingsSheet.tsx:sheetStyles.rowLabel": { gradient: SHEET },
-  "table/settingsSheet.tsx:sheetStyles.rowHint": { gradient: SHEET },
-  "table/settingsSheet.tsx:sheetStyles.header": { gradient: SHEET },
-  "table/settingsSheet.tsx:sheetStyles.foot": { gradient: SHEET },
-  "table/settingsSheet.tsx:sheetStyles.exitLabel": { gradient: Gradient.garnet },
-};
-
-/** A disabled control's label is held to the large-text bar, WCAG's floor for inactive UI. */
-const DISABLED = new Set(["table/actions.tsx:styles.btnDimLabel"]);
-
-const TABLE_TEXT = tableTextStyles();
-
-test("every inked <TableText> style says what it is painted over", () => {
-  assert.ok(TABLE_TEXT.length > 30, `found only ${TABLE_TEXT.length} <TableText> styles`);
-  const unclassified = TABLE_TEXT.filter(([file, ref]) => styleInk(file, ref) !== null && !(`${file}:${ref}` in ON_TABLE));
-  assert.deepEqual(unclassified, [], "add these to ON_TABLE");
-  const stale = Object.keys(ON_TABLE).filter((id) => !TABLE_TEXT.some(([file, ref]) => `${file}:${ref}` === id));
-  assert.deepEqual(stale, [], "no <TableText> names these any more");
-});
-
-test("only the seat name's two inks are left to the device to measure", () => {
-  const measured = Object.keys(ON_TABLE).filter((id) => ON_TABLE[id].measuredBy !== undefined);
-  assert.deepEqual(measured, ["table/seats.tsx:seatStyles.oppName", "table/seats.tsx:seatStyles.oppNameActive"]);
-});
-
-test("no <TableText> style paints its own plate: table text sits on the felt or inside a notice", () => {
-  const plated = TABLE_TEXT.filter(([file, ref]) => styleFill(file, ref) !== null).map(([file, ref]) => `${file}:${ref}`);
-  assert.deepEqual(plated, []);
-});
-
-for (const [file, ref] of TABLE_TEXT) {
-  const id = `${file}:${ref}`;
-  const backdrop = ON_TABLE[id];
-  if (!backdrop) continue;
-  const min = DISABLED.has(id) ? LARGE_MIN : BODY_MIN;
-  const spec = backdrop.measuredBy;
-  if (spec) {
-    test(`the table's ${ref} is measured over the real felt by ${spec}`, () => {
-      assert.match(readFileSync(path.join(repoRoot, spec), "utf8"), /seat-name[\s\S]*toBeGreaterThanOrEqual\(BODY_MIN\)/);
-    });
-    continue;
-  }
-  test(`the table's ${ref} clears ${min}:1 on every felt stop`, () => {
-    const ink = styleInk(file, ref);
-    assert.ok(ink, `${id} has no color`);
-    const fills = [backdrop.plate ?? []].flat().map((plate) => {
-      const fill = styleFill(file, plate);
-      assert.ok(fill, `${plate} no longer paints a background`);
-      return fill;
-    });
-
-    for (const [felt, gradient] of Object.entries(FeltGradients)) {
-      for (const stop of backdrop.stops ?? ANY_STOP) {
-        for (const over of backdrop.gradient ?? [gradient[stop]]) {
-          const surface = fills.reduce((under, fill) => resolve(fill, under), resolve(over, gradient[stop]));
-          const ratio = contrastRatio(resolve(ink, surface), surface);
-          assert.ok(ratio >= min, `${id} over ${felt} stop ${stop} (${over}) is only ${ratio.toFixed(2)}:1, needs >=${min}:1`);
-        }
-      }
-    }
-  });
-}
-
-test("the pile inks no text of its own: its notices are TableNotice's plate, in the palette loop below", () => {
-  assert.deepEqual(TABLE_TEXT.filter(([file]) => file === "table/pile.tsx"), []);
-  assert.ok(TABLE_TEXT.some(([file]) => file === "table/TableNotice.tsx"), "TableNotice inks no <TableText> style");
-});
 
 test("the notice palette holds every shape, each with a tone", () => {
   assert.deepEqual(Object.keys(NoticePalette).sort(), ["chip", "float", "panel", "pill"]);

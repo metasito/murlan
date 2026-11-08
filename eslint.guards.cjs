@@ -6,6 +6,7 @@
  * @property {string} id Rule id under the plugin: `murlan/${id}`.
  * @property {string} why Reported at the site: the owner module or doc, and what to do instead.
  * @property {string} selector esquery over the AST, several shapes joined with ", "; never raw text.
+ * @property {(context: import("eslint").Rule.RuleContext, report: (node: object) => void) => Record<string, (node: any) => void>} [scoped] Visitors for what a selector cannot say: where a name resolves to, or where a value flows. Each reports a node the selector does not, so no site is reported twice.
  * @property {string[]} files Flat-config globs the guard applies to.
  * @property {{ glob: string, reason: string }[]} [ignores] The only exemption form.
  * @property {{ file: string, code: string, hits: number } | { file: string, code: string, hits: number }[]} plant Each fires exactly `hits` times, linted as its `file`.
@@ -61,15 +62,57 @@ const seamsOf = ({ modules, packages }) => {
 };
 
 // An element passing `attr` by name: one handed in through a spread, or as undefined, is drawn the default.
-const namesProp = (attr) => `:has(> JSXAttribute[name.name="${attr}"]:not([value.expression.type="Identifier"][value.expression.name="undefined"]))`;
+// An attribute whose value can be undefined, in either branch of a choice, is not naming it.
+const MAYBE_UNDEFINED = [
+  '[value.expression.type="Identifier"][value.expression.name="undefined"]',
+  '[value.expression.type="ConditionalExpression"]:matches([value.expression.consequent.type="Identifier"][value.expression.consequent.name="undefined"], [value.expression.alternate.type="Identifier"][value.expression.alternate.name="undefined"])',
+  '[value.expression.type="LogicalExpression"]:matches([value.expression.operator="&&"], [value.expression.right.type="Identifier"][value.expression.right.name="undefined"])',
+].join(", ");
+const namesProp = (attr) => `:has(> JSXAttribute[name.name="${attr}"]:not(:matches(${MAYBE_UNDEFINED})))`;
 const RN_IMAGE = "/^(Image|ImageBackground)$/";
 const RN_WINDOW = "/^(useWindowDimensions|Dimensions)$/";
-const REQUIRE_RN = 'CallExpression[callee.name="require"][arguments.0.value="react-native"]';
+const RN_SOURCE = "/^react-native(-web)?$/";
+const REQUIRE_RN = `CallExpression[callee.name="require"][arguments.0.value=${RN_SOURCE}]`;
 const LAYOUT = 'MemberExpression:matches([property.name="layout"], [property.value="layout"]):matches([object.property.name="nativeEvent"], [object.name="nativeEvent"])';
 const SIZE_ONLY = 'ObjectPattern:not(:has(> Property:not([computed=false][key.name=/^(width|height)$/][value.type="Identifier"]))):not(:has(> RestElement))';
-const NATIVE_EVENT = 'MemberExpression:matches([property.name="nativeEvent"], [property.value="nativeEvent"])';
-const DEEP_RN_WINDOW = "/^react-native\\x2FLibraries\\x2FUtilities\\x2F(useWindowDimensions|Dimensions)(\\.js)?$/";
+const DEEP_RN_WINDOW = "/^react-native(\\x2FLibraries\\x2FUtilities|-web\\x2Fdist\\x2F(cjs\\x2F)?exports)\\x2F(useWindowDimensions|Dimensions)(\\x2Findex)?(\\.js)?$/";
 const EVENT_PATTERN = ':matches(Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]) > ObjectPattern, VariableDeclarator:matches([init.property.name="nativeEvent"], [init.name="nativeEvent"]) > ObjectPattern)';
+
+
+const IMAGE_NAMES = /^(Image|ImageBackground)$/;
+const WINDOW_NAMES = /^(useWindowDimensions|Dimensions)$/;
+const PASS_THROUGH = new Set(["ChainExpression", "TSAsExpression", "TSNonNullExpression", "TSSatisfiesExpression", "TSTypeAssertion"]);
+
+/** What a name stands for when it comes from react-native (or react-native-web): `{ named }` for one export, `{ whole }` for the module object. */
+function fromReactNative(variable) {
+  const def = variable?.defs[0];
+  if (!def) return null;
+  const rn = /^react-native(-web)?$/;
+  if (def.type === "ImportBinding" && rn.test(def.parent.source.value) && def.parent.importKind !== "type" && def.node.importKind !== "type") {
+    if (def.node.type !== "ImportSpecifier") return { whole: true };
+    return { named: def.node.imported.name ?? def.node.imported.value };
+  }
+  const init = def.type === "Variable" ? def.node.init : null;
+  if (init?.type === "CallExpression" && init.callee.name === "require" && rn.test(init.arguments[0]?.value)) {
+    return def.node.id.type === "Identifier" ? { whole: true } : null;
+  }
+  return null;
+}
+
+const resolveName = (context, node) => context.sourceCode.getScope(node).references.find((r) => r.identifier === node)?.resolved;
+const moduleObject = (context, node) => node?.type === "Identifier" && fromReactNative(resolveName(context, node))?.whole === true;
+const memberName = (node) => (node.computed ? node.property.value : node.property.name);
+
+/** A value read of `nativeEvent` (as a member or as a bare name) and where it goes: only a member read or a destructuring may take it. */
+function nativeEventEscapes(node) {
+  let at = node;
+  while (at.parent && PASS_THROUGH.has(at.parent.type)) at = at.parent;
+  const parent = at.parent;
+  if (parent.type === "MemberExpression" && parent.object === at) return false;
+  if (parent.type === "VariableDeclarator" && parent.init === at) return parent.id.type !== "ObjectPattern";
+  if (parent.type === "AssignmentExpression" && parent.right === at) return parent.left.type !== "ObjectPattern";
+  return true;
+}
 
 /** @type {readonly Guard[]} */
 const GUARDS = [
@@ -119,12 +162,19 @@ const GUARDS = [
     id: "image-resize-mode",
     why: "A React Native <Image> or <ImageBackground> with no `resizeMode` is drawn `cover`: art whose aspect differs from its box is cropped, and only in boxes shaped unlike the one it was checked in. Pass it as the prop, by name, on an image under its own name (Image, Animated.Image), as components/CardView.tsx draws its card art.",
     selector: [
-      `JSXOpeningElement:matches([name.name=${RN_IMAGE}], [name.property.name=${RN_IMAGE}]):has(> JSXAttribute[name.name="source"]):not(${namesProp("resizeMode")})`,
-      `ImportDeclaration[source.value="react-native"] > ImportSpecifier[imported.name=${RN_IMAGE}]:not([local.name=${RN_IMAGE}])`,
+      `JSXOpeningElement:matches([name.name=${RN_IMAGE}], [name.property.name=${RN_IMAGE}]):has(> :matches(JSXAttribute[name.name="source"], JSXSpreadAttribute)):not(:has(> JSXAttribute[name.name="image"])):not(${namesProp("resizeMode")})`,
+      `ImportDeclaration[source.value=${RN_SOURCE}] > ImportSpecifier[imported.name=${RN_IMAGE}]:not([local.name=${RN_IMAGE}])`,
       `VariableDeclarator:has(> ${REQUIRE_RN}.init) > ObjectPattern > Property[key.name=${RN_IMAGE}]:not([value.name=${RN_IMAGE}])`,
       `MemberExpression[property.name=${RN_IMAGE}]:has(> ${REQUIRE_RN}.object)`,
-      `CallExpression:matches([callee.name="createAnimatedComponent"], [callee.property.name="createAnimatedComponent"])[arguments.0.name=${RN_IMAGE}]`,
     ].join(", "),
+    scoped: (context, report) => ({
+      Identifier(node) {
+        if (IMAGE_NAMES.test(node.name) && !(node.parent.type === "MemberExpression" && node.parent.object === node) && node.parent.type !== "TSTypeQuery" && fromReactNative(resolveName(context, node))?.named === node.name) report(node);
+      },
+      MemberExpression(node) {
+        if (moduleObject(context, node.object) && IMAGE_NAMES.test(memberName(node) ?? "")) report(node);
+      },
+    }),
     files: DRAWN,
     plant: { file: "components/Plant.tsx", code: [
       "const a = <Image source={art} style={ART_FILL} />;",
@@ -134,9 +184,18 @@ const GUARDS = [
       'const e = <Image source={art} resizeMode={undefined} style={{ resizeMode: "cover" }} />;',
       'import { Image as RNImage } from "react-native";',
       'const { Image: Pic } = require("react-native");',
+      'import { Image } from "react-native";',
       "const F = Animated.createAnimatedComponent(Image);",
       'const G = require("react-native").Image;',
-    ].join("\n"), hits: 9 },
+      "const Alias = Image;",
+      "let Late;\nLate = Image;",
+      "const Tabs = { photo: Image, plain: View };",
+      "const h = <Image {...imageProps} style={s} />;",
+      'const i = <Image source={art} resizeMode={tall ? "cover" : undefined} />;',
+      'const j = <Image source={art} resizeMode={tall && "cover"} />;',
+      'const k = <Image source={art} resizeMode={undefined ?? undefined} />;',
+      'import * as RN from "react-native";\nconst M = RN.Image;\nconst N = RN["ImageBackground"];',
+    ].join("\n"), hits: 18 },
     spare: [
       'const a = <Image source={art} style={ART_FILL} resizeMode="stretch" />;',
       'const b = <Image image={cloth} fit="fill" width={w} height={h} />;',
@@ -144,6 +203,14 @@ const GUARDS = [
       'const d = <Animated.Image source={s} resizeMode="stretch" />;',
       'import { Image, View } from "react-native";',
       'import { Image as SkImage } from "@shopify/react-native-skia";',
+      'import { Image } from "@shopify/react-native-skia";\nconst Alias = Image;',
+      'import { Image } from "react-native";\nconst size = Image.resolveAssetSource(art);\nImage.prefetch(url);',
+      'import { Image } from "react-native";\nconst a = <Image source={art} resizeMode={fit} {...rest} />;',
+      'import { Image } from "react-native";\nconst a = <Image source={art} resizeMode={tall ? "cover" : "contain"} />;',
+      'import { Image } from "react-native";\nconst a = <Image source={art} resizeMode={fit ?? "cover"} />;',
+      'import * as Other from "./other";\nconst a = Other.Image;',
+      'import { Image } from "react-native";\ntype T = typeof Image;',
+      'const a = <Image image={cloth} fit="fill" {...rest} />;',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
@@ -207,14 +274,17 @@ const GUARDS = [
   {
     id: "native-event-in-place",
     why: "An event's `nativeEvent` bound to a name of its own hides every later read through it from onlayout-size-only, which can follow only the name `nativeEvent`: destructure what the handler needs from it where it is read, as components/GameTable.tsx does.",
-    selector: [
-      `VariableDeclarator[id.type="Identifier"] > ${NATIVE_EVENT}.init`,
-      `AssignmentExpression > ${NATIVE_EVENT}.right`,
-      `:matches(VariableDeclarator[id.type="Identifier"], AssignmentExpression) > :matches(ChainExpression, TSAsExpression, TSNonNullExpression, TSSatisfiesExpression) > ${NATIVE_EVENT}.expression`,
-      'VariableDeclarator[id.type="Identifier"] > Identifier.init[name="nativeEvent"]',
-      'AssignmentExpression > Identifier.right[name="nativeEvent"]',
-      'ObjectPattern > Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]):not([value.type="Identifier"][value.name="nativeEvent"]):not([value.type="ObjectPattern"])',
-    ].join(", "),
+    selector: 'ObjectPattern > Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]):not([value.type="Identifier"][value.name="nativeEvent"]):not([value.type="ObjectPattern"])',
+    scoped: (context, report) => ({
+      MemberExpression(node) {
+        if (memberName(node) === "nativeEvent" && nativeEventEscapes(node)) report(node);
+      },
+      Identifier(node) {
+        if (node.name !== "nativeEvent") return;
+        const read = context.sourceCode.getScope(node).references.find((r) => r.identifier === node);
+        if (read?.isRead() && nativeEventEscapes(node)) report(node);
+      },
+    }),
     files: SCREENS,
     plant: { file: "components/Plant.tsx", code: [
       "function p(e) { const ne = e.nativeEvent; return ne.layout.y; }",
@@ -228,7 +298,18 @@ const GUARDS = [
       "function A(e) { let ne; ne = e.nativeEvent as LayoutEvent; }",
       "function B(e) { const { nativeEvent } = e; const ne = nativeEvent; }",
       "function C(e) { const { nativeEvent } = e; let ne; ne = nativeEvent; }",
-    ].join("\n"), hits: 11 },
+      "function D(e) { read(e.nativeEvent); }",
+      "function E(e) { return { ne: e.nativeEvent }; }",
+      "function F({ nativeEvent }) { const ne = (nativeEvent as any); }",
+      "function G({ nativeEvent }) { const ne = cond ? nativeEvent : null; }",
+      "function H(e) { return e.nativeEvent; }",
+      "function I({ nativeEvent }) { return place(nativeEvent); }",
+      "const J = (e) => e.nativeEvent;",
+      "function K({ nativeEvent }) { return { nativeEvent }; }",
+      "function L(e) { return [e?.nativeEvent]; }",
+      "function M(e) { return <Pin event={e.nativeEvent} />; }",
+      'function N(e) { read(e["nativeEvent"]); }',
+    ].join("\n"), hits: 22 },
     spare: [
       "function t(e) { const { pageX } = e.nativeEvent; return seat.layout.x + pageX; }",
       "const a = (e) => setH(e.nativeEvent.layout.height);",
@@ -237,19 +318,36 @@ const GUARDS = [
       "const d = seat.nativeEventCount;",
       "const f = (e) => setW(e?.nativeEvent?.layout?.width);",
       "const g = (e) => (e.nativeEvent as any).key;",
+      "function h(e) { const { pageX, pageY } = e.nativeEvent; return place(pageX, pageY); }",
+      "function i({ nativeEvent }) { const { layout } = nativeEvent; return layout.width; }",
+      "function j(e) { let w; ({ width: w } = e.nativeEvent.layout); return w; }",
+      "function k(e) { return e.nativeEvent.layout.width; }",
+      "function l(e) { return place(e); }",
+      "function m({ nativeEvent: { layout } }) { return layout.width; }",
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "window-through-orientation",
     why: "useWindowDimensions reads a size iOS can hand over in the wrong orientation on a cold start, and a second read of it drifts from the first: read the window with useOrientedWindow() or useIsLandscape() from lib/device/orientation.tsx, which measures the app's own root view.",
     selector: [
-      `ImportDeclaration[source.value="react-native"]:not([importKind="type"]) > ImportSpecifier[imported.name=${RN_WINDOW}]:not([importKind="type"])`,
-      `ExportNamedDeclaration[source.value="react-native"]:not([exportKind="type"]) > ExportSpecifier[local.name=${RN_WINDOW}]:not([exportKind="type"])`,
+      `ImportDeclaration[source.value=${RN_SOURCE}]:not([importKind="type"]) > ImportSpecifier[imported.name=${RN_WINDOW}]:not([importKind="type"])`,
+      `ExportAllDeclaration[source.value=${RN_SOURCE}]:not([exportKind="type"])`,
+      `ExportNamedDeclaration[source.value=${RN_SOURCE}]:not([exportKind="type"]) > ExportSpecifier[local.name=${RN_WINDOW}]:not([exportKind="type"])`,
       `VariableDeclarator:has(> ${REQUIRE_RN}.init) > ObjectPattern > Property[key.name=${RN_WINDOW}]`,
       `MemberExpression[property.name=${RN_WINDOW}]:has(> ${REQUIRE_RN}.object)`,
       importsOf(DEEP_RN_WINDOW, { values: true }),
-      `Program:has(ImportDeclaration[source.value="react-native"] > :matches(ImportNamespaceSpecifier, ImportDefaultSpecifier), VariableDeclarator[id.type="Identifier"] > ${REQUIRE_RN}.init) MemberExpression[object.type="Identifier"][property.name=${RN_WINDOW}]`,
     ].join(", "),
+    scoped: (context, report) => ({
+      MemberExpression(node) {
+        if (moduleObject(context, node.object) && WINDOW_NAMES.test(memberName(node) ?? "")) report(node);
+      },
+      VariableDeclarator(node) {
+        if (node.id.type !== "ObjectPattern" || !moduleObject(context, node.init)) return;
+        for (const property of node.id.properties) {
+          if (property.type === "Property" && WINDOW_NAMES.test(property.key.name ?? property.key.value ?? "")) report(property);
+        }
+      },
+    }),
     files: SCREENS,
     ignores: [{ glob: "lib/device/orientation.tsx", reason: "the one reader of the window, falling back to it until the root view is measured" }],
     plant: { file: "components/Plant.tsx", code: [
@@ -265,7 +363,15 @@ const GUARDS = [
       'export { default as useWD2 } from "react-native/Libraries/Utilities/useWindowDimensions";',
       'export * from "react-native/Libraries/Utilities/Dimensions";',
       'const lazy = import("react-native/Libraries/Utilities/Dimensions.js");',
-    ].join("\n"), hits: 11 },
+      'import * as Web from "react-native-web";\nconst { useWindowDimensions: useWin } = Web;',
+      'import * as Native from "react-native";\nconst { Dimensions: Dim } = Native;\nconst d = Native["Dimensions"];',
+      'export * from "react-native";',
+      'export * from "react-native-web";',
+      'import { useWindowDimensions as webWindow } from "react-native-web";',
+      'import Dimensions from "react-native-web/dist/exports/Dimensions";',
+      'import RNW from "react-native-web";\nconst e = RNW.useWindowDimensions;',
+      'const RNR = require("react-native");\nconst { Dimensions: D3 } = RNR;',
+    ].join("\n"), hits: 20 },
     spare: [
       'import { useOrientedWindow } from "@/lib/device/orientation";',
       "const { width, height } = useOrientedWindow();",
@@ -278,6 +384,13 @@ const GUARDS = [
       'import { useWindowDimensions as u2 } from "react-native-web-hooks/Libraries/Utilities/useWindowDimensions";',
       "const d = layout.Dimensions;",
       'import RN from "react-native";\nconst w = RN.PixelRatio.get();',
+      'import * as RN from "react-native";\nconst { PixelRatio } = RN;\nconst p = RN["PixelRatio"];',
+      "let size;\nconst [first] = list;\nfor (const { width } of items) keep(width);",
+      'import * as Mine from "./fakeWindow";\nconst { useWindowDimensions } = Mine;\nconst d = Mine.Dimensions;',
+      'const Dimensions = { get: () => 1 };\nconst { useWindowDimensions } = Dimensions;',
+      'export type * from "react-native";',
+      'import { Dimensions } from "react-native-web-hooks";',
+      'export * from "react-native-gesture-handler";',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
@@ -310,7 +423,7 @@ const GUARDS = [
       'VariableDeclarator > ObjectPattern > Property[key.name="cardScale"]',
       `Identifier[name=${SHORT_EDGES}]:not(ImportSpecifier[imported.name=${SHORT_EDGES}] > .local, ExportSpecifier[local.name=${SHORT_EDGES}] > .exported, Property[shorthand=true] > .value)`,
       `MemberExpression[property.value=${SHORT_EDGES}]`,
-      'BinaryExpression[operator="/"][right.type="Literal"][right.value=390]',
+      ':matches(BinaryExpression[operator="/"], AssignmentExpression[operator="/="])[right.type="Literal"][right.value=390]',
       'VariableDeclarator[init.type="Literal"][init.value=390]',
     ].join(", "),
     files: [...CLIENT, "tests/**/*.{ts,tsx}"],
@@ -343,7 +456,8 @@ const GUARDS = [
         "const n = edge / 390.0;",
         "const o = 320 / 390;",
         "const BASE = 390;",
-      ].join("\n"), hits: 18 },
+        "let p = Math.min(w, h);\np /= 390;",
+      ].join("\n"), hits: 19 },
       { file: "tests/ui-rules/plant.test.ts", code: [
         'import { cardScale } from "../../components/cardFaceModel.ts";',
         "const a = cardScale(Math.min(844, 390));",
@@ -352,8 +466,19 @@ const GUARDS = [
       { file: "tests/e2e/plant.spec.ts", code: [
         "const scale = Math.min(vp.width, vp.height) / 390;",
         "const BASE_EDGE = 390;",
-      ].join("\n"), hits: 2 },
+        "let edge = vp.width;\nedge /= 390;",
+      ].join("\n"), hits: 3 },
       { file: "tests/native/plant.test.tsx", code: "const { cardScale: at } = require('@/components/cardFaceModel');", hits: 1 },
+      ...["bots", "differential", "engine", "helpers", "integration", "model", "server", "soak", "support", "tooling"].map((dir) => ({
+        file: `tests/${dir}/plant.test.ts`,
+        code: "const scale = Math.min(w, h) / 390;",
+        hits: 1,
+      })),
+      ...["app", "context", "lib", "locales", "modules", "shared"].map((dir) => ({
+        file: `${dir}/plant.ts`,
+        code: "const scale = Math.min(w, h) / BASE_SHORT_EDGE;",
+        hits: 1,
+      })),
     ],
     spare: [
       ...[
@@ -370,6 +495,7 @@ const GUARDS = [
         "const VIEWPORT = { width: 844, height: 390 };",
         "const tall = 390 * scale;",
         "const half = width / 2;",
+        "let w = width;\nw /= 2;\nw *= 390;",
       ].map((code) => ({ file: "tests/e2e/plant.spec.ts", code })),
     ],
   },
@@ -1065,11 +1191,7 @@ const GUARDS = [
 
 // eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would
 // leave cached results standing.
-const version = require("node:crypto")
-  .createHash("sha256")
-  .update(JSON.stringify(GUARDS.map(({ id, why, selector, files, ignores }) => ({ id, why, selector, files, ignores }))))
-  .digest("hex")
-  .slice(0, 16);
+const version = require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync(module.filename)).digest("hex").slice(0, 16);
 
 const plugin = {
   meta: { name: "murlan", version },
@@ -1078,7 +1200,10 @@ const plugin = {
       guard.id,
       {
         meta: { type: "problem", schema: [] },
-        create: (context) => ({ [guard.selector]: (node) => context.report({ node, message: guard.why }) }),
+        create: (context) => {
+          const report = (node) => context.report({ node, message: guard.why });
+          return { [guard.selector]: report, ...guard.scoped?.(context, report) };
+        },
       },
     ])
   ),

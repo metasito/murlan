@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 type Ignore = { glob: string; reason: string };
 type Sample = { file: string; code: string };
 type Plant = Sample & { hits: number };
-type Guard = { id: string; why: string; selector: string; files: string[]; ignores?: Ignore[]; plant: Plant | Plant[]; spare: Sample[] };
+type Guard = { id: string; why: string; selector: string; scoped?: unknown; files: string[]; ignores?: Ignore[]; plant: Plant | Plant[]; spare: Sample[] };
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
 const { GUARDS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
@@ -107,7 +107,16 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(loose, [], "an exemption with no reason, or one naming no file the guard reads, exempts nothing it can defend");
   });
 
-  test("3, stale: every exemption still covers a file the guard would report", async () => {
+  test("2, narrowed: one-table-scale has a plant in every client root and every tests directory, so a glob cut back goes red", async () => {
+    const guard = GUARDS.find((g) => g.id === "one-table-scale")!;
+    const groups = (f: string) => f.split("/").slice(0, f.startsWith("tests/") ? 2 : 1).join("/");
+    const code = tracked.filter((f) => /\.tsx?$/.test(f));
+    const roots = new Set([...code.filter((f) => f.startsWith("tests/")), ...code.filter((f) => /^(app|components|context|lib|locales|modules|shared)\//.test(f))].map(groups));
+    const planted = new Set([guard.plant].flat().map((p) => groups(p.file)));
+    assert.deepEqual([...roots].filter((r) => !planted.has(r)), [], "a directory the short-edge guard must read has no plant, so a glob cut back to the rest stays green");
+  });
+
+  test("3, stale: every file an exemption covers is one the guard would report, so a widened glob goes red", async () => {
     const stale: string[] = [];
     for (const guard of GUARDS) {
       const alone = new ESLint({
@@ -123,15 +132,15 @@ describe("the guard registry's floor", () => {
         ],
       });
       for (const { glob } of guard.ignores ?? []) {
-        let hits = 0;
-        for (const file of tracked.filter((f) => matches(f, [glob]) && matches(f, guard.files))) {
-          hits += await reports(alone, readFileSync(path.join(ROOT, file), "utf8"), file, ruleOf(guard));
-          if (hits > 0) break;
+        const covered = tracked.filter((f) => matches(f, [glob]) && matches(f, guard.files));
+        const clean: string[] = [];
+        for (const file of covered) {
+          if ((await reports(alone, readFileSync(path.join(ROOT, file), "utf8"), file, ruleOf(guard))) === 0) clean.push(file);
         }
-        if (hits === 0) stale.push(`${guard.id}: ${glob}`);
+        if (covered.length === 0 || clean.length > 0) stale.push(`${guard.id}: ${glob}${clean.length ? ` also covers ${clean.slice(0, 3).join(", ")}${clean.length > 3 ? `, and ${clean.length - 3} more` : ""}` : ""}`);
       }
     }
-    assert.deepEqual(stale, [], "an exemption over files the guard would not report exempts nothing, and hides the next one there");
+    assert.deepEqual(stale, [], "an exemption over a file the guard would not report exempts nothing there, and hides the next violation");
   });
 
   test("4. no block in the config sets a guard below error, and only guardBlocks() sets one", () => {
@@ -201,7 +210,7 @@ describe("the guard registry's floor", () => {
   test("6. the registry's ids are unique, each guard is a selector entry, and its why names a path that exists", () => {
     const ids = GUARDS.map((g) => g.id);
     assert.equal(new Set(ids).size, ids.length, "two guards share an id");
-    const FIELDS = ["id", "why", "selector", "files", "ignores", "plant", "spare"];
+    const FIELDS = ["id", "why", "selector", "scoped", "files", "ignores", "plant", "spare"];
     const dangling: string[] = [];
     for (const guard of GUARDS) {
       assert.deepEqual(Object.keys(guard).filter((k) => !FIELDS.includes(k)), [], `${guard.id} is more than a selector entry`);
