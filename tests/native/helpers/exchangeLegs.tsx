@@ -15,7 +15,7 @@ export const card = (id: string, rank: Card['rank']): Card => ({ id, suit: 'club
 const players = ['Ana', 'Bea', 'Cai', 'Dua'].map((name, i) => ({ id: `p${i}`, name, type: 'bot', hand: [card(`h${i}`, '9')] }) as Player);
 
 export const NO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };
-export const LAYOUT: TableLayout = tableLayout({ width: 844, height: 390, insets: NO_INSETS, scale: 1 });
+export const LAYOUT: TableLayout = tableLayout({ width: 844, height: 390, insets: NO_INSETS });
 export const SEATING: Seating = { viewerSeat: 0, players, opponents: arrangeOpponents(players, 0) };
 
 export const announced = (over: Partial<ExchangeAnnounceData> = {}): ExchangeAnnounceData => ({

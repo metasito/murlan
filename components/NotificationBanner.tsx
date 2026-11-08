@@ -14,7 +14,6 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { bannerTop } from "@/components/tableFrame";
 import { tableLayout } from "@/components/tableLayout";
-import { cardScale } from "@/components/cardFaceModel";
 import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -94,8 +93,7 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   const opacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
 
-  const scale = cardScale(Math.min(width, height));
-  const topOffset = bannerTop(isLandscape ? tableLayout({ width, height, insets, scale }) : null, insets.top);
+  const topOffset = bannerTop(isLandscape ? tableLayout({ width, height, insets }) : null, insets.top);
   // Reduced motion: keep the exact same callback chain (still a single,
   // sequential path to onDismiss) but collapse every leg to ~0ms so nothing
   // visibly slides.

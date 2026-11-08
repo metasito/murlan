@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { cardScale, handCardSize } from "../../components/cardFaceModel.ts";
+import { handCardSize } from "../../components/cardFaceModel.ts";
+import { tableScale } from "../../components/tableLayout.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
 import { entryOffset, layoutHandRow } from "../../components/handLayout.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
@@ -41,7 +42,7 @@ function cases(): Case[] {
 
 function frameOf(name: string) {
   const phone = PHONES.find((p) => p.name === name)!;
-  const scale = cardScale(Math.min(phone.width, phone.height));
+  const scale = tableScale(phone);
   const frame = computeTableFrame({
     width: phone.width,
     height: phone.height,

@@ -10,7 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { tableLayout } from '@/components/tableLayout';
 import { actionBtnSize } from '@/components/seatLayout';
-import { cardScale, physicalTouchTarget } from '@/components/cardFaceModel';
+import { physicalTouchTarget } from '@/components/cardFaceModel';
 import { TOUCH_TARGET_MIN } from '@/lib/tokens';
 import { t } from '@/lib/i18n';
 import { SettingsProvider } from '@/context/SettingsContext';
@@ -56,8 +56,8 @@ async function mount({ width, height, insets }: (typeof SCREENS)[number]) {
   );
   const gate = screen.queryByTestId('start-reason-gate', { includeHiddenElements: true });
   if (gate) await fireEvent.press(gate);
-  const scale = cardScale(Math.min(width, height));
-  return { scale, layout: tableLayout({ width, height, insets, scale }) };
+  const layout = tableLayout({ width, height, insets });
+  return { scale: layout.scale, layout };
 }
 
 type Node = NonNullable<ReturnType<typeof screen.queryByTestId>>;
@@ -75,7 +75,7 @@ beforeEach(() => setStoredMotion('on'));
 it('the screens tell each floored pad, and a surplus, from the raw numbers', () => {
   const frames = SCREENS.map(({ width, height, insets }) => ({
     insets,
-    frame: tableLayout({ width, height, insets, scale: cardScale(Math.min(width, height)) }).frame,
+    frame: tableLayout({ width, height, insets }).frame,
   }));
   expect(frames.some(({ frame, insets }) => frame.tableTop !== insets.top)).toBe(true);
   expect(frames.some(({ frame, insets }) => frame.tableBottom !== insets.bottom)).toBe(true);

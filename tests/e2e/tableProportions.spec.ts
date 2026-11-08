@@ -13,7 +13,7 @@ import { openSeededGame } from "./helpers/offlineSeed";
 import { HAND_ZONE, TABLE_SCREEN } from "./helpers/selectors";
 import { atRest } from "./helpers/settle";
 import { CHIP_H, SEAT_DISC, actionBtnSize } from "../../components/seatLayout";
-import { cardScale } from "../../components/cardFaceModel";
+import { tableScale } from "../../components/tableLayout";
 
 // tests/e2e/handParity.spec.ts's own handsets.
 const PHONES = [
@@ -82,7 +82,7 @@ for (const phone of PHONES) {
     await openSeededGame(page, baseURL!, 4);
     await atRest(page, TABLE_SCREEN);
 
-    const s = cardScale(Math.min(phone.width, phone.height));
+    const s = tableScale(phone);
     const b = await boxes(page);
     if (!b.gioca || !b.passa || !b.topBar) throw new Error("the table never rendered");
     if (!b.scorePill) throw new Error("a match's table drew no score pill");
