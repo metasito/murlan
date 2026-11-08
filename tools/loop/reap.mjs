@@ -284,16 +284,6 @@ export function stalePortHolders(pids, table) {
   });
 }
 
-export function staleAmong(pids) {
-  return stalePortHolders(pids, processTable().rows);
-}
-
-export function clearPort(port, { dryRun = false } = {}) {
-  const pids = portListeners(port).filter((pid) => pid !== process.pid);
-  for (const pid of pids) killPid(pid, dryRun);
-  return pids;
-}
-
 /**
  * One sweep, said a line at a time through `say`. `took` is how many it named to take; a port left
  * to a live run is somebody else working, not a leftover, so it is not counted. `blind` is why it
