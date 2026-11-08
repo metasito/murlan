@@ -17,6 +17,7 @@ import { activeGames, userSocketMap } from "../../server/game/gameRoom.ts";
 import { pending, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import type { WireGameState, WireRoomState } from "../../shared/protocol.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 const BOT_DELAY_MS = 150;
 const AFK_MS = 400;
@@ -210,7 +211,7 @@ describe("a graceful shutdown hands its tables to a live peer", { skip: hasDatab
   });
 
   test("an idle table is handed off before a socket closes", { timeout: 90_000 }, async (t) => {
-    const slow = { MURLAN_AFK_TIMEOUT_MS: "600000", MURLAN_BOT_MOVE_DELAY_MS: "600000" };
+    const slow = { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS), MURLAN_BOT_MOVE_DELAY_MS: "600000" };
     Object.assign(process.env, slow);
     t.after(() => Object.assign(process.env, env));
     const { owner, host, room } = await openTable("id", { maxPlayers: 2, fillWithBots: false, ownerEnv: slow });
@@ -238,7 +239,7 @@ describe("a graceful shutdown hands its tables to a live peer", { skip: hasDatab
   });
 
   test("a seat lost during the hand-off keeps its in-game grace at the new owner, and the intent sent meanwhile is answered there", { timeout: 90_000 }, async (t) => {
-    const slow = { MURLAN_AFK_TIMEOUT_MS: "600000", MURLAN_BOT_MOVE_DELAY_MS: "600000" };
+    const slow = { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS), MURLAN_BOT_MOVE_DELAY_MS: "600000" };
     Object.assign(process.env, slow);
     t.after(() => Object.assign(process.env, env));
     const { owner, host, guest, room } = await openTable("sc", { maxPlayers: 2, fillWithBots: false, ownerEnv: slow });

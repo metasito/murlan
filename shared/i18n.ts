@@ -22,12 +22,20 @@ export function isLocale(value: string | null | undefined): value is Locale {
   return !!value && (SUPPORTED_LOCALES as string[]).includes(value);
 }
 
+const PLACEHOLDER = /\{\{(\w+)\}\}/g;
+
 /** Replaces every `{{name}}` placeholder in `template` with `params[name]`. */
 export function interpolate(template: string, params?: TranslationParams): string {
   if (!params) return template;
-  return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+  return template.replace(PLACEHOLDER, (match, name: string) =>
     Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match
   );
+}
+
+/** A template's literal runs and, between them, the names of its placeholders, in order. */
+export function templateParts(template: string): { runs: string[]; slots: string[] } {
+  const parts = template.split(PLACEHOLDER);
+  return { runs: parts.filter((_, i) => i % 2 === 0), slots: parts.filter((_, i) => i % 2 === 1) };
 }
 
 export function translate(locale: Locale, key: TranslationKey, params?: TranslationParams): string {

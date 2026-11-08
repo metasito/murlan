@@ -12,6 +12,7 @@ import { boot, type Instance } from "../helpers/instance.ts";
 import { driveRound } from "../helpers/gameDriver.ts";
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 describe("Redis stopped mid-game", { skip: hasDatabase() ? false : skipMessage() }, () => {
   const schema = `rdg_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
@@ -31,7 +32,7 @@ describe("Redis stopped mid-game", { skip: hasDatabase() ? false : skipMessage()
     proxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
     instance = await boot(scoped, {
       REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy),
-      MURLAN_AFK_TIMEOUT_MS: "600000",
+      MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS),
     });
     port = instance.port;
     instance.child.stdout?.on("data", (buf) => output.push(String(buf)));

@@ -15,6 +15,7 @@ import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.ts";
 import { keyspace } from "../../server/store/redis.ts";
 import { openPresenceStore, type PresenceStore } from "../../server/store/presence.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 const METRICS_TOKEN = "routing-metrics";
 /**
@@ -73,7 +74,7 @@ describe("an intent for a table another instance owns", { skip: hasDatabase() ? 
     await admin.end();
     proxy = await startProxy(targetOf(process.env.REDIS_URL!, 6379));
     presence = openPresenceStore({ id: `observer-${schema}`, url: process.env.REDIS_URL, ns: keyspace(scoped), heartbeat: false });
-    const env = { MURLAN_AFK_TIMEOUT_MS: "600000", METRICS_TOKEN };
+    const env = { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS), METRICS_TOKEN };
     // Sequentially: each runs `ensureSchema` against the same schema.
     instances.push(await boot(scoped, { ...env, REDIS_URL: viaProxy(process.env.REDIS_URL!, proxy) }));
     instances.push(await boot(scoped, env));

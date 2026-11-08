@@ -29,7 +29,9 @@ import {
   noticeRise,
   noticeTiming,
   mockupPx,
+  NOTICE_FACES,
   NOTICE_KEY,
+  noticeRun,
   panelLine,
   panelParts,
   type KindTone,
@@ -267,13 +269,15 @@ export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: 
 }
 
 export function NoticeLine({ line, children }: { line: PanelLine; children: ReactNode }) {
-  const { paint, scale } = useInk("a panel part");
+  const { paint, box, scale } = useInk("a panel part");
   const type = panelLine(line, scale);
+  const run = noticeRun(box, line);
   return (
     <TableText
       style={[
         styles.line,
-        type.bold && styles.bold,
+        NOTICE_FACES[run.face],
+        run.upper && styles.upper,
         line === "hint" && styles.hint,
         { color: line === "main" ? paint.ink : paint.quiet ?? paint.ink, fontSize: type.fontSize, letterSpacing: type.tracking },
       ]}
@@ -284,12 +288,14 @@ export function NoticeLine({ line, children }: { line: PanelLine; children: Reac
 }
 
 export function NoticeName({ children }: { children: ReactNode }) {
-  const { paint } = useInk("a panel part");
-  return <TableText style={[styles.bold, { color: paint.strong }]}>{children}</TableText>;
+  const { paint, box } = useInk("a panel part");
+  const run = noticeRun(box, "name");
+  return <TableText style={[NOTICE_FACES[run.face], run.upper && styles.upper, { color: paint.strong }]}>{children}</TableText>;
 }
 
 export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
-  const { scale } = useInk("a panel part");
+  const { box, scale } = useInk("a panel part");
+  const run = noticeRun(box, "tile");
   const part = panelParts(scale);
   const unit = mockupPx(1, scale);
   const ink = SUIT_COLORS[suit];
@@ -306,7 +312,7 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
         { boxShadow: `0px ${part.tileLip}px 0px ${Colors.cardLip}, 0px ${unit}px ${TILE_SHADOW * unit}px ${TILE_CAST}` },
       ]}
     >
-      <TableText style={[styles.bold, { color: ink, fontSize: part.tileFont }]}>{rank}</TableText>
+      <TableText style={[NOTICE_FACES[run.face], run.upper && styles.upper, { color: ink, fontSize: part.tileFont }]}>{rank}</TableText>
       <Svg width={part.tileSuit} height={part.tileSuit} viewBox={SUIT_BOX} preserveAspectRatio="xMidYMid meet">
         <SuitShape suit={suit} color={ink} />
       </Svg>
@@ -314,9 +320,11 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
   );
 }
 
-export function NoticeDisc({ children }: { children: ReactNode }) {
-  const { paint, scale } = useInk("a panel part");
+/** A word, or a name's `initial`, which it draws as the name's first letter. */
+export function NoticeDisc({ children, initial }: { children?: ReactNode; initial?: string }) {
+  const { paint, box, scale } = useInk("a panel part");
   const part = panelParts(scale);
+  const run = noticeRun(box, initial === undefined ? "disc" : "initial");
   return (
     <LinearGradient
       testID="notice-disc"
@@ -329,7 +337,9 @@ export function NoticeDisc({ children }: { children: ReactNode }) {
         makeShadow(Colors.goldLit, 0, 0, 0.3, mockupPx(DISC_GLOW, scale), 0),
       ]}
     >
-      <TableText style={[styles.bold, { color: paint.ink, fontSize: part.discFont }]}>{children}</TableText>
+      <TableText style={[NOTICE_FACES[run.face], run.upper && styles.upper, { color: paint.ink, fontSize: part.discFont }]}>
+        {initial === undefined ? children : initial.slice(0, 1)}
+      </TableText>
     </LinearGradient>
   );
 }
@@ -337,28 +347,32 @@ export function NoticeDisc({ children }: { children: ReactNode }) {
 export function NoticeText({
   strong = false,
   warn = false,
-  maxWidth,
+  runtime = false,
   align,
   testID,
   children,
 }: {
   strong?: boolean;
   warn?: boolean;
-  maxWidth?: number;
+  /** Its words exist only at runtime: the kind's `runtime` bound for the role clips it. */
+  runtime?: boolean;
   align?: "left" | "right";
   testID?: string;
   children: ReactNode;
 }) {
-  const { paint, box, scale } = useInk("NoticeText");
+  const { paint, box } = useInk("NoticeText");
+  const role = strong ? "strong" : "text";
+  const run = noticeRun(box, role);
+  const bound = runtime ? box.runtime[role] : undefined;
   return (
     <TableText
       numberOfLines={box.lines}
       testID={testID}
       style={[
         styles.text,
-        !box.upper && styles.sentence,
-        (strong || box.bold) && styles.bold,
-        strong && styles.strong,
+        !run.upper && styles.sentence,
+        NOTICE_FACES[run.face],
+        run.tabular && styles.strong,
         {
           color: warn ? (paint.warn ?? paint.strong) : strong ? paint.strong : paint.ink,
           fontSize: strong ? box.strongFontSize : box.fontSize,
@@ -366,7 +380,7 @@ export function NoticeText({
           lineHeight: box.lineHeight,
           textAlign: align,
         },
-        maxWidth !== undefined && { maxWidth: maxWidth * scale },
+        bound && "on" in bound && bound.on === "run" && { maxWidth: bound.maxWidth },
       ]}
     >
       {children}
@@ -377,13 +391,15 @@ export function NoticeText({
 /** A gold key inside the plate's run, naming the action a press on the plate takes. */
 export function NoticeKey({ testID, children }: { testID?: string; children: ReactNode }) {
   const { box, scale } = useInk("NoticeKey");
+  const run = noticeRun(box, "key");
   return (
     <TableText
       numberOfLines={1}
       testID={testID}
       style={[
         styles.text,
-        styles.bold,
+        !run.upper && styles.sentence,
+        NOTICE_FACES[run.face],
         {
           color: Colors.badgeInk,
           backgroundColor: Colors.gold,
@@ -417,6 +433,7 @@ export function NoticeGlyph({ name, px }: { name: ComponentProps<typeof Ionicons
 /** A count on gold at the plate's end, as `#turn u`. */
 export function NoticeBadge({ children }: { children: ReactNode }) {
   const { box, scale } = useInk("NoticeBadge");
+  const run = noticeRun(box, "badge");
   return (
     <View
       style={[
@@ -424,7 +441,7 @@ export function NoticeBadge({ children }: { children: ReactNode }) {
         { paddingHorizontal: mockupPx(BADGE.padX, scale), paddingVertical: mockupPx(BADGE.padY, scale), borderRadius: mockupPx(BADGE.radius, scale) },
       ]}
     >
-      <TableText style={[styles.bold, styles.strong, { color: Colors.badgeInk, fontSize: box.fontSize, letterSpacing: mockupPx(BADGE.tracking, scale) }]}>
+      <TableText style={[NOTICE_FACES[run.face], run.upper && styles.upper, run.tabular && styles.strong, { color: Colors.badgeInk, fontSize: box.fontSize, letterSpacing: mockupPx(BADGE.tracking, scale) }]}>
         {children}
       </TableText>
     </View>
@@ -439,8 +456,9 @@ const styles = StyleSheet.create({
   },
   panel: { borderWidth: 1 },
   dim: { ...StyleSheet.absoluteFill, backgroundColor: Scrim.medium, zIndex: DIM_Z },
-  line: { fontFamily: "Rajdhani_600SemiBold" },
-  hint: { textTransform: "uppercase", textAlign: "center" },
+  line: { ...NOTICE_FACES.regular },
+  upper: { textTransform: "uppercase" },
+  hint: { textAlign: "center" },
   tile: {
     alignItems: "center",
     justifyContent: "center",
@@ -454,12 +472,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.goldLitDisc,
   },
   text: {
-    fontFamily: "Rajdhani_600SemiBold",
+    ...NOTICE_FACES.regular,
     textTransform: "uppercase",
     flexShrink: 1,
   },
   sentence: { textTransform: "none" },
-  bold: { fontFamily: "Rajdhani_700Bold" },
   strong: { fontVariant: ["tabular-nums"] },
   badge: { backgroundColor: Colors.gold },
 });

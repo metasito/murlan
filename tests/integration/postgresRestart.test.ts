@@ -8,6 +8,7 @@ import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../help
 import { dropKeyspace } from "../helpers/redisKeys.ts";
 import { boot, type Instance } from "../helpers/instance.ts";
 import { FORCED_EXIT_MS } from "../../server/http/shutdown.ts";
+import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
 
 const PORTS: number[] = [];
 
@@ -104,7 +105,7 @@ describe("the server survives its Postgres backends being terminated", {
     admin = new pg.Pool({ connectionString: baseUrl });
     await admin.query(`CREATE SCHEMA "${schema}"`);
     for (let n = 0; n < 2; n++) {
-      const instance = await boot(scoped, { MURLAN_AFK_TIMEOUT_MS: "600000" });
+      const instance = await boot(scoped, { MURLAN_AFK_TIMEOUT_MS: String(CLOCK_CEILING_MS) });
       PORTS.push(instance.port);
       watched.push(watch(instance));
     }
