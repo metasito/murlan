@@ -18,6 +18,7 @@ import { markStale, queryKey, stale, useApi, type Answer, type ApiKey, type List
 import { useAuth } from "@/context/AuthContext";
 import {
   connectSocket,
+  closeSocket,
   disconnectSocket,
   peekSocket,
   subscribeToSockets,
@@ -337,7 +338,7 @@ export function SocketProvider({ children, random }: { children: ReactNode; rand
       }
       retryAttemptRef.current = 0;
       haltedSocketRef.current = socket;
-      socket.disconnect();
+      closeSocket(socket);
     };
 
     // A server that failed to read the friends at connect pushes no list: the rows are re-read anyway.

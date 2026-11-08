@@ -114,6 +114,31 @@ export function connectSocket(userId: string, { onAuthFailure }: { onAuthFailure
 
 
 /**
+ * Closing a websocket still CONNECTING makes the browser log an error, so an
+ * opening one is closed once its engine settles. Every close of a client socket
+ * goes through here (tests/tooling/socketTeardownOwner.test.ts).
+ */
+export function closeSocket(socket: Socket): void {
+  if (socket.io.engine?.readyState !== "opening") {
+    socket.disconnect();
+    return;
+  }
+  const close = () => {
+    socket.io.off("open", close);
+    socket.io.off("error", close);
+    socket.disconnect();
+  };
+  socket.io.once("open", close);
+  socket.io.once("error", close);
+}
+
+/** A fresh attempt; one already opening is that attempt, and closing it would only log. */
+export function reconnectSocket(socket: Socket): void {
+  if (socket.io.engine?.readyState === "opening") return;
+  socket.disconnect().connect();
+}
+
+/**
  * A retired socket never hands over credentials again, so it never sends the
  * namespace CONNECT: nothing can be emitted or received on it once signed out.
  */
@@ -124,19 +149,7 @@ export function disconnectSocket(userId: string) {
   entry.retire();
   entry.handlers.onAuthFailure = () => {};
   socket.removeAllListeners();
-  // Closing a websocket still CONNECTING makes the browser log an error; wait
-  // for the engine to settle and close it then.
-  if (socket.io.engine?.readyState === "opening") {
-    const close = () => {
-      socket.io.off("open", close);
-      socket.io.off("error", close);
-      socket.disconnect();
-    };
-    socket.io.once("open", close);
-    socket.io.once("error", close);
-  } else {
-    socket.disconnect();
-  }
+  closeSocket(socket);
   socketMap.delete(userId);
   mapListeners.forEach((fn) => fn());
 }
