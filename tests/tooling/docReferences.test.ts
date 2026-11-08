@@ -158,8 +158,9 @@ function headingsOf(file: string): string[] {
 }
 
 /** Each citation as the candidate titles it could mean: a `§` title may wrap onto the next line. */
-function headingCitations(text: string): { doc: string; titles: string[]; form: "quoted" | "section" }[] {
-  return [...text.matchAll(HEADING_CITATION)].flatMap(([, doc, quoted, first, wrapped]) => {
+type Citation = { doc: string; titles: string[]; form: "quoted" | "section" };
+function headingCitations(text: string): Citation[] {
+  return [...text.matchAll(HEADING_CITATION)].flatMap(([, doc, quoted, first, wrapped]): Citation[] => {
     if (quoted) return [...quoted.matchAll(QUOTED)].map((m) => ({ doc, titles: [m[1]], form: "quoted" as const }));
     const one = first.trim();
     if (/^[\d.]/.test(one)) return [];
