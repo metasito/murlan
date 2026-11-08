@@ -2,6 +2,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readLine } from "../loop-stream.mjs";
 import { allowedTools, queueLoopArgs } from "../loop-session.mjs";
 import { CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../limits.mjs";
@@ -19,7 +21,8 @@ import { fakeTracker, runCli } from "../tracker.mjs";
  * here instead: it fails when the docs name something that is not there.
  */
 const QUEUE = ".claude/commands/queue.md";
-const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const read = (p: string) => (existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p), "utf8") : "");
 
 describe("the loop's instructions name only things that exist", () => {
   test(`${QUEUE} is present`, () => {
@@ -29,7 +32,7 @@ describe("the loop's instructions name only things that exist", () => {
   test("every `node tools/loop/x.mjs` it tells you to run is a real script", () => {
     const named = [...read(QUEUE).matchAll(/node\s+(tools\/loop\/[\w.-]+\.mjs)/g)].map((m) => m[1]);
     assert.ok(named.length >= 3, "no script invocations found; the pattern has drifted");
-    const missing = [...new Set(named)].filter((s) => !existsSync(s));
+    const missing = [...new Set(named)].filter((s) => !existsSync(join(ROOT, s)));
     assert.deepEqual(missing, [], `queue.md tells the agent to run scripts that do not exist`);
   });
 
@@ -39,7 +42,7 @@ describe("the loop's instructions name only things that exist", () => {
   // for them.
 
   test("every tracker.mjs verb a recipe names is one its CLI runs", () => {
-    const docs = [QUEUE, "docs/agents/issue-tracker.md", "docs/agents/RULES.md", ".claude/commands/audit.md"];
+    const docs = [QUEUE, "docs/agents/issue-tracker.md", "docs/agents/writing-tickets.md", "docs/agents/RULES.md", ".claude/commands/audit.md"];
     const verbs = [...new Set(docs.flatMap((d) => [...read(d).matchAll(/tracker\.mjs ([a-z][\w-]*)/g)].map((m) => m[1])))];
     assert.ok(verbs.length >= 6, `only ${verbs.join(", ")}; the pattern has drifted`);
     const unknown = verbs.filter((verb) => {
@@ -96,7 +99,7 @@ describe("the loop's instructions name only things that exist", () => {
       for (const arg of [script, ...flags]) {
         assert.doesNotMatch(arg, /\$/, `hook arg uses a placeholder Claude Code does not substitute: ${arg}`);
       }
-      assert.ok(existsSync(script), `hook runs a script that does not exist: ${first}`);
+      assert.ok(existsSync(join(ROOT, script)), `hook runs a script that does not exist: ${first}`);
       for (const flag of flags) assert.match(flag, /^--[a-z-]+$/, `hook arg is neither the script nor a flag: ${flag}`);
     }
   });
@@ -342,13 +345,19 @@ describe("no instruction runs a suite rule 2 forbids", () => {
 
   test("no command file gives one", () => {
     const dir = ".claude/commands";
-    assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith(".md")).flatMap((f) => found(`${dir}/${f}`)), []);
+    assert.deepEqual(readdirSync(join(ROOT, dir)).filter((f) => f.endsWith(".md")).flatMap((f) => found(`${dir}/${f}`)), []);
   });
 
-  test("checks.md tells no one to run one, in a table's Run column or a sentence", () => {
+  test("checks.md and the docs it routes to tell no one to run one, in a table's Run column or a sentence", () => {
     const told = (line: string, at: number) => /^\s*\||\b[Rr]un\b[^.;:|]*$/.test(line.slice(0, at));
     assert.ok(told("| x | `", 6) && told("**Run `", 7) && !told("`npm test`'s", 1), "the instruction test has drifted");
-    assert.deepEqual(found("docs/agents/checks.md", told), []);
+    const checks = "docs/agents/checks.md";
+    const routed = [...new Set([...read(checks).matchAll(/\b(?:docs\/agents\/)?([\w-]+\.md)\b/g)].map((m) => `docs/agents/${m[1]}`))]
+      .filter((f) => existsSync(join(ROOT, f)) && f !== "docs/agents/RULES.md");
+    for (const f of ["suites.md", "traps.md", "device-runs.md", "loop-harness.md", "target-freeze.md"]) {
+      assert.ok(routed.includes(`docs/agents/${f}`), `checks.md no longer routes to ${f}`);
+    }
+    assert.deepEqual([checks, ...routed, "docs/agents/writing-tickets.md"].flatMap((f) => found(f, told)), []);
   });
 });
 

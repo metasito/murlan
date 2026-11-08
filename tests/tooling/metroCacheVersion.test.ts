@@ -1,5 +1,5 @@
 // tests/tooling/metroCacheVersion.test.ts — Metro's machine-wide transform cache is keyed on the
-// checkout and on the inlined EXPO_PUBLIC_* values (docs/agents/checks.md, "Remaining traps").
+// checkout and on the inlined EXPO_PUBLIC_* values (docs/agents/traps.md, "Remaining traps").
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";

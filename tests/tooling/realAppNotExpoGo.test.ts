@@ -141,8 +141,8 @@ describe("both device jobs pin the tool that reads the screen", () => {
     // mean the same thing". A CI pin that local does not share moves the drift
     // rather than removing it.
     assert.ok(
-      read("docs/agents/checks.md").includes(`export MAESTRO_VERSION=${pinnedVersion(DEVICE_JOBS[0])}`),
-      "docs/agents/checks.md installs a different Maestro than CI drives",
+      read("docs/agents/device-runs.md").includes(`export MAESTRO_VERSION=${pinnedVersion(DEVICE_JOBS[0])}`),
+      "docs/agents/device-runs.md installs a different Maestro than CI drives",
     );
   });
 });
