@@ -56,18 +56,28 @@ describe("importUnderShellGuard", () => {
   });
 
   test("gives the module the whole budget, not what booting Node left of it", () => {
-    // The budget is the module's, so starting the child may not spend any of it. Measured
-    // here: `node -e 0` costs 100-160ms idle and more under load, so a budget counted from
-    // the spawn hands a module asking for nearly all of it a deficit — and the child is
-    // killed before the marker is written, which reads as a hang that never shelled out.
+    // Booting is made to cost more than the margin the module leaves, so a budget counted from
+    // the spawn would kill the child before the marker is written and read as a hang that
+    // never shelled out, however idle the machine is.
+    const BOOT_MS = 1_500;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "guard-slow-boot-"));
+    const slowBoot = path.join(dir, "slow-boot.cjs");
+    fs.writeFileSync(slowBoot, `const end = Date.now() + ${BOOT_MS};\nwhile (Date.now() < end) {}\n`, "utf8");
     const url = moduleWith(
       "import { execFileSync } from 'node:child_process';\n" +
-        "await new Promise((r) => setTimeout(r, 900));\n" +
+        "await new Promise((r) => setTimeout(r, 2000));\n" +
         "try { execFileSync('gh', ['issue', 'list']); } catch {}\n" +
         "setInterval(() => {}, 1000);\nawait new Promise(() => {});\n"
     );
-
-    assert.equal(importUnderShellGuard(url, { timeoutMs: 1_000 }).shelledOutTo, "gh");
+    const was = process.env.NODE_OPTIONS;
+    process.env.NODE_OPTIONS = `${was ?? ""} --require ${JSON.stringify(slowBoot)}`.trim();
+    try {
+      assert.equal(importUnderShellGuard(url, { timeoutMs: 3_000 }).shelledOutTo, "gh");
+    } finally {
+      if (was === undefined) delete process.env.NODE_OPTIONS;
+      else process.env.NODE_OPTIONS = was;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("a module that throws on import reports its own stderr", () => {
