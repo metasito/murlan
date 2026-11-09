@@ -16,6 +16,7 @@ import path from "node:path";
 import subsetFont from "subset-font";
 import { subsetCharacters, WEB_FONTS } from "../../scripts/fontSubsetChars.mjs";
 import { cmapCodepoints } from "../helpers/cmap.ts";
+import { SUPPORTED_LOCALES, catalogs } from "../../shared/i18n.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fontsDir = path.join(repoRoot, "public", "fonts");
@@ -41,6 +42,19 @@ async function tofu(font: (typeof fonts)[number], woff2: Buffer, needed: string)
 
 test("each shipped face draws every character the app can render that its source face draws", async () => {
   const needed = subsetCharacters(repoRoot) as string;
+  for (const font of fonts) {
+    const missing = await tofu(font, readFileSync(path.join(fontsDir, `${font.family}.woff2`)), needed);
+    assert.deepEqual(missing, [], `run \`node scripts/build-fonts.mjs\` — ${font.family}.woff2 has no glyph for ${JSON.stringify(missing.join(""))}`);
+  }
+});
+
+test("each shipped face draws every catalogue string in the case the app draws it in", async () => {
+  const drawn = new Set<string>();
+  for (const locale of SUPPORTED_LOCALES)
+    for (const text of Object.values(catalogs[locale] as Record<string, string>))
+      for (const cased of [text, text.toLocaleUpperCase(locale), text.toLocaleLowerCase(locale)]) for (const ch of cased) drawn.add(ch);
+  assert.ok(drawn.has("Ò"), "no catalogue string upper-cases to Ò any more: the check has stopped seeing runtime case forms");
+  const needed = [...drawn].filter((ch) => !/\s/u.test(ch)).join("");
   for (const font of fonts) {
     const missing = await tofu(font, readFileSync(path.join(fontsDir, `${font.family}.woff2`)), needed);
     assert.deepEqual(missing, [], `run \`node scripts/build-fonts.mjs\` — ${font.family}.woff2 has no glyph for ${JSON.stringify(missing.join(""))}`);

@@ -7,9 +7,9 @@
  *   node scripts/build-text-metrics.mjs
  *
  * A run's width in points is `units / upem * fontSize + chars * tracking`, plus each slot's text,
- * which only render time knows, plus whatever face draws each `fallback` codepoint: the served font
- * has no glyph for it, so its width is not known here and is not in `units`. Shaped against the
- * served WOFF2 subsets, which is what the web draws.
+ * which only render time knows, plus `fallbackEm[codepoint] * fontSize` for each `fallback`
+ * codepoint: the served font has no glyph for it, so the platform's own font draws it and `units`
+ * does not hold it. Shaped against the served WOFF2 subsets, which is what the web draws.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -104,6 +104,21 @@ export function shapeRun(font, text, tabular) {
 const hex = (cp) => `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
 
 /**
+ * The advance, in em, the layout assumes for a codepoint the served font lacks. The platform's emoji
+ * font sets it, so it is a bound and not a measurement: Chromium on Linux (Noto Color Emoji) draws
+ * the bomb and the joker at 1.25 em, and a text-presentation symbol in a fallback face at 0.53 to 1.05 em.
+ */
+export const FALLBACK_EM = { pictograph: 1.25, symbol: 1.05 };
+
+/** A letter the font lacks is a gap in the subset (scripts/fontSubsetChars.mjs), never a glyph to assume a width for. */
+function fallbackEmOf(cp, emojiPresentation) {
+  const ch = String.fromCodePoint(cp);
+  if (/\p{Extended_Pictographic}/u.test(ch) && (cp >= 0x1f000 || emojiPresentation)) return FALLBACK_EM.pictograph;
+  if (/\p{S}/u.test(ch)) return FALLBACK_EM.symbol;
+  throw new Error(`${hex(cp)} (${ch}) is in a table string and the served font has no glyph for it: add it to the subset, there is no width to assume for a letter`);
+}
+
+/**
  * @param {{ root?: string, locales?: Record<string, Record<string, string>>, fontFile?: (family: string) => string }} [from]
  */
 export async function textMetrics({
@@ -122,6 +137,7 @@ export async function textMetrics({
     faces[name] = { family: fontFamily, upem: face.upem, widestGlyph: Math.max(...advances) };
   }
   const runs = {};
+  const fallbackEm = {};
   for (const locale of SUPPORTED_LOCALES) {
     const catalog = locales[locale];
     if (!catalog) throw new Error(`no catalogue for locale ${locale}`);
@@ -136,6 +152,11 @@ export async function textMetrics({
           const { runs: literal, slots } = templateParts(template);
           const cased = literal.filter((r) => r !== "").map((r) => (set.upper ? r.toLocaleUpperCase(locale) : r));
           const glyphs = cased.flatMap((r) => shapeRun(loaded[set.face], r, set.tabular));
+          for (const g of glyphs) {
+            if (g.gid !== 0) continue;
+            const emoji = cased.some((r) => r.includes(`${String.fromCodePoint(g.cp)}\uFE0F`));
+            fallbackEm[hex(g.cp)] = Math.max(fallbackEm[hex(g.cp)] ?? 0, fallbackEmOf(g.cp, emoji));
+          }
           runs[locale][kind][`${role}:${key}`] = {
             face: set.face,
             upper: set.upper,
@@ -154,7 +175,7 @@ export async function textMetrics({
     const box = noticeBox(kind, 1);
     for (const [role, bound] of Object.entries(box.runtime)) (dynamic[kind] ??= {})[role] = { ...noticeRun(box, role), bound };
   }
-  return { faces, runs, dynamic };
+  return { faces, fallbackEm: Object.fromEntries(Object.entries(fallbackEm).sort(([a], [b]) => (a < b ? -1 : 1))), runs, dynamic };
 }
 
 export function renderTextMetrics(metrics) {

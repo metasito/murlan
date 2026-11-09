@@ -1,7 +1,8 @@
 // What the contrast audits share: the WCAG bars, the palette a token name resolves in, and the
 // colour arithmetic. Plain .ts so node --test and jest both load it (docs/agents/checks.md,
 // "Node's TypeScript loader").
-import { Colors, Garnet, LastCard, Scrim } from "../../lib/tokens.ts";
+import ts from "typescript";
+import { Colors, Garnet, Gradient, LastCard, Scrim } from "../../lib/tokens.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { minimatch } from "minimatch";
@@ -80,25 +81,45 @@ export function readsOf(root: string, test: string): string[] {
 }
 
 /**
- * A `NAME = [ ... ]` array literal declared in component source — a pressed
+ * A module-level `const NAME = [ ... ]` array declared in component source — a pressed
  * gradient's own stops — resolved to token values. A stop a component adds is
- * covered by construction; nothing here needs to be told about it.
+ * covered by construction; nothing here needs to be told about it. The declaration is read
+ * off the parsed module, in every platform variant of it, and the stops of all of them count.
  */
 export function sourceArrays(root: string, globs: string[]): (name: string) => string[] {
-  const components = sourcesRead(root, globs).map(([, src]) => src).join("\n");
+  const modules = sourcesRead(root, globs)
+    .filter(([file]) => /\.tsx?$/.test(file))
+    .map(([file, src]) => ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS));
+  const stop = (name: string, e: ts.Expression): string[] => {
+    if (ts.isStringLiteralLike(e)) return [e.text];
+    if (ts.isSpreadElement(e) && ts.isPropertyAccessExpression(e.expression) && e.expression.expression.getText() === "Gradient") {
+      const spread = (Gradient as Record<string, readonly string[] | undefined>)[e.expression.name.text];
+      if (spread) return [...spread];
+    }
+    if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression)) {
+      const val = PALETTES[e.expression.text]?.[e.name.text];
+      if (val) return [val];
+    }
+    throw new Error(`${name}: a stop this audit cannot resolve to a token or a literal: ${e.getText()}`);
+  };
   return (name) => {
-    const m = new RegExp(String.raw`\b${name}\s*=\s*\[([^\]]*)\]`).exec(components);
-    if (!m) throw new Error(`no component declares an array named ${name}`);
-    // A stop is either a token reference (Colors.gold) or a raw literal ("#6B5220") slipped in directly:
-    // both must be caught, since the second is exactly the shape of a stop nobody meant to leave unresolved.
-    const items = m[1].match(/[A-Za-z]+\.[A-Za-z]+|"[^"]+"|'[^']+'/g) ?? [];
-    if (items.length === 0) throw new Error(`${name} has no gradient stops`);
-    return items.map((item) => {
-      if (item.startsWith('"') || item.startsWith("'")) return item.slice(1, -1);
-      const [ns, key] = item.split(".");
-      const val = PALETTES[ns]?.[key];
-      if (!val) throw new Error(`${name}: unresolved token ${item}`);
-      return val;
-    });
+    const stops: string[] = [];
+    let declared = 0;
+    for (const source of modules) {
+      for (const st of source.statements) {
+        if (!ts.isVariableStatement(st)) continue;
+        for (const d of st.declarationList.declarations) {
+          if (!ts.isIdentifier(d.name) || d.name.text !== name || !d.initializer) continue;
+          let init: ts.Expression = d.initializer;
+          while (ts.isAsExpression(init) || ts.isSatisfiesExpression(init) || ts.isParenthesizedExpression(init)) init = init.expression;
+          if (!ts.isArrayLiteralExpression(init)) throw new Error(`${name} in ${source.fileName} is not an array literal`);
+          declared++;
+          stops.push(...init.elements.flatMap((e) => stop(name, e)));
+        }
+      }
+    }
+    if (declared === 0) throw new Error(`no component declares an array named ${name}`);
+    if (stops.length === 0) throw new Error(`${name} has no gradient stops`);
+    return stops;
   };
 }
