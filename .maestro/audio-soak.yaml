@@ -1,6 +1,6 @@
 appId: ${MAESTRO_APP_ID}
 ---
-- openLink: "murlan://bench?host=localhost&scenario=smoke,soak&minutes=30&capture=0"
+- openLink: "murlan://bench?host=127.0.0.1&scenario=smoke,soak&minutes=30&capture=0"
 - tapOn:
     text: "Open"
     optional: true
