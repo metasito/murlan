@@ -19,14 +19,16 @@ import { HAND_ZONE_H } from "../../components/seatLayout.ts";
 import { computeTableFrame, surplusHeight, topBandHeight } from "../../components/tableFrame.ts";
 import { CARD_H, HAND_SCALE } from "../../components/cardFaceModel.ts";
 import { tableScale } from "../../components/tableLayout.ts";
+import { TABLETS } from "../helpers/tableScenes.ts";
 
 /** The ticket's own list: two phones, a large phone, and two tablets. */
+const [, IPAD_PRO] = TABLETS;
 const VIEWPORTS = [
   { name: "iPhone SE landscape", width: 568, height: 320 },
   { name: "iPhone 12 landscape", width: 844, height: 390 },
   { name: "iPhone Pro Max landscape", width: 956, height: 440 },
   { name: "iPad landscape", width: 1112, height: 834 },
-  { name: "iPad Pro landscape", width: 1366, height: 1024 },
+  { ...IPAD_PRO, name: "iPad Pro landscape" },
 ];
 
 const NO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };

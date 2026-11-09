@@ -6,10 +6,11 @@
  *
  *   node scripts/build-text-metrics.mjs
  *
- * A run's width in points is `units / upem * fontSize + chars * tracking`, plus each slot's text,
- * which only render time knows, plus `fallbackEm[codepoint] * fontSize` for each `fallback`
- * codepoint: the served font has no glyph for it, so the platform's own font draws it and `units`
- * does not hold it. Shaped against the served WOFF2 subsets, which is what the web draws.
+ * A run's width in points is `units / upem * fontSize + chars * tracking`, plus up to a pixel a glyph
+ * where the renderer snaps advances (noticeWidth.ts), plus each slot's text, which only render time
+ * knows and `faces[face].advances` prices glyph by glyph, plus `fallbackEm[codepoint] * fontSize` for
+ * each `fallback` codepoint: the served font has no glyph for it, so the platform's own font draws it
+ * and `units` does not hold it. Shaped against the served WOFF2 subsets, which is what the web draws.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -133,8 +134,12 @@ export async function textMetrics({
     if (!WEB_FONTS.some((f) => f.family === fontFamily)) throw new Error(`${fontFamily} is not one of scripts/fontSubsetChars.mjs's WEB_FONTS`);
     const { face, font } = await loadFont(readFileSync(fontFile(fontFamily)));
     loaded[name] = font;
-    const advances = chars.map((ch) => font.nominalGlyph(ch.codePointAt(0))).filter((gid) => gid).map((gid) => font.glyphHAdvance(gid));
-    faces[name] = { family: fontFamily, upem: face.upem, widestGlyph: Math.max(...advances) };
+    const advances = Object.fromEntries(
+      chars.map((ch) => [ch, font.nominalGlyph(ch.codePointAt(0))]).filter(([, gid]) => gid).map(([ch, gid]) => [ch, font.glyphHAdvance(gid)])
+    );
+    const tabularDigits = Object.fromEntries(shapeRun(font, "0123456789", true).map((g) => [String.fromCodePoint(g.cp), g.advance]));
+    const tabularDigit = Math.max(...Object.values(tabularDigits));
+    faces[name] = { family: fontFamily, upem: face.upem, widestGlyph: Math.max(...Object.values(advances)), tabularDigit, tabularDigits, advances };
   }
   const runs = {};
   const fallbackEm = {};

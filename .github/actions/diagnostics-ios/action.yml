@@ -1,0 +1,59 @@
+name: Build the iOS diagnostics release, install it and start the collector
+description: >
+  The device-run setup `audio-soak.yml` and `render-spike.yml` share: a booted iPhone simulator, a
+  release build with the bench compiled in, the collector writing into `out-dir`, and Maestro. Sets
+  SIMULATOR_UDID, APP_BUNDLE, APP_ID and APP_EXE.
+
+inputs:
+  out-dir:
+    description: Directory the collector's record and the run's files go in.
+    required: true
+  record:
+    description: File name of the collector's ndjson inside out-dir.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Find and boot an iPhone simulator
+      shell: bash -e {0}
+      run: |
+        udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
+        echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+        xcrun simctl boot "$udid"
+    - name: Build a diagnostics release for the simulator
+      shell: bash -e {0}
+      env:
+        OUT_DIR: ${{ inputs.out-dir }}
+      run: |
+        npx expo prebuild --platform ios --no-install
+        pod install --project-directory=ios
+        workspace=$(ls -d ios/*.xcworkspace | head -1)
+        scheme=$(basename "$workspace" .xcworkspace)
+        xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
+          -derivedDataPath "$RUNNER_TEMP/DerivedData" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+        app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
+        [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+        node scripts/e2eBuildMark.mjs --present "$app" --mark diagnostics
+        echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
+        echo "APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
+        echo "APP_EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" >> "$GITHUB_ENV"
+        mkdir -p "$OUT_DIR"
+    - name: Install the app and start the collector
+      shell: bash -e {0}
+      env:
+        OUT_DIR: ${{ inputs.out-dir }}
+        RECORD: ${{ inputs.record }}
+      run: |
+        xcrun simctl bootstatus "$SIMULATOR_UDID"
+        xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
+        nohup node scripts/diagnostics-collector.mjs "$OUT_DIR/$RECORD" > "$OUT_DIR/collector.log" 2>&1 &
+        for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
+        curl -sf http://127.0.0.1:5099/
+    - name: Install Maestro
+      shell: bash -e {0}
+      run: |
+        export MAESTRO_VERSION=2.10.0
+        curl -Ls "https://get.maestro.mobile.dev" | bash
+        echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+        "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"

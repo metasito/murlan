@@ -248,7 +248,7 @@ export function ScorePill({
       )}
       <Animated.View pointerEvents="none" style={[styles.shadow, shadowOf(PILL_SHADOW.rest), pillStyle]} />
       <Animated.View pointerEvents="none" style={[styles.shadow, shadowOf(PILL_SHADOW.lifted), pillStyle, liftStyle]} />
-      <Animated.View pointerEvents="none" style={[styles.pill, pillStyle]}>
+      <Animated.View testID="score-pill-plate" pointerEvents="none" style={[styles.pill, pillStyle]}>
         <LinearGradient
           colors={[Colors.scorePillTop, Colors.scorePillFoot, Colors.scorePillFoot]}
           locations={PILL_PLATE_STOPS}
