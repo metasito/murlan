@@ -72,6 +72,8 @@ Open the section when its trigger applies; each is in `docs/agents/traps.md` unl
 - **A defect was seen on a phone, or the change needs a device run, a capture or the bench** —
   `docs/agents/device-runs.md`, with what no automated layer covers and the manual release
   checklist.
+- **A test is flaky, skipped or filtered, or CI gate's results step is red** —
+  `docs/agents/suites.md` § A flake is fixed. A re-run cannot green it: push a fix.
 - **A module a `node --test` file loads imports JSX, `@/` or `react-native`** — below.
 
 ## Node's TypeScript loader reaches plain `.ts` only

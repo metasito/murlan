@@ -91,6 +91,15 @@ function watchContext(context: BrowserContext, entries: string[]): void {
   context.on("page", (page) => collectConsoleErrors(page, entries));
 }
 
+function failOnBrowserErrors(entries: string[]): void {
+  if (entries.length > 0) {
+    throw new Error(
+      `Browser reported ${entries.length} error(s)/warning(s) during the test:\n\n` +
+        entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
+    );
+  }
+}
+
 export const test = base.extend<{ browserErrors: ConsoleErrors; consoleErrors: ConsoleErrors }>({
   baseURL: async ({ baseURL }, use) => {
     await use(baseURL ?? `http://127.0.0.1:${process.env.E2E_PORT}`);
@@ -113,12 +122,7 @@ export const test = base.extend<{ browserErrors: ConsoleErrors; consoleErrors: C
         browser.newContext = newContext;
       }
 
-      if (entries.length > 0) {
-        throw new Error(
-          `Browser reported ${entries.length} error(s)/warning(s) during the test:\n\n` +
-            entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
-        );
-      }
+      failOnBrowserErrors(entries);
     },
     { auto: true },
   ],

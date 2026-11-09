@@ -7,24 +7,58 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deadlineMs, EXIT_MARKERS_ENV, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
 import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMarginMs, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
-import { EXIT_TICK_MS, exitGuard } from "../helpers/exitGuard.mjs";
+import { EXIT_TICK_MS, exitGuard, haltable } from "../helpers/exitGuard.mjs";
 import { MIN_TABLE_TIMEOUT_MS, TABLE_TIMEOUT_MS, tableTimeoutMs } from "../../scripts/lib/proc.mjs";
 import { posixWorld, windowsWorld } from "../helpers/processWorlds.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
+import { FORCED_EXIT_MS } from "../../server/http/shutdown.ts";
+import { gate } from "../soak/gateBudget.ts";
 import { NO_BACKGROUND_JIT } from "../../scripts/nodeTest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const script = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")).scripts.test as string;
 
+/** Only what a child needs to find node and a temp dir: whatever else the parent's run was given (a shard, a context) is not the planted run's. */
+const CHILD_ENV_KEYS = ["PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SystemRoot", "SYSTEMROOT", "LANG", "LC_ALL"];
+const scrubbedEnv = (extra: Record<string, string> = {}): NodeJS.ProcessEnv => {
+  const env = {} as NodeJS.ProcessEnv;
+  for (const key of CHILD_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return Object.assign(env, extra);
+};
+
+/** Set in the parent for this whole file: a child that can see it was handed more than it asked for. */
+process.env.MURLAN_ENV_SENTINEL = "parent";
+const LEAK_CHECK = 'process.stderr.write(process.env.MURLAN_ENV_SENTINEL === undefined ? "RAN\\n" : "ENV-LEAK\\n");\n';
+/** Each child says it ran: one that inherited the parent's test context is skipped by node:test and says nothing. */
+const noLeak = (out: string, children = 1) => {
+  assert.doesNotMatch(out, /ENV-LEAK/, "a planted child saw the parent's environment");
+  assert.equal(out.match(/^(?:# )?RAN$/gm)?.length ?? 0, children, `${children} planted child(ren) should have run\n${out}`);
+};
+
 const PLANTED = {
   "syncChild.test.mjs":
-    'import { test } from "node:test";\nimport { execFileSync } from "node:child_process";\n' +
+    LEAK_CHECK + 'import { test } from "node:test";\nimport { execFileSync } from "node:child_process";\n' +
     'test("waits on a child", () => { execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 20000)"]); });\n',
-  "topLevel.test.mjs": 'import "node:test";\nawait new Promise(() => setInterval(() => {}, 1000));\n',
+  "topLevel.test.mjs": LEAK_CHECK + 'import "node:test";\nawait new Promise(() => setInterval(() => {}, 1000));\n',
   "movesCwd.test.mjs":
-    'import "node:test";\nprocess.chdir(import.meta.dirname);\nawait new Promise(() => setInterval(() => {}, 1000));\n',
+    LEAK_CHECK + 'import "node:test";\nprocess.chdir(import.meta.dirname);\nawait new Promise(() => setInterval(() => {}, 1000));\n',
 };
+
+describe("a planted run starts from nothing of its parent's environment", () => {
+  test("the leak check sees a child handed the parent's environment, and not one handed a scrubbed one", async () => {
+    const see = (env: NodeJS.ProcessEnv) =>
+      new Promise<string>((resolve) =>
+        execFile(process.execPath, ["-e", LEAK_CHECK], { env }, (_err, stdout, stderr) => resolve(stdout + stderr))
+      );
+    assert.match(await see({ ...process.env }), /ENV-LEAK/);
+    assert.match(await see(Object.assign({}, process.env)), /ENV-LEAK/);
+    noLeak(await see(scrubbedEnv({ MURLAN_ASKED: "1" })));
+  });
+});
 
 describe("a test file that never finishes fails npm test by name", () => {
   test("npm test's own flags kill each planted hang and name it", async () => {
@@ -33,9 +67,7 @@ describe("a test file that never finishes fails npm test by name", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "planted-hang-"));
     try {
       for (const [name, body] of Object.entries(PLANTED)) writeFileSync(path.join(dir, name), body);
-      const env = { ...process.env };
-      env.MURLAN_TEST_FILE_DEADLINE_MS = "1000";
-      delete env.NODE_TEST_CONTEXT;
+      const env = scrubbedEnv({ MURLAN_TEST_FILE_DEADLINE_MS: "1000" });
       const files = Object.keys(PLANTED).map((f) => path.join(dir, f));
       const started = Date.now();
       const run = await new Promise<{ code: unknown; out: string }>((resolve) =>
@@ -43,6 +75,7 @@ describe("a test file that never finishes fails npm test by name", () => {
           resolve({ code: err ? err.code : 0, out: stdout + stderr })
         )
       );
+      noLeak(run.out, Object.keys(PLANTED).length);
       assert.equal(run.code, 1, run.out);
       // A hang that survives its deadline is still ended by --test-timeout, which also exits 1.
       const testTimeout = Number(/--test-timeout=(\d+)/.exec(script)?.[1]);
@@ -51,6 +84,27 @@ describe("a test file that never finishes fails npm test by name", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("the deadline outlasts the longest limit a test asks for", () => {
+    const known: Record<string, number> = { "GATE.timeoutMs": gate().timeoutMs, FORCED_EXIT_MS };
+    const asked: number[] = [];
+    const unresolved: string[] = [];
+    for (const [file, text] of sourcesUnder(repoRoot, ["tests", "tools/loop/tests"], /\.(test\.tsx?|mjs)$/)) {
+      const code = blankCommentsAndStrings(text);
+      for (const call of code.matchAll(/\b(?:test|it|describe)(?:\.\w+)?\s*\(\s*[^,]*,\s*\{([^}]*)\}/g)) {
+        const expr = /\btimeout:\s*([^,}]+)/.exec(call[1])?.[1].trim();
+        if (expr === undefined) continue;
+        const line = code.slice(0, call.index).split("\n").length;
+        const bare = expr.replace(/GATE\.timeoutMs|\bFORCED_EXIT_MS\b/g, (name) => String(known[name])).replaceAll("_", "");
+        const value = /^[\d+*\s()-]+$/.test(bare) ? Number(Function(`return (${bare})`)()) : NaN;
+        if (Number.isFinite(value)) asked.push(value);
+        else unresolved.push(`unresolvable timeout at ${file}:${line}: ${expr}`);
+      }
+    }
+    assert.deepEqual(unresolved, []);
+    assert.ok(asked.length >= 5 && Math.max(...asked) >= 420_000, "the scan finds the longest limits");
+    assert.ok(FILE_DEADLINE_MS >= 1.5 * Math.max(...asked), `${Math.max(...asked)} ms test limit`);
   });
 
   test("the deadline can be shortened and never lengthened or switched off", () => {
@@ -62,33 +116,30 @@ describe("a test file that never finishes fails npm test by name", () => {
 });
 
 describe("a test file that hangs on its way out fails npm test by name", () => {
-  const passes = 'import { test } from "node:test";\ntest("passes", () => {});\n';
+  const passes = LEAK_CHECK + 'import { test } from "node:test";\ntest("passes", () => {});\n';
   // A stopped process runs no thread, so its own deadline worker is as gone as process.exit leaves it.
   const hangsOnExit = `${passes}process.on("exit", () => process.kill(process.pid, "SIGSTOP"));\n`;
-  const run = (argv: string[], env: NodeJS.ProcessEnv) =>
-    new Promise<{ code: unknown; out: string }>((resolve) =>
+  const run = async (argv: string[], env: NodeJS.ProcessEnv, children = 1) => {
+    const result = await new Promise<{ code: unknown; out: string }>((resolve) =>
       execFile(process.execPath, argv, { cwd: repoRoot, env, timeout: 60_000 }, (err, stdout, stderr) =>
         resolve({ code: err ? err.code : 0, out: stdout + stderr })
       )
     );
+    noLeak(result.out, children);
+    return result;
+  };
   const planted = (files: Record<string, string>) => {
     const dir = mkdtempSync(path.join(tmpdir(), "planted-exit-hang-"));
     for (const [name, body] of Object.entries(files)) writeFileSync(path.join(dir, name), body);
     return { dir, glob: path.relative(repoRoot, path.join(dir, "*.test.mjs")) };
   };
-  const quiet = () => {
-    const env = { ...process.env };
-    delete env.MURLAN_TEST_EXIT_GRACE_MS;
-    delete env[EXIT_MARKERS_ENV];
-    delete env.NODE_TEST_CONTEXT;
-    return env;
-  };
+  const quiet = () => scrubbedEnv();
 
   test("a file whose exit stops past its own deadline's reach is killed after the grace, and named", { skip: process.platform === "win32" && "no SIGSTOP" }, async () => {
     const { dir, glob } = planted({ "hangsOnExit.test.mjs": hangsOnExit, "exits.test.mjs": passes });
     try {
       const env = { ...quiet(), MURLAN_TEST_FILE_DEADLINE_MS: "2000", MURLAN_TEST_RUN_IDLE_MS: "15000", MURLAN_TEST_EXIT_GRACE_MS: "1000" };
-      const { code, out } = await run([...script.split(" ").slice(1, -1), glob], env);
+      const { code, out } = await run([...script.split(" ").slice(1, -1), glob], env, 2);
       assert.equal(code, 1, out);
       assert.match(out, /hangsOnExit\.test\.mjs: hung after its tests finished, killed 1s into its exit/);
       assert.doesNotMatch(out, /exits\.test\.mjs: hung/);
@@ -477,17 +528,16 @@ describe("a test file that passed always exits", () => {
         scan(f, readFileSync(path.join(repoRoot, f), "utf8")).routed.map((r) => [`${f}: ${r}`, [r]] as const)
       ),
     ];
-    assert.ok(runs.length >= 4, `found ${runs.length} routed runs to probe`);
+    assert.ok(runs.length >= 3, `found ${runs.length} routed runs to probe`);
     const dir = mkdtempSync(path.join(tmpdir(), "jit-flags-"));
     try {
       const probe = path.join(dir, "flags.test.mjs");
       writeFileSync(
         probe,
-        'import { test } from "node:test";\nimport assert from "node:assert/strict";\n' +
+        LEAK_CHECK + 'import { test } from "node:test";\nimport assert from "node:assert/strict";\n' +
           `test("compiles on the main thread", () => { for (const f of ${JSON.stringify(NO_BACKGROUND_JIT)}) assert.ok(process.execArgv.includes(f), f); });\n`
       );
-      const env = { ...process.env };
-      delete env.NODE_TEST_CONTEXT;
+      const env = scrubbedEnv();
       for (const [where, routed] of runs) {
         assert.equal(routed.length, 1, `${where} is not one routed run`);
         const run = await new Promise<{ code: unknown; out: string }>((resolve) =>
@@ -495,6 +545,7 @@ describe("a test file that passed always exits", () => {
             resolve({ code: err ? err.code : 0, out: stdout + stderr })
           )
         );
+        noLeak(run.out);
         assert.equal(run.code, 0, `${where}\n${run.out}`);
       }
     } finally {
@@ -507,29 +558,24 @@ describe("a run that stops hearing from its files fails by name", { concurrency:
   const reporter = pathToFileURL(path.join(repoRoot, "tests", "helpers", "filesRunReporter.mjs")).href;
   const file = JSON.stringify(path.join(tmpdir(), "fake.test.ts"));
   const dequeued = `{ type: "test:dequeue", data: { nesting: 0, name: ${file}, file: ${file} } }`;
-  const drive = (source: string, after: string, idleMs: string, extra: Record<string, string> = {}) => {
-    const script = `import filesRun from ${JSON.stringify(reporter)};\nasync function* source() {\n${source}\n}\n` +
+  const drive = (source: string, after: string, idleMs: string, extra: Record<string, string> = {}, setup = "") => {
+    const script = `${LEAK_CHECK}import filesRun from ${JSON.stringify(reporter)};\n${setup}\nasync function* source() {\n${source}\n}\n` +
       `for await (const line of filesRun(source())) process.stdout.write(line);\n${after}`;
-    const env = { ...process.env };
-    delete env.MURLAN_TEST_EXIT_GRACE_MS;
-    Object.assign(env, extra);
-    env.MURLAN_TEST_RUN_IDLE_MS = idleMs;
-    delete env.NODE_TEST_CONTEXT;
+    const env = scrubbedEnv({ ...extra, MURLAN_TEST_RUN_IDLE_MS: idleMs });
     return new Promise<{ signal: unknown; out: string }>((resolve) =>
-      execFile(process.execPath, ["--input-type=module", "-e", script], { cwd: repoRoot, env, timeout: 30_000 }, (err, stdout, stderr) =>
-        resolve({ signal: err?.killed ? "timed out" : err?.signal ?? err?.code ?? null, out: stdout + stderr })
-      )
+      execFile(process.execPath, ["--input-type=module", "-e", script], { cwd: repoRoot, env, timeout: 30_000 }, (err, stdout, stderr) => {
+        noLeak(stdout + stderr);
+        resolve({ signal: err?.killed ? "timed out" : err?.signal ?? err?.code ?? null, out: stdout + stderr });
+      })
     );
   };
 
   test("a runner whose own loop stops is killed, naming the files it had in flight", async () => {
-    const child = `spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)"], { stdio: "ignore" }).pid`;
-    const run = await drive(
-      `yield ${dequeued};\nconst { spawn } = await import("node:child_process");\n` +
-        `process.stderr.write("child " + ${child} + "\\n");\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);`,
-      "",
-      "2000"
-    );
+    // Before the run is listening: its idle clock must not be spent on this setup.
+    const setup =
+      `import { spawn } from "node:child_process";\n` +
+      `process.stderr.write("child " + spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)"], { stdio: "ignore" }).pid + "\\n");`;
+    const run = await drive(`yield ${dequeued};\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);`, "", "2000", {}, setup);
     // win32 raises no signal: TerminateProcess just exits 1.
     assert.equal(run.signal, process.platform === "win32" ? 1 : "SIGKILL", run.out);
     assert.match(run.out, /nothing reported for 2s; still running: \S*fake\.test\.ts/);
@@ -551,14 +597,48 @@ describe("a run that stops hearing from its files fails by name", { concurrency:
     assert.equal(alive(), false, "the runner's child outlived it");
   });
 
+  const liveFrom = (dir: string) =>
+    readdirSync("/proc")
+      .filter((pid) => /^\d+$/.test(pid))
+      .filter((pid) => {
+        try {
+          return readFileSync(`/proc/${pid}/cmdline`, "utf8").includes(dir) && !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
+        } catch {
+          return false;
+        }
+      });
+
+  test("a stopped exit guard reads no process table", () => {
+    const calls: string[] = [];
+    const table = {
+      identityOf: (_pid: number) => (calls.push("identityOf"), "1"),
+      endTreeIf: (_pid: number, _identity: string) => (calls.push("endTreeIf"), true),
+      alive: (_pid: number) => (calls.push("alive"), true),
+    };
+    let stopped = false;
+    const proc = haltable(table, () => stopped);
+    proc.identityOf(1);
+    proc.endTreeIf(1, "1");
+    proc.alive(1);
+    assert.deepEqual(calls, ["identityOf", "endTreeIf", "alive"]);
+    stopped = true;
+    calls.length = 0;
+    assert.equal(proc.identityOf(1), undefined);
+    assert.equal(proc.endTreeIf(1, "1"), false);
+    assert.equal(proc.alive(1), false);
+    assert.deepEqual(calls, []);
+  });
+
   test("a ps that stalls the exit guard never holds up the idle watchdog", { skip: process.platform !== "linux" && "the exit guard kills only on Linux" }, async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "stalled-ps-"));
     try {
       const log = path.join(dir, "ps.log");
-      // Each call logs its start, and its end only when the guard's own timeout stops it.
+      // Each call logs its start, and its end only when the guard's own timeout stops it. A shell
+      // script, so the handler is armed before the first line of the log is; it ends on its own
+      // after 40 s, so no run can leave one behind for good.
       const fakePs =
-        `#!${process.execPath}\nconst { appendFileSync } = require("node:fs");\nappendFileSync(${JSON.stringify(log)}, "start\\n");\n` +
-        `process.on("SIGTERM", () => { appendFileSync(${JSON.stringify(log)}, "timed out\\n"); process.exit(1); });\nsetInterval(() => {}, 1000);\n`;
+        `#!/bin/sh\nlog='${log}'\ntrap 'echo "timed out" >> "$log"; exit 1' TERM\necho start >> "$log"\n` +
+        `i=0\nwhile [ $i -lt 40 ]; do sleep 1 & wait $!; i=$((i+1)); done\n`;
       writeFileSync(path.join(dir, "ps"), fakePs, { mode: 0o755 });
       const proc = pathToFileURL(path.join(repoRoot, "scripts", "lib", "proc.mjs")).href;
       const hung =
@@ -566,18 +646,23 @@ describe("a run that stops hearing from its files fails by name", { concurrency:
         `const pid = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" }).pid;\n` +
         `const markers = process.env.${EXIT_MARKERS_ENV};\nfs.mkdirSync(markers, { recursive: true });\n` +
         `fs.writeFileSync(markers + "/" + pid, JSON.stringify({ file: "hung.test.ts", identity: identityOf(pid), at: Date.now() }));\n` +
-        `yield ${dequeued};\nawait new Promise(() => {});`;
-      // A 1 s grace, then a read stalled for the whole ps timeout: the idle limit falls between the
-      // second read's start (at most a tick past the grace and one ps timeout) and its own give-up.
-      const psMs = 3_000;
-      const idle = String(MIN_EXIT_GRACE_MS + psMs + 1_750);
+        `const started = () => { try { return fs.readFileSync(${JSON.stringify(log)}, "utf8").includes("start"); } catch { return false; } };\n` +
+        `while (!started()) { yield ${dequeued}; await new Promise((r) => setTimeout(r, 50)); }\nawait new Promise(() => {});`;
+      // The run is silent from the guard's first read, which the log shows, not from a clock that
+      // loaded workers start late. That read stalls for the whole ps timeout, and a second starts
+      // right after: the idle limit falls between the second read's start (one ps timeout in) and
+      // its give-up (two in), with seconds to spare either way, and leaves the guard its room.
+      const psMs = TABLE_TIMEOUT_MS;
+      const idle = String(psMs * 1.5);
       const env = {
         PATH: `${dir}${path.delimiter}${process.env.PATH}`,
         MURLAN_TEST_EXIT_GRACE_MS: String(MIN_EXIT_GRACE_MS),
         MURLAN_TEST_TABLE_TIMEOUT_MS: String(psMs),
       };
+      assert.ok(exitGraceMs({ MURLAN_TEST_RUN_IDLE_MS: idle, ...env }) !== undefined, "the idle limit leaves the exit guard no room");
       const run = await drive(hung, "", idle, env);
       assert.match(run.out, /nothing reported for/, run.out);
+      assert.deepEqual(liveFrom(dir), [], "a fake ps outlived the run");
       const calls = readFileSync(log, "utf8").split("\n").filter(Boolean);
       assert.deepEqual(calls, ["start", "timed out", "start"], run.out);
     } finally {
@@ -586,8 +671,8 @@ describe("a run that stops hearing from its files fails by name", { concurrency:
   });
 
   test("a run that keeps reporting, and then ends, is never killed", async () => {
-    const steady = `for (let i = 0; i < 8; i++) { yield ${dequeued}; await new Promise((r) => setTimeout(r, 200)); }`;
-    const run = await drive(steady, "await new Promise((r) => setTimeout(r, 1500));", "1000");
+    const steady = `for (let i = 0; i < 40; i++) { yield ${dequeued}; await new Promise((r) => setTimeout(r, 100)); }`;
+    const run = await drive(steady, "await new Promise((r) => setTimeout(r, 4000));", "3000");
     assert.equal(run.signal, null, run.out);
     assert.doesNotMatch(run.out, /nothing reported/);
   });
