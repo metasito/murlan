@@ -1,14 +1,15 @@
-// A file of its own: a shutdown cannot be undone inside a process.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
 import type { Server as HttpServer } from "node:http";
 import { recordingRuntime, stubTransport } from "../helpers/recordingRuntime.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
+import { __resetShutdown } from "../../server/game/gameRoom.ts";
 import { openDatabase, pool } from "../../server/store/db.ts";
 import { claimRoom, ownsRoom } from "../../server/game/gameOwnership.ts";
 
 test("a pool close that rejects at once still hands the rooms back and exits 0", async (t) => {
+  t.after(__resetShutdown);
   t.mock.method(Client.prototype, "connect", async () => {});
   t.mock.method(Client.prototype, "end", async () => {});
   t.mock.method(Client.prototype, "query", async () => ({ rows: [{ locked: true }] }));

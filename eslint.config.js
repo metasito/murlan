@@ -84,6 +84,8 @@ module.exports = defineConfig([
       "tests/e2e/playwright-report/**",
       "tests/e2e/test-results/**",
       ".scratch/**",
+      // Frozen research output: its scripts are evidence of a day's work, not code that ships.
+      "docs/research/**",
       ".loop-logs/**",
       // A Workflow script body is wrapped in an async function by its harness, so on its
       // own it is not a parseable module — it top-level `return`s the workflow's result.

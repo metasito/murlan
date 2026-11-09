@@ -210,3 +210,8 @@ holder (`reapWorktree` in `tools/loop/reap.mjs`).
   holds the Skia table at 4x CPU to the budgets in `tests/e2e/helpers/skiaPerfBudgets.ts`, both
   targets under rule 52 (`docs/WEB-PERF.md` § The gate). SwiftShader's `GPU stall due to ReadPixels`
   warning is its own, not the app's: `isExpectedNoise` drops exactly that text.
+- **A local result can come from another Node, another browser build, or no Docker.** `npm run
+  toolchain` states each and exits 1 on the Node major `deploy/runtime.json` pins (Node 22 prints
+  `MODULE_TYPELESS_PACKAGE_JSON` and runs the freeze tests against a different Node than CI), a
+  missing Playwright build, and names a build directory that is only an alias of another one
+  (`scripts/toolchain.mjs`, `tests/tooling/toolchain.test.ts`). Run it before trusting a local e2e.

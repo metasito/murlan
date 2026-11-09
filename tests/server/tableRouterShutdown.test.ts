@@ -1,11 +1,10 @@
-// A file of its own: `beginShutdown` cannot be undone inside a process.
 import { test, describe, beforeEach, afterEach, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
 import { closeOwnership, reopenOwnership } from "../../server/game/gameOwnership.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
-import { activeGames, beginShutdown } from "../../server/game/gameRoom.ts";
+import { activeGames, __resetShutdown, beginShutdown } from "../../server/game/gameRoom.ts";
 import type { TableActionDraft } from "../../server/game/tableActions.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
 import { ownedElsewhere, recordingRuntime } from "../helpers/recordingRuntime.ts";
@@ -15,6 +14,7 @@ const ROOM = "table-router-shutdown-room";
 beforeEach(() => reopenOwnership({ onRoomLost: () => {}, rows: activeGameStore }));
 afterEach(async () => {
   activeGames.delete(ROOM);
+  __resetShutdown();
   await closeOwnership();
 });
 
