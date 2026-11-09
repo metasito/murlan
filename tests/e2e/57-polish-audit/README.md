@@ -24,6 +24,8 @@ one file here a command reproduces:
 npx playwright test -c tests/e2e/playwright.config.ts onlineTableSurvey
 ```
 
+With `AUDIT_UPDATE=1` it rewrites the rows it measured, so `-g <viewport>` re-records one size and leaves the rest.
+
 It registers, creates a room, fills it with bots and photographs the dealt table at the four
 viewports above — and measures the *offline* table beside it each time, because both screens
 render one `<GameTable>`. Its columns are `table.txt`'s plus `emptyBand`, the number finding 3
