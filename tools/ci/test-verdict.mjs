@@ -83,7 +83,7 @@ const imports = (/** @type {string} */ text) => [...text.matchAll(/(?:\bfrom\s*|
 export function wiringOf(listing, textOf, scripts, suites = SUITES) {
   const tracked = new Set(listing);
   const resolved = (/** @type {string} */ from, /** @type {string} */ ref) => {
-    const rel = ref.replace(/^(\$\{[^}]*\}|<rootDir>)\//, "");
+    const rel = ref.replace(/^(\$\{[^}]*\}\/|<rootDir>\/?)/, "");
     const bases = rel === ref ? [path.posix.join(from, ref), path.posix.normalize(ref)] : [path.posix.normalize(rel)];
     return bases.flatMap((b) => ["", ".ts", ".tsx", ".mjs", ".js"].map((x) => b + x)).find((f) => tracked.has(f));
   };
@@ -98,7 +98,11 @@ export function wiringOf(listing, textOf, scripts, suites = SUITES) {
   }
   for (const config of [...found]) {
     const text = textOf(config) ?? "";
-    for (const m of text.matchAll(HOOK)) for (const ref of literals(valueAt(text, /** @type {number} */ (m.index) + m[0].length))) if (SOURCE.test(ref)) add(path.posix.dirname(config), ref);
+    for (const m of text.matchAll(HOOK))
+      for (const ref of literals(valueAt(text, /** @type {number} */ (m.index) + m[0].length))) {
+        const f = resolved(path.posix.dirname(config), ref);
+        if (f && SOURCE.test(f)) found.add(f);
+      }
   }
   for (const file of found) for (const ref of imports(textOf(file) ?? "")) add(path.posix.dirname(file), ref);
   return [...found].sort();
