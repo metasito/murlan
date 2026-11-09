@@ -64,7 +64,8 @@ describe("importUnderShellGuard", () => {
     const slowBoot = path.join(dir, "slow-boot.cjs");
     fs.writeFileSync(slowBoot, `const end = Date.now() + ${BOOT_MS};\nwhile (Date.now() < end) {}\n`, "utf8");
     const url = moduleWith(
-      "import { execFileSync } from 'node:child_process';\n" +
+      `if (performance.now() < ${BOOT_MS}) throw new Error("the slow boot did not run");\n` +
+        "import { execFileSync } from 'node:child_process';\n" +
         "await new Promise((r) => setTimeout(r, 2000));\n" +
         "try { execFileSync('gh', ['issue', 'list']); } catch {}\n" +
         "setInterval(() => {}, 1000);\nawait new Promise(() => {});\n"
