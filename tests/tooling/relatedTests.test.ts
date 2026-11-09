@@ -1,9 +1,12 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
-import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, nearTests, onLocalProjects } from "../../tools/loop/related-tests.mjs";
+import { join, posix, resolve } from "node:path";
+import ts from "typescript";
+import { minimatch } from "minimatch";
+import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, NATIVE_TEST, nearTests, onLocalProjects } from "../../tools/loop/related-tests.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..");
 const T = (n: string) => `tests/native/${n}.test.tsx`;
@@ -32,6 +35,65 @@ describe("the native tests a change reaches first", () => {
     const importer: Record<string, string> = { [T("alpha")]: "import { z } from '@/lib/theme';" };
     const got = nearTests({ changed: [T("omega"), "lib/theme.ts"], related: [T("alpha"), T("theme")], source: (f) => importer[f] ?? "" });
     assert.deepEqual(got, [T("omega"), T("theme"), T("alpha")]);
+  });
+});
+
+describe("a native test that reads source by path", () => {
+  const reads = JSON.parse(readFileSync(join(repoRoot, "tests/native/reads.json"), "utf8")) as Record<string, string[]>;
+  test("is reached by a change to any file it reads, though jest's graph never imports one", () => {
+    assert.deepEqual(nearTests({ changed: ["components/table/seats.tsx"], related: [], source: () => "", reads }), [T("tableTextContrast")]);
+    assert.deepEqual(nearTests({ changed: ["lib/theme.ts"], related: [], source: () => "", reads }), []);
+  });
+  const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf8" }).split("\0").filter(Boolean);
+  test("names tests that exist and globs that read tracked files", () => {
+    for (const [file, globs] of Object.entries(reads)) {
+      assert.ok(tracked.includes(file), `${file} is not a tracked test`);
+      if (file === T("tableTextContrast")) assert.match(readFileSync(join(repoRoot, file), "utf8"), /readsOf\(/, `${file} enumerates its files from somewhere else`);
+      for (const glob of globs) assert.ok(tracked.some((f) => minimatch(f, glob)), `${file}: ${glob} reads no tracked file`);
+    }
+  });
+  /** The files among `sources` (path to text) that import `fs`, by `import`, `require` or `import()`, directly or through a relative or `@/` import. */
+  function fsReaders(sources: Map<string, string>): string[] {
+    const imports = (f: string) => ts.preProcessFile(sources.get(f)!, true, true).importedFiles.map(({ fileName }) => fileName);
+    const resolve = (from: string, spec: string) => {
+      const base = spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? posix.join(posix.dirname(from), spec) : undefined;
+      return base === undefined ? undefined : ["", ".tsx", ".ts", ".js", "/index.tsx", "/index.ts"].map((e) => base + e).find((f) => sources.has(f));
+    };
+    const reaches = (start: string) => {
+      const seen = new Set<string>();
+      for (const queue = [start]; queue.length; ) {
+        const f = queue.pop()!;
+        if (seen.has(f)) continue;
+        seen.add(f);
+        for (const spec of imports(f)) {
+          if (/^(node:)?fs(\/promises)?$/.test(spec)) return true;
+          const next = resolve(f, spec);
+          if (next) queue.push(next);
+        }
+      }
+      return false;
+    };
+    return [...sources.keys()].filter((f) => NATIVE_TEST.test(f) && reaches(f));
+  }
+  test("a native test that reads files from disk, itself or through a helper, is in the manifest", () => {
+    const sources = new Map(tracked.filter((f) => /\.(tsx?|m?js)$/.test(f)).map((f) => [f, readFileSync(join(repoRoot, f), "utf8")]));
+    assert.deepEqual(fsReaders(sources).filter((f) => !(f in reads)), [], "list the files these read in tests/native/reads.json");
+  });
+  test("a read is seen however it is spelled", () => {
+    const helper = 'import { readFileSync } from "node:fs";\nexport const read = (f: string) => readFileSync(f, "utf8");';
+    const planted = new Map([
+      [T("viaImport"), 'import { readFileSync } from "fs";'],
+      [T("viaRequire"), 'const fs = require("fs");'],
+      [T("viaPromises"), 'import { readFile } from "node:fs/promises";'],
+      [T("viaHelper"), 'import { sourcesRead } from "../helpers/reader";'],
+      [T("viaDeepHelper"), 'import { x } from "../helpers/outer";'],
+      [T("viaAlias"), 'import { sourcesRead } from "@/tests/helpers/reader";'],
+      [T("clean"), 'import { render } from "../helpers/plain";'],
+      ["tests/helpers/reader.ts", helper],
+      ["tests/helpers/outer.ts", 'export { read as x } from "./reader";'],
+      ["tests/helpers/plain.ts", "export const render = 1;"],
+    ]);
+    assert.deepEqual(fsReaders(planted).sort(), ["viaAlias", "viaDeepHelper", "viaHelper", "viaImport", "viaPromises", "viaRequire"].map(T).sort());
   });
 });
 
