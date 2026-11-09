@@ -1,8 +1,13 @@
 /**
- * RULES.md 52, run by .github/workflows/target-freeze.yml from the base branch's checkout. It reads
- * the pull request's head only as git objects, never as files to run, so a head cannot change the
- * list or the verdict that judges it.
+ * RULES.md 52, run by .github/workflows/target-freeze.yml from the base branch's checkout. The pull
+ * request's head is read as git objects. Its copy of this module is evaluated only to read its list,
+ * in a Node process under the permission model with read access to a scratch copy and nothing else
+ * (listAt), so a head cannot change the list or the verdict that judges it.
  */
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { git } from "../loop/cli.mjs";
 import { matcher } from "./codeowners.mjs";
@@ -27,6 +32,14 @@ export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/helpers/lampSeat.ts", what: "the lamp-over-seat tolerance" },
   { pattern: "tools/ci/feltPixels.mjs", what: "the device felt's pixel thresholds" },
   { pattern: "tools/ci/edgePixels.mjs", what: "the device card edges' pixel thresholds" },
+  { pattern: "tests/e2e/helpers/tableTrace.ts", what: "the trace every lamp and felt spec reads the app through" },
+  { pattern: "tests/e2e/helpers/renderCounters.ts", what: "what the speed budgets count as a render" },
+  { pattern: "tests/e2e/helpers/virtualClock.ts", what: "the clock the speed budgets are read in" },
+  { pattern: "tests/helpers/phoneTable.ts", what: "the table layout and insets the lamp is measured against" },
+  { pattern: "tests/e2e/helpers/cardOnCardCss.ts", what: "how the mockup draws a card's shadow on a card" },
+  { pattern: "tests/e2e/helpers/phones.ts", what: "the viewports every spec is measured at" },
+  { pattern: "tests/e2e/helpers/settle.ts", what: "when a spec decides the table has stopped moving" },
+  { pattern: "tests/e2e/helpers/safeArea.ts", what: "the insets a spec measures under" },
   { pattern: "tests/e2e/helpers/skiaPerfBudgets.ts", what: "the Skia table's speed budgets" },
   { pattern: "tests/e2e/skiaPerf.spec.ts", what: "the windows, throttle and seed the speed budgets are read in" },
   { pattern: "tools/ci/target-freeze.mjs", what: "this list" },
@@ -84,12 +97,15 @@ export const CODE = Object.freeze(["app/", "components/", "lib/"]);
 export const OWNER = "@rotonmeta";
 
 export const WORKFLOW = ".github/workflows/target-freeze.yml";
+const SANDBOXED_NODE = 25;
+const SELF = "tools/ci/target-freeze.mjs";
 export const CHECK = "Target freeze";
 
 export { matcher };
 
 const targetMatchers = TARGETS.map((t) => matcher(t.pattern));
-const codeMatchers = CODE.map((dir) => (/** @type {string} */ file) => file.startsWith(dir) && !file.endsWith(".md"));
+const codeMatcher = (/** @type {string} */ dir) => (/** @type {string} */ file) => file.startsWith(dir) && !file.endsWith(".md");
+const codeMatchers = CODE.map(codeMatcher);
 
 /** @param {string} file */
 export const isTarget = (file) => targetMatchers.some((m) => m(file));
@@ -121,10 +137,47 @@ export function changedSince(base, head, at = git()) {
   return at.text(["diff", "--name-only", "--no-renames", "-z", `${base}...${head}`]).split("\0").filter(Boolean);
 }
 
-/** Each pattern must still name a file in the base, or the list has stopped looking at it. */
-export function unmatched(tracked) {
+/**
+ * Each pattern of the list must still name a file in the tree, or the list has stopped looking at it.
+ * @param {string[]} tracked
+ * @param {{ targets: string[], code: string[] }} list
+ */
+export function unmatched(tracked, list = { targets: TARGETS.map((t) => t.pattern), code: [...CODE] }) {
   const seen = (/** @type {(file: string) => boolean} */ m) => tracked.some(m);
-  return [...TARGETS.filter((_, i) => !seen(targetMatchers[i])).map((t) => t.pattern), ...CODE.filter((_, i) => !seen(codeMatchers[i]))];
+  return [...list.targets.filter((p) => !seen(matcher(p))), ...list.code.filter((d) => !seen(codeMatcher(d)))];
+}
+
+/**
+ * The list as head's own copy of this module holds it, evaluated by Node's permission model with
+ * read access to a scratch copy of the module's imports and nothing else, never from the checkout.
+ * @param {string} head
+ * @param {ReturnType<typeof git>} at
+ * @returns {{ targets: string[], code: string[] }}
+ */
+export function listAt(head, at, node = process.versions.node) {
+  const major = Number(node.split(".")[0]);
+  if (major < SANDBOXED_NODE) throw new Error(`Node ${node} does not deny the network under --permission; evaluating head's list needs Node ${SANDBOXED_NODE} or later`);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "target-freeze-head-"));
+  try {
+    const seen = new Set();
+    const queue = [SELF];
+    while (queue.length) {
+      const file = /** @type {string} */ (queue.pop());
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const text = at.text(["show", `${head}:${file}`]);
+      fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      fs.writeFileSync(path.join(dir, file), text);
+      for (const [, spec] of text.matchAll(/(?:from|import)\s*["'](\.[^"']+)["']/g)) queue.push(path.posix.join(path.posix.dirname(file), spec));
+    }
+    const reader = path.join(dir, "read-list.mjs");
+    fs.writeFileSync(reader, `const { TARGETS, CODE } = await import(${JSON.stringify(path.join(dir, SELF))});\nprocess.stdout.write(JSON.stringify({ targets: TARGETS.map((t) => t.pattern), code: [...CODE] }));\n`);
+    const r = spawnSync(process.execPath, ["--permission", `--allow-fs-read=${fs.realpathSync(dir)}`, reader], { encoding: "utf8", env: {}, timeout: 20000 });
+    if (r.status !== 0) throw new Error(`${head}'s ${SELF} did not evaluate to a list: ${String(r.stderr).split("\n").find((l) => /Error/.test(l)) ?? r.status}`);
+    return JSON.parse(r.stdout);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -152,8 +205,9 @@ export function codeowners() {
  * @param {string | undefined} head
  * @param {ReturnType<typeof git>} at
  * @param {(line: string) => void} log
+ * @param {string} node
  */
-export function run(base, head, at = git(), log = console.log) {
+export function run(base, head, at = git(), log = console.log, node = process.versions.node) {
   if (!base || !head) {
     log("::error::target-freeze needs the base and head commits to diff.");
     return 1;
@@ -170,6 +224,23 @@ export function run(base, head, at = git(), log = console.log) {
       log(`::error::these patterns name no file in ${base}, so the freeze no longer sees them: ${missing.join(", ")}`);
       return 1;
     }
+    if (!at.text(["ls-tree", "-z", "--name-only", head, "--", SELF]).includes(SELF)) {
+      log(`::error::${head} has no ${SELF}, so no list would judge the pull requests after it.`);
+      return 1;
+    }
+    const headFiles = at.text(["ls-tree", "-r", "-z", "--name-only", head]).split("\0").filter(Boolean);
+    let headList;
+    try {
+      headList = listAt(head, at, node);
+    } catch (err) {
+      log(`::error::could not evaluate ${head}'s target list: ${String(err?.message ?? err).split("\n")[0]}`);
+      return 1;
+    }
+    const emptied = unmatched(headFiles, headList);
+    if (emptied.length) {
+      log(`::error::these patterns name no file in ${head} but its list still holds them, so every later pull request would be refused: ${emptied.join(", ")}`);
+      return 1;
+    }
     changed = changedSince(base, head, at);
     const workflows = at
       .text(["ls-tree", "-z", "--name-only", head, "--", ".github/workflows/"])
@@ -178,11 +249,11 @@ export function run(base, head, at = git(), log = console.log) {
       .map((f) => ({ path: f, text: at.text(["show", `${head}:${f}`]) }));
     const spoofs = impostors(workflows);
     if (spoofs.length) {
-      log(`::error::${spoofs.join(", ")} ${spoofs.length === 1 ? "names" : "name"} a job or step ${CHECK}, whose check would stand in for this one (RULES.md 52).`);
+      log(`::error::${spoofs.join(", ")} ${spoofs.length === 1 ? "names" : "name"} a job or step ${CHECK}: a job so named reports a check that would stand in for this one, and a step so named is refused because the scan cannot tell it from a job (RULES.md 52).`);
       return 1;
     }
   } catch (err) {
-    log(`::error::could not read ${base} or ${head}, so nothing was judged: ${String(err?.message ?? err).split("\n")[0]}`);
+    log(`::error::could not read ${base} or ${head}, or they share no merge base, so nothing was judged: ${String(err?.message ?? err).split("\n")[0]}`);
     return 1;
   }
   const verdict = freezeVerdict(changed);

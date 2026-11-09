@@ -18,6 +18,14 @@
 /tests/e2e/helpers/lampSeat.ts                       @rotonmeta
 /tools/ci/feltPixels.mjs                             @rotonmeta
 /tools/ci/edgePixels.mjs                             @rotonmeta
+/tests/e2e/helpers/tableTrace.ts                     @rotonmeta
+/tests/e2e/helpers/renderCounters.ts                 @rotonmeta
+/tests/e2e/helpers/virtualClock.ts                   @rotonmeta
+/tests/helpers/phoneTable.ts                         @rotonmeta
+/tests/e2e/helpers/cardOnCardCss.ts                  @rotonmeta
+/tests/e2e/helpers/phones.ts                         @rotonmeta
+/tests/e2e/helpers/settle.ts                         @rotonmeta
+/tests/e2e/helpers/safeArea.ts                       @rotonmeta
 /tests/e2e/helpers/skiaPerfBudgets.ts                @rotonmeta
 /tests/e2e/skiaPerf.spec.ts                          @rotonmeta
 /tools/ci/target-freeze.mjs                          @rotonmeta
