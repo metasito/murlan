@@ -200,7 +200,6 @@ export function markAt(side: keyof typeof MARK_AT, scale: number): { x: number; 
 
 const FLOAT_TOP = 300;
 
-/** `.floatchip`'s top edge, up from the foot of the stage. */
 /** What a seat's badge row shows under its name. */
 export type SeatBadge = "reconnecting" | "vacated";
 
@@ -212,6 +211,7 @@ export function seatBadgeH(badge: SeatBadge | undefined, scale: number): number 
   return height;
 }
 
+/** `.floatchip`'s top edge, up from the foot of the stage. */
 export function floatAboveFoot(scale: number): number {
   return at(MOCKUP_STAGE_H - FLOAT_TOP, scale);
 }
