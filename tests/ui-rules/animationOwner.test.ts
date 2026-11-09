@@ -39,8 +39,8 @@ test("the guard's exemptions are the owner and the pinned list, and nothing else
   assert.deepEqual((guard.ignores ?? []).map((i) => i.glob).sort(), [OWNER, ...Object.keys(EXEMPT)].sort());
 });
 
-test("the exemption list only shrinks", () => {
-  assert.ok(Object.keys(EXEMPT).length <= MAX_EXEMPT_FILES, "an exemption was added: put the loop on lib/motion.ts instead");
+test("the exemption list only shrinks, and the number follows it down", () => {
+  assert.equal(Object.keys(EXEMPT).length, MAX_EXEMPT_FILES, "an exemption was added (put the loop on lib/motion.ts instead) or removed (lower MAX_EXEMPT_FILES)");
 });
 
 test("each exemption still names the banned call as often as it is pinned to", () => {
