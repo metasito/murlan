@@ -118,6 +118,11 @@ function declared(code: string, name: string): Arg[] | undefined {
   if (!at || [...code.matchAll(write)].length > 1) return undefined;
   const from = at.index + at[0].length;
   if (code[from] === "[") return arrayElements(code, from + 1);
+  // scripts/dockerEngine.mjs's cacheName: a `localhost/…` name made from a ref that is itself read here.
+  const cached = /cacheName\(\s*(\w+)\s*\)/y;
+  cached.lastIndex = from;
+  const of = cached.exec(code)?.[1];
+  if (of) return declared(code, of) && [{ text: "localhost/murlan-cache/cached", read: true }];
   const literal = new RegExp(STRING, "y");
   literal.lastIndex = from;
   const value = literal.exec(code)?.[0];
@@ -335,6 +340,8 @@ describe("no CI job pulls an image from Docker Hub", () => {
     ]) {
       assert.deepEqual(imageRefs("s.mjs", source), [UNREAD], source);
     }
+    assert.deepEqual(imageRefs("s.mjs", 'const A = "a:1";\nconst B = cacheName(A);\ndocker(["run", B]);\n'), ["localhost/murlan-cache/cached"]);
+    assert.deepEqual(imageRefs("s.mjs", 'const B = cacheName(A);\ndocker(["run", B]);\n'), ["B"]);
     assert.deepEqual(imageRefs("s.mjs", 'function docker(args) {\n  return run("docker", args);\n}\ndocker(["pull", "a:1"]);\n'), [
       "a:1",
     ]);

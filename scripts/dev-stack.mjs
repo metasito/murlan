@@ -15,7 +15,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { sleepSync } from "./lib/proc.mjs";
-import { dockerDesktopPaths, dockerInfo, ensureEngine, pullImage } from "./dockerEngine.mjs";
+import { cacheName, dockerDesktopPaths, dockerInfo, ensureEngine, pullImage } from "./dockerEngine.mjs";
 import {
   hostPortOf,
   isPostgresReply,
@@ -34,9 +34,8 @@ const RETIRED_NAMES = ["murlan-dev-redis"];
 // The same mirror, for the same reasons; every workflow's Valkey service repeats this
 // (tests/tooling/redisImage.test.ts).
 const VALKEY_IMAGE = "mirror.gcr.io/valkey/valkey:9.1.3-alpine@sha256:bf09d58e96d6b4524a15396b65b242bbe18beebbcc15a04d8ee75ddac62fae0b";
-// What cacheName (dockerEngine.mjs) makes of the two above; tests/tooling/devStackImages.test.ts holds them equal.
-const CACHED_IMAGE = "localhost/murlan-cache/721873c34ceb:postgres-16-alpine";
-const CACHED_VALKEY_IMAGE = "localhost/murlan-cache/bf09d58e96d6:valkey-9.1.3-alpine";
+const CACHED_IMAGE = cacheName(IMAGE);
+const CACHED_VALKEY_IMAGE = cacheName(VALKEY_IMAGE);
 const REDIS_BASE_PORT = 46379;
 const redisUrlFor = (port) => `redis://127.0.0.1:${port}/0`;
 // Below 49152: Windows carves its dynamic port reservations (Hyper-V, WSL) out of 49152-65535 only.
@@ -64,7 +63,10 @@ function docker(args) {
 /** The image `cached` (cacheName of `ref`), from the cache or pulled by `ref`'s pinned digest; every container runs the cached name. */
 function ensureImage(ref, cached, pull) {
   pullImage({ present: () => docker(["image", "inspect", cached]).status === 0 || docker(["image", "inspect", ref]).status === 0, pull, sleep: sleepSync });
-  if (docker(["image", "inspect", cached]).status !== 0) docker(["tag", ref, cached]);
+  if (docker(["image", "inspect", cached]).status !== 0) {
+    const tagged = docker(["tag", ref, cached]);
+    if (tagged.status !== 0) throw new Error(`could not tag ${ref} as ${cached}: ${tagged.stderr}`);
+  }
 }
 
 function isRunning(name = NAME) {

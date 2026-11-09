@@ -14,7 +14,8 @@ const run = (cmd: string) => execFileSync(process.execPath, [path.join(root, "sc
 
 test("dev-stack.mjs names the two images it pulls and the plain tags it runs, with no docker needed", () => {
   assert.deepEqual(run("images"), [named("IMAGE"), named("VALKEY_IMAGE")]);
-  assert.deepEqual(run("cached"), [named("CACHED_IMAGE"), named("CACHED_VALKEY_IMAGE")]);
+  assert.match(source, /^const CACHED_IMAGE = cacheName\(IMAGE\);$/m, "the cached name is derived, not a second copy");
+  assert.match(source, /^const CACHED_VALKEY_IMAGE = cacheName\(VALKEY_IMAGE\);$/m);
   assert.deepEqual(run("images").map(cacheName), run("cached"), "a cached name that is not the pinned ref's cacheName runs a stale image");
   for (const name of run("cached")) assert.doesNotMatch(name, /@/, "a digest ref is saved with no tag, so a restore cannot find it");
 });
@@ -33,7 +34,7 @@ export function imageProblems(steps: Step[]): string[] {
   if (cache < 0) return ["no step caches the stack's images, so every shard pulls them from the registry"];
   const cached = steps[cache]!;
   const problems: string[] = [];
-  if (!(cached.with?.key ?? "").includes("hashFiles('scripts/dev-stack.mjs')")) problems.push("the cache key does not move with the images dev-stack.mjs names");
+  if (!/hashFiles\('scripts\/dev-stack\.mjs', 'scripts\/dockerEngine\.mjs'\)/.test(cached.with?.key ?? "")) problems.push("the cache key does not move with the images dev-stack.mjs names and the tag dockerEngine.mjs gives them");
   const load = at((s) => /docker load/.test(s.run ?? ""));
   const hit = steps[load];
   if (load < cache || load > tests || !(hit?.if ?? "").includes(`steps.${cached.id}.outputs.cache-hit == 'true'`)) problems.push("a hit is not loaded before the suite");
@@ -57,6 +58,7 @@ test("planted: no cache, a stale key, a hit never loaded, a load never checked, 
   const isLoad = (s: Step) => /docker load/.test(s.run ?? "");
   assert.equal(imageProblems(steps.filter((s) => !/dev-stack-images/.test(s.with?.path ?? ""))).length, 1);
   assert.equal(imageProblems(edit((s) => !!s.with?.key, (s) => ({ ...s, with: { ...s.with, key: "dev-stack-images" } }))).length, 1);
+  assert.equal(imageProblems(edit((s) => !!s.with?.key, (s) => ({ ...s, with: { ...s.with, key: s.with!.key!.replace(", 'scripts/dockerEngine.mjs'", "") } }))).length, 1, "a key that leaves out dockerEngine.mjs");
   assert.ok(imageProblems(edit(isLoad, () => null)).length >= 1);
   assert.equal(imageProblems(edit(isLoad, (s) => ({ ...s, run: s.run!.replace(" && node scripts/dev-stack.mjs held", "") }))).length, 1);
   assert.equal(imageProblems(edit(isLoad, (s) => ({ ...s, run: s.run!.replace(/\n\s*node scripts\/dev-stack\.mjs pull\s*$/, "\n") }))).length, 1);

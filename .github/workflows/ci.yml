@@ -783,7 +783,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/dev-stack-images.tar
-          key: dev-stack-images-${{ hashFiles('scripts/dev-stack.mjs') }}
+          key: dev-stack-images-${{ hashFiles('scripts/dev-stack.mjs', 'scripts/dockerEngine.mjs') }}
       - name: Load the cached Docker images, or pull them when the load does not leave them
         if: steps.stack.outputs.cache-hit == 'true'
         run: |

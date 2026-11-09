@@ -188,15 +188,15 @@ describe("the guard registry's floor", () => {
 
   test("2, intent: a broad-glob guard reads every directory it is committed to, and a plant moved into each fires it", async () => {
     const lost: string[] = [];
-    for (const guard of broad(GUARDS)) {
+    for (const guard of GUARDS.filter(intentOf)) {
       const [id, roots] = [guard.id, intentOf(guard)!];
       const exts = extsOf(guard);
       const plant = [guard.plant].flat()[0]!;
       for (const root of roots) {
         const dirs = dirsOf(guard, root);
         assert.ok(dirs.length > 0, `${id}: ${root} holds no tracked file the guard reads`);
-        const wholeDirs = guard.files.every((g) => /\/\*\*\/\*\.(\{[\w,]+\}|\w+)$/.test(g));
-        for (const f of wholeDirs ? tracked.filter((f) => f.startsWith(`${root}/`) && exts.has(path.extname(f).slice(1))) : []) {
+        const named = guard.files.map((g) => g.split("/").pop()!);
+        for (const f of tracked.filter((f) => f.startsWith(`${root}/`) && exts.has(path.extname(f).slice(1)) && named.some((n) => minimatch(path.basename(f), n, { dot: true })))) {
           if (!matches(f, guard.files) && !matches(f, globsOf(guard))) lost.push(`${id}: ${f} is unread`);
         }
         for (const dir of dirs) {
