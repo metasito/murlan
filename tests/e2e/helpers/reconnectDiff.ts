@@ -5,10 +5,17 @@ import { STEP_MS, type Failure } from "./traceDiff.ts";
 
 /** One frame of jitter, on 60 Hz frames rather than the virtual clock's 16 ms grid. */
 const JITTER_MS = Math.ceil(1000 / 60);
-/** A due timer waits out the frame in progress, renders in the next and is read the frame after it painted: four frames, however long a stall makes them. */
+/** A due timer's onset lands within this many frames of the last stall that held it, counting that stall's own frame; a passive effect's stamp trails what it stamps by as many, so a stall in them moves an anchor past the curve it opens. */
 const STAMP_FRAMES = 4;
-/** The ceiling no stall lifts: the ten red CI traces of #1449 were late by 221 ms at most. */
-const LATE_CEILING_MS = 300;
+const PIPELINE_FRAMES = 3;
+/** Rounding of the trace's stamps, in ms. */
+const STAMP_ROUNDING_MS = 2;
+/** The lamp steps by its frame's span, no more than this: `MAX_DT` in `components/table/lampRig.ts`, and the mockup's own cap. */
+const LAMP_STEP_CAP_MS = 50;
+/** The ceiling the stamping jitter never passes: the ten red CI traces of #1449 were late by 221 ms at most. */
+const JITTER_CEILING_MS = 300;
+/** The lamp's clock is read to half a millisecond a frame, and the level to a hundredth: a share of the span that no tolerance of the level can see. */
+const CLOCK_SHARE = 0.01;
 /** The grey moves 0.85 in 300 ms: one frame of jitter, and a little. */
 const GREY_TOLERANCE = 0.06;
 /** The lamp's phase runs about 0.84 rad/s; frozen, it does not move at all. */
@@ -27,14 +34,24 @@ const cadenceOf = (frames: TraceFrame[]) => {
   return Math.max(JITTER_MS, spans[spans.length >> 1] ?? 0);
 };
 
-/** A stalled main thread holds a due timer and the frames that would show it alike, so a late onset is the stall's only when it still lands within `STAMP_FRAMES` of its due point. */
-const stalledFor = (frames: TraceFrame[], frame: number, due: number, until: number) => {
-  const spans = frames.flatMap((f, i) => (i > 0 && f.t > due && f.t <= until ? [f.t - frames[i - 1].t] : []));
-  return spans.length <= STAMP_FRAMES && spans.some((ms) => ms > 1.5 * frame);
+const STALL_FRAMES = 1.5;
+
+/** The spans of `frames` ending in `(from, to]` that a stalled main thread stretched past `STALL_FRAMES` of a frame: the time they took beyond one frame each, and when the last ended. */
+const stallIn = (frames: TraceFrame[], frame: number, from: number, to: number) => {
+  let took = 0;
+  let end = -Infinity;
+  for (let i = 1; i < frames.length; i++) {
+    const span = frames[i].t - frames[i - 1].t;
+    if (frames[i].t > from && frames[i].t <= to && span > STALL_FRAMES * frame) {
+      took += span - frame;
+      end = frames[i].t;
+    }
+  }
+  return { took, end };
 };
 
-/** The lamp eases toward 0.55 at a rate of 1: one onset's jitter of its fall, and a little. */
-const LEVEL_TOLERANCE = 0.04;
+/** The lamp eases toward 0.55 at a rate of 1. The curve may sit one shift off the mockup's, as far as an onset may, and be read against it there: what is left once it does is the rate's alone: a faithful app's is under 0.001 and a twentieth off puts it at 0.006. */
+const LEVEL_TOLERANCE = 0.004;
 const LEVEL_SPAN_MS = 1500;
 
 const between = (frames: TraceFrame[], t: number, read: (f: TraceFrame) => number): number | null => {
@@ -47,7 +64,33 @@ const between = (frames: TraceFrame[], t: number, read: (f: TraceFrame) => numbe
 
 /** The grey at `t`, between the frames either side of it. */
 export const greyAt = (frames: TraceFrame[], t: number) => between(frames, t, (f) => f.grey ?? 0);
-const levelAt = (frames: TraceFrame[], t: number) => between(frames, t, (f) => f.lamp?.level ?? 1);
+
+/** The app's frames on its lamp's own clock, which loses the time of every frame past `LAMP_STEP_CAP_MS` as the lamp does; null when a frame carries none. */
+const onLampClock = (frames: TraceFrame[]): TraceFrame[] | null =>
+  frames.every((f) => f.lamp?.clock !== undefined) ? frames.map((f) => ({ ...f, t: f.lamp!.clock! * 1000 })) : null;
+
+/** The lamp's clock stands still through the frames it loses to a stall, so the level's span needs the app's trace to run until the clock has covered it, not only the wall time. */
+export const levelSpanTraced = (frames: TraceFrame[], lost: number) => {
+  const [from, to] = [frames.find((f) => f.t === lost)?.lamp?.clock, frames.at(-1)?.lamp?.clock];
+  return from !== undefined && from !== null && to !== undefined && to !== null && (to - from) * 1000 >= LEVEL_SPAN_MS;
+};
+
+/** The lamp's clock runs each frame's span, capped, and that makes reading the level on it honest rather than a way to forgive a slow lamp: the clock may stray from the capped spans' sum by the level's tolerance, as a share of it. */
+const clockDrift = (frames: TraceFrame[]) => {
+  const capped = frames.reduce((sum, f, i) => (i === 0 ? 0 : sum + Math.min(f.t - frames[i - 1].t, LAMP_STEP_CAP_MS)), 0);
+  const clock = ((frames.at(-1)?.lamp?.clock ?? 0) - (frames[0]?.lamp?.clock ?? 0)) * 1000;
+  return { capped, drift: clock - capped, allowed: capped * CLOCK_SHARE };
+};
+
+/** What a curve is at `t`: one value, or, inside a span stalled beyond `stallOver`, anything between the frames either side of it, which the app painted but the trace never saw. */
+const readAt = (frames: TraceFrame[], t: number, read: (f: TraceFrame) => number, stallOver: number): [number, number] | null => {
+  const after = frames.findIndex((f) => f.t >= t);
+  if (after <= 0) return after === 0 && frames[0].t === t ? [read(frames[0]), read(frames[0])] : null;
+  const [a, b] = [read(frames[after - 1]), read(frames[after])];
+  if (frames[after].t - frames[after - 1].t > stallOver) return [Math.min(a, b), Math.max(a, b)];
+  const v = between(frames, t, read)!;
+  return [v, v];
+};
 
 const phSpan = (frames: TraceFrame[], from: number, to: number) => {
   const ph = frames.filter((f) => f.t >= from && f.t <= to && f.lamp?.ph !== undefined).map((f) => f.lamp!.ph!);
@@ -84,6 +127,18 @@ export function onChapterClock(frames: TraceFrame[], own: Anchors, chapter: Anch
   });
 }
 
+interface Curve {
+  field: Failure["field"];
+  what: string;
+  anchor: keyof Anchors;
+  frames: TraceFrame[];
+  own: number;
+  read: (f: TraceFrame) => number;
+  tolerance: number;
+  span: number;
+  stallOver: number;
+}
+
 export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
   const failures: Failure[] = [];
   const fail = (field: Failure["field"], t: number, mockup: unknown, app: unknown, message: string) =>
@@ -107,27 +162,57 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
   ];
   const frame = cadenceOf(sides.app);
   /** The app stamps an onset and its anchor alike from a passive effect (`useLinkHold`), each read a frame or two after it painted: up to two of its frames each way, and one of the mockup's virtual steps. */
-  const jitter = 2 * frame + STEP_MS;
+  const jitter = Math.min(JITTER_CEILING_MS, 2 * frame + STEP_MS);
+  /** A timer armed with the anchor falls due inside a frame, whose task waits out the frame in progress, renders in the next and is read in the one after it painted: three frames after it was due, and the mockup's step for where its own due fell. */
+  const lateBy = Math.min(JITTER_CEILING_MS, PIPELINE_FRAMES * frame + STEP_MS);
   for (const [what, anchor, names] of onsets) {
     const got = { mockup: offset("mockup", m[anchor], names.mockup), app: offset("app", a[anchor], names.app) };
     const late = got.mockup === null || got.app === null ? null : got.app - got.mockup;
-    const stalled = late !== null && stalledFor(sides.app, frame, a[anchor] + got.mockup!, a[anchor] + got.app!);
-    if (late === null || Math.abs(late) > LATE_CEILING_MS || late < -jitter || (late > jitter && !stalled)) {
+    const stalled = late === null ? null : stallIn(sides.app, frame, a[anchor] + got.mockup!, a[anchor] + got.app!);
+    const excused = stalled !== null && late! <= lateBy + stalled.took && a[anchor] + got.app! - stalled.end <= (STAMP_FRAMES - 1) * frame + STAMP_ROUNDING_MS;
+    if (late === null || late < -jitter || (late > lateBy && !excused)) {
       fail("onset", m[anchor] + (got.mockup ?? 0), got.mockup, got.app, `${what}, in ms after the ${anchor}`);
     }
   }
 
-  const curves: [Failure["field"], string, keyof Anchors, typeof greyAt, number, number][] = [
-    ["grey", "the grey", "drop", greyAt, GREY_TOLERANCE, CURVE_SPAN_MS],
-    ["grey", "the grey", "back", greyAt, GREY_TOLERANCE, CURVE_SPAN_MS],
-    ["grey", "the grey", "lost", greyAt, GREY_TOLERANCE, CURVE_SPAN_MS],
-    ["level", "the lamp's level", "lost", levelAt, LEVEL_TOLERANCE, LEVEL_SPAN_MS],
+  const appClock = onLampClock(sides.app);
+  const clockAnchor = appClock ? appClock[sides.app.findIndex((f) => f.t === a.lost)]?.t : undefined;
+  if (!appClock || clockAnchor === undefined) fail("level", m.lost, null, null, "the app's frames carry the lamp's clock");
+  else {
+    const { drift, allowed } = clockDrift(sides.app);
+    if (Math.abs(drift) > allowed) fail("level", m.lost, 0, drift, "the lamp's clock advances by each frame's span, capped");
+  }
+
+  /** The anchor is stamped from a passive effect, so a stall just before it moves the stamp past where the curve began: the curve may be that much further on. */
+  const shiftAt = (anchor: number) => stallIn(sides.app, frame, anchor - STAMP_FRAMES * frame, anchor).took;
+  const grey = (f: TraceFrame) => f.grey ?? 0;
+  const level = (f: TraceFrame) => f.lamp?.level ?? 1;
+  const curves: Curve[] = [
+    { field: "grey", what: "the grey", anchor: "drop", frames: sides.app, own: a.drop, read: grey, tolerance: GREY_TOLERANCE, span: CURVE_SPAN_MS, stallOver: STALL_FRAMES * frame },
+    { field: "grey", what: "the grey", anchor: "back", frames: sides.app, own: a.back, read: grey, tolerance: GREY_TOLERANCE, span: CURVE_SPAN_MS, stallOver: STALL_FRAMES * frame },
+    { field: "grey", what: "the grey", anchor: "lost", frames: sides.app, own: a.lost, read: grey, tolerance: GREY_TOLERANCE, span: CURVE_SPAN_MS, stallOver: STALL_FRAMES * frame },
   ];
-  for (const [field, what, anchor, at, tolerance, span] of curves) {
+  if (appClock && clockAnchor !== undefined) {
+    const reach = jitter + shiftAt(a.lost);
+    const fall = Array.from({ length: Math.floor(LEVEL_SPAN_MS / (STEP_MS * 3)) + 1 }, (_, i) => i * STEP_MS * 3);
+    const miss = (s: number) => fall.map((d) => Math.abs((between(appClock, clockAnchor + d, level) ?? NaN) - (between(sides.mockup, m.lost + d + s, level) ?? NaN)));
+    const shifts = Array.from({ length: Math.floor((jitter + reach) / STEP_MS) + 1 }, (_, i) => -jitter + i * STEP_MS);
+    const best = shifts.map((s) => ({ s, miss: miss(s) })).reduce((x, y) => (Math.max(...y.miss) < Math.max(...x.miss) ? y : x));
+    if (!(Math.max(...best.miss) <= LEVEL_TOLERANCE)) {
+      fall.forEach((d, i) => {
+        if (!(best.miss[i] <= LEVEL_TOLERANCE)) fail("level", m.lost + d, between(sides.mockup, m.lost + d + best.s, level), between(appClock, clockAnchor + d, level), `the lamp's level ${d} ms after the lost`);
+      });
+    }
+  }
+  for (const { field, what, anchor, frames, own, read, tolerance, span, stallOver } of curves) {
+    const shift = shiftAt(a[anchor]);
+    const shifts = [...Array.from({ length: Math.floor(shift / STEP_MS) }, (_, i) => i * STEP_MS), shift];
     for (let d = 0; d <= span; d += STEP_MS * 3) {
-      const got = { mockup: at(sides.mockup, m[anchor] + d), app: at(sides.app, a[anchor] + d) };
-      if (got.mockup === null || got.app === null || Math.abs(got.app - got.mockup) > tolerance) {
-        fail(field, m[anchor] + d, got.mockup, got.app, `${what} ${d} ms after the ${anchor}`);
+      const got = readAt(frames, own + d, read, stallOver);
+      const mockupNow = between(sides.mockup, m[anchor] + d, read);
+      const want = shifts.flatMap((s) => between(sides.mockup, m[anchor] + d + s, read) ?? []);
+      if (got === null || mockupNow === null || got[0] > Math.max(...want) + tolerance || got[1] < Math.min(...want) - tolerance) {
+        fail(field, m[anchor] + d, mockupNow, got && (got[0] === got[1] ? got[0] : got), `${what} ${d} ms after the ${anchor}`);
       }
     }
   }
