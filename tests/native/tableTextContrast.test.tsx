@@ -35,7 +35,6 @@ const pickFor = (os: OS, spec: Record<string, unknown>) =>
   os === "web" ? (spec.web ?? spec.default) : os === "android" ? (spec.android ?? spec.native ?? spec.default) : (spec.ios ?? spec.native ?? spec.default);
 
 type Sheet = Record<string, object>;
-/** The line of the `StyleSheet.create` call that made a sheet, as the stack gave it. */
 const madeAtLine = new WeakMap<object, number>();
 /** Every sheet each of `files` makes when it is imported as `os`, in the order a file made them. */
 function sheetsMadeAs(os: OS, files: string[], watch: ReadonlySet<string>, variants: Variants): Map<string, Sheet[]> {
@@ -98,9 +97,9 @@ type Unread = { kind: "inline colour" | "other"; text: string };
 type Found = { refs: Ref[]; unread: Unread[] };
 const INLINE_COLOUR_KEYS = new Set(["color", "backgroundColor"]);
 const TABLE_NOTICE = "components/table/TableNotice.tsx";
+const CARD_VIEW = "components/CardView.tsx";
 const INLINE_COLOUR_FROM_ELSEWHERE: Record<string, string> = {
   [TABLE_NOTICE]: "the notice palette's inks, measured over every felt stop by contrast.test.ts",
-  "components/CardView.tsx": "the suit's ink over the card's own face, which the felt never reaches: held by the card ink test below",
 };
 
 /** Whether `name` is the import of `NOTICE_FACES` from noticeModel, and no declaration of the file hides it. */
@@ -122,11 +121,34 @@ function isNoticeFaces(source: ts.SourceFile, name: string): boolean {
   return imported && !hidden;
 }
 
+/** The initialiser of the `const color` CardView computes after `rankText`: the one ink its rank text is given. */
+function cardColorInit(source: ts.SourceFile): ts.Expression | undefined {
+  let found: ts.Expression | undefined;
+  const visit = (n: ts.Node): void => {
+    if (ts.isVariableDeclaration(n) && n.name.getText() === "color" && n.initializer && source.text.slice(0, n.pos).includes("const rankText")) found = n.initializer;
+    ts.forEachChild(n, visit);
+  };
+  visit(source);
+  return found;
+}
+
+/** Whether `prop` is `{ color }` or `color: color` with that `color` bound to the declaration `cardInks` reads. */
+function namesCardInk(prop: ts.ObjectLiteralElementLike): boolean {
+  const value = ts.isShorthandPropertyAssignment(prop) ? prop.name : ts.isPropertyAssignment(prop) ? prop.initializer : undefined;
+  if (!value || !ts.isIdentifier(value) || value.text !== "color") return false;
+  const declared = declarationsInScope(value);
+  const init = cardColorInit(prop.getSourceFile());
+  return declared !== "bound" && init !== undefined && declared.length === 1 && declared[0] === init;
+}
+
 /** What the nearest scope declaring `id`'s name initialises it with, or "bound" where a parameter or a pattern binds it. */
 function declarationsInScope(id: ts.Identifier): ts.Expression[] | "bound" {
   const binds = (name: ts.BindingName): boolean => (ts.isIdentifier(name) ? name.text === id.text : name.elements.some((e) => !ts.isOmittedExpression(e) && binds(e.name)));
   for (let scope: ts.Node | undefined = id.parent; scope; scope = scope.parent) {
     if (ts.isFunctionLike(scope) && scope.parameters.some((p) => binds(p.name))) return "bound";
+    if ((ts.isForStatement(scope) || ts.isForInStatement(scope) || ts.isForOfStatement(scope)) && scope.initializer && ts.isVariableDeclarationList(scope.initializer) && scope.initializer.declarations.some((d) => binds(d.name))) return "bound";
+    if (ts.isCatchClause(scope) && scope.variableDeclaration && binds(scope.variableDeclaration.name)) return "bound";
+    if (ts.isCaseOrDefaultClause(scope) && scope.statements.some((st) => ts.isVariableStatement(st) && st.declarationList.declarations.some((d) => binds(d.name)))) return "bound";
     if (!(ts.isBlock(scope) || ts.isSourceFile(scope) || ts.isModuleBlock(scope))) continue;
     const found: ts.Expression[] = [];
     for (const st of scope.statements) {
@@ -166,6 +188,7 @@ function styleRefs(file: string, source: ts.SourceFile, expr: ts.Node, out: Foun
     for (const p of expr.properties) {
       const key = ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p) ? nameOf(p.name) : undefined;
       if (key === undefined) unread("an object entry this audit cannot name");
+      else if (file === CARD_VIEW && key === "color" && namesCardInk(p)) continue;
       else if (INLINE_COLOUR_KEYS.has(key)) unread(`an inline ${key}`, "inline colour");
       else if (key === "opacity") unread("an inline opacity");
     }
@@ -556,8 +579,6 @@ test("the pile inks no text of its own: its notices are TableNotice's plate, in 
   assert.ok(TABLE_TEXT.some((r) => r.file === TABLE_NOTICE), "TableNotice inks no <TableText> style");
 });
 
-const CARD_VIEW = "components/CardView.tsx";
-
 /** Every ink the card's rank text is given: the leaves of the `color` it computes, each a token or the suit table. */
 function cardInks(source: ts.SourceFile): Set<string> {
   const inks = new Set<string>();
@@ -570,16 +591,9 @@ function cardInks(source: ts.SourceFile): Set<string> {
     }
     throw new Error(`${CARD_VIEW}: a card ink this audit cannot read: ${e.getText().slice(0, 60)}`);
   };
-  let found = false;
-  const visit = (n: ts.Node): void => {
-    if (ts.isVariableDeclaration(n) && n.name.getText() === "color" && n.initializer && n.getSourceFile().text.slice(0, n.pos).includes("const rankText")) {
-      found = true;
-      leaf(n.initializer);
-    }
-    ts.forEachChild(n, visit);
-  };
-  visit(source);
-  assert.ok(found, `${CARD_VIEW}: no \`const color\` after \`rankText\`: the card's ink is computed elsewhere now`);
+  const init = cardColorInit(source);
+  assert.ok(init, `${CARD_VIEW}: no \`const color\` after \`rankText\`: the card's ink is computed elsewhere now`);
+  leaf(init);
   return inks;
 }
 
@@ -708,6 +722,17 @@ describe("the audit sees what a text scan of `key: {` could not", () => {
     assert.deepEqual([apart.keys, apart.unread], [["b"], []]);
     const pattern = scan(PLANT, `${IMPORT}const tone = styles.outer;\nfunction A({ tone }) { return <TableText style={tone} />; }`);
     assert.equal(pattern.unread.length, 1);
+    for (const [what, body] of [
+      ["a for initialiser", "for (const tone of list) { out.push(<TableText style={tone} />); }"],
+      ["a for-in initialiser", "for (const tone in list) { out.push(<TableText style={tone} />); }"],
+      ["a for loop's let", "for (let tone = 0; tone < 2; tone++) { out.push(<TableText style={tone} />); }"],
+      ["a catch binding", "try { run(); } catch (tone) { out.push(<TableText style={tone} />); }"],
+      ["a case clause", "switch (k) { case 1: const tone = pick(); out.push(<TableText style={tone} />); }"],
+    ] as const) {
+      const found = scan(PLANT, `${IMPORT}const tone = styles.outer;\nfunction A() { ${body} }`);
+      assert.equal(found.unread.length, 1, what);
+      assert.deepEqual(found.keys, [], what);
+    }
   });
 
   test("an inline colour is let through only where a reason is stated, and an inline opacity or an unread style never is", () => {
@@ -718,6 +743,22 @@ describe("the audit sees what a text scan of `key: {` could not", () => {
       assert.ok(scan(TABLE_NOTICE, style(e)).unread.length > 0, `TableNotice: ${e}`);
       assert.ok(scan("components/CardView.tsx", `${IMPORT}const a = <TableText style={${e}} />;`).unread.length > 0, `CardView: ${e}`);
     }
+  });
+
+  test("CardView's inline colour is its computed ink and no other", () => {
+    const real = readFileSync(path.join(repoRoot, CARD_VIEW), "utf8");
+    const inCard = (text: string) => {
+      const sources = new Map([[CARD_VIEW, asSource(CARD_VIEW, text)], [TABLE_TEXT_FILE, asSource(TABLE_TEXT_FILE, "export function TableText() {}")]]);
+      return unreadIn(CARD_VIEW, tableTextIn(CARD_VIEW, sources.get(CARD_VIEW)!, tableTextGraph(sources)));
+    };
+    const withBottom = (ink: string) => real.replace("{ top: undefined, bottom: inset, color },", `{ top: undefined, bottom: inset, ${ink} },`);
+    assert.ok(withBottom("color: Colors.cardPaperEdge") !== real, "the plant found nothing to replace");
+    assert.deepEqual(inCard(real), []);
+    assert.deepEqual(inCard(withBottom("color: color")), []);
+    assert.equal(inCard(withBottom("color: Colors.cardPaperEdge")).length, 1);
+    assert.equal(inCard(withBottom("color: Colors.spade")).length, 1);
+    assert.equal(inCard(withBottom("backgroundColor: color")).length, 1);
+    assert.equal(inCard(real.replace("const color = card.isJoker", "const other = 1;\n  const color2 = card.isJoker")).length, 2, "a `color` bound to nothing the audit reads is not the card's ink");
   });
 
   test("TableText is followed through an alias, a renamed import and a spread", () => {

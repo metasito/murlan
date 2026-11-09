@@ -85,14 +85,46 @@ test("every code a reconnected note translates is what the server emits, and is 
   }
 });
 
-const NOTICE_SOURCES = [
-  ...readdirSync(path.join(repoRoot, "components", "table", "notices")).filter((f) => f.endsWith(".tsx") && f !== "gallery.tsx").map((f) => `components/table/notices/${f}`),
-  "components/table/exchangeModel.ts",
-  "components/table/floatModel.ts",
-  "components/table/connectionNote.ts",
-  "components/turnTimerUi.ts",
-  "lib/comboName.ts",
-];
+const COMPILER_OPTIONS = ts.getParsedCommandLineOfConfigFile(path.join(repoRoot, "tsconfig.json"), {}, {
+  ...ts.sys,
+  onUnRecoverableConfigFileDiagnostic: (d) => {
+    throw new Error(ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+  },
+})!.options;
+
+/** Every tracked source the notice renderers reach by import or re-export, as TypeScript resolves them. */
+function reachedFrom(entries: string[], added: Record<string, string> = {}): Record<string, string> {
+  const rel = (abs: string) => path.relative(repoRoot, abs).split(path.sep).join("/");
+  const host: ts.ModuleResolutionHost = { ...ts.sys, fileExists: (f) => rel(f) in added || ts.sys.fileExists(f) };
+  const load = (file: string) => added[file] ?? read(file);
+  const sources: Record<string, string> = {};
+  for (const queue = [...entries]; queue.length; ) {
+    const file = queue.pop()!;
+    if (file in sources) continue;
+    sources[file] = load(file);
+    const source = ts.createSourceFile(file, sources[file], ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    for (const st of source.statements) {
+      if (!(ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) || !st.moduleSpecifier) continue;
+      const found = ts.resolveModuleName((st.moduleSpecifier as ts.StringLiteral).text, path.join(repoRoot, file), COMPILER_OPTIONS, host).resolvedModule;
+      if (!found || found.isExternalLibraryImport) continue;
+      const target = rel(found.resolvedFileName);
+      if (!target.startsWith("..") && !target.split("/").includes("node_modules") && /\.tsx?$/.test(target) && !target.endsWith(".d.ts")) queue.push(target);
+    }
+  }
+  return sources;
+}
+
+const NOTICE_ENTRIES = readdirSync(path.join(repoRoot, "components", "table", "notices"))
+  .filter((f) => f.endsWith(".tsx") && f !== "gallery.tsx")
+  .map((f) => `components/table/notices/${f}`);
+
+/** A file a notice imports that translates, and draws no notice run with it. */
+const NOT_NOTICE_TEXT: Record<string, string> = {
+  "components/table/matchBoard.tsx": "the match board's own words, its BoardButton imported by the vote notices",
+  "components/CardView.tsx": "a card's spoken hint",
+  "lib/cardNames.ts": "spoken card names",
+  "lib/i18n.ts": "the translator itself",
+};
 
 /** Words a notice's source translates that are not a Text run it draws, with what carries them instead. */
 const NOT_A_RUN: Record<string, string> = {
@@ -106,7 +138,6 @@ const NOT_A_RUN: Record<string, string> = {
 /** A `t(...)` whose key the source cannot show, and the owner's export the spec takes it from. */
 const KEY_FROM_OWNER: Record<string, string> = {
   "components/turnTimerUi.ts": "CHIP_KEYS",
-  "lib/comboName.ts": "COMBO_NAME_KEYS",
 };
 
 /** Every catalogue key `text` passes to `t`/`tn` as a literal or a choice of literals, and each call whose key it cannot read. */
@@ -143,6 +174,10 @@ function unmeasured(sources: Record<string, string>): string[] {
   const stale: string[] = [];
   for (const [file, text] of Object.entries(sources)) {
     const { keys, opaque } = translated(file, text);
+    if (file in NOT_NOTICE_TEXT) {
+      if (!keys.size && !opaque.length) stale.push(`${file} is listed as "${NOT_NOTICE_TEXT[file]}" and translates nothing`);
+      continue;
+    }
     for (const key of keys) found.set(key, file);
     const owner = KEY_FROM_OWNER[file];
     if (opaque.length && !owner) stale.push(`${file}: ${opaque[0]} passes a key this scan cannot read`);
@@ -153,10 +188,11 @@ function unmeasured(sources: Record<string, string>): string[] {
     if (spec.has(key)) stale.push(`${key} is measured, so it is not "${why}"`);
     else if (!found.has(key)) stale.push(`${key} is listed as "${why}" and no notice source translates it`);
   }
+  for (const file of Object.keys(NOT_NOTICE_TEXT)) if (!(file in sources)) stale.push(`${file} is listed as not notice text and no notice reaches it`);
   return [...problems, ...stale];
 }
 
-const noticeSources = () => Object.fromEntries(NOTICE_SOURCES.map((f) => [f, read(f)]));
+const noticeSources = (added: Record<string, string> = {}) => reachedFrom(NOTICE_ENTRIES, added);
 
 test("every key a table notice translates is measured, or named as words it does not draw as a run", () => {
   const sources = noticeSources();
@@ -171,6 +207,17 @@ test("a key a notice starts translating that nobody measured fails the scan", ()
   const sources = noticeSources();
   sources["components/table/notices/tableLines.tsx"] += '\nexport const planted = (t: (k: string) => string) => t("game.newlyAdded");\n';
   assert.deepEqual(unmeasured(sources), ['components/table/notices/tableLines.tsx: t("game.newlyAdded") is not measured']);
+});
+
+test("a model a notice starts importing is scanned for the keys it translates", () => {
+  const model = "components/table/pileModel.ts";
+  const entry = "components/table/notices/pileNotices.tsx";
+  const sources = noticeSources({
+    [model]: 'export const pileWords = (t: (k: string) => string) => t("game.pileX");',
+    [entry]: `${read(entry)}\nimport { pileWords } from "../pileModel";\nexport const planted = pileWords;\n`,
+  });
+  assert.ok(model in sources, "the scan did not follow the notice's import to the new model");
+  assert.deepEqual(unmeasured(sources), [`${model}: t("game.pileX") is not measured`]);
 });
 
 test("a glyph the served font lacks is listed by codepoint, not measured as nothing", () => {
