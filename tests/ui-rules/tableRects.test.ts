@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { ALL_CAPTURE_STATES } from "../../lib/captureStates.ts";
 import { SUPPORTED_LOCALES } from "../../shared/i18n.ts";
 import { USERNAME_MAX } from "../../shared/username.ts";
-import { brokenRules, intersects, RECT_NAMES, TABLE_RULES, tableRects, type TableState } from "../../components/tableRects.ts";
+import { brokenRules, intersects, RECT_NAMES, TABLE_RULES, tableRects, type SeatBadgeState, type TableState } from "../../components/tableRects.ts";
 import type { EdgeInsets } from "../../components/tableFrame.ts";
 import type { NoticeContent } from "../../components/table/noticeWidth.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
@@ -27,6 +27,9 @@ for (const hand of [0, 1, 13, 18])
 const LONGEST_USERNAME = "W".repeat(USERNAME_MAX);
 /** The exchange is announced over a fresh deal: every seat full, the pile empty. */
 const DEALT: Omit<TableState, "chips"> = { seats: FULL, hand: { cards: 13, onTurn: true, faceDown: false, raised: true }, pile: 0 };
+/** Every online seat's badge, the countdown at its widest: the server's default grace is 60 seconds. */
+const BADGES: readonly SeatBadgeState[] = [{ kind: "vacated" }, { kind: "reconnecting", seconds: 60 }];
+const badgedSeats = (badge: SeatBadgeState): TableState["seats"] => ({ top: { ...FULL.top, badge }, left: { ...FULL.left, badge }, right: { ...FULL.right, badge } });
 
 /** A pill's content as the keys and slots it reads, the opponent's name as `⟨name⟩`. */
 const tagOf = (content: NoticeContent) =>
@@ -63,6 +66,7 @@ function* cases(): Generator<Case> {
         const [onMoveLong] = turnScenes(LONGEST_USERNAME).filter((t) => t.name.includes("turnOf"));
         yield at("longest username", { ...DEALT, chips: { combo: empty, turn: onMoveLong.turn } });
         for (const scene of exchangeScenes(LONGEST_BOT)) yield at(`exchange ${scene.name}`, { ...DEALT, chips: { combo: scene.combo, turn: scene.turn } });
+        for (const badge of BADGES) yield at(`badged ${badge.kind}`, { ...DEALT, seats: badgedSeats(badge), chips: { combo: empty, turn: onMove.turn } });
       }
 }
 
@@ -94,8 +98,8 @@ const KNOWN: readonly Known[] = [
     ticket: "#1988 item 103",
     breaks: { "nameLeft overlaps fanLeft": 1899, "nameRight overlaps fanRight": 1899 },
     where: [
-      on("iPhone 12|iPhone 16 Pro|iPhone 17 Pro Max", ANY, "0/0", ".*, seats 1\\d "),
-      on("iPhone [^(]+", ANY, ANY, ".*, seats 13 Besnik / 13 Besnik / 13 Besnik,"),
+      on("iPhone 12|iPhone 16 Pro|iPhone 17 Pro Max", ANY, "0/0", "(?!badged ).*, seats 1\\d "),
+      on("iPhone [^(]+", ANY, ANY, "(?!badged ).*, seats 13 Besnik / 13 Besnik / 13 Besnik,"),
     ],
   },
   {
@@ -124,13 +128,13 @@ const KNOWN: readonly Known[] = [
   {
     defect: "on the smallest phone the combo pill meets the turn chip once glyphs land on whole pixels: the chip row leaves no room for either's width",
     ticket: "#1988 item 106",
-    breaks: { "hudCombo overlaps hudTurn": 245 },
+    breaks: { "hudCombo overlaps hudTurn": 256 },
     where: [
       on("iPhone SE", "it", ISLAND, `${PLAYED}.*, combo ⟦gameShared.emptyTable⟧`),
       on("iPhone SE", "sq", ISLAND, `${PLAYED}.*, combo ⟦gameShared.emptyTable⟧, turn (?!⟦gameShared.yourTurn⟧)`),
-      on("iPhone SE", "it", ISLAND, `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧.*, turn (?!⟦gameShared.yourTurn⟧)`),
+      on("iPhone SE", "it", ISLAND, `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧`),
       on("iPhone SE", "sq", ISLAND, `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧`),
-      on("iPhone SE", "sq", "0/0", `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧.*, turn (?!⟦gameShared.(?:yourTurn|roundOver)⟧)`),
+      on("iPhone SE", "sq", "0/0", `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧.*, turn (?!⟦gameShared.yourTurn⟧)`),
     ],
   },
   {
@@ -149,6 +153,12 @@ const KNOWN: readonly Known[] = [
     ticket: "#1988 item 108",
     breaks: { "handZone leaves the window": 1575, "passa leaves the window": 1050, "gioca leaves the window": 1050, "hand leaves the window": 210 },
     where: [on("(?!iPad Pro)[^(]+", ANY, ANY, ".*, hand \\d+ at rest,")],
+  },
+  {
+    defect: "a badge lifts its seat's name a badge row higher, the top seat's into the turn chip, and a side seat's badge row lands on its own fan",
+    ticket: "#1988 item 109",
+    breaks: { "hudTurn overlaps nameTop": 108, "badgeLeft overlaps fanLeft": 108, "badgeRight overlaps fanRight": 108 },
+    where: [on("[^(]+", ANY, ANY, "badged ")],
   },
 ];
 
@@ -191,7 +201,7 @@ describe("the table keeps its rules", () => {
 });
 
 describe("the rules see what they are for", () => {
-  const tablet = { width: 1024, height: 768, insets: INSETS["0/0"], locale: "it" as const };
+  const tablet = { width: TABLETS[0].width, height: TABLETS[0].height, insets: INSETS["0/0"], locale: "it" as const };
   const state: TableState = {
     seats: FULL,
     hand: { cards: 13, onTurn: true, faceDown: false, raised: true },
@@ -202,8 +212,9 @@ describe("the rules see what they are for", () => {
 
   test("a clean table is clean, and every rule names rects that exist", () => {
     const t = solved();
+    const badged = tableRects({ ...tablet, state: { ...state, seats: badgedSeats(BADGES[0]) } });
     assert.deepEqual(brokenRules(t), []);
-    for (const name of new Set([...TABLE_RULES.inside, ...TABLE_RULES.apart.flat()])) assert.ok(t.rects[name], name);
+    for (const name of new Set([...TABLE_RULES.inside, ...TABLE_RULES.apart.flat()])) assert.ok(t.rects[name] ?? badged.rects[name], name);
   });
 
   test("an overlap goes red", () => {

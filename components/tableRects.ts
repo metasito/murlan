@@ -8,10 +8,11 @@ import { BACK_SCALE, CARD_H, CARD_W, FIELD_SCALE, handCardSize } from "./cardFac
 import { pileSlots } from "./flightPose.ts";
 import { fanCorners, fanPoint } from "./fanGeometry.ts";
 import { layoutHandRow } from "./handLayout.ts";
-import { CHIP_H, handDrop, SEAT_DISC, SEAT_LABEL_ALIGN, SEAT_LABEL_PAD, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatLabelW, seatNameSet } from "./seatLayout.ts";
+import { CHIP_H, handDrop, SEAT_DISC, SEAT_LABEL_ALIGN, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatLabelRows, seatLabelW, seatNameSet } from "./seatLayout.ts";
 import type { OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
-import { faceWordsWidth, noticeWidth, type NoticeContent, type NoticeLocale } from "./table/noticeWidth.ts";
+import { faceWordsWidth, noticeWidth, type NoticeContent, type NoticeLocale, type Pricing } from "./table/noticeWidth.ts";
+import { seatBadgeH } from "./table/noticeModel.ts";
 import { scorePillBox } from "./table/scorePillModel.ts";
 import type { EdgeInsets } from "./tableFrame.ts";
 import { tableLayout, type Rect, type TableLayout } from "./tableLayout.ts";
@@ -32,6 +33,9 @@ export const RECT_NAMES = [
   "nameTop",
   "nameLeft",
   "nameRight",
+  "badgeTop",
+  "badgeLeft",
+  "badgeRight",
   "fanTop",
   "fanLeft",
   "fanRight",
@@ -45,13 +49,16 @@ export type RectName = (typeof RECT_NAMES)[number];
 
 export interface TableState {
   /** Who sits each side and the cards they hold, 0 once they have gone out; null for a side no one sits. */
-  seats: Record<OpponentSide, { name: string; cards: number } | null>;
+  seats: Record<OpponentSide, { name: string; cards: number; badge?: SeatBadgeState } | null>;
   /** `raised` is the hand zone lifted to its designed place, which it holds while the viewer has something to play. */
   hand: { cards: number; onTurn: boolean; faceDown: boolean; raised: boolean };
   /** Cards in the combination on top of the pile; 0 on an empty table. */
   pile: number;
   chips: { combo: NoticeContent; turn: NoticeContent };
 }
+
+/** The badge under a seat's name: its player has left, or is reconnecting with `seconds` of grace shown. */
+export type SeatBadgeState = { kind: "vacated" } | { kind: "reconnecting"; seconds: number };
 
 /** One card as drawn: its four corners, in order round the card. */
 export type Card = readonly (readonly [number, number])[];
@@ -65,6 +72,8 @@ export interface TableRects {
   bleed: Partial<Record<RectName, { bottom: number }>>;
   /** Where a rect sized by priced words holds the words drawn in it, which may run narrower than the price. */
   aligns: Partial<Record<RectName, Align>>;
+  /** How much wider than its words' linear advances such a rect is priced: what snapping each glyph to a pixel may add. */
+  overcount: Partial<Record<RectName, number>>;
 }
 
 const box = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
@@ -103,6 +112,10 @@ export function tableRects(input: {
 
   const comboW = noticeWidth("hudCombo", locale, chips, state.chips.combo);
   const turnW = noticeWidth("turn", locale, chips, state.chips.turn);
+  const overcount: TableRects["overcount"] = {
+    hudCombo: comboW - noticeWidth("hudCombo", locale, chips, state.chips.combo, "linear"),
+    hudTurn: turnW - noticeWidth("turn", locale, chips, state.chips.turn, "linear"),
+  };
   const turnRoom = width - hud.turn.left - hud.turn.right;
   const pill = scorePillBox(0, 0, layout.pill);
   const chipH = CHIP_H(chips);
@@ -117,16 +130,29 @@ export function tableRects(input: {
   };
   const fans = { top: fan("top"), left: fan("left"), right: fan("right") };
   const { face, ...nameSet } = seatNameSet(scale);
-  const name = (dir: OpponentSide): Rect | null => {
-    const who = state.seats[dir];
-    if (!who) return null;
+  const label = (dir: OpponentSide, as: RectName, row: "name" | "badges", priced: (pricing: Pricing) => number, h: number): Rect => {
     const anchor = seatAnchor(dir);
     const labelW = seatLabelW(anchor, scale);
-    const w = Math.min(faceWordsWidth(face, nameSet, locale, who.name), labelW);
-    const h = SEAT_NAME_LINE * scale;
-    const bottom = anchors[dir].y - ring / 2 - SEAT_LABEL_PAD * scale;
+    const w = Math.min(priced("snapped"), labelW);
+    overcount[as] = w - Math.min(priced("linear"), labelW);
+    const bottom = anchors[dir].y - ring / 2 - seatLabelRows(scale, seatBadgeH(state.seats[dir]!.badge?.kind, scale))[row];
     const labelLeft = anchors[dir].x - ring / 2 + seatLabelLeft(anchor, scale, layout.nameInset[dir]);
     return box(aligned(SEAT_LABEL_ALIGN[anchor], labelLeft, labelW, w), bottom - h, w, h);
+  };
+  const named = (dir: OpponentSide, as: RectName): Rect | null => {
+    const who = state.seats[dir];
+    if (!who) return null;
+    return label(dir, as, "name", (pricing) => faceWordsWidth(face, nameSet, locale, who.name, pricing), SEAT_NAME_LINE * scale);
+  };
+  const badged = (dir: OpponentSide, as: RectName): Rect | null => {
+    const who = state.seats[dir];
+    if (!who?.badge) return null;
+    const { kind } = who.badge;
+    const content: NoticeContent =
+      who.badge.kind === "vacated"
+        ? [{ runs: [{ run: "text:game.seatLeft", slots: [who.name] }] }]
+        : [{ runs: [{ run: "text:gameTable.seatReconnecting", slots: [String(who.badge.seconds)] }] }];
+    return label(dir, as, "badges", (pricing) => noticeWidth(kind, locale, scale, content, pricing), seatBadgeH(kind, scale));
   };
 
   const fieldW = CARD_W(scale * FIELD_SCALE);
@@ -170,9 +196,12 @@ export function tableRects(input: {
       seatTop: state.seats.top && seat("top"),
       seatLeft: state.seats.left && seat("left"),
       seatRight: state.seats.right && seat("right"),
-      nameTop: name("top"),
-      nameLeft: name("left"),
-      nameRight: name("right"),
+      nameTop: named("top", "nameTop"),
+      nameLeft: named("left", "nameLeft"),
+      nameRight: named("right", "nameRight"),
+      badgeTop: badged("top", "badgeTop"),
+      badgeLeft: badged("left", "badgeLeft"),
+      badgeRight: badged("right", "badgeRight"),
       fanTop: span(fans.top.map(cover)),
       fanLeft: span(fans.left.map(cover)),
       fanRight: span(fans.right.map(cover)),
@@ -185,12 +214,16 @@ export function tableRects(input: {
     cards: { fanTop: fans.top, fanLeft: fans.left, fanRight: fans.right, pile: pileCards },
     bleed: { hand: { bottom: row.crop + row.tiltOverhang } },
     aligns: {
-      hudCombo: "flex-start",
+      hudCombo: hud.combo.align,
       hudTurn: hud.turn.align,
       nameTop: SEAT_LABEL_ALIGN[seatAnchor("top")],
       nameLeft: SEAT_LABEL_ALIGN[seatAnchor("left")],
       nameRight: SEAT_LABEL_ALIGN[seatAnchor("right")],
+      badgeTop: SEAT_LABEL_ALIGN[seatAnchor("top")],
+      badgeLeft: SEAT_LABEL_ALIGN[seatAnchor("left")],
+      badgeRight: SEAT_LABEL_ALIGN[seatAnchor("right")],
     },
+    overcount,
   };
 }
 
@@ -208,6 +241,9 @@ const SOLID: readonly RectName[] = [
   "nameTop",
   "nameLeft",
   "nameRight",
+  "badgeTop",
+  "badgeLeft",
+  "badgeRight",
   "fanTop",
   "fanLeft",
   "fanRight",

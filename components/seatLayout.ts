@@ -37,7 +37,6 @@ export function handRaised(i: { turnShown: boolean; isFinished: boolean; exchang
   return (i.turnShown && !i.isFinished && !i.exchangeOpen) || i.exchangeIsMine;
 }
 
-/** How far below its designed place the hand zone sits. */
 export function handDrop(raised: boolean, scale: number): number {
   return raised ? 0 : HAND_LIFT * scale;
 }
@@ -258,6 +257,15 @@ export const SEAT_LABEL_GAP = Spacing.xxs;
 export const SEAT_LABEL_PAD = Spacing.xs;
 export function seatLabelH(scale: number): number {
   return (SEAT_NAME_LINE + SEAT_LABEL_GAP + SEAT_LABEL_PAD) * scale + CHIP_H(scale);
+}
+
+/**
+ * How far above the disc's top a seat's label holds the bottoms of its two rows: the name, and the
+ * badge row under it, `height` tall, 0 when the seat shows no badge.
+ */
+export function seatLabelRows(scale: number, height: number): { name: number; badges: number } {
+  const badges = SEAT_LABEL_PAD * scale;
+  return { badges, name: height > 0 ? badges + height + SEAT_LABEL_GAP * scale : badges };
 }
 
 /** A seat name's size at scale 1, before `tableFontSize`'s floor. */

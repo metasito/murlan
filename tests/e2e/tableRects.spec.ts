@@ -56,6 +56,32 @@ interface Drawn { boxes: Partial<Record<RectName, Box>>; clip: Rect | null; text
 /** Each rect as the union of what its selector matched; a scrolled hand as the part its window shows. */
 async function drawn(page: Page, rects: Partial<Record<RectName, { sel: string; fit: Fit }>>): Promise<Drawn> {
   return page.evaluate((specs: Record<string, { sel: string; fit: Fit }>) => {
+    /** Words at linear advances: set LARGE times over in the same face, case, tracking and features, a hinted advance is off by a LARGEth of a pixel. */
+    const LARGE = 64;
+    const linear = (el: Element, words: string) => {
+      const cs = getComputedStyle(el);
+      const probe = document.createElement("span");
+      Object.assign(probe.style, {
+        position: "absolute",
+        visibility: "hidden",
+        whiteSpace: "pre",
+        fontFamily: cs.fontFamily,
+        fontWeight: cs.fontWeight,
+        fontStyle: cs.fontStyle,
+        fontVariantNumeric: cs.fontVariantNumeric,
+        fontFeatureSettings: cs.fontFeatureSettings,
+        fontKerning: cs.fontKerning,
+        textTransform: cs.textTransform,
+        fontSize: `${parseFloat(cs.fontSize) * LARGE}px`,
+        letterSpacing: `${(parseFloat(cs.letterSpacing) || 0) * LARGE}px`,
+      });
+      probe.lang = el.closest("[lang]")?.getAttribute("lang") ?? "";
+      probe.textContent = words;
+      document.body.appendChild(probe);
+      const w = probe.getBoundingClientRect().width / LARGE;
+      probe.remove();
+      return w;
+    };
     const union = (rs: DOMRect[]) => {
       const live = rs.filter((r) => r.width > 0 && r.height > 0);
       if (live.length === 0) return null;
@@ -71,7 +97,16 @@ async function drawn(page: Page, rects: Partial<Record<RectName, { sel: string; 
       boxes[name] = r;
       if (fit === "same") continue;
       const sizes = els.flatMap((e) => [e, ...e.querySelectorAll("*")]).map((e) => parseFloat(getComputedStyle(e).fontSize));
-      boxes[name].text = { words: els.map((e) => e.textContent ?? "").join(""), em: Math.max(...sizes) };
+      let [drawnW, linearW] = [0, 0];
+      for (const e of els)
+        for (let walk = document.createTreeWalker(e, NodeFilter.SHOW_TEXT), node = walk.nextNode(); node; node = walk.nextNode()) {
+          if (!node.textContent) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          drawnW += range.getBoundingClientRect().width;
+          linearW += linear(node.parentElement!, node.textContent);
+        }
+      boxes[name].text = { words: els.map((e) => e.textContent ?? "").join(""), em: Math.max(...sizes), drawn: drawnW, linear: linearW };
     }
     const window = document.querySelector('[data-testid="hand-pan"]')?.parentElement;
     const c = window && getComputedStyle(window).overflowX !== "visible" ? window.getBoundingClientRect() : null;
@@ -126,7 +161,10 @@ function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
     const raw = got.boxes[name];
     const box = raw && name === "hand" ? { ...raw, ...clipTo(raw, got.clip) } : raw;
     if (!solved !== !box) bad.push(`${name}: drawn ${box ? at(box) : "nothing"}, solver ${solved ? at(solved) : "nothing"}`);
-    else if (solved && box && !fits[spec.fit](box, solved, want.aligns[name])) bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}`);
+    else if (solved && box && !fits[spec.fit](box, solved, { align: want.aligns[name], overcount: want.overcount[name] })) {
+      const words = box.text && ` (words ${box.text.drawn.toFixed(1)} drawn, ${box.text.linear.toFixed(1)} linear; overcount ${want.overcount[name]?.toFixed(1)})`;
+      bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}${words ?? ""}`);
+    }
   }
   return bad;
 }

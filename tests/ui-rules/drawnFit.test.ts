@@ -3,46 +3,69 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fits, HINT_PER_GLYPH, TOLERANCE, unpriced, type Box } from "../helpers/drawnFit.ts";
+import { noticeBox } from "../../components/table/noticeModel.ts";
+import { FALLBACK_EM } from "../../components/table/noticeWidth.ts";
 
 const EM = 14;
-const word = (words: string): Box["text"] => ({ words, em: EM });
+const LINEAR = 60;
+const word = (words: string, drawn = LINEAR): Box["text"] => ({ words, em: EM, drawn, linear: LINEAR });
 const ROW = { x: 100, y: 40, w: 120, h: 24 };
+/** What the solver priced past linear for snapping. */
+const OVERCOUNT = 5;
 
 describe("the drawn fits stay as tight as the evidence", () => {
   test("a layout unit of rounding, no more", () => {
     assert.equal(TOLERANCE, 1);
   });
 
-  test("a priced glyph may fall two pixels short, a glyph no face holds an em", () => {
-    assert.equal(HINT_PER_GLYPH, 1);
-    assert.equal(unpriced(word("TURNO")!), 10);
-    assert.equal(unpriced(word("你")!), EM);
+  test("a renderer may draw half a pixel a glyph off linear; only a glyph no face holds may fall short of its price", () => {
+    assert.equal(HINT_PER_GLYPH, 0.5);
+    assert.equal(unpriced(word("TURNO")!), 0);
+    assert.equal(FALLBACK_EM, 1.25);
+    assert.equal(unpriced(word("你")!), FALLBACK_EM * EM);
   });
 });
 
 describe("the drawn fits see what they are for", () => {
   const priced = { ...ROW };
-  const drawnAt = (x: number, w: number): Box => ({ x, y: ROW.y, w, h: ROW.h, text: word("TURNO") });
+  const plate = (x: number, w: number, text = word("TURNO")): Box => ({ x, y: ROW.y, w, h: ROW.h, text });
+  const linearW = ROW.w - OVERCOUNT;
 
   test("a centred chip that keeps its centre fits, one off it does not", () => {
-    assert.ok(fits.words(drawnAt(102, 116), priced, "center"));
-    assert.ok(!fits.words(drawnAt(100, 116), priced, "center"));
-    assert.ok(!fits.words(drawnAt(104, 116), priced, "center"));
+    const x = ROW.x + OVERCOUNT / 2;
+    assert.ok(fits.words(plate(x, linearW), priced, { align: "center", overcount: OVERCOUNT }));
+    assert.ok(!fits.words(plate(x - 2, linearW), priced, { align: "center", overcount: OVERCOUNT }));
+    assert.ok(!fits.words(plate(x + 2, linearW), priced, { align: "center", overcount: OVERCOUNT }));
   });
 
-  test("a chip with no alignment from the solver never fits", () => {
-    assert.ok(!fits.words(drawnAt(102, 116), priced, undefined));
+  test("a chip with no alignment or no overcount from the solver never fits", () => {
+    assert.ok(!fits.words(plate(ROW.x, linearW), priced, { overcount: OVERCOUNT }));
+    assert.ok(!fits.words(plate(ROW.x, linearW), priced, { align: "flex-start" }));
   });
 
-  test("words short of their price by more than two pixels a glyph do not fit", () => {
-    assert.ok(fits.words(drawnAt(100, 120 - 10 - TOLERANCE), priced, "flex-start"));
-    assert.ok(!fits.words(drawnAt(100, 120 - 10 - TOLERANCE - 0.5), priced, "flex-start"));
+  test("a plate priced one gap wider than it draws does not fit", () => {
+    const gap = noticeBox("turn", 1).gap;
+    assert.ok(gap > TOLERANCE, `a gap of ${gap}`);
+    assert.ok(fits.words(plate(ROW.x, linearW), priced, { align: "flex-start", overcount: OVERCOUNT }));
+    assert.ok(!fits.words(plate(ROW.x, linearW - gap), priced, { align: "flex-start", overcount: OVERCOUNT }));
+  });
+
+  test("words a hinting renderer draws narrower fit by what it drew them narrower, up to half a pixel a glyph", () => {
+    const glyphs = 5;
+    const within = HINT_PER_GLYPH * glyphs;
+    assert.ok(fits.words(plate(ROW.x, linearW - within, word("TURNO", LINEAR - within)), priced, { align: "flex-start", overcount: OVERCOUNT }));
+    assert.ok(!fits.words(plate(ROW.x, linearW - within - 1, word("TURNO", LINEAR - within - 1)), priced, { align: "flex-start", overcount: OVERCOUNT }));
+    assert.ok(!fits.words(plate(ROW.x, linearW - within, word("TURNO")), priced, { align: "flex-start", overcount: OVERCOUNT }));
+  });
+
+  test("a plate drawn wider than its linear price does not fit", () => {
+    assert.ok(!fits.words(plate(ROW.x, linearW + TOLERANCE + 0.5), priced, { align: "flex-start", overcount: OVERCOUNT }));
   });
 
   test("a name keeps its line's bottom and its label's alignment", () => {
-    const name: Box = { x: 220 - 115, y: ROW.y + 4, w: 115, h: ROW.h - 4, text: word("BESNIK") };
-    assert.ok(fits.line(name, priced, "flex-end"));
-    assert.ok(!fits.line(name, priced, "flex-start"));
-    assert.ok(!fits.line({ ...name, h: ROW.h - 6 }, priced, "flex-end"));
+    const name: Box = { x: ROW.x + ROW.w - linearW, y: ROW.y + 4, w: linearW, h: ROW.h - 4, text: word("BESNIK") };
+    assert.ok(fits.line(name, priced, { align: "flex-end", overcount: OVERCOUNT }));
+    assert.ok(!fits.line(name, priced, { align: "flex-start", overcount: OVERCOUNT }));
+    assert.ok(!fits.line({ ...name, h: ROW.h - 6 }, priced, { align: "flex-end", overcount: OVERCOUNT }));
   });
 });

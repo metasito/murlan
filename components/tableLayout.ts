@@ -40,7 +40,7 @@ export interface TableLayout {
   /** The scale the HUD's chips are drawn at: the table's, or less where the window is too narrow for the row. */
   chips: number;
   /** The combo pill's top-left corner, and the band the turn chip is aligned across. */
-  hud: { combo: { left: number; top: number }; turn: { left: number; right: number; top: number; align: Align } };
+  hud: { combo: { left: number; top: number; align: Align }; turn: { left: number; right: number; top: number; align: Align } };
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
   /** The hand zone at its designed place, and the padding its row and buttons stand on. At rest it sits `handDrop` lower. */
@@ -108,7 +108,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     chipsBottom: frame.tableTop + CHIP_H(scale) + frame.pad,
     chips: chipScale(scale, width),
     hud: {
-      combo: { left: frame.tableLeft + frame.pad, top: frame.tableTop },
+      combo: { left: frame.tableLeft + frame.pad, top: frame.tableTop, align: "flex-start" },
       turn: { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop, align: "center" },
     },
     rail: {

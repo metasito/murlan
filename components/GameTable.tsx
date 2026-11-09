@@ -937,7 +937,7 @@ export function GameTable({
           {...a11yGroup(topBarA11yLabel)}
           pointerEvents={focusMode ? "none" : undefined}
           {...behindVeil}
-          style={[styles.hudLeft, hud.combo, focusFadeStyle, greyStyle]}
+          style={[styles.hudLeft, { left: hud.combo.left, top: hud.combo.top, alignItems: hud.combo.align }, focusFadeStyle, greyStyle]}
         >
           {/* The chip draws the words the group's label already says. */}
           <View {...a11yHidden()}>

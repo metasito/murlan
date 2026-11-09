@@ -2,14 +2,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, View, StyleSheet, type TextProps, type TextStyle, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
-import { mockupPx, NOTICE_FACES } from "./noticeModel";
+import { mockupPx, NOTICE_FACES, seatBadgeH, type SeatBadge } from "./noticeModel";
 import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
-  SEAT_LABEL_GAP,
-  SEAT_LABEL_PAD,
   seatGap,
   seatLabelH,
+  seatLabelRows,
   SEAT_LABEL_ALIGN,
   seatAnchor,
   seatLabelLeft,
@@ -564,25 +563,25 @@ function SeatRing({
 // ─── SeatBadges ───────────────────────────────────────────────────────────────
 
 function SeatBadges({
-  vacated,
+  badge,
   reconnecting,
   name,
   scale,
   maxW,
 }: {
-  vacated: boolean;
+  badge: SeatBadge;
   reconnecting?: { seconds: number; resetKey: string };
   name: string;
   scale: number;
   maxW: number;
 }) {
-  if (!vacated && !reconnecting) return null;
   return (
     <View style={[seatStyles.seatBadgeRow, { maxWidth: maxW }]}>
-      {reconnecting && (
+      {badge === "reconnecting" && reconnecting ? (
         <ReconnectingMark seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} />
+      ) : (
+        <VacatedMark username={name} scale={scale} />
       )}
-      {!reconnecting && vacated && <VacatedMark username={name} scale={scale} />}
     </View>
   );
 }
@@ -715,23 +714,13 @@ function SeatWho({
   const labelW = seatLabelW(anchor, scale);
   const labelLeft = seatLabelLeft(anchor, scale, nameInset);
   const nameSet = seatNameSet(scale);
+  const badge: SeatBadge | undefined = reconnecting ? "reconnecting" : vacated ? "vacated" : undefined;
+  const rows = seatLabelRows(scale, seatBadgeH(badge, scale));
+  const row = (above: number) => [seatStyles.whoLabel, { width: labelW, left: labelLeft, bottom: disc + above, alignItems: SEAT_LABEL_ALIGN[anchor] }];
   return (
     <View style={seatStyles.who}>
       {!focusMode && (
-        <View
-          style={[
-            seatStyles.whoLabel,
-            {
-              width: labelW,
-              left: labelLeft,
-              bottom: disc,
-              gap: SEAT_LABEL_GAP * scale,
-              paddingBottom: SEAT_LABEL_PAD * scale,
-              alignItems: SEAT_LABEL_ALIGN[anchor],
-            },
-          ]}
-          pointerEvents="none"
-        >
+        <View style={row(rows.name)} pointerEvents="none">
           <TableText
             testID="seat-name"
             {...({ dataSet: { lit: String(lit) } } as TextProps)}
@@ -752,13 +741,11 @@ function SeatWho({
           >
             {name}
           </TableText>
-          <SeatBadges
-            vacated={vacated}
-            reconnecting={reconnecting}
-            name={name}
-            scale={scale}
-            maxW={labelW}
-          />
+        </View>
+      )}
+      {!focusMode && badge && (
+        <View style={row(rows.badges)} pointerEvents="none">
+          <SeatBadges badge={badge} reconnecting={reconnecting} name={name} scale={scale} maxW={labelW} />
         </View>
       )}
       <SeatRing
@@ -826,9 +813,7 @@ const seatStyles = StyleSheet.create({
   // caller supplies width and both insets in points, worked out from the disc
   // it hangs over — centring it on a percentage translate instead leaves the
   // label beside the disc on any renderer that does not resolve one.
-  // The gap and the pad ride the table's scale, so they are passed in rather
-  // than set here — `seatLabelH` reserves this column's height from the same
-  // two numbers, and a flat length here is height it would not know about.
+  // Each row's bottom comes from `seatLabelRows`, which `tableRects` reads too.
   whoLabel: { position: "absolute" },
 
   // Bare on the felt, as the mockup's `.nm`: unlit, its ink is held to 4.5:1 over
