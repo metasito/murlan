@@ -118,7 +118,7 @@ describe("a planted breach is caught", () => {
     ["handlerReadsIo", socket("plant.ts"), "export function registerX({ io, rt }: HandlerContext) {}"],
   ];
   for (const [rule, file, src] of plants) {
-    test(`${rule} in ${file}`, () => {
+    test(`${rule} in ${file}: ${src}`, () => {
       assert.deepEqual(rules[rule]([[file, src]]), [file]);
     });
   }

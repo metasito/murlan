@@ -5,11 +5,8 @@
  */
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { git } from "../loop/cli.mjs";
+import { matcher } from "./codeowners.mjs";
 
-/**
- * CODEOWNERS patterns: a trailing `/` is a directory, a pattern holding `/` is anchored at the root,
- * one without matches a file name anywhere, and `*` stays inside one path segment.
- */
 export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/fixtures/", what: "the mockups" },
   { pattern: "*.nightly.spec.ts", what: "the parity and pixel specs, with their thresholds" },
@@ -33,9 +30,46 @@ export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/helpers/skiaPerfBudgets.ts", what: "the Skia table's speed budgets" },
   { pattern: "tests/e2e/skiaPerf.spec.ts", what: "the windows, throttle and seed the speed budgets are read in" },
   { pattern: "tools/ci/target-freeze.mjs", what: "this list" },
+  { pattern: "tools/ci/codeowners.mjs", what: "how this list's patterns match, here and in the verdict" },
   { pattern: ".github/workflows/target-freeze.yml", what: "the workflow that runs this list" },
   { pattern: "tests/tooling/targetFreeze.test.ts", what: "this list's floor and the workflow's shape" },
   { pattern: ".github/CODEOWNERS", what: "who reviews this list" },
+]);
+
+/**
+ * Reviewed by OWNER like a target but frozen with nothing (RULES.md 53): what decides whether a
+ * test result counts, which a change to the code under test routinely touches beside it.
+ */
+export const JUDGES = Object.freeze([
+  { pattern: "tools/ci/test-verdict.mjs", what: "the verdict over every runner's results" },
+  { pattern: "tools/ci/quarantine.json", what: "the skips the verdict excuses" },
+  { pattern: "tools/ci/results-*.mjs", what: "the runners' results reporters" },
+  { pattern: "tools/ci/gate.mjs", what: "the needs CI gate requires" },
+  { pattern: "tools/ci/scope*.mjs", what: "which suites a change runs" },
+  { pattern: "tests/tooling/testVerdict.test.ts", what: "the plants the verdict reds on" },
+  { pattern: ".github/workflows/ci.yml", what: "the jobs, their uploads and the gate that reads them" },
+  { pattern: "package.json", what: "the node runs' reporters, results among them" },
+  { pattern: "scripts/nodeTest.mjs", what: "the launcher the node runs and their reporters go through" },
+  { pattern: "jest.config.js", what: "the native run's reporters, results among them" },
+  { pattern: "tests/e2e/playwright*.config.ts", what: "the browser runs' reporters and their forbidOnly" },
+  { pattern: "tools/ci/e2e-budget.mjs", what: "a reporter the browser runs' results pass through" },
+  { pattern: "tools/ci/native-budget.mjs", what: "a reporter the native run's results pass through" },
+  { pattern: "tools/ci/preflightMemory.mjs", what: "the native and browser runs' globalSetup" },
+  { pattern: "tools/ci/e2eGlobalTimeout.mjs", what: "imported by the browser runs' config" },
+  { pattern: "tests/e2e/helpers/voteDeadline.ts", what: "imported by the browser runs' config" },
+  { pattern: "tests/helpers/fileDeadline.mjs", what: "imported into every node test process" },
+  { pattern: "tests/helpers/timeoutHeadroomReporter.mjs", what: "a reporter the node runs' results pass through" },
+  { pattern: "tests/helpers/timeoutHeadroom.mjs", what: "imported by a node runs' reporter" },
+  { pattern: "tests/helpers/filesRunReporter.mjs", what: "a reporter the node runs' results pass through" },
+  { pattern: "tests/helpers/exitGuard.mjs", what: "imported by a node runs' reporter" },
+  { pattern: "tools/loop/tests/helpers/clearLoopEnv.mjs", what: "imported into every harness test process" },
+  { pattern: "tools/loop/session-env.mjs", what: "imported by the node runs' launcher" },
+  { pattern: "tools/loop/limits.mjs", what: "imported by the browser runs' config" },
+  { pattern: "scripts/lib/entry.mjs", what: "imported by the node runs' launcher" },
+  { pattern: "scripts/lib/proc.mjs", what: "imported by the node runs' launcher" },
+  { pattern: "tests/e2e/seatNameContrast.spec.ts", what: "the lit seat name's regression floor" },
+  { pattern: "tests/tooling/litFloor.test.ts", what: "the floor held equal to its ruling" },
+  { pattern: "docs/GAME-RULES.md", what: "the rulings the floors are held to" },
 ]);
 
 export const CODE = Object.freeze(["app/", "components/", "lib/"]);
@@ -45,17 +79,7 @@ export const OWNER = "@rotonmeta";
 export const WORKFLOW = ".github/workflows/target-freeze.yml";
 export const CHECK = "Target freeze";
 
-/** @param {string} pattern */
-export function matcher(pattern) {
-  const dir = pattern.endsWith("/");
-  const body = dir ? pattern.slice(0, -1) : pattern;
-  const glob = body
-    .split("*")
-    .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-    .join("[^/]*");
-  const re = new RegExp(`${body.includes("/") ? "^" : "(^|/)"}${glob}${dir ? "/" : "$"}`);
-  return (/** @type {string} */ file) => re.test(file);
-}
+export { matcher };
 
 const targetMatchers = TARGETS.map((t) => matcher(t.pattern));
 const codeMatchers = CODE.map((dir) => (/** @type {string} */ file) => file.startsWith(dir) && !file.endsWith(".md"));
@@ -107,10 +131,11 @@ export function impostors(workflows) {
 }
 
 export function codeowners() {
-  const width = Math.max(...TARGETS.map((t) => t.pattern.length + 1));
+  const owned = [...TARGETS, ...JUDGES];
+  const width = Math.max(...owned.map((t) => t.pattern.length + 1));
   return [
-    "# Generated from TARGETS in tools/ci/target-freeze.mjs (RULES.md 52); tests/tooling/targetFreeze.test.ts holds them equal.",
-    ...TARGETS.map((t) => `${(t.pattern.includes("/") ? `/${t.pattern}` : t.pattern).padEnd(width)} ${OWNER}`),
+    "# Generated from TARGETS and JUDGES in tools/ci/target-freeze.mjs (RULES.md 52, 53); tests/tooling/targetFreeze.test.ts holds them equal.",
+    ...owned.map((t) => `${(t.pattern.includes("/") ? `/${t.pattern}` : t.pattern).padEnd(width)} ${OWNER}`),
     "",
   ].join("\n");
 }
