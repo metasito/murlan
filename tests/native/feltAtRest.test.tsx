@@ -11,7 +11,8 @@ import { FeltCanvas } from '@/components/table/feltCanvas';
 import { FELT_K_CAP, WEAVE_PLANES } from '@/components/table/feltShader';
 import { DESIGN, TABLE_CENTRE, lampControls, restingLamp, stepLamp, type Lamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
-import { FeltGradient } from '@/lib/tokens';
+import { setMotionPreference } from '@/lib/accessibility';
+import { FeltGradient, Motion } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
 
 type Kind = 'weave' | 'lit' | 'cloth' | '';
@@ -150,6 +151,8 @@ const flare = (lamp: ReturnType<typeof makeMutable<Lamp>>) =>
   }, true);
 // Past the settled felt's hand-over, when only the cross still draws.
 const HANDED_OVER_MS = 600;
+// The most one 16ms frame can move a `shift` ramp under withTiming's default ease, whose steepest slope is 2.
+const RAMP_STEP = (2 * 16) / Motion.duration.shift;
 // The cloth lit at either end of the lamp's sway, crossed by where the lamp is.
 const LIT_PER_TARGET = 2;
 const settle = (lamp: ReturnType<typeof makeMutable<Lamp>>, pool: readonly [number, number, number]) =>
@@ -160,6 +163,7 @@ const settle = (lamp: ReturnType<typeof makeMutable<Lamp>>, pool: readonly [numb
   }, true);
 
 beforeEach(() => {
+  setMotionPreference('off');
   jest.useFakeTimers();
   jest.spyOn(PixelRatio, 'get').mockReturnValue(2);
   mock.bakes.length = 0;
@@ -170,6 +174,7 @@ beforeEach(() => {
   mock.blank = '';
 });
 afterEach(() => {
+  setMotionPreference('system');
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
@@ -198,8 +203,19 @@ describe('the felt cloth', () => {
     const drawnAt = seen.findIndex((w) => w !== null);
     expect(seen[drawnAt]).toBe(1);
     expect(seen.at(-1)).toBe(0);
-    expect(Math.max(...steps(seen))).toBeLessThan(0.1);
+    expect(Math.max(...steps(seen))).toBeLessThanOrEqual(RAMP_STEP);
     expect(seen.slice(drawnAt).every((w, i, all) => w !== null && (i === 0 || w <= (all[i - 1] as number)))).toBe(true);
+    await view.unmount();
+  });
+
+  it('hands the lit cloth straight over to the settled cross when the player asked for less motion', async () => {
+    setMotionPreference('on');
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const { seen, each } = watch(lamp);
+    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    await frames(1000, each);
+    expect(seen.filter((w) => w !== null && w > 0 && w < 1)).toEqual([]);
+    expect(seen.at(-1)).toBe(0);
     await view.unmount();
   });
 

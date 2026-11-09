@@ -38,7 +38,8 @@ import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
-import { CardGlow, Colors, withAlpha } from "@/lib/theme";
+import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, FELT_K_CAP, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
@@ -360,9 +361,6 @@ function settledAim(s: Lamp): string {
 const CLOTH_ENDS = [-SWAY, SWAY] as const;
 const CACHED_TARGETS = 3;
 const CACHED_CLOTHS = CACHED_TARGETS * CLOTH_ENDS.length;
-/** How long a settled felt takes to hand the lit cloth over to its cross. */
-const SETTLE_MS = 500;
-const NEVER_REDUCED = { reduceMotion: ReduceMotion.Never };
 
 /** The cloth with the lamp `lean` points off its target, unflared, on the canvas's own device pixels: lit from the planes, or in one pass where there are none. */
 function bakeSettled(aim: Pool, base: ClothUniforms, planes: SkImage[] | null, gx: number, gy: number, lean: number): SkImage | null {
@@ -421,7 +419,7 @@ const freeWeave = ({ planes, cloths }: Weave) => {
   cloths.dispose();
 };
 
-/** How long a window has to hold one size before the felt bakes for it. */
+/** How long a window has to hold one size before the felt bakes for it. A one-off: a debounce on the bake, not a motion the player sees. */
 const SIZE_SETTLES_MS = 200;
 
 /**
@@ -470,12 +468,6 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-/** Once a settled felt's cross is drawn, hands the lit cloth over to it, unless the lamp has moved on since. */
-function settleOnto(lamp: SharedValue<Lamp>, settle: SharedValue<number>, aim: string) {
-  "worklet";
-  if (settledAim(lamp.value) === aim) settle.set(withTiming(0, { duration: SETTLE_MS, ...NEVER_REDUCED }));
-}
-
 export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCanvasProps) {
   const greyLayer = useGreyLayer(grey);
   const canvas = useCanvasRef();
@@ -521,10 +513,16 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     const [left, right] = CLOTH_ENDS.map(lit);
     return left && right ? { aim, left, right } : null;
   }, [weave, aim, gx, gy, stops, base]);
+  const reduceMotion = usePrefersReducedMotion();
   useEffect(() => {
-    if (rest) scheduleOnUI(settleOnto, lamp, settle, rest.aim);
-    else settle.set(1);
-  }, [rest, lamp, settle]);
+    if (!rest) return void settle.set(1);
+    const settled = rest.aim;
+    const ms = motionMs("shift", reduceMotion);
+    scheduleOnUI(() => {
+      "worklet";
+      if (settledAim(lamp.value) === settled) settle.set(ms ? withTiming(0, { duration: ms, reduceMotion: ReduceMotion.Never }) : 0);
+    });
+  }, [rest, lamp, settle, reduceMotion]);
 
   const uniforms = useDerivedValue(() => ({
     ...base,
