@@ -7,7 +7,7 @@ import { BACK_SCALE, CARD_H, CARD_W, chipScale, FIELD_SCALE, handCardSize, physi
 import { pileSlots } from "./flightPose.ts";
 import { fanCorners, fanPoint } from "./fanGeometry.ts";
 import { layoutHandRow } from "./handLayout.ts";
-import { actionBtnSize, CHIP_H, HAND_LIFT, SEAT_DISC, SEAT_LABEL_PAD, SEAT_NAME_FS, SEAT_NAME_LINE, SEAT_NAME_TRACKING, seatLabelW } from "./seatLayout.ts";
+import { actionBtnSize, CHIP_H, HAND_LIFT, SEAT_DISC, SEAT_LABEL_PAD, SEAT_NAME_FS, SEAT_NAME_LINE, SEAT_NAME_TRACKING, seatLabelW, seatNameLeft } from "./seatLayout.ts";
 import { sideNameInset } from "./table/legibilityRing.ts";
 import type { OpponentSide } from "./seatLayout.ts";
 import { faceWordsWidth, noticeWidth, type NoticeContent, type NoticeLocale } from "./table/noticeWidth.ts";
@@ -60,7 +60,7 @@ export interface TableRects {
   rects: Record<RectName, Rect | null>;
   /** The cards inside a fan's or the pile's rect, which are what may not touch: the rect's corners beside a turned card are bare felt. */
   cards: Partial<Record<RectName, readonly Card[]>>;
-  /** How far past the window a rect is drawn on purpose: the hand's crop and tilt, and the hand zone's rest below its lifted place. */
+  /** How far past the window a rect is drawn on purpose: the hand's crop and tilt. */
   bleed: Partial<Record<RectName, { bottom: number }>>;
 }
 
@@ -104,7 +104,7 @@ export function tableRects(input: {
 
   const knob = physicalTouchTarget(scale);
   const comboW = noticeWidth("hudCombo", locale, chips, state.chips.combo);
-  const turnW = Math.min(noticeWidth("turn", locale, chips, state.chips.turn), tableW);
+  const turnW = noticeWidth("turn", locale, chips, state.chips.turn);
   const pill = scorePillBox(0, 0, layout.pill);
   const chipH = CHIP_H(chips);
 
@@ -126,7 +126,7 @@ export function tableRects(input: {
     const h = SEAT_NAME_LINE * scale;
     const bottom = anchors[dir].y - ring / 2 - SEAT_LABEL_PAD * scale;
     const inset = dir === "top" ? 0 : sideNameInset(dir, anchors[dir].x, ring, width);
-    const left = dir === "top" ? anchors.top.x - w / 2 : dir === "left" ? anchors.left.x - ring / 2 + inset : anchors.right.x + ring / 2 - inset - w;
+    const left = anchors[dir].x - ring / 2 + seatNameLeft(anchor, scale, inset, w);
     return box(left, bottom - h, w, h);
   };
 
@@ -185,7 +185,7 @@ export function tableRects(input: {
       hand,
     },
     cards: { fanTop: fans.top, fanLeft: fans.left, fanRight: fans.right, pile: pileCards },
-    bleed: { handZone: { bottom: sink }, passa: { bottom: sink }, gioca: { bottom: sink }, hand: { bottom: row.crop + row.tiltOverhang + sink } },
+    bleed: { hand: { bottom: row.crop + row.tiltOverhang } },
   };
 }
 

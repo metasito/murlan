@@ -40,6 +40,7 @@ import {
   type NoticeShape,
   type PanelLine,
 } from "./noticeModel";
+import { PLATE_BORDER } from "./noticeWidth";
 import { PILL_PLATE_STOPS, PILL_SHADOW } from "./scorePillModel";
 
 type Paint = {
@@ -452,9 +453,9 @@ const styles = StyleSheet.create({
   plate: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
+    borderWidth: PLATE_BORDER,
   },
-  panel: { borderWidth: 1 },
+  panel: { borderWidth: PLATE_BORDER },
   dim: { ...StyleSheet.absoluteFill, backgroundColor: Scrim.medium, zIndex: DIM_Z },
   line: { ...NOTICE_FACES.regular },
   upper: { textTransform: "uppercase" },

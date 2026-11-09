@@ -5,6 +5,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { ALL_CAPTURE_STATES } from "../../lib/captureStates.ts";
 import { SUPPORTED_LOCALES } from "../../shared/i18n.ts";
+import { USERNAME_MAX } from "../../shared/username.ts";
 import { brokenRules, intersects, RECT_NAMES, TABLE_RULES, tableRects, type TableState } from "../../components/tableRects.ts";
 import type { EdgeInsets } from "../../components/tableFrame.ts";
 import { capturedTable, comboScene, exchangeScenes, turnScenes } from "../helpers/tableScenes.ts";
@@ -33,6 +34,8 @@ const EXTREMES: { id: string; base: Omit<TableState, "chips"> }[] = [];
 for (const hand of [0, 1, 13, 18])
   for (const pile of [0, 1, 5, 12, 13])
     EXTREMES.push({ id: `hand ${hand}, pile ${pile}`, base: { seats: FULL, hand: { cards: hand, onTurn: true, faceDown: false, raised: true }, pile } });
+/** The widest name an account may take, on the move. */
+const LONGEST_USERNAME = "W".repeat(USERNAME_MAX);
 /** The exchange is announced over a fresh deal: every seat full, the pile empty. */
 const DEALT: Omit<TableState, "chips"> = { seats: FULL, hand: { cards: 13, onTurn: true, faceDown: false, raised: true }, pile: 0 };
 
@@ -48,45 +51,71 @@ function* cases(): Generator<Case> {
           const name = longest(s.game.players.map((p) => p.name));
           for (const turn of turnScenes(name)) {
             const combo = comboScene(s.game.lastPlayedCombination, { you: false, name });
-            yield { label: `${at}, ${s.id}, ${turn.name}`, ...vp, insets, locale, state: { ...s.base, chips: { combo, turn: turn.turn } } };
+            yield { label: `${at}, ${s.id}, ${s.base.hand.raised ? "raised" : "at rest"}, ${turn.name}`, ...vp, insets, locale, state: { ...s.base, chips: { combo, turn: turn.turn } } };
           }
         }
         const [onMove] = turnScenes(LONGEST_BOT).filter((t) => t.name.includes("turnOf"));
         for (const e of EXTREMES) {
           yield { label: `${at}, ${e.id}, ${onMove.name}`, ...vp, insets, locale, state: { ...e.base, chips: { combo: comboScene(null, { you: false, name: LONGEST_BOT }), turn: onMove.turn } } };
         }
+        const [onMoveLong] = turnScenes(LONGEST_USERNAME).filter((t) => t.name.includes("turnOf"));
+        yield { label: `${at}, longest username, ${onMoveLong.name}`, ...vp, insets, locale, state: { ...DEALT, chips: { combo: comboScene(null, { you: false, name: LONGEST_BOT }), turn: onMoveLong.turn } } };
         for (const scene of exchangeScenes(LONGEST_BOT)) {
           yield { label: `${at}, exchange ${scene.name}`, ...vp, insets, locale, state: { ...DEALT, chips: { combo: scene.combo, turn: scene.turn } } };
         }
       }
 }
 
-interface Known { defect: string; rules: readonly string[]; where: RegExp }
+interface Known {
+  defect: string;
+  /** Where it is tracked: `#1988 item N`. */
+  ticket: `#1988 item ${number}`;
+  /** Each rule with the number of cases that break it today. */
+  breaks: Readonly<Record<string, number>>;
+  where: RegExp;
+}
 
 /**
- * What the table on main breaks, each found by this test and none fixed here: a break outside them
- * is red, and so is an entry nothing breaks any more, so the list only shrinks.
+ * What the table on main breaks, each found by this test and none fixed here. A break outside an
+ * entry is red; so is a rule of an entry broken more or fewer times than it says, so a fix has to
+ * lower its count and the list only shrinks.
  */
 const KNOWN: readonly Known[] = [
   {
     defect: "a side name's line runs onto the top back of its own fan once sideNameInset slides it inboard",
-    rules: ["nameLeft overlaps fanLeft", "nameRight overlaps fanRight"],
+    ticket: "#1988 item 103",
+    breaks: { "nameLeft overlaps fanLeft": 1899, "nameRight overlaps fanRight": 2064 },
     where: /^iPhone (SE|12|Pro Max) /,
   },
   {
     defect: "a straight of twelve or more on a tablet is laid across the side fans: fieldRoomW does not leave them room",
-    rules: ["fanLeft overlaps pile", "fanRight overlaps pile"],
+    ticket: "#1988 item 104",
+    breaks: { "fanLeft overlaps pile": 192, "fanRight overlaps pile": 192 },
     where: /^(4:3 tablet|iPad Pro) .*, pile 1[23], /,
   },
   {
     defect: "the exchange's pills are wider than the chip row: nothing keeps the turn chip clear of its neighbours",
-    rules: ["hudCombo overlaps hudTurn", "hudTurn overlaps scorePill"],
+    ticket: "#1988 item 105",
+    breaks: { "hudCombo overlaps hudTurn": 480, "hudTurn overlaps scorePill": 256 },
     where: /, exchange /,
   },
   {
-    defect: "Albanian's bomb pill meets the turn chip on the smallest phone behind an island",
-    rules: ["hudCombo overlaps hudTurn"],
-    where: /^iPhone SE .*, island( and home bar)?, sq, bomb-landed, /,
+    defect: "on the smallest phone the combo pill meets the turn chip once glyphs land on whole pixels: the chip row leaves no room for either's width",
+    ticket: "#1988 item 106",
+    breaks: { "hudCombo overlaps hudTurn": 256 },
+    where: /^iPhone SE (?!.*, longest username, )/,
+  },
+  {
+    defect: "the turn chip's name slot has no bound: an account's longest name runs it off the chip row",
+    ticket: "#1988 item 107",
+    breaks: { "hudCombo overlaps hudTurn": 46, "hudTurn overlaps scorePill": 40 },
+    where: /, longest username, /,
+  },
+  {
+    defect: "at rest the hand zone and its buttons sit HAND_LIFT below their lifted place, past the bottom of the screen",
+    ticket: "#1988 item 108",
+    breaks: { "handZone leaves the window": 1680, "passa leaves the window": 1260, "gioca leaves the window": 1260, "hand leaves the window": 315 },
+    where: /, at rest, /,
   },
 ];
 
@@ -104,16 +133,16 @@ describe("the table keeps its rules", () => {
 
   test("on every viewport, safe area, locale and state", () => {
     const unknown: string[] = [];
-    const seen = new Set<Known>();
+    const counted = new Map(KNOWN.map((k) => [k, Object.fromEntries(Object.keys(k.breaks).map((rule) => [rule, 0]))]));
     for (const c of cases()) {
       for (const rule of brokenRules(tableRects(c))) {
-        const known = KNOWN.find((k) => k.rules.includes(rule) && k.where.test(c.label));
-        if (known) seen.add(known);
+        const known = KNOWN.find((k) => rule in k.breaks && k.where.test(c.label));
+        if (known) counted.get(known)![rule]++;
         else unknown.push(`${c.label}: ${rule}`);
       }
     }
     assert.deepEqual(unknown.slice(0, 20), [], `${unknown.length} broken`);
-    assert.deepEqual(KNOWN.filter((k) => !seen.has(k)).map((k) => k.defect), [], "fixed: delete its entry");
+    for (const k of KNOWN) assert.deepEqual(counted.get(k), k.breaks, `${k.ticket}: ${k.defect}`);
   });
 });
 

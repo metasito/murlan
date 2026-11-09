@@ -37,6 +37,16 @@ function glyphs(box: NoticeBox, role: NoticeRole, scale: number) {
   return { upem: face.upem, widest: face.widestGlyph, digit: face.tabularDigit, tabular: run.tabular, advances, upper: run.upper, size, tracking };
 }
 
+/**
+ * Where a renderer has no subpixel positioning (Chrome's Linux headless shell, hinted Linux
+ * desktops) every glyph's advance lands on a whole pixel, up to the next one, so a glyph is priced
+ * there: the linear advance alone undercounts that renderer.
+ */
+const snapped = (px: number): number => Math.ceil(px);
+
+/** What snapping can add to a run already shaped as one sum: under a pixel per glyph. */
+const SNAP_PER_GLYPH = 1;
+
 /** Words shaped glyph by glyph, without kerning; a glyph the subset lacks is priced at the face's widest. */
 export function wordsWidth(
   g: { upem: number; widest: number; advances: Readonly<Record<string, number>>; upper: boolean; size: number; tracking: number },
@@ -44,8 +54,8 @@ export function wordsWidth(
   words: string
 ): number {
   const chars = [...(g.upper ? words.toLocaleUpperCase(locale) : words)];
-  const units = chars.reduce((sum, ch) => sum + (g.advances[ch] ?? g.widest), 0);
-  return (units / g.upem) * g.size + chars.length * g.tracking;
+  const glyphs = chars.reduce((sum, ch) => sum + snapped(((g.advances[ch] ?? g.widest) / g.upem) * g.size), 0);
+  return glyphs + chars.length * g.tracking;
 }
 
 /** `wordsWidth` in one of the notice faces, for words set outside a notice. */
@@ -60,7 +70,7 @@ function runtimeWidth(kind: NoticeKind, locale: NoticeLocale, box: NoticeBox, ro
   const g = glyphs(box, role, scale);
   if ("chars" in bound) {
     const chars = text === undefined ? undefined : [...text].slice(0, bound.chars);
-    if (chars === undefined || g.tabular) return (chars?.length ?? bound.chars) * (((g.tabular ? g.digit : g.widest) / g.upem) * g.size + g.tracking);
+    if (chars === undefined || g.tabular) return (chars?.length ?? bound.chars) * (snapped(((g.tabular ? g.digit : g.widest) / g.upem) * g.size) + g.tracking);
     return wordsWidth(g, locale, chars.join(""));
   }
   return Math.min(text === undefined ? Infinity : wordsWidth(g, locale, text), bound.maxWidth);
@@ -74,7 +84,7 @@ function runWidth(kind: NoticeKind, locale: NoticeLocale, box: NoticeBox, id: st
   const text =
     (measured.units / g.upem) * g.size +
     measured.fallback.length * g.size +
-    measured.chars * g.tracking +
+    measured.chars * (g.tracking + SNAP_PER_GLYPH) +
     slots.reduce((sum, words) => sum + wordsWidth(g, locale, words), 0);
   return role === "key" ? text + 2 * mockupPx(NOTICE_KEY.padX, scale) : text;
 }
@@ -95,4 +105,4 @@ export function noticeWidth(kind: NoticeKind, locale: NoticeLocale, scale: numbe
 }
 
 /** `TableNotice`'s plate border, which `box-sizing` counts inside the width. */
-const PLATE_BORDER = 1;
+export const PLATE_BORDER = 1;

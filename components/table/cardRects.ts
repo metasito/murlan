@@ -3,9 +3,8 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CARD_BACK_H, CARD_BACK_W } from "../cardFaceModel.ts";
-import { FAN_TURN, fanCounts, seatFanArc } from "../fanGeometry.ts";
-import { FAN_DRAWN_CARDS, type OpponentSide } from "../seatLayout.ts";
+import { FAN_TURN, fanProjection } from "../fanGeometry.ts";
+import type { OpponentSide } from "../seatLayout.ts";
 
 /**
  * `x`/`y`: the centre in the felt's design space (874 × 402), window point / `Felt.sx` and `/ Felt.sy`.
@@ -154,19 +153,11 @@ export function legCard(pile: Point, pose: { x: number; y: number; rot: number; 
  * (`CardFan`, seats.tsx): the centre is projected exactly, the size foreshortened at it.
  */
 export function fanBacks(centre: Point, fan: { side: OpponentSide; count: number; backScale: number; leanDeg: number; perspective: number }): DrawnCard[] {
-  const { cards, box, bounds } = seatFanArc(fanCounts(fan.count, FAN_DRAWN_CARDS[fan.side]), fan.backScale);
-  const w = CARD_BACK_W(fan.backScale);
-  const h = CARD_BACK_H(fan.backScale);
-  const lean = (fan.leanDeg * Math.PI) / 180;
-  const turn = FAN_TURN[fan.side];
-  const depth = fan.perspective * fan.backScale;
+  const { w, h, lean, cards, project } = fanProjection(fan.side, fan.count, fan.backScale, fan.leanDeg, fan.perspective);
   return cards.map((at) => {
-    const qx = box.w / 2 + at.x + w / 2 - bounds.cx;
-    const qy = at.y + h / 2 - bounds.cy;
-    const f = depth / (depth - qy * Math.sin(lean));
-    const on = turned(qx, qy * Math.cos(lean), turn);
+    const on = project(at.x, at.y);
     const r = (at.rot * Math.PI) / 180;
     const leaned = (Math.atan2(Math.sin(r) * Math.cos(lean), Math.cos(r)) * 180) / Math.PI;
-    return { cx: centre.x + on.x * f, cy: centre.y + on.y * f, w: w * f, h: h * Math.cos(lean) * f, rot: turn + leaned, back: true, lift: 0, glow: 0 };
+    return { cx: centre.x + on.x, cy: centre.y + on.y, w: w * on.f, h: h * Math.cos(lean) * on.f, rot: FAN_TURN[fan.side] + leaned, back: true, lift: 0, glow: 0 };
   });
 }

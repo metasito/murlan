@@ -10,6 +10,7 @@ import {
   SEAT_LABEL_PAD,
   seatGap,
   seatLabelH,
+  seatLabelLeft,
   seatLabelW,
   OPP_LABEL_MAX_W,
   SEAT_NAME_FS,
@@ -710,8 +711,7 @@ function SeatWho({
   const disc = SEAT_DISC * scale;
   const lit = seatLit(isActive, mark);
   const labelW = seatLabelW(anchor, scale);
-  const labelLeft =
-    (anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW) + (anchor === "left" ? nameInset : anchor === "right" ? -nameInset : 0);
+  const labelLeft = seatLabelLeft(anchor, scale, nameInset);
   return (
     <View style={seatStyles.who}>
       {!focusMode && (

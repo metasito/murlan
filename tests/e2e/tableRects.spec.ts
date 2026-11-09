@@ -1,43 +1,55 @@
-// tests/e2e/tableRects.spec.ts — the table is drawn where `tableRects` says, on the viewports and
-// in the languages the pure property test walks. The pure test cannot see flexbox; this is what ties
-// the solver to it.
+// tests/e2e/tableRects.spec.ts — the table is drawn where `tableRects` says, on the viewports, safe
+// areas and languages the pure property test walks. The pure test cannot see flexbox; this is what
+// ties the solver to it.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { DEAL_SIZE, offlineSave, seedSave } from "./helpers/offlineSeed";
+import { DEAL_SIZE, exchangeSave, offlineSave, seedSave } from "./helpers/offlineSeed";
 import { openApp } from "./helpers/navigation";
+import { openOnlineTable } from "./helpers/onlineTable";
+import { PHONES } from "./helpers/phones";
+import { setSafeArea } from "./helpers/safeArea";
+import { INSETS } from "../helpers/phoneTable";
 import { captureGameState, captureStateById, type CaptureState } from "../../lib/captureStates";
+import { createDeck } from "../../lib/game/gameEngine";
+import type { OfflineSave } from "../../lib/offlineSave";
 import { LOCALE_KEY } from "../../lib/storageKeys";
 import { catalogs, type Locale } from "../../shared/i18n";
+import type { EdgeInsets } from "../../components/tableFrame";
 import { tableRects, type Rect, type RectName } from "../../components/tableRects";
-import { capturedTable, drawnChips } from "../helpers/tableScenes";
+import { TEXT_METRICS } from "../../components/table/textMetrics.generated";
+import { drawnChips, gameTable, type DrawnTable } from "../helpers/tableScenes";
 
-const VIEWPORTS = [
-  { name: "iPhone SE", width: 568, height: 320 },
-  { name: "iPhone 12", width: 844, height: 390 },
-  { name: "iPhone Pro Max", width: 956, height: 440 },
+const TABLETS = [
   { name: "4:3 tablet", width: 1024, height: 768 },
   { name: "iPad Pro", width: 1366, height: 1024 },
 ];
+const VIEWPORTS = [...PHONES, ...TABLETS];
+const PHONE_INSETS = Object.entries(INSETS);
 const LOCALES: readonly Locale[] = ["it", "en", "sq"];
 const STATES: readonly CaptureState[] = ["held", "pile-right", "bomb-landed"].map((id) => captureStateById(id)!);
 
 /**
- * What the page draws for each rect, and how the solver's rect holds it: `same` to a pixel, or
- * `inside` where the solver's rect is a bound — a name's reserved line is taller than the line the
- * font draws, a pill's words are priced without kerning, and a glyph the bundled faces lack is
- * priced at a full em.
+ * How the solver's rect holds what the page draws.
+ * - `same`: to the layout's rounding.
+ * - `words`: a pill. Its height and line are the plate's; its width is a bound, priced with every
+ *   glyph up to the next whole pixel and a glyph the bundled faces lack at a full em, so what it may
+ *   lose to a renderer that does neither is at most a pixel a glyph and that em.
+ * - `line`: a seat's name. Its words are priced as a pill's, and the label reserves a taller line
+ *   than the font draws, under which the drawn line sits: the bottoms meet, the top may be lower.
  */
-const DRAWN: Partial<Record<RectName, { sel: string; fit: "same" | "inside" }>> = {
+type Fit = "same" | "words" | "line";
+const DRAWN: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   rail: { sel: '[data-testid="control-rail"]', fit: "same" },
-  hudCombo: { sel: '[data-testid="notice-hudCombo"]', fit: "inside" },
-  hudTurn: { sel: '[data-testid="notice-turn"]', fit: "inside" },
+  railMenu: { sel: '[data-testid="control-rail"] > div:first-child [role="button"]', fit: "same" },
+  hudCombo: { sel: '[data-testid="notice-hudCombo"]', fit: "words" },
+  hudTurn: { sel: '[data-testid="notice-turn"]', fit: "words" },
   scorePill: { sel: '[data-testid="score-pill-plate"]', fit: "same" },
   seatTop: { sel: '[data-testid="top-seat"] [data-testid="seat-ring"]', fit: "same" },
   seatLeft: { sel: '[data-testid="side-seat-left"] [data-testid="seat-ring"]', fit: "same" },
   seatRight: { sel: '[data-testid="side-seat-right"] [data-testid="seat-ring"]', fit: "same" },
-  nameTop: { sel: '[data-testid="top-seat"] [data-testid="seat-name"]', fit: "inside" },
-  nameLeft: { sel: '[data-testid="side-seat-left"] [data-testid="seat-name"]', fit: "inside" },
-  nameRight: { sel: '[data-testid="side-seat-right"] [data-testid="seat-name"]', fit: "inside" },
+  nameTop: { sel: '[data-testid="top-seat"] [data-testid="seat-name"]', fit: "line" },
+  nameLeft: { sel: '[data-testid="side-seat-left"] [data-testid="seat-name"]', fit: "line" },
+  nameRight: { sel: '[data-testid="side-seat-right"] [data-testid="seat-name"]', fit: "line" },
   fanTop: { sel: '[data-testid="top-seat"] [data-testid="seat-back"]', fit: "same" },
   fanLeft: { sel: '[data-testid="side-seat-left"] [data-testid="seat-back"]', fit: "same" },
   fanRight: { sel: '[data-testid="side-seat-right"] [data-testid="seat-back"]', fit: "same" },
@@ -47,15 +59,25 @@ const DRAWN: Partial<Record<RectName, { sel: string; fit: "same" | "inside" }>> 
   gioca: { sel: '[data-testid="btn-gioca-box"]', fit: "same" },
   hand: { sel: '[data-testid="hand-row"] [data-testid="card-box"]', fit: "same" },
 };
+/** The rail's foot holds a knob only on the online table, where the reactions trigger takes it. */
+const RAIL: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
+  rail: DRAWN.rail,
+  railMenu: DRAWN.railMenu,
+  railFoot: { sel: '[data-testid="control-rail"] > div:last-child [role="button"]', fit: "same" },
+};
+/** Layout rounds each edge to a device pixel, and a border's half pixel to one either side. */
 const TOLERANCE = 1;
-/** How much larger than the drawn box a bound may be: one fallback glyph's em, at most. */
-const SLACK = 10;
+const PRICED = new Set(Object.values(TEXT_METRICS.faces).flatMap((f) => Object.keys(f.advances)));
 
-interface Drawn { boxes: Partial<Record<RectName, Rect>>; clip: Rect | null; texts: { combo: string; turn: string } }
+interface Box extends Rect {
+  /** A text box's words and the largest font size it sets them in. */
+  text?: { words: string; em: number };
+}
+interface Drawn { boxes: Partial<Record<RectName, Box>>; clip: Rect | null; texts: { combo: string; turn: string } }
 
 /** Each rect as the union of what its selector matched; a scrolled hand as the part its window shows. */
-async function drawn(page: Page): Promise<Drawn> {
-  return page.evaluate((sels: Record<string, string>) => {
+async function drawn(page: Page, rects: Partial<Record<RectName, { sel: string; fit: Fit }>>): Promise<Drawn> {
+  return page.evaluate((specs: Record<string, { sel: string; fit: Fit }>) => {
     const union = (rs: DOMRect[]) => {
       const live = rs.filter((r) => r.width > 0 && r.height > 0);
       if (live.length === 0) return null;
@@ -63,10 +85,15 @@ async function drawn(page: Page): Promise<Drawn> {
       const y = Math.min(...live.map((r) => r.top));
       return { x, y, w: Math.max(...live.map((r) => r.right)) - x, h: Math.max(...live.map((r) => r.bottom)) - y };
     };
-    const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {};
-    for (const [name, sel] of Object.entries(sels)) {
-      const r = union([...document.querySelectorAll(sel)].map((e) => e.getBoundingClientRect()));
-      if (r) boxes[name] = r;
+    const boxes: Record<string, Box> = {};
+    for (const [name, { sel, fit }] of Object.entries(specs)) {
+      const els = [...document.querySelectorAll(sel)];
+      const r = union(els.map((e) => e.getBoundingClientRect()));
+      if (!r) continue;
+      boxes[name] = r;
+      if (fit === "same") continue;
+      const sizes = els.flatMap((e) => [e, ...e.querySelectorAll("*")]).map((e) => parseFloat(getComputedStyle(e).fontSize));
+      boxes[name].text = { words: els.map((e) => e.textContent ?? "").join(""), em: Math.max(...sizes) };
     }
     const window = document.querySelector('[data-testid="hand-pan"]')?.parentElement;
     const c = window && getComputedStyle(window).overflowX !== "visible" ? window.getBoundingClientRect() : null;
@@ -78,15 +105,15 @@ async function drawn(page: Page): Promise<Drawn> {
         turn: document.querySelector('[data-testid="notice-turn"]')?.textContent ?? "",
       },
     };
-  }, Object.fromEntries(Object.entries(DRAWN).map(([k, v]) => [k, v!.sel]))) as Promise<Drawn>;
+  }, rects as Record<string, { sel: string; fit: Fit }>) as Promise<Drawn>;
 }
 
-async function settled(page: Page): Promise<Drawn> {
+async function settled(page: Page, rects = DRAWN): Promise<Drawn> {
   let previous = "";
   await expect
     .poll(
       async () => {
-        const now = JSON.stringify(await drawn(page));
+        const now = JSON.stringify(await drawn(page, rects));
         const still = now === previous;
         previous = now;
         return still;
@@ -94,16 +121,16 @@ async function settled(page: Page): Promise<Drawn> {
       { message: "the table never came to rest", timeout: 15_000, intervals: [250] }
     )
     .toBe(true);
-  return drawn(page);
+  return drawn(page, rects);
 }
 
-async function open(page: Page, baseURL: string, capture: CaptureState, locale: Locale) {
-  const save = offlineSave({ seats: capture.playerCount, hand: DEAL_SIZE[capture.playerCount], turn: capture.turn });
-  await seedSave(page, { ...save, gameState: captureGameState(capture) }, { holdTurn: true });
+async function open(page: Page, baseURL: string, save: OfflineSave, locale: Locale, insets: EdgeInsets) {
+  await seedSave(page, save, { holdTurn: true });
   await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [LOCALE_KEY, locale]);
   await openApp(page, baseURL);
   await page.getByRole("button", { name: catalogs[locale]["home.resumeGame"] }).click({ timeout: 60_000 });
   await expect(page.getByTestId("hand-zone")).toBeVisible({ timeout: 30_000 });
+  await setSafeArea(page, insets.left, insets.bottom, insets.right);
 }
 
 const clipTo = (r: Rect, c: Rect | null): Rect => {
@@ -112,40 +139,88 @@ const clipTo = (r: Rect, c: Rect | null): Rect => {
   const y = Math.max(r.y, c.y);
   return { x, y, w: Math.min(r.x + r.w, c.x + c.w) - x, h: Math.min(r.y + r.h, c.y + c.h) - y };
 };
-const inside = (a: Rect, b: Rect) =>
-  b.w - a.w <= SLACK &&
-  b.h - a.h <= SLACK &&
-  a.x >= b.x - TOLERANCE && a.y >= b.y - TOLERANCE && a.x + a.w <= b.x + b.w + TOLERANCE && a.y + a.h <= b.y + b.h + TOLERANCE;
-const same = (a: Rect, b: Rect) => [a.x - b.x, a.y - b.y, a.w - b.w, a.h - b.h].every((d) => Math.abs(d) <= TOLERANCE);
+const near = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE;
+const across = (a: Rect, b: Rect) => a.x >= b.x - TOLERANCE && a.x + a.w <= b.x + b.w + TOLERANCE;
+/** What a renderer that neither snaps glyphs nor lacks one may draw short of the priced width. */
+const unpriced = (text: { words: string; em: number }) =>
+  [...text.words].reduce((sum, ch) => sum + (PRICED.has(ch) ? 1 : text.em), 0);
+const fits: Record<Fit, (a: Box, b: Rect) => boolean> = {
+  same: (a, b) => near(a.x, b.x) && near(a.y, b.y) && near(a.w, b.w) && near(a.h, b.h),
+  words: (a, b) => near(a.y, b.y) && near(a.h, b.h) && across(a, b) && b.w - a.w <= unpriced(a.text!) + TOLERANCE,
+  line: (a, b) => near(a.y + a.h, b.y + b.h) && a.y >= b.y - TOLERANCE && across(a, b) && b.w - a.w <= unpriced(a.text!) + TOLERANCE,
+};
 const at = (r: Rect) => `${r.x.toFixed(1)},${r.y.toFixed(1)} ${r.w.toFixed(1)}x${r.h.toFixed(1)}`;
 
-for (const vp of VIEWPORTS)
+function misfits(got: Drawn, want: Partial<Record<RectName, Rect | null>>, rects = DRAWN): string[] {
+  const bad: string[] = [];
+  for (const [name, spec] of Object.entries(rects) as [RectName, { fit: Fit }][]) {
+    const solved = want[name];
+    const raw = got.boxes[name];
+    const box = raw && name === "hand" ? { ...raw, ...clipTo(raw, got.clip) } : raw;
+    if (!solved !== !box) bad.push(`${name}: drawn ${box ? at(box) : "nothing"}, solver ${solved ? at(solved) : "nothing"}`);
+    else if (solved && box && !fits[spec.fit](box, solved)) bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}`);
+  }
+  return bad;
+}
+
+async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string) {
+  const got = await settled(page);
+  const chips = drawnChips(table, locale, got.texts, exchangeName);
+  expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn})`).toEqual({ combo: expect.anything(), turn: expect.anything() });
+  const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn! } } });
+  expect(misfits(got, solved.rects), where).toEqual([]);
+}
+
+for (const [v, vp] of VIEWPORTS.entries())
   test(`the table is drawn in the solver's rects: ${vp.name}`, async ({ page, baseURL }) => {
     test.setTimeout(180_000);
     await page.setViewportSize({ width: vp.width, height: vp.height });
     for (const [i, locale] of LOCALES.entries()) {
-      const capture = STATES[(i + VIEWPORTS.indexOf(vp)) % STATES.length];
-      await open(page, baseURL!, capture, locale);
-      const { boxes, clip, texts } = await settled(page);
-      const where = `${vp.name}, ${locale}, ${capture.id}`;
-      const table = capturedTable(capture);
-      const chips = drawnChips(table, locale, texts);
-      expect(chips, `${where}: the pills read words a scene says`).toEqual({ combo: expect.anything(), turn: expect.anything() });
-      const solved = tableRects({
-        width: vp.width,
-        height: vp.height,
-        insets: { top: 0, bottom: 0, left: 0, right: 0 },
-        locale,
-        state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn! } },
-      });
-      const bad: string[] = [];
-      for (const [name, spec] of Object.entries(DRAWN) as [RectName, { fit: "same" | "inside" }][]) {
-        const want = solved.rects[name];
-        const raw = boxes[name];
-        const got = raw && name === "hand" ? clipTo(raw, clip) : raw;
-        if (!want !== !got) bad.push(`${name}: drawn ${got ? at(got) : "nothing"}, solver ${want ? at(want) : "nothing"}`);
-        else if (want && got && !(spec.fit === "same" ? same(got, want) : inside(got, want))) bad.push(`${name}: drawn ${at(got)}, solver ${at(want)}`);
-      }
-      expect(bad, where).toEqual([]);
+      const capture = STATES[(i + v) % STATES.length];
+      const [inset, insets] = TABLETS.includes(vp) ? PHONE_INSETS[0] : PHONE_INSETS[(i + v) % PHONE_INSETS.length];
+      const save = offlineSave({ seats: capture.playerCount, hand: DEAL_SIZE[capture.playerCount], turn: capture.turn });
+      await open(page, baseURL!, { ...save, gameState: captureGameState(capture) }, locale, insets);
+      await check(page, `${vp.name}, ${inset}, ${locale}, ${capture.id}`, vp, insets, locale, gameTable(captureGameState(capture)));
     }
   });
+
+const SIXTEEN = PHONES.find((p) => p.name === "iPhone 16 Pro")!;
+const ISLAND = INSETS["62/21/62"];
+/** Every seat one name, so the exchange's pills read words `exchangeScenes` says. */
+const EXCHANGE_NAME = "Besnik";
+/** A straight of every face on the felt, and the biggest hand a deal gives, beside it. */
+const STRAIGHT_13 = ["A_hearts", "2_spades", "3_hearts", "4_spades", "5_hearts", "6_spades", "7_hearts", "8_spades", "9_hearts", "10_spades", "J_hearts", "Q_spades", "K_hearts"];
+
+test.describe("the table at its limits is drawn in the solver's rects", () => {
+  for (const vp of [SIXTEEN, TABLETS[1]]) {
+    const insets = vp === SIXTEEN ? ISLAND : INSETS["0/0"];
+    test(`an exchange: ${vp.name}`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      const save = exchangeSave({ seats: 3, hand: DEAL_SIZE[3], winner: 0, loser: 1, names: [EXCHANGE_NAME, EXCHANGE_NAME, EXCHANGE_NAME] });
+      await open(page, baseURL!, save, "it", insets);
+      await check(page, `${vp.name}, exchange`, vp, insets, "it", gameTable(save.gameState), EXCHANGE_NAME);
+    });
+
+    test(`a thirteen-card straight over an eighteen-card hand: ${vp.name}`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      const free = createDeck().map((c) => c.id).filter((id) => !STRAIGHT_13.includes(id));
+      const save = offlineSave({ seats: 3, holding: [free.slice(0, 18), free.slice(18, 29), free.slice(29, 40)], pile: { cards: STRAIGHT_13, by: 2 } });
+      await open(page, baseURL!, save, "sq", insets);
+      await check(page, `${vp.name}, pile 13, hand 18`, vp, insets, "sq", gameTable(save.gameState));
+    });
+  }
+});
+
+test("the rail's knobs are drawn in the solver's rects: online", async ({ browser, baseURL }) => {
+  test.setTimeout(240_000);
+  const table = await openOnlineTable(browser, baseURL!, { playerCount: 2, gameMode: "free_for_all", viewport: { width: SIXTEEN.width, height: SIXTEEN.height } });
+  try {
+    const got = await settled(table.page, RAIL);
+    const solved = tableRects({ width: SIXTEEN.width, height: SIXTEEN.height, insets: INSETS["0/0"], locale: "it", state: { seats: { top: null, left: null, right: null }, hand: { cards: 0, onTurn: false, faceDown: false, raised: false }, pile: 0, chips: { combo: [], turn: [] } } });
+    expect(misfits(got, solved.rects, RAIL), "iPhone 16 Pro, online").toEqual([]);
+  } finally {
+    await table.close();
+  }
+});

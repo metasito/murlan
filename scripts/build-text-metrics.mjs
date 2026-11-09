@@ -6,7 +6,8 @@
  *
  *   node scripts/build-text-metrics.mjs
  *
- * A run's width in points is `units / upem * fontSize + chars * tracking`, plus each slot's text,
+ * A run's width in points is `units / upem * fontSize + chars * tracking`, plus up to a pixel a glyph
+ * where the renderer snaps advances (noticeWidth.ts), plus each slot's text,
  * which only render time knows and `faces[face].advances` prices glyph by glyph, plus whatever face draws each `fallback` codepoint: the served font
  * has no glyph for it, so its width is not known here and is not in `units`. Shaped against the
  * served WOFF2 subsets, which is what the web draws.

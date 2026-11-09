@@ -127,9 +127,20 @@ export function exchangeScenes(name: string): ChipScene[] {
   return out;
 }
 
+export interface DrawnTable {
+  game: GameState;
+  base: Omit<TableState, "chips">;
+  onMove: string;
+  lastBy: string | null;
+}
+
 /** A captured state as the table draws it, the HUD pills aside. */
-export function capturedTable(state: CaptureState): { game: GameState; base: Omit<TableState, "chips">; onMove: string; lastBy: string | null } {
-  const game = captureGameState(state);
+export function capturedTable(state: CaptureState): DrawnTable {
+  return gameTable(captureGameState(state));
+}
+
+/** A game as the table draws it from the viewer's chair, the HUD pills aside. */
+export function gameTable(game: GameState): DrawnTable {
   const seats: TableState["seats"] = { top: null, left: null, right: null };
   game.players.forEach((p, seat) => {
     const dir = seatDirection(seat, CAPTURE_VIEWER_SEAT, game.players.length);
@@ -163,19 +174,25 @@ export function wordsOf(content: NoticeContent, locale: Locale): string {
 }
 
 /**
- * The pills a captured table draws, picked by the words they read: the content whose words are the
- * plate's text, with the clock's digits as they read when it was measured. Null for a pill whose
+ * The pills a table draws, picked by the words they read: the content whose words are the plate's
+ * text, with the clock's digits as they read when it was measured. An exchange's pills are the ones
+ * `exchangeScenes` says for a table whose every seat is called `exchangeName`. Null for a pill whose
  * words no scene here says.
  */
 export function drawnChips(
-  table: ReturnType<typeof capturedTable>,
+  table: DrawnTable,
   locale: Locale,
-  read: { combo: string; turn: string }
+  read: { combo: string; turn: string },
+  exchangeName?: string
 ): { combo: NoticeContent | null; turn: NoticeContent | null } {
-  const combo = comboScene(table.game.lastPlayedCombination, { you: table.game.lastPlayedBy === CAPTURE_VIEWER_SEAT, name: table.lastBy ?? "" });
+  const exchange = exchangeName === undefined ? [] : exchangeScenes(exchangeName);
+  const combos = [
+    comboScene(table.game.lastPlayedCombination, { you: table.game.lastPlayedBy === CAPTURE_VIEWER_SEAT, name: table.lastBy ?? "" }),
+    ...exchange.map((s) => s.combo),
+  ];
   const digits = read.turn.match(/\d+$/)?.[0];
-  const turn = turnScenes(table.onMove)
+  const turn = [...turnScenes(table.onMove), ...exchange]
     .map((s) => [...s.turn.slice(0, -1), ...(digits ? [{ runtime: "strong", text: digits } as const] : [])])
     .find((c) => wordsOf(c, locale) === read.turn);
-  return { combo: wordsOf(combo, locale) === read.combo ? combo : null, turn: turn ?? null };
+  return { combo: combos.find((c) => wordsOf(c, locale) === read.combo) ?? null, turn: turn ?? null };
 }

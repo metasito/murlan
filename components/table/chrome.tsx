@@ -217,7 +217,6 @@ export const sharedTableStyles = StyleSheet.create({
 
 // ─── useHandLift ──────────────────────────────────────────────────────────────
 
-
 /**
  * The hand rises off the bottom edge on the viewer's own turn — one of the
  * table's signals about whose turn it is, beside the lamp over the hand and

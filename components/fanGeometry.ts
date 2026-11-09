@@ -65,27 +65,33 @@ export function fanPoint(
 }
 
 /**
- * Each back's four corners as the page draws them, in the coordinates of `centre` (`fanPoint`'s):
- * `CardFan`'s box, turned and leaned about the fan's middle under its perspective, so a corner
- * nearer the viewer lands further out than the card's middle says.
+ * `CardFan`'s box turned and leaned about the fan's middle under its perspective: each back's middle
+ * in that box, measured from the middle, and `project`, which takes such a point to where the page
+ * draws it from the fan's centre, with `f` its foreshortening there.
  */
-export function fanCorners(centre: { x: number; y: number }, side: OpponentSide, count: number, backScale: number): [number, number][][] {
+export function fanProjection(side: OpponentSide, count: number, backScale: number, leanDeg = FAN_LEAN_DEG, perspective = FAN_PERSPECTIVE) {
   const { cards, box, bounds } = seatFanArc(fanCounts(count, FAN_DRAWN_CARDS[side]), backScale);
   const w = CARD_BACK_W(backScale);
   const h = CARD_BACK_H(backScale);
-  const lean = (FAN_LEAN_DEG * Math.PI) / 180;
+  const lean = (leanDeg * Math.PI) / 180;
   const turn = (FAN_TURN[side] * Math.PI) / 180;
-  const depth = FAN_PERSPECTIVE * backScale;
+  const depth = perspective * backScale;
+  const project = (qx: number, qy: number) => {
+    const f = depth / (depth - qy * Math.sin(lean));
+    const y = qy * Math.cos(lean);
+    return { x: (qx * Math.cos(turn) - y * Math.sin(turn)) * f, y: (qx * Math.sin(turn) + y * Math.cos(turn)) * f, f };
+  };
+  return { w, h, lean, cards: cards.map((at) => ({ x: box.w / 2 + at.x + w / 2 - bounds.cx, y: at.y + h / 2 - bounds.cy, rot: at.rot })), project };
+}
+
+/** Each back's four corners as the page draws them, in the coordinates of `centre` (`fanPoint`'s). */
+export function fanCorners(centre: { x: number; y: number }, side: OpponentSide, count: number, backScale: number): [number, number][][] {
+  const { w, h, cards, project } = fanProjection(side, count, backScale);
   return cards.map((at) => {
     const r = (at.rot * Math.PI) / 180;
-    const mx = box.w / 2 + at.x + w / 2;
-    const my = at.y + h / 2;
     return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]): [number, number] => {
-      const qx = mx + ((sx * w) / 2) * Math.cos(r) - ((sy * h) / 2) * Math.sin(r) - bounds.cx;
-      const qy = my + ((sx * w) / 2) * Math.sin(r) + ((sy * h) / 2) * Math.cos(r) - bounds.cy;
-      const f = depth / (depth - qy * Math.sin(lean));
-      const y = qy * Math.cos(lean);
-      return [centre.x + (qx * Math.cos(turn) - y * Math.sin(turn)) * f, centre.y + (qx * Math.sin(turn) + y * Math.cos(turn)) * f];
+      const p = project(at.x + ((sx * w) / 2) * Math.cos(r) - ((sy * h) / 2) * Math.sin(r), at.y + ((sx * w) / 2) * Math.sin(r) + ((sy * h) / 2) * Math.cos(r));
+      return [centre.x + p.x, centre.y + p.y];
     });
   });
 }

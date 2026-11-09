@@ -265,6 +265,19 @@ export function seatLabelW(anchor: "centre" | "left" | "right", scale: number): 
   return anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
 }
 
+/** The label's left edge from its disc's: centred on the disc, or flush with the edge `anchor` names and `inset` in from it. */
+export function seatLabelLeft(anchor: "centre" | "left" | "right", scale: number, inset: number): number {
+  const disc = SEAT_DISC * scale;
+  const labelW = seatLabelW(anchor, scale);
+  return anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? inset : disc - labelW - inset;
+}
+
+/** The left edge of a name `nameW` wide, from its disc's: the label aligns it to the edge `anchor` names, or centres it. */
+export function seatNameLeft(anchor: "centre" | "left" | "right", scale: number, inset: number, nameW: number): number {
+  const room = seatLabelW(anchor, scale) - nameW;
+  return seatLabelLeft(anchor, scale, inset) + (anchor === "left" ? 0 : anchor === "right" ? room : room / 2);
+}
+
 /**
  * A watcher is handed a seat so the table has a bottom to draw from, but that
  * seat is a real player they are not, so every question of identity answers no
