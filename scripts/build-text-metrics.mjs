@@ -7,7 +7,7 @@
  *   node scripts/build-text-metrics.mjs
  *
  * A run's width in points is `units / upem * fontSize + chars * tracking`, plus each slot's text,
- * which only render time knows, plus whatever face draws each `fallback` codepoint: the served font
+ * which only render time knows and `faces[face].advances` prices glyph by glyph, plus whatever face draws each `fallback` codepoint: the served font
  * has no glyph for it, so its width is not known here and is not in `units`. Shaped against the
  * served WOFF2 subsets, which is what the web draws.
  */
@@ -118,8 +118,11 @@ export async function textMetrics({
     if (!WEB_FONTS.some((f) => f.family === fontFamily)) throw new Error(`${fontFamily} is not one of scripts/fontSubsetChars.mjs's WEB_FONTS`);
     const { face, font } = await loadFont(readFileSync(fontFile(fontFamily)));
     loaded[name] = font;
-    const advances = chars.map((ch) => font.nominalGlyph(ch.codePointAt(0))).filter((gid) => gid).map((gid) => font.glyphHAdvance(gid));
-    faces[name] = { family: fontFamily, upem: face.upem, widestGlyph: Math.max(...advances) };
+    const advances = Object.fromEntries(
+      chars.map((ch) => [ch, font.nominalGlyph(ch.codePointAt(0))]).filter(([, gid]) => gid).map(([ch, gid]) => [ch, font.glyphHAdvance(gid)])
+    );
+    const tabularDigit = Math.max(...shapeRun(font, "0123456789", true).map((g) => g.advance));
+    faces[name] = { family: fontFamily, upem: face.upem, widestGlyph: Math.max(...Object.values(advances)), tabularDigit, advances };
   }
   const runs = {};
   for (const locale of SUPPORTED_LOCALES) {

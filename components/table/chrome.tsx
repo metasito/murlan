@@ -17,7 +17,7 @@ import {
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { a11yState } from "@/lib/a11y";
-import { SIDE_SECTION_W } from "@/components/seatLayout";
+import { HAND_LIFT, SIDE_SECTION_W } from "@/components/seatLayout";
 import type { Channel } from "@/lib/harnessChannels";
 
 /**
@@ -217,8 +217,6 @@ export const sharedTableStyles = StyleSheet.create({
 
 // ─── useHandLift ──────────────────────────────────────────────────────────────
 
-/** How far the hand rises when the turn comes to the viewer, at scale 1. */
-const HAND_LIFT = 4;
 
 /**
  * The hand rises off the bottom edge on the viewer's own turn — one of the

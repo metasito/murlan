@@ -26,6 +26,8 @@ const ACTION_BTN = 56;
 export const ACTION_BTN_FLOOR = 48;
 /** Hand to button, and button to the edge of the play area. */
 export const HAND_ZONE_GAP = 26;
+/** How far the hand zone rises when the turn comes to the viewer, at scale 1: it rests this far below its designed place. */
+export const HAND_LIFT = 4;
 
 export function actionBtnSize(scale: number): number {
   return Math.max(ACTION_BTN_FLOOR, ACTION_BTN * scale);
@@ -219,7 +221,7 @@ export const SEAT_DISC = 33;
 export function seatGap(scale: number): number {
   return Spacing.slim * scale;
 }
-const SEAT_NAME_LINE = 17;
+export const SEAT_NAME_LINE = 17;
 
 /**
  * The band a seat's floating label needs above its ring: the name's own line,
@@ -234,6 +236,33 @@ export const SEAT_LABEL_GAP = Spacing.xxs;
 export const SEAT_LABEL_PAD = Spacing.xs;
 export function seatLabelH(scale: number): number {
   return (SEAT_NAME_LINE + SEAT_LABEL_GAP + SEAT_LABEL_PAD) * scale + CHIP_H(scale);
+}
+
+/** A seat name's size at scale 1, before `tableFontSize`'s floor, and its letter-spacing in points. */
+export const SEAT_NAME_FS = 11;
+export const SEAT_NAME_TRACKING = 1.5;
+
+/**
+ * Wide enough for a name the length of the longest the lobby deals in, at
+ * `SEAT_NAME_FS` with its own tracking and the plate's padding either side.
+ * At 70 the plate ellipsised "Besnik" to "BE…", which reads as a bug rather
+ * than as a long name being trimmed.
+ */
+export const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
+/**
+ * …and what a side seat gets, in points rather than a multiple of the scale: a
+ * label measured in scaled points outgrows its fixed column on a big screen and
+ * is drawn off the edge of it, which is what tests/e2e/tableFit.spec.ts caught.
+ *
+ * Wider than `SIDE_SECTION_W`, and not derived from it. The plate leans inward
+ * over the felt the way the fan does (`whoLabelLeft`), so the column is not its
+ * bound — while the floor above is real: at 80 this ellipsises "Besnik".
+ */
+const SIDE_LABEL_MAX_W = 114;
+
+/** The width of a seat's floating label, which caps its name: the top seat's centres, a side seat's is pinned to its disc. */
+export function seatLabelW(anchor: "centre" | "left" | "right", scale: number): number {
+  return anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
 }
 
 /**

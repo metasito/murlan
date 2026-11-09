@@ -10,8 +10,12 @@ import {
   SEAT_LABEL_PAD,
   seatGap,
   seatLabelH,
+  seatLabelW,
+  OPP_LABEL_MAX_W,
+  SEAT_NAME_FS,
+  SEAT_NAME_TRACKING,
 } from "@/components/seatLayout";
-import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
+import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
@@ -92,14 +96,6 @@ export function usePassedSeats(
 // flipping its own offsets; the container is never rotated for it, because the
 // arc deliberately overflows its box and rotating the box would leave half of
 // it empty and open a phantom gap between the avatar and the cards.
-
-/**
- * How far the fan leans away from the viewer, in its own frame — so a side
- * player leans sideways from the same line of code as the top player leaning
- * back. The perspective is what turns the lean into depth rather than a squash.
- */
-const FAN_LEAN_DEG = -17;
-const FAN_PERSPECTIVE = 560;
 
 function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
   id: string;
@@ -713,7 +709,7 @@ function SeatWho({
 }) {
   const disc = SEAT_DISC * scale;
   const lit = seatLit(isActive, mark);
-  const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
+  const labelW = seatLabelW(anchor, scale);
   const labelLeft =
     (anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW) + (anchor === "left" ? nameInset : anchor === "right" ? -nameInset : 0);
   return (
@@ -776,23 +772,6 @@ function SeatWho({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-/**
- * Wide enough for a name the length of the longest the lobby deals in, at
- * `SEAT_NAME_FS` with its own tracking and the plate's padding either side.
- * At 70 the plate ellipsised "Besnik" to "BE…", which reads as a bug rather
- * than as a long name being trimmed.
- */
-const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
-/**
- * …and what a side seat gets, in points rather than a multiple of the scale: a
- * label measured in scaled points outgrows its fixed column on a big screen and
- * is drawn off the edge of it, which is what tests/e2e/tableFit.spec.ts caught.
- *
- * Wider than `SIDE_SECTION_W`, and not derived from it. The plate leans inward
- * over the felt the way the fan does (`whoLabelLeft`), so the column is not its
- * bound — while the floor above is real: at 80 this ellipsises "Besnik".
- */
-const SIDE_LABEL_MAX_W = 114;
 /** How far a seat recedes while its player is reconnecting. */
 const SEAT_DIM_OPACITY = 0.62;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */
@@ -801,7 +780,6 @@ const SEAT_BADGE_FS = 10;
 const LAST_CARD_BADGE = 1.25;
 /** `.badge.last`'s glow in mockup px, before the badge's own growth. */
 const LAST_CARD_GLOW = { blur: 10, opacity: 0.6 } as const;
-const SEAT_NAME_FS = 11;
 /** The disc's seated shadow, and the glow that replaces it on the seat on move. */
 const SEAT_SHADOW = 9;
 const SEAT_SHADOW_Y = 3;
@@ -848,7 +826,7 @@ const seatStyles = StyleSheet.create({
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     color: withAlpha(Colors.text, 0.75),
-    letterSpacing: 1.5,
+    letterSpacing: SEAT_NAME_TRACKING,
     textTransform: "uppercase",
     maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",

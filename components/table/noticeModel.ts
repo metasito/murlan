@@ -5,7 +5,9 @@ import { CHIP_H } from "../seatLayout.ts";
 import { USERNAME_MAX } from "../../shared/username.ts";
 import { CLOCK_CEILING_MS, clockDigits } from "../../shared/clock.ts";
 import { SEATS_MAX } from "../../shared/seats.ts";
-import { createDeck, getCardDisplayRank } from "../../lib/game/gameEngine.ts";
+import { createDeck, getCardDisplayRank, type Combination } from "../../lib/game/gameEngine.ts";
+import { comboName } from "../../lib/comboName.ts";
+import type { TFn } from "../../lib/i18n.ts";
 
 export type NoticeShape = "pill" | "chip" | "float" | "panel";
 export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad" | "solid" | "gold";
@@ -268,4 +270,15 @@ export function noticeTiming(
   if (shape === "chip" || shape === "float") return { enter: fade.enter, hold: Hold.mark, exit: fade.exit };
   const ms = motionMs("notice", reduceMotion);
   return { enter: ms, hold: null, exit: ms };
+}
+
+/** Who the HUD pill names for the play on top. */
+export const playerLabel = (viewers: boolean, name: string, t: TFn): string => (viewers ? t("gameShared.you") : name);
+
+/** The HUD pill's combination text: its kind, and how many cards once there are more than two. */
+export function comboLabel(combo: Combination | null, t: TFn): string | null {
+  if (!combo) return null;
+  const label = comboName(combo.type, t);
+  if (combo.cards.length > 2) return `${label}${t("gameShared.comboMultiplier", { count: combo.cards.length })}`;
+  return label;
 }

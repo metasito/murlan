@@ -79,13 +79,8 @@ import {
   harnessState,
 } from "@/components/table/chrome";
 import { WhoStartsPanel } from "@/components/table/notices/panels";
-import {
-  comboLabel as comboText,
-  lastPlayLabel,
-  playerLabel,
-  tableStrings,
-  topBarLabel,
-} from "@/components/table/spokenLabels";
+import { lastPlayLabel, tableStrings, topBarLabel } from "@/components/table/spokenLabels";
+import { comboLabel as comboText, playerLabel } from "@/components/table/noticeModel";
 import { canBeatPileOf, type TableFacts } from "@/lib/table/stagedPlay";
 import {
   createSelectionStore,
