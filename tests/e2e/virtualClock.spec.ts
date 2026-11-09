@@ -9,16 +9,17 @@ const PAGE = `<!doctype html><style>
 .held { animation: slide 10s linear both paused }
 </style><div id="box"></div>`;
 
-const start = async (page: Page, cls: string) => {
+const start = async (page: Page, baseURL: string, cls: string) => {
   await installVirtualClock(page, 1);
+  await page.goto(baseURL);
   await page.setContent(PAGE);
   await takeOver(page);
   await page.evaluate((cls) => document.getElementById("box")!.classList.add(cls), cls);
   await step(page, 0);
 };
 
-test("a CSS animation created after install advances exactly STEP_MS per step", async ({ page }) => {
-  await start(page, "late");
+test("a CSS animation created after install advances exactly STEP_MS per step", async ({ page, baseURL }) => {
+  await start(page, baseURL!, "late");
   expect(await animationPhase(page)).toEqual([{ name: "slide", currentTime: 0 }]);
   for (let i = 1; i <= 5; i++) {
     await step(page);
@@ -28,8 +29,8 @@ test("a CSS animation created after install advances exactly STEP_MS per step", 
   expect(await animationPhase(page)).toEqual([{ name: "slide", currentTime: 6 * STEP_MS }]);
 });
 
-test("a paused CSS animation holds its phase across steps", async ({ page }) => {
-  await start(page, "held");
+test("a paused CSS animation holds its phase across steps", async ({ page, baseURL }) => {
+  await start(page, baseURL!, "held");
   for (let i = 0; i < 3; i++) await step(page);
   await stepThen(page, STEP_MS, "0");
   expect(await animationPhase(page)).toEqual([{ name: "slide", currentTime: 0 }]);

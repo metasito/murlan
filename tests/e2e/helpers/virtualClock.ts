@@ -4,6 +4,12 @@ import type { Page } from "@playwright/test";
 import { STEP_MS } from "./traceDiff.ts";
 import { mulberry32 } from "../../support/game.ts";
 
+declare global {
+  interface Window {
+    murlanStepAnimations(ms: number): void;
+  }
+}
+
 const EPOCH = new Date("2026-09-24T12:00:00Z");
 
 /**
@@ -18,6 +24,13 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
   await cdp.send("Animation.setPlaybackRate", { playbackRate: 0 });
   const install = (generator: typeof mulberry32, seed: number) => {
     Math.random = generator(seed);
+    // A paused animation holds its phase in a browser, so the clock holds it too. In the page so
+    // a spec's own in-page stepping loop calls this one rather than keeping a copy.
+    window.murlanStepAnimations = (ms) => {
+      for (const a of document.getAnimations()) {
+        if (a.playState === "running" && a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
+      }
+    };
     // `page.clock` fakes performance.now() but not this stamp's performanceTime, which stays on the
     // real clock; the engine maps a moment's `at` through it, so every sound would read seconds late.
     AudioContext.prototype.getOutputTimestamp = function () {
@@ -41,14 +54,9 @@ export async function takeOver(page: Page): Promise<void> {
   if (offGrid > 0) await page.clock.runFor(offGrid);
 }
 
-// A paused animation holds its phase in a browser, so the clock holds it too.
-const STEP_ANIMATIONS = `for (const a of document.getAnimations()) {
-  if (a.playState === "running" && a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
-}`;
-
 export async function step(page: Page, ms: number = STEP_MS): Promise<void> {
   await page.clock.runFor(ms);
-  await page.evaluate(`((ms) => { ${STEP_ANIMATIONS} })(${ms})`);
+  await page.evaluate((ms) => window.murlanStepAnimations(ms), ms);
 }
 
 /** Every animation's name and `currentTime` now, in the order the document lists them. */
@@ -74,7 +82,7 @@ export async function stepThen<T>(page: Page, ms: number | null, read: string): 
     const ms = ${ms};
     if (ms !== null) {
       await clock.runFor(ms);
-      ${STEP_ANIMATIONS}
+      globalThis.murlanStepAnimations(ms);
     }
     return ${read};
   })()`) as Promise<T>;
