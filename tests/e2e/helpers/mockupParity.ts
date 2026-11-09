@@ -509,7 +509,7 @@ const MOMENTS: Moment[] = [
     regions: ["pile", "rim", "rightBand"],
     regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
     // No pool: it is placed off your hand, empty once the Ks is down. The right band as the table's score panel opens over it (#1267).
-    regionAt: { rightBand: [1040, 1200, 1920, 2400, 2880] },
+    regionAt: { rightBand: [1040, 1200, 1440, 1920, 2400, 2880] },
     onsets: ["sound:matchLost"],
     // The chapter's `at(200)` and `at(500)` run on the frames at 208 and 512.
     actions: [

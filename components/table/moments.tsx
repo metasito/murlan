@@ -1,18 +1,15 @@
-// The bomb's burst (flare + two waves) and flash, and the going-out sweep —
-// one-shot celebrations. The burst reacts to the landing signal on its contact
-// frame; the sweep plays again when `goingOutTrigger`
-// (components/useTableFeedback.ts) changes. Each piece decides for itself,
-// against `usePrefersReducedMotion`, whether to animate.
+// The bomb's burst (flare + two waves) and flash — one-shot celebrations. The
+// burst reacts to the landing signal on its contact frame. Each piece decides
+// for itself, against `usePrefersReducedMotion`, whether to animate.
 //
 // Every duration, delay and value below is the prototype's own `kick` /
-// `flare` / `wave` / `sweep` keyframes (issue #200), `* scale`.
+// `flare` / `wave` keyframes (issue #200), `* scale`.
 // CSS interpolates a `transform` list either function-by-function or by full
 // matrix decomposition depending on how the keyframes are written; neither
 // is worth reproducing bit-for-bit here, so a channel a keyframe leaves
 // unspecified between two that do set it is bridged with one tween across
 // that whole span rather than replaying every percentage break.
 
-import { useEffect } from "react";
 import { Platform, View, StyleSheet, type ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -24,7 +21,6 @@ import Animated, {
   ReduceMotion,
   type SharedValue,
 } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { flareKindFor, type FlareKind } from "@/components/impact";
@@ -47,13 +43,11 @@ import type { LandingSignal } from "@/components/table/useFlightClock";
 // `Wave` already uses, with a static blurred `glow` (`makeShadow`)
 // on web for the outer halo; native draws it as one more circle.
 // Native composites a blended layer through an offscreen pass on every frame it moves, and the flare grows to
-// seven times its size, the sweep spans the table: both fade by opacity there instead, over the dark felt.
+// seven times its size: it fades by opacity there instead, over the dark felt.
 const NATIVE = Platform.OS !== "web";
 const SCREEN_BLEND: ViewStyle | null = NATIVE ? null : { mixBlendMode: "screen" };
 const FLARE_GLOW = "#FFC966";
 const WAVE_STROKE = "rgba(255,236,180,.9)";
-const SWEEP_BAND = "rgba(255,240,200,.42)";
-const SWEEP_TRANSPARENT = "rgba(255,240,200,0)";
 
 /**
  * A single flat fill reads as a coin, not a bloom of light — a second blind
@@ -332,87 +326,6 @@ export function BombFlash({ landing }: { landing: SharedValue<LandingSignal> }) 
       pointerEvents="none"
       style={[StyleSheet.absoluteFill, { backgroundColor: BombFx.flash, zIndex: Layer.flash }, aStyle]}
     />
-  );
-}
-
-// ─── Sweep ──────────────────────────────────────────────────────────────────
-
-const SWEEP_MS = 1500;
-const SWEEP_EASING = Easing.bezier(0.4, 0, 0.25, 1);
-// The band overflows -60%/-60% and -20%/-20% of the table box it covers, so
-// it is already wider and taller than the table before it moves at all.
-const SWEEP_W_FACTOR = 2.2;
-const SWEEP_H_FACTOR = 1.4;
-/** Its own travel: -60% to 60% of *its own* (oversized) width. */
-const SWEEP_TRAVEL_FACTOR = 0.6;
-const SWEEP_Z = Layer.sheet + 1;
-
-/** A diagonal pass of light across the whole table — the going-out sweep. */
-export function Sweep({
-  trigger,
-  width,
-  height,
-  durationMs = SWEEP_MS,
-}: {
-  trigger: number;
-  width: number;
-  height: number;
-  durationMs?: number;
-}) {
-  const reduceMotion = usePrefersReducedMotion();
-  const opacity = useOwnedValue(0);
-  // -1 to 1 across the band's own travel, which is applied at render: a
-  // window resize changes how far that is, and must not restart the pass.
-  const x = useOwnedValue(0);
-  const bandW = width * SWEEP_W_FACTOR;
-  const bandH = height * SWEEP_H_FACTOR;
-  const travel = bandW * SWEEP_TRAVEL_FACTOR;
-
-  useEffect(() => {
-    if (!trigger || reduceMotion) return;
-    opacity.set(0);
-    x.set(-1);
-    const e = SWEEP_EASING;
-    opacity.set(
-      withSequence(
-        withTiming(1, { duration: durationMs * 0.12, easing: e }),
-        withTiming(1, { duration: durationMs * 0.76, easing: e }),
-        withTiming(0, { duration: durationMs * 0.12, easing: e })
-      )
-    );
-    x.set(withTiming(1, { duration: durationMs, easing: e }));
-  }, [trigger, reduceMotion, durationMs, opacity, x]);
-
-  const aStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateX: x.value * travel }],
-  }));
-
-  return (
-    <Animated.View
-      testID="sweep"
-      pointerEvents="none"
-      style={[
-        {
-          position: "absolute",
-          left: -(bandW - width) / 2,
-          top: -(bandH - height) / 2,
-          width: bandW,
-          height: bandH,
-          zIndex: SWEEP_Z,
-        },
-        SCREEN_BLEND,
-        aStyle,
-      ]}
-    >
-      <LinearGradient
-        colors={[SWEEP_TRANSPARENT, SWEEP_BAND, SWEEP_TRANSPARENT]}
-        locations={[0.42, 0.5, 0.58]}
-        start={{ x: 0.05, y: 0.35 }}
-        end={{ x: 0.95, y: 0.65 }}
-        style={StyleSheet.absoluteFill}
-      />
-    </Animated.View>
   );
 }
 
