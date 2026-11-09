@@ -236,8 +236,8 @@ export interface GameTableProps {
    */
   disconnectedSeats?: Record<number, { seconds: number; resetKey: string }>;
 
-  /** The rail's lower knob (online: the reactions trigger). */
-  railExtra?: React.ReactNode;
+  /** The rail's lower knob (online: the reactions trigger), given the size every knob on the rail is. */
+  railExtra?: (knobSize: number) => React.ReactNode;
   /** Transient strips under the top bar (the replay's transport). */
   banners?: React.ReactNode;
   /** The server's refusal, floated while it stands (online only). */
@@ -1079,7 +1079,7 @@ export function GameTable({
             }
             bottom={
               <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
-                {railExtra}
+                {railExtra?.(knobSize)}
               </Animated.View>
             }
           />

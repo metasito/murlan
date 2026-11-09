@@ -18,7 +18,7 @@ import {
   type SeatAnchor,
   type OpponentSide,
 } from "@/components/seatLayout";
-import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
+import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc, seatLabelRise } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
@@ -715,7 +715,7 @@ function SeatWho({
   const labelLeft = seatLabelLeft(anchor, scale, nameInset);
   const nameSet = seatNameSet(scale);
   const badge: SeatBadge | undefined = reconnecting ? "reconnecting" : vacated ? "vacated" : undefined;
-  const rows = seatLabelRows(scale, seatBadgeH(badge, scale));
+  const rows = seatLabelRows(scale, seatBadgeH(badge, scale), seatLabelRise(anchor === "centre" ? "top" : anchor, scale));
   const row = (above: number) => [seatStyles.whoLabel, { width: labelW, left: labelLeft, bottom: disc + above, alignItems: SEAT_LABEL_ALIGN[anchor] }];
   return (
     <View style={seatStyles.who}>

@@ -94,21 +94,6 @@ const PLAYED = "(?!exchange |longest username,)";
  */
 const KNOWN: readonly Known[] = [
   {
-    defect: "a side name's line runs onto the top back of its own fan once sideNameInset slides it inboard",
-    ticket: "#1988 item 103",
-    breaks: { "nameLeft overlaps fanLeft": 1899, "nameRight overlaps fanRight": 1899 },
-    where: [
-      on("iPhone 12|iPhone 16 Pro|iPhone 17 Pro Max", ANY, "0/0", "(?!badged ).*, seats 1\\d "),
-      on("iPhone [^(]+", ANY, ANY, "(?!badged ).*, seats 13 Besnik / 13 Besnik / 13 Besnik,"),
-    ],
-  },
-  {
-    defect: "a straight of twelve or more on a tablet is laid across the side fans: fieldRoomW does not leave them room",
-    ticket: "#1988 item 104",
-    breaks: { "fanLeft overlaps pile": 144, "fanRight overlaps pile": 144 },
-    where: [on("4:3 tablet|iPad Pro", ANY, ANY, ".*, pile 1[23], ")],
-  },
-  {
     defect: "the exchange's pills are wider than the chip row: nothing keeps the turn chip clear of its neighbours",
     ticket: "#1988 item 105",
     breaks: { "hudCombo overlaps hudTurn": 368, "hudTurn overlaps scorePill": 194 },
@@ -149,15 +134,9 @@ const KNOWN: readonly Known[] = [
     ],
   },
   {
-    defect: "at rest the hand zone and its buttons sit a hand's lift below their lifted place, past the bottom of the screen",
-    ticket: "#1988 item 108",
-    breaks: { "handZone leaves the window": 1575, "passa leaves the window": 1050, "gioca leaves the window": 1050, "hand leaves the window": 210 },
-    where: [on("(?!iPad Pro)[^(]+", ANY, ANY, ".*, hand \\d+ at rest,")],
-  },
-  {
-    defect: "a badge lifts its seat's name a badge row higher, the top seat's into the turn chip, and a side seat's badge row lands on its own fan",
+    defect: "a badge lifts its seat's name a badge row higher, the top seat's into the turn chip",
     ticket: "#1988 item 109",
-    breaks: { "hudTurn overlaps nameTop": 108, "badgeLeft overlaps fanLeft": 108, "badgeRight overlaps fanRight": 108 },
+    breaks: { "hudTurn overlaps nameTop": 108 },
     where: [on("[^(]+", ANY, ANY, "badged ")],
   },
 ];

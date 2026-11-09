@@ -17,7 +17,7 @@ import {
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { a11yState } from "@/lib/a11y";
-import { handDrop, HAND_ZONE_ALIGN, SIDE_SECTION_W } from "@/components/seatLayout";
+import { handLiftY, HAND_ZONE_ALIGN, SIDE_SECTION_W } from "@/components/seatLayout";
 import { RAIL_KNOB_ALIGN, type Rect } from "@/components/tableLayout";
 import type { Channel } from "@/lib/harnessChannels";
 
@@ -230,11 +230,7 @@ export function useHandLift(active: boolean, scale: number) {
   const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
-    // Anchored at the lifted state, not the settled one: the hand's designed
-    // position — cards cropped by the bottom edge, buttons on the safe line —
-    // is the one it holds while the player is using it. Lifting *from* that
-    // position instead would spend the crop it is measured by.
-    const resting = handDrop(active, scale);
+    const resting = handLiftY(active, scale);
     if (!mounted.current || reduceMotion) {
       mounted.current = true;
       cancelAnimation(lift);

@@ -42,7 +42,7 @@ function cases() {
 describe("the throw's contact is sampled from its own pose", () => {
   for (const c of cases()) {
     test(c.name, () => {
-      const to = real.pileSlots(c.n, 66, 600);
+      const to = real.pileSlots(c.n, 66, 600, 92);
       const sampled = sampledContact(real, c.n, c.from, to, c.catchUp);
       assert.equal(real.contactMs(c.n, c.from, to, c.catchUp), sampled);
       c.from.forEach((f, i) => assert.deepEqual(real.flightPose(0, i, c.n, f, to[i], c.catchUp), f));
@@ -59,17 +59,22 @@ describe("the throw's contact is sampled from its own pose", () => {
   }
 
   test("a single card from the top fan touches well before the mockup's 380 ms tween ends", () => {
-    const to = real.pileSlots(1, 66, 600);
+    const to = real.pileSlots(1, 66, 600, 92);
     const t = real.contactMs(1, [FANS[0]], to, false);
     assert.ok(t >= 290 && t <= 340, `contact at ${t} ms`);
   });
 
   test("the slots are the mockup's: 34, 28 and 24 apart at the mockup's card width, 1.2° per step", () => {
-    const gap = (n: number) => { const s = real.pileSlots(n, 65.97, 1000); return s[1].x - s[0].x; };
+    const gap = (n: number) => { const s = real.pileSlots(n, 65.97, 1000, 92); return s[1].x - s[0].x; };
     assert.deepEqual([gap(2), gap(4), gap(5)].map((g) => Math.round(g * 100) / 100), [34, 28, 24]);
-    assert.deepEqual(real.pileSlots(3, 65.97, 1000).map((s) => s.rot), [-1.2, 0, 1.2]);
-    const tight = real.pileSlots(6, 66, 150);
-    assert.ok(tight[5].x - tight[0].x + 66 <= 150 + 1e-9, "the pile overflows its room");
+    assert.deepEqual(real.pileSlots(3, 65.97, 1000, 92).map((s) => s.rot), [-1.2, 0, 1.2]);
+    const tight = real.pileSlots(13, 66, 400, 92);
+    const edge = (at: { x: number; rot: number }, side: 1 | -1) => {
+      const r = (at.rot * Math.PI) / 180;
+      return Math.max(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => side * (at.x + (sx * 66 * Math.cos(r) - sy * 92 * Math.sin(r)) / 2)));
+    };
+    const drawn = edge(tight[12], 1) + edge(tight[0], -1);
+    assert.ok(drawn <= 400 + 1e-9, `the pile's drawn corners overflow its room by ${drawn - 400}`);
   });
 });
 
@@ -82,7 +87,7 @@ test("a planted ease moves contact, and contactMs follows it", async () => {
   assert.equal(source.split("const EASE_POWER = 3;").length, 2, "flightPose.ts must declare `const EASE_POWER = 3;` once");
   writeFileSync(path.join(dir, "components", "flightPose.ts"), source.replace("const EASE_POWER = 3;", "const EASE_POWER = 2;"));
   const planted: Mod = await import(pathToFileURL(path.join(dir, "components", "flightPose.ts")).href);
-  const to = real.pileSlots(2, 66, 600);
+  const to = real.pileSlots(2, 66, 600, 92);
   const from = [FANS[0], FANS[0]];
   const before = sampledContact(real, 2, from, to, false);
   const after = sampledContact(planted, 2, from, to, false);

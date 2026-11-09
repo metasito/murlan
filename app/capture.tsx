@@ -95,7 +95,7 @@ function CaptureHarness() {
       // between two lamp positions is a state of its own and the only one that
       // needs an input to reach, so it takes a control that is already part of
       // the chrome rather than an overlay that would sit in the photograph.
-      railExtra={
+      railExtra={() => (
         <View style={styles.knobs}>
           <Pressable
             accessibilityRole="button"
@@ -117,7 +117,7 @@ function CaptureHarness() {
             </Pressable>
           )}
         </View>
-      }
+      )}
     />
   );
 }

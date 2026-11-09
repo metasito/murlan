@@ -6,9 +6,9 @@
 
 import { BACK_SCALE, CARD_H, CARD_W, FIELD_SCALE, handCardSize } from "./cardFaceModel.ts";
 import { pileSlots } from "./flightPose.ts";
-import { fanCorners, fanPoint } from "./fanGeometry.ts";
+import { fanCorners, fanPoint, seatLabelRise } from "./fanGeometry.ts";
 import { layoutHandRow } from "./handLayout.ts";
-import { CHIP_H, handDrop, SEAT_DISC, SEAT_LABEL_ALIGN, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatLabelRows, seatLabelW, seatNameSet } from "./seatLayout.ts";
+import { CHIP_H, handLiftY, SEAT_DISC, SEAT_LABEL_ALIGN, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatLabelRows, seatLabelW, seatNameSet } from "./seatLayout.ts";
 import type { OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
 import { faceWordsWidth, noticeWidth, type NoticeContent, type NoticeLocale, type Pricing } from "./table/noticeWidth.ts";
@@ -135,7 +135,7 @@ export function tableRects(input: {
     const labelW = seatLabelW(anchor, scale);
     const w = Math.min(priced("snapped"), labelW);
     overcount[as] = w - Math.min(priced("linear"), labelW);
-    const bottom = anchors[dir].y - ring / 2 - seatLabelRows(scale, seatBadgeH(state.seats[dir]!.badge?.kind, scale))[row];
+    const bottom = anchors[dir].y - ring / 2 - seatLabelRows(scale, seatBadgeH(state.seats[dir]!.badge?.kind, scale), seatLabelRise(dir, scale))[row];
     const labelLeft = anchors[dir].x - ring / 2 + seatLabelLeft(anchor, scale, layout.nameInset[dir]);
     return box(aligned(SEAT_LABEL_ALIGN[anchor], labelLeft, labelW, w), bottom - h, w, h);
   };
@@ -157,10 +157,10 @@ export function tableRects(input: {
 
   const fieldW = CARD_W(scale * FIELD_SCALE);
   const fieldH = CARD_H(scale * FIELD_SCALE);
-  const pileCards = pileSlots(state.pile, fieldW, frame.fieldRoomW).map((at) => turned(anchors.pile.x + at.x, anchors.pile.y + at.y, fieldW, fieldH, at.rot));
+  const pileCards = pileSlots(state.pile, fieldW, frame.fieldRoomW, fieldH).map((at) => turned(anchors.pile.x + at.x, anchors.pile.y + at.y, fieldW, fieldH, at.rot));
 
-  const drop = handDrop(state.hand.raised, scale);
-  const sunk = (r: Rect): Rect => box(r.x, r.y + drop, r.w, r.h);
+  const lift = handLiftY(state.hand.raised, scale);
+  const lifted = (r: Rect): Rect => box(r.x, r.y + lift, r.w, r.h);
   const size = handCardSize(scale, state.hand.onTurn, state.hand.faceDown);
   const row = layoutHandRow({
     ids: Array.from({ length: state.hand.cards }, (_, i) => String(i)),
@@ -170,7 +170,7 @@ export function tableRects(input: {
     bottomPad: frame.bottomPad,
   });
   const rowLeft = anchors.bottom.x - row.width / 2;
-  const rowTop = anchors.bottom.y + row.base - row.visibleH + drop;
+  const rowTop = anchors.bottom.y + row.base - row.visibleH + lift;
   let hand: Rect | null = null;
   if (row.cards.length > 0) {
     const drawn = span(row.cards.map((c) => cover(turned(rowLeft + c.left + c.shift + size.w / 2, rowTop + row.visibleH - c.bottom - size.h / 2, size.w, size.h, c.rot))))!;
@@ -206,9 +206,9 @@ export function tableRects(input: {
       fanLeft: span(fans.left.map(cover)),
       fanRight: span(fans.right.map(cover)),
       pile: span(pileCards.map(cover)),
-      handZone: sunk(handZone),
-      passa: sunk(buttons.passa),
-      gioca: sunk(buttons.gioca),
+      handZone: lifted(handZone),
+      passa: lifted(buttons.passa),
+      gioca: lifted(buttons.gioca),
       hand,
     },
     cards: { fanTop: fans.top, fanLeft: fans.left, fanRight: fans.right, pile: pileCards },
