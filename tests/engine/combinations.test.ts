@@ -251,31 +251,53 @@ describe("the order a straight is shown in", () => {
     assert.equal(faces(all), "A 2 3 4 5 6 7 8 9 10 J Q K");
   });
 
-  test("the pick order changes neither what the play is, its strength, nor which cards it holds", () => {
+  test("the pick order changes neither what the play is, its strength, nor which cards it holds, and the shown order is by face", () => {
     const permutations = <T,>(xs: T[]): T[][] =>
       xs.length <= 1 ? [xs] : xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]));
-    const hand = [c("A", "clubs"), c("2", "hearts"), c("3", "hearts"), c("4", "spades"), c("5", "hearts")];
-    const reference = buildCombination(hand)!;
-    const perms = permutations(hand);
-    assert.equal(perms.length, 120);
-    for (const picked of perms) {
-      const combo = buildCombination(picked)!;
-      assert.equal(combo.type, reference.type);
-      assert.equal(combo.strength, reference.strength);
-      assert.deepEqual(combo.cards.map((x) => x.id).sort(), hand.map((x) => x.id).sort());
-      assert.deepEqual(combo.cards.map((x) => x.rank), reference.cards.map((x) => x.rank));
+    const cases = [
+      { name: "ace low", hand: [c("A", "clubs"), c("2", "hearts"), c("3", "hearts"), c("4", "spades"), c("5", "hearts")], type: "straight", shown: "A 2 3 4 5", strength: 5 },
+      { name: "ace high", hand: [c("10", "clubs"), c("J", "hearts"), c("Q", "hearts"), c("K", "spades"), c("A", "hearts")], type: "straight", shown: "10 J Q K A", strength: 14 },
+      { name: "royal", hand: ["9", "10", "J", "Q", "K"].map((r) => c(r as "9", "spades")), type: "royal_straight", shown: "9 10 J Q K", strength: 13 },
+    ];
+    for (const { name, hand, type, shown, strength } of cases) {
+      const perms = permutations(hand);
+      assert.equal(perms.length, 120, name);
+      for (const picked of perms) {
+        const combo = buildCombination(picked)!;
+        assert.equal(combo.type, type, name);
+        assert.equal(combo.strength, strength, name);
+        assert.deepEqual(combo.cards.map((x) => x.id).sort(), hand.map((x) => x.id).sort(), name);
+        assert.equal(combo.cards.map((x) => x.rank).join(" "), shown, name);
+      }
     }
   });
 
-  test("every 13-card straight has the same strength, so none beats another, and it reads A to K", () => {
-    const thirteen = (suit: "hearts" | "spades") =>
-      ["K", "2", "A", "5", "Q", "3", "J", "4", "10", "9", "8", "7", "6"].map((r) => c(r as "5", suit));
-    const a = buildCombination(thirteen("hearts"))!;
-    const b = buildCombination(thirteen("spades"))!;
-    assert.equal(a.strength, 14);
-    assert.equal(a.cards.map((x) => x.rank).join(" "), "A 2 3 4 5 6 7 8 9 10 J Q K");
-    assert.equal(b.strength, a.strength);
-    assert.equal(beats(a, b), false);
+  describe("a 13-card straight", () => {
+    const SUITS = ["hearts", "clubs", "spades", "diamonds"] as const;
+    const RANKS = ["K", "2", "A", "5", "Q", "3", "J", "4", "10", "9", "8", "7", "6"] as const;
+    const mixed = (skew: number) => RANKS.map((r, i) => c(r, SUITS[(i + skew) % 4]));
+    const royal = (suit: (typeof SUITS)[number]) => RANKS.map((r) => c(r, suit));
+
+    test("reads A to K: top card K, the Ace first", () => {
+      const plain = buildCombination(mixed(0))!;
+      assert.equal(plain.type, "straight");
+      assert.equal(plain.strength, 13);
+      assert.equal(plain.cards.map((x) => x.rank).join(" "), "A 2 3 4 5 6 7 8 9 10 J Q K");
+    });
+
+    test("no 13-card straight beats another of its kind, and a royal one beats any plain one", () => {
+      const plainA = buildCombination(mixed(0))!;
+      const plainB = buildCombination(mixed(1))!;
+      const royalH = buildCombination(royal("hearts"))!;
+      const royalS = buildCombination(royal("spades"))!;
+      assert.equal(royalH.type, "royal_straight");
+      assert.equal(beats(plainA, plainB), false);
+      assert.equal(beats(plainB, plainA), false);
+      assert.equal(beats(royalH, royalS), false);
+      assert.equal(beats(royalS, royalH), false);
+      assert.equal(beats(royalH, plainA), true);
+      assert.equal(beats(plainA, royalH), false);
+    });
   });
 
   test("ordering changes no strength", () => {
