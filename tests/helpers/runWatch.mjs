@@ -3,7 +3,7 @@
 import { readdirSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
 
-const { heartbeat, idleMs, markers } = workerData;
+const { heartbeat, idleMs, markers, stop } = workerData;
 let inFlight = [];
 parentPort.on("message", (files) => (inFlight = files));
 
@@ -23,6 +23,7 @@ function killChildren() {
 setInterval(() => {
   if (Date.now() - Number(Atomics.load(heartbeat, 0)) <= idleMs) return;
   writeSync(2, `\nnpm test: nothing reported for ${idleMs / 1000}s; still running: ${inFlight.join(", ") || "no file; the runner itself"}\n`);
+  Atomics.store(stop, 0, 1);
   killChildren();
   rmSync(markers, { recursive: true, force: true });
   process.kill(process.pid, "SIGKILL");

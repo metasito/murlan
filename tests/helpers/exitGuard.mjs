@@ -13,6 +13,22 @@ const PARSE_TRIES = 3;
 const NOTICE_EVERY_MS = 60_000;
 
 /**
+ * A process table that answers nothing once `stopped()`: a tick the clock delivers late must not
+ * spawn a read that outlives the run.
+ * @template {{ identityOf(pid: number): unknown, endTreeIf(pid: number, identity: string): boolean, alive(pid: number): boolean }} P
+ * @param {P} proc
+ * @param {() => boolean} stopped
+ * @returns {P}
+ */
+export function haltable(proc, stopped) {
+  return /** @type {P} */ ({
+    identityOf: (pid) => (stopped() ? undefined : proc.identityOf(pid)),
+    endTreeIf: (pid, identity) => !stopped() && proc.endTreeIf(pid, identity),
+    alive: (pid) => !stopped() && proc.alive(pid),
+  });
+}
+
+/**
  * Markers are `<pid>` files holding `{ file, identity, at }`, written by tests/helpers/fileDeadline.mjs:
  * `identity` is proc.mjs's `identityOf` for that process, `at` is when its exit began. One written
  * before `since` is a previous run's.
