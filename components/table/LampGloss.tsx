@@ -6,7 +6,7 @@ import { CardBacks, CardGloss, Layer, Scrim, withAlpha } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
 import type { CardBackId } from "@/lib/cosmetics";
 import { cardRadius } from "@/components/cardFaceModel";
-import { cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLight } from "./cardGloss";
+import { cardGloss, foilGlint, foilGlintColor, glossSpot } from "./cardGloss";
 import { scopeOf, type CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
 import { levelShade } from "./rail";
@@ -125,12 +125,12 @@ const LIT_SCOPES: readonly CardScope[] = ["hand", "fan", "pile"];
 export function LevelShade({ rectKey, rects, width, height }: Props) {
   const table = useCardTable();
   if (!table || !rectKey || !rects || !LIT_SCOPES.includes(scopeOf(rectKey))) return null;
-  return <Shade light={glossLightFor(table, rectKey)} width={width} height={height} />;
+  return <Shade level={table.shadeLevel} width={width} height={height} />;
 }
 
-function Shade({ light, width, height }: { light: SharedValue<GlossLight>; width: number; height: number }) {
+function Shade({ level, width, height }: { level: SharedValue<number>; width: number; height: number }) {
   const style = useAnimatedStyle(() => {
-    const opacity = levelShade(light.value.level);
+    const opacity = levelShade(level.value);
     return { opacity, display: opacity > 0 ? "flex" : "none" };
   });
   return (

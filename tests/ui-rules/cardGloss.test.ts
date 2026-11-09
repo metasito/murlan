@@ -2,7 +2,7 @@
 // mockup's own lines (#1260).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { cardGloss, nextGlossLight, nextStillLight } from "../../components/table/cardGloss.ts";
+import { cardGloss, nextGlossLight, nextShadeLevel, nextStillLight } from "../../components/table/cardGloss.ts";
 import { CardGloss } from "../../lib/tokens.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
@@ -105,5 +105,10 @@ describe("the light a gloss reads", () => {
       const lamp = { ...shown, t: aFrameOn, ...moved };
       assert.deepEqual(nextGlossLight(shown, lamp), lamp, JSON.stringify(moved));
     }
+  });
+  test("the shade's level holds under a step and follows a step, whatever the sway does", () => {
+    assert.equal(nextShadeLevel(0.8, { level: 0.8 + 1 / 512 }), null);
+    assert.equal(nextShadeLevel(0.8, { level: 0.8 + 1 / 256 }), 0.8 + 1 / 256);
+    assert.equal(nextShadeLevel(0.8, { level: 0.2 }), 0.2);
   });
 });

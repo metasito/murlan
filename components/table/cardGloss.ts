@@ -57,6 +57,12 @@ export function nextStillLight(shown: GlossLight, lamp: Pick<Lamp, "x" | "ly" | 
   return withinStep(shown, lamp.x, lamp.ly, lamp.level, lamp.r) ? null : glossLightOf({ ...lamp, lx: lamp.x });
 }
 
+/** The level the cards' shade should now read, or null while `lamp` is within a step of `shown`: a shade needs the level alone, so it hears nothing of the sway. */
+export function nextShadeLevel(shown: number, lamp: Pick<Lamp, "level">): number | null {
+  "worklet";
+  return Math.abs(lamp.level - shown) < GLOSS_LIGHT_STEP ? null : lamp.level;
+}
+
 const clamp01 = (v: number) => {
   "worklet";
   return Math.max(0, Math.min(1, v));
