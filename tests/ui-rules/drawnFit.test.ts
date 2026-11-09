@@ -59,6 +59,13 @@ describe("the drawn fits see what they are for", () => {
     assert.ok(!fits.words(plate(ROW.x, linearW - within, word("TURNO")), priced, { align: "flex-start", overcount: OVERCOUNT }));
   });
 
+  test("a pill beside a neighbour drawn narrower than priced may sit and run that much outside its rect, and no more", () => {
+    const drift = 6;
+    assert.ok(fits.words(plate(ROW.x - drift, linearW + drift), priced, { align: "flex-start", overcount: OVERCOUNT, drift }));
+    assert.ok(!fits.words(plate(ROW.x - drift - 2, linearW + drift), priced, { align: "flex-start", overcount: OVERCOUNT, drift }));
+    assert.ok(!fits.words(plate(ROW.x - drift, linearW + drift), priced, { align: "flex-start", overcount: OVERCOUNT }));
+  });
+
   test("a plate drawn wider than its linear price does not fit", () => {
     assert.ok(!fits.words(plate(ROW.x, linearW + TOLERANCE + 0.5), priced, { align: "flex-start", overcount: OVERCOUNT }));
   });

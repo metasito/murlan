@@ -202,11 +202,15 @@ describe("the rules see what they are for", () => {
     assert.equal(intersects(a, { x: 9.9, y: 0, w: 10, h: 10 }), true);
   });
 
-  test("a chip too wide for its row is an overlap", () => {
-    const wide = Array.from({ length: 4 }, () => ({ runs: [{ run: "text:exchange.pileGives", slots: ["w".repeat(30), "w".repeat(30), "w".repeat(30)] }] }));
-    const t = tableRects({ ...tablet, state: { ...state, chips: { combo: wide, turn: turnScenes("w".repeat(30)).find((s) => s.name.includes("turnOf"))!.turn } } });
-    assert.deepEqual(brokenRules(t), [], "the row bounds a chip whatever it holds");
-    const combo = t.rects.hudCombo!;
+  test("a chip too wide for its row is an overlap, and a note cut is named", () => {
+    const sentence = { runs: [{ run: "text:exchange.pileGives", slots: ["w".repeat(30), "w".repeat(30), "w".repeat(30)] }] };
+    const long = turnScenes("w".repeat(30)).find((s) => s.name.includes("turnOf"))!.turn;
+    const named = tableRects({ ...tablet, state: { ...state, chips: { combo: [], turn: long } } });
+    assert.deepEqual(brokenRules(named), [], "a turn chip is held to its band whatever it holds");
+    const cut = tableRects({ ...tablet, state: { ...state, chips: { combo: [sentence, sentence, sentence, sentence], turn: [] } } });
+    assert.ok(brokenRules(cut).includes("hudCombo cuts its words"), brokenRules(cut).join("; "));
+    const t = tableRects({ ...tablet, state: { ...state, chips: { combo: [], turn: long } } });
+    const combo = t.rects.hudCombo ?? { x: 0, y: t.rects.hudTurn!.y, w: 0, h: t.rects.hudTurn!.h };
     t.rects.hudCombo = { ...combo, w: t.rects.hudTurn!.x + 1 - combo.x };
     assert.ok(brokenRules(t).some((m) => m.startsWith("hudCombo overlaps")), brokenRules(t).join("; "));
   });

@@ -39,11 +39,8 @@ export interface TableLayout {
   chipsBottom: number;
   /** The scale the HUD's chips are drawn at: the table's, or less where the window is too narrow for the row. */
   chips: number;
-  /** The combo pill's top-left corner and the widest it may be drawn, and the band the turn chip is aligned across, its width the chip's widest. */
-  hud: {
-    combo: { left: number; top: number; align: Align; maxW: number };
-    turn: { left: number; right: number; top: number; align: Align; maxW: number };
-  };
+  /** The chip row for pills drawn `widths` wide: the combo pill from the left, the score pill at rest on the right, and the turn chip between, a gap clear of both. */
+  chipRow(widths: ChipWidths): ChipRow;
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
   /** The hand zone at its designed place, and the padding its row and buttons stand on. At rest it sits `handDrop` lower. */
@@ -112,7 +109,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     floatTop: tableFloor - frame.bottomPad - floatAboveFoot(scale),
     chipsBottom: frame.tableTop + CHIP_H(scale) + frame.pad,
     chips,
-    hud: chipRow(frame, width, chips, pill),
+    chipRow: (widths) => chipRow(frame, pill, widths),
     rail: {
       width: frame.rail,
       menu: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: frame.tableTop, w: knob, h: knob },
@@ -133,24 +130,26 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   };
 }
 
-/** What the combo pill is given of the chip row, `112 * chips + 48` points: its widest ordinary play in each language, with a little over. */
-const COMBO_ROOM = { perScale: 112, flat: 48 } as const;
+/** What the chip row's two pills measure as drawn: the widths they come to inside the rooms `chipRow` gave them. */
+export interface ChipWidths { combo: number; turn: number }
 
-/**
- * The chip row: the combo pill takes its room from the left, the score pill its own at rest on the
- * right, and the turn chip the band between, a gap clear of both. It is centred on the felt's
- * centre line where that band is wide enough on both sides, and slides right to keep its gap from
- * the combo pill where it is not.
- */
-function chipRow(frame: TableFrame, width: number, chips: number, pill: PillAnchor): TableLayout["hud"] {
+interface ChipRow {
+  /** Its room is the whole row left of the score pill: the combo pill is never cut for the turn chip. */
+  combo: { left: number; top: number; room: number };
+  /** Its room is the band between the combo pill, as wide as it is, and the score pill; its `left` centres it on the felt, or keeps it a gap clear of its neighbours. */
+  turn: { left: number; top: number; room: number; w: number };
+}
+
+function chipRow(frame: TableFrame, pill: PillAnchor, widths: ChipWidths): ChipRow {
   const comboLeft = frame.tableLeft + frame.pad;
-  const comboMaxW = COMBO_ROOM.perScale * chips + COMBO_ROOM.flat;
-  const bandLeft = comboLeft + comboMaxW + frame.pad;
   const bandRight = scorePillBox(0, 0, pill).x - frame.pad;
-  const left = Math.max(bandLeft, 2 * pill.centreX - bandRight);
+  const comboW = Math.min(widths.combo, bandRight - comboLeft);
+  const bandLeft = comboLeft + comboW + frame.pad;
+  const turnW = Math.min(widths.turn, bandRight - bandLeft);
+  const left = Math.min(Math.max(pill.centreX - turnW / 2, bandLeft), bandRight - turnW);
   return {
-    combo: { left: comboLeft, top: frame.tableTop, align: "flex-start", maxW: comboMaxW },
-    turn: { left, right: width - bandRight, top: frame.tableTop, align: "center", maxW: bandRight - left },
+    combo: { left: comboLeft, top: frame.tableTop, room: bandRight - comboLeft },
+    turn: { left, top: frame.tableTop, room: bandRight - bandLeft, w: turnW },
   };
 }
 

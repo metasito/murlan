@@ -157,12 +157,14 @@ const at = (r: Rect) => `${r.x.toFixed(1)},${r.y.toFixed(1)} ${r.w.toFixed(1)}x$
 
 function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
   const bad: string[] = [];
+  const combo = [want.rects.hudCombo, got.boxes.hudCombo];
+  const drift = combo[0] && combo[1] ? Math.max(0, combo[0].w - combo[1].w) : 0;
   for (const [name, spec] of Object.entries(rects) as [RectName, { fit: Fit }][]) {
     const solved = want.rects[name];
     const raw = got.boxes[name];
     const box = raw && name === "hand" ? { ...raw, ...clipTo(raw, got.clip) } : raw;
     if (!solved !== !box) bad.push(`${name}: drawn ${box ? at(box) : "nothing"}, solver ${solved ? at(solved) : "nothing"}`);
-    else if (solved && box && !fits[spec.fit](box, solved, { align: want.aligns[name], overcount: want.overcount[name] })) {
+    else if (solved && box && !fits[spec.fit](box, solved, { align: want.aligns[name], overcount: want.overcount[name], drift: name === "hudTurn" ? drift : undefined })) {
       const words = box.text && ` (words ${box.text.drawn.toFixed(1)} drawn, ${box.text.linear.toFixed(1)} linear; overcount ${want.overcount[name]?.toFixed(1)})`;
       bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}${words ?? ""}`);
     }
