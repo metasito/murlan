@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { AppState, Platform } from "react-native";
-import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
+import { useDuring } from "@/lib/motion";
 import { contactMs, flightEndMs, type CardFrom, type CardSlot } from "@/components/flightPose";
 import { LAND_WOBBLE_MS, type ImpactTier } from "@/components/impact";
 import type { PulseStep } from "@/lib/device/feedback";
@@ -51,7 +52,7 @@ function stepper(
   return (frame: FrameInfo) => {
     "worklet";
     const r = run.value;
-    if (!r.spec) return;
+    if (!r.spec) return false;
     if (r.startedAt < 0) {
       // Web hands a new frame callback its first frame two frames late, so it runs on the throw's clock; native starts on the first drawn frame, so a first play's mount hitch is not taken out of the flight.
       r.startedAt = Platform.OS === "web" ? Math.min(frame.timestamp, r.thrownAt) : frame.timestamp;
@@ -69,7 +70,9 @@ function stepper(
       const key = r.spec.key;
       r.spec = null;
       scheduleOnRN(report.end, key);
+      return false;
     }
+    return true;
   };
 }
 
@@ -86,7 +89,7 @@ export function useFlightClock(
   const landing = useSharedValue<LandingPayload | null>(null);
   // The callbacks are the first render's: `PileLayer` hands in stable ones.
   const [step] = useState(() => stepper(run, elapsed, landing, signal, { start: onStart, touch: onContact, end: onEnd }));
-  const frames = useFrameCallback(step, false);
+  const wake = useDuring(step);
   return useMemo(
     () => ({
       elapsed,
@@ -94,14 +97,13 @@ export function useFlightClock(
       begin: (spec: FlightSpec) => {
         run.set({ spec, thrownAt: inBackground() ? Infinity : performance.now(), startedAt: -1, touched: false });
         elapsed.set(0);
-        frames.setActive(true);
+        wake();
       },
       halt: () => {
-        frames.setActive(false);
         run.set({ spec: null, thrownAt: 0, startedAt: -1, touched: true });
         elapsed.set(AT_REST);
       },
     }),
-    [elapsed, landing, run, frames]
+    [elapsed, landing, run, wake]
   );
 }

@@ -3,7 +3,6 @@ import { View, StyleSheet } from "react-native";
 import Animated, {
   makeMutable,
   useAnimatedStyle,
-  useFrameCallback,
   useSharedValue,
   type FrameInfo,
   type SharedValue,
@@ -13,6 +12,7 @@ import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W } from "@/components/cardFaceModel";
 import { Layer, Motion } from "@/lib/theme";
 import { withdraw } from "@/lib/device/feedback";
+import { useDuring } from "@/lib/motion";
 import { handCountOf } from "@/shared/protocol";
 import type { Seating, TableLayout } from "@/components/tableLayout";
 import type { HandDeal } from "@/components/table/hand";
@@ -168,14 +168,18 @@ function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, st
         origin.value = frame.timestamp;
         scheduleOnRN(landed);
       }
-      return;
+      return false;
     }
     if (origin.value < 0) {
       origin.value = frame.timestamp;
       scheduleOnRN(started, frame.timestamp + startMs);
     }
     clock.value = frame.timestamp - origin.value;
-    if (clock.value >= endMs) scheduleOnRN(landed);
+    if (clock.value >= endMs) {
+      scheduleOnRN(landed);
+      return false;
+    }
+    return true;
   };
 }
 
@@ -195,15 +199,8 @@ export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, on
   onLanded: () => void;
 }) {
   const origin = useSharedValue(-1);
-  const [landed, setLanded] = useState(false);
-  const [step] = useState(() => dealStepper(clock, origin, startMs, endMs, onStarted, () => {
-    setLanded(true);
-    onLanded();
-  }));
-  const frames = useFrameCallback(step);
-  useEffect(() => {
-    if (landed) frames.setActive(false);
-  }, [landed, frames]);
+  const [step] = useState(() => dealStepper(clock, origin, startMs, endMs, onStarted, onLanded));
+  useDuring(step, true);
   useEffect(() => () => withdraw("deal"), []);
   const slots = useMemo(() => dealSlots(cards), [cards]);
   return (
