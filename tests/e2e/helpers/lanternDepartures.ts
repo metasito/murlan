@@ -22,7 +22,7 @@ const seats = Object.entries(MOCKUP_SEAT).map(([dir, k]) => [k, MOCKUP_POOLS[dir
 
 /**
  * Run in the mockup before `start`: its lamp aims the app's way, rests where the app's does, its
- * reach glides with the pool, and its cloth draws the app's two light lines at the app's light.
+ * reach glides with the pool, and its cloth draws the app's two light lines at the app's light and the app's weave visibility.
  */
 export const DEPART_SCRIPT = `(() => {
   const seats = ${JSON.stringify(seats)};
@@ -85,7 +85,7 @@ export async function expectDeparted(page: Page): Promise<void> {
       uniforms: p ? ["uPoolR", "uVigR"].filter((u) => gl.getUniformLocation(p, u) !== null) : [],
     };
   })()`)) as { swapped: number[] | null; draws: number; uniforms: string[] };
-  expect(seen.swapped, "each of the mockup's two light lines swapped exactly once").toEqual(CLOTH_DEPARTURES.map(() => 1));
+  expect(seen.swapped, "each of the mockup's three departed lines swapped exactly once").toEqual(CLOTH_DEPARTURES.map(() => 1));
   expect(seen.uniforms, "the mockup's cloth takes the app's light uniforms").toEqual(["uPoolR", "uVigR"]);
   expect(seen.draws, "the mockup drew its cloth with the app's light").toBeGreaterThan(0);
 }

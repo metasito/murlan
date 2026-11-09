@@ -11,7 +11,7 @@ import { openApp, registerNewAccount, uniqueUsername } from "./navigation";
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./online";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, newSidePage, recorded, sideContext } from "./mockupParity";
 import { step, takeOver } from "./virtualClock";
-import { anchorsOf, diffReconnect, onChapterClock, type Anchors } from "./reconnectDiff";
+import { anchorsOf, diffReconnect, levelSpanTraced, onChapterClock, type Anchors } from "./reconnectDiff";
 import { STEP_MS, type TraceFrame } from "./traceDiff";
 import { Reconnect } from "../../../lib/tokens";
 
@@ -122,6 +122,7 @@ async function captureApp(browser: Browser, baseURL: string): Promise<Side> {
   await page.waitForFunction((at) => performance.now() >= at, lost + (SHOTS[3] - CHAPTER.lost));
   shots.push({ t: SHOTS[3], jpeg: await page.screenshot({ type: "jpeg", quality: 80 }) });
   await page.waitForFunction((at) => performance.now() >= at, lost + (UNTIL - CHAPTER.lost));
+  await untilTraced(page, (f) => levelSpanTraced(f, lost), "the lamp's clock covers the level's span", 20_000);
   const frames = await recorded(page);
   await context.close();
   return { frames, shots };

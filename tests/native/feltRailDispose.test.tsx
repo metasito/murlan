@@ -12,11 +12,14 @@ import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
 
 const mockBaked: { dispose: jest.Mock }[] = [];
+const mockDrawn: unknown[] = [];
 
 jest.mock('@shopify/react-native-skia', () => {
   const R = require('react') as typeof import('react');
   const call: object = new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : call), apply: () => call });
   const element = ({ children }: { children?: React.ReactNode }) => R.createElement(R.Fragment, null, children);
+  const Image = ({ image }: { image?: unknown }) => (mockDrawn.push(image ?? null), null);
+  const Canvas = ({ children }: { children?: React.ReactNode }) => (mockDrawn.push('canvas'), R.createElement(R.Fragment, null, children));
   const surface = () => ({
     getCanvas: () => call,
     flush: () => {},
@@ -32,7 +35,7 @@ jest.mock('@shopify/react-native-skia', () => {
   });
   const Skia = new Proxy(call, { get: (_, key) => (key === 'Surface' ? { Make: surface, MakeOffscreen: () => null } : call) });
   return new Proxy({ Skia, PaintStyle: {}, useCanvasRef: () => R.useRef(null) } as Record<string | symbol, unknown>, {
-    get: (known, key) => (key === '__esModule' ? true : key in known ? known[key] : element),
+    get: (known, key) => (key === '__esModule' ? true : key === 'Image' ? Image : key === 'Canvas' ? Canvas : key in known ? known[key] : element),
   });
 });
 
@@ -58,5 +61,11 @@ describe('the felt rail on native', () => {
     expect(mockBaked.map((image) => image.dispose.mock.calls.length)).toEqual([1, 0]);
     await view.unmount();
     expect(mockBaked.map((image) => image.dispose.mock.calls.length)).toEqual([1, 1]);
+  });
+
+  it('draws the baked rail in the render that mounts the felt, not after an effect', async () => {
+    mockDrawn.length = 0;
+    await render(felt(2));
+    expect(mockDrawn.slice(0, 2)).toEqual(['canvas', mockBaked[mockBaked.length - 1]]);
   });
 });
