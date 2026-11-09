@@ -23,41 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
-      - name: Generate the native project, on the NDK React Native pins
-        run: |
-          npx expo prebuild --platform android --no-install
-          want=$(sed -n 's/^ndkVersion = "\(.*\)"$/\1/p' node_modules/react-native/gradle/libs.versions.toml)
-          have=$(ls "$ANDROID_HOME/ndk" | grep "^${want%%.*}\." | sort -V | tail -1)
-          [ -n "$have" ] || { echo "::error::No NDK ${want%%.*}.x under $ANDROID_HOME/ndk."; exit 1; }
-          sed -i "1i ext.ndkVersion = \"$have\"" android/build.gradle
-          grep -q 'usesCleartextTraffic="true"' android/app/src/main/AndroidManifest.xml
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      - uses: ./.github/actions/diagnostics-android
         with:
-          distribution: temurin
-          java-version: "17"
-          cache: gradle
-          cache-jdk: false
-      - name: Build a diagnostics release
-        run: |
-          ./android/gradlew -p android assembleRelease -PreactNativeArchitectures=x86_64 -x lintVitalRelease --no-daemon
-          apk=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
-          [ -n "$apk" ] || { echo "::error::assembleRelease produced no APK."; exit 1; }
-          unzip -q "$apk" -d "$RUNNER_TEMP/apk"
-          node scripts/e2eBuildMark.mjs --present "$RUNNER_TEMP/apk" --mark diagnostics
-          aapt=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
-          echo "APP_APK=$GITHUB_WORKSPACE/$apk" >> "$GITHUB_ENV"
-          echo "APP_ID=$("$aapt" dump packagename "$apk")" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/soak"
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Start the collector
-        run: |
-          nohup node scripts/diagnostics-collector.mjs "$RUNNER_TEMP/soak/android.ndjson" > "$RUNNER_TEMP/soak/collector.log" 2>&1 &
-          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
-          curl -sf http://127.0.0.1:5099/
+          out-dir: ${{ runner.temp }}/soak
+          record: android.ndjson
       - name: Soak on the emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -99,39 +68,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
-      - name: Find and boot an iPhone simulator
-        run: |
-          udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
-          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
-          xcrun simctl boot "$udid"
-      - name: Build a diagnostics release for the simulator
-        run: |
-          npx expo prebuild --platform ios --no-install
-          pod install --project-directory=ios
-          workspace=$(ls -d ios/*.xcworkspace | head -1)
-          scheme=$(basename "$workspace" .xcworkspace)
-          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
-          app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
-          [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
-          node scripts/e2eBuildMark.mjs --present "$app" --mark diagnostics
-          echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
-          echo "APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
-          echo "APP_EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/soak"
-      - name: Install the app and start the collector
-        run: |
-          xcrun simctl bootstatus "$SIMULATOR_UDID"
-          xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
-          nohup node scripts/diagnostics-collector.mjs "$RUNNER_TEMP/soak/ios.ndjson" > "$RUNNER_TEMP/soak/collector.log" 2>&1 &
-          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
-          curl -sf http://127.0.0.1:5099/
-      - name: Install Maestro
-        run: |
-          export MAESTRO_VERSION=2.10.0
-          curl -Ls "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-          "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
+      - uses: ./.github/actions/diagnostics-ios
+        with:
+          out-dir: ${{ runner.temp }}/soak
+          record: ios.ndjson
       - name: Open the bench by its deep link
         env:
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"

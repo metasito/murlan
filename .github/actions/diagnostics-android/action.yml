@@ -1,0 +1,60 @@
+name: Build the Android diagnostics release and start the collector
+description: >
+  The device-run setup `audio-soak.yml` and `render-spike.yml` share: a release build on the NDK React
+  Native pins, KVM for the emulator, and the collector writing into `out-dir`. Sets APP_APK and APP_ID.
+
+inputs:
+  out-dir:
+    description: Directory the collector's record and the run's files go in.
+    required: true
+  record:
+    description: File name of the collector's ndjson inside out-dir.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Generate the native project, on the NDK React Native pins
+      shell: bash
+      run: |
+        npx expo prebuild --platform android --no-install
+        want=$(sed -n 's/^ndkVersion = "\(.*\)"$/\1/p' node_modules/react-native/gradle/libs.versions.toml)
+        have=$(ls "$ANDROID_HOME/ndk" | grep "^${want%%.*}\." | sort -V | tail -1)
+        [ -n "$have" ] || { echo "::error::No NDK ${want%%.*}.x under $ANDROID_HOME/ndk."; exit 1; }
+        sed -i "1i ext.ndkVersion = \"$have\"" android/build.gradle
+        grep -q 'usesCleartextTraffic="true"' android/app/src/main/AndroidManifest.xml
+    - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      with:
+        distribution: temurin
+        java-version: "17"
+        cache: gradle
+        cache-jdk: false
+    - name: Build a diagnostics release
+      shell: bash
+      env:
+        OUT_DIR: ${{ inputs.out-dir }}
+      run: |
+        ./android/gradlew -p android assembleRelease -PreactNativeArchitectures=x86_64 -x lintVitalRelease --no-daemon
+        apk=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+        [ -n "$apk" ] || { echo "::error::assembleRelease produced no APK."; exit 1; }
+        unzip -q "$apk" -d "$RUNNER_TEMP/apk"
+        node scripts/e2eBuildMark.mjs --present "$RUNNER_TEMP/apk" --mark diagnostics
+        aapt=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
+        echo "APP_APK=$GITHUB_WORKSPACE/$apk" >> "$GITHUB_ENV"
+        echo "APP_ID=$("$aapt" dump packagename "$apk")" >> "$GITHUB_ENV"
+        mkdir -p "$OUT_DIR"
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+    - name: Start the collector
+      shell: bash
+      env:
+        OUT_DIR: ${{ inputs.out-dir }}
+        RECORD: ${{ inputs.record }}
+      run: |
+        nohup node scripts/diagnostics-collector.mjs "$OUT_DIR/$RECORD" > "$OUT_DIR/collector.log" 2>&1 &
+        for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
+        curl -sf http://127.0.0.1:5099/
