@@ -15,7 +15,7 @@ import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
 
 type Kind = 'weave' | 'lit' | 'cloth' | '';
-type Layer = { kind: 'rest' | 'lit' | 'live'; opacity?: { value: number } };
+type Layer = { kind: 'rest' | 'hand' | 'lit' | 'live'; planes: boolean; opacity?: { value: number }; uniforms?: { value: { uW?: number } } };
 const mock = {
   bakes: [] as { size: [number, number]; kind: Kind }[],
   drawing: '' as Kind,
@@ -73,13 +73,16 @@ jest.mock('@shopify/react-native-skia', () => {
   });
   // A felt layer is a Rect filled by one shader, drawn at the Rect's opacity.
   const Rect = ({ opacity, children }: { opacity?: { value: number }; children?: React.ReactNode }) => {
-    const sksl = R.isValidElement(children) ? (children.props as { source?: { sksl: string } }).source?.sksl : undefined;
+    const shader = R.isValidElement(children) ? (children.props as { source?: { sksl: string }; uniforms?: Layer['uniforms'] }) : undefined;
+    const sksl = shader?.source?.sksl;
+    const uniforms = shader?.uniforms;
     R.useEffect(() => {
       if (!sksl) return;
-      const layer: Layer = { kind: sksl.includes('uLean') ? 'rest' : sksl.includes('uG0') ? 'lit' : 'live', opacity };
+      const kind = sksl.includes('uW') ? 'hand' : sksl.includes('uLean') ? 'rest' : sksl.includes('uG0') ? 'lit' : 'live';
+      const layer: Layer = { kind, planes: sksl.includes('uG0'), opacity, uniforms };
       mock.layers.add(layer);
       return () => void mock.layers.delete(layer);
-    }, [sksl, opacity]);
+    }, [sksl, opacity, uniforms]);
     return R.createElement(R.Fragment, null, children);
   };
   const Canvas = ({ children, style, testID }: { children?: React.ReactNode; style?: unknown; testID?: string }) =>
@@ -116,14 +119,18 @@ const planesHeld = () => held('weave');
 const bakes = (kind: Kind) => mock.bakes.filter((b) => b.kind === kind).map((b) => b.size);
 const layers = () => [...mock.layers];
 const drawn = () => {
-  const out = { rest: 0, lit: 0, live: 0 };
+  const out = { rest: 0, hand: 0, lit: 0, live: 0 };
   for (const l of layers()) if (!l.opacity || l.opacity.value > 0) out[l.kind]++;
   return out;
 };
 const over = () => layers().find((l) => l.kind !== 'rest');
 const crossed = () => layers().some((l) => l.kind === 'rest');
-const overKind = () => ({ lit: 'lit', live: 'cloth', rest: '' })[over()?.kind ?? 'rest'];
-const weight = () => over()?.opacity?.value ?? null;
+const overKind = () => (over()?.planes ? 'lit' : over() ? 'cloth' : '');
+// How much of the settled felt is the lit cloth: the hand-over's own weight while it draws, none while the cross alone does.
+const weight = () => {
+  const hand = layers().find((l) => l.kind === 'hand' && l.opacity && l.opacity.value > 0);
+  return hand ? (hand.uniforms?.value.uW ?? null) : crossed() ? 0 : null;
+};
 const unfreed = () => mock.images.filter((i) => i.baked && i.dispose.mock.calls.length === 0);
 // The weight of the lit cloth over the settled cross on each frame the cross is mounted, as the lamp sways.
 const watch = (lamp: ReturnType<typeof makeMutable<Lamp>>) => {
@@ -176,10 +183,10 @@ describe('the felt cloth', () => {
     expect(planesHeld()).toHaveLength(WEAVE_PLANES);
     expect(bakes('lit')).toEqual(Array(LIT_PER_TARGET).fill([DESIGN.width * 2, DESIGN.height * 2]));
     expect(held('lit')).toHaveLength(LIT_PER_TARGET);
-    expect(drawn()).toEqual({ rest: 1, lit: 1, live: 0 });
+    expect(drawn()).toEqual({ rest: 0, hand: 1, lit: 0, live: 0 });
     await frames(1600, sway(lamp));
     expect(mock.bakes).toHaveLength(1 + LIT_PER_TARGET);
-    expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
+    expect(drawn()).toEqual({ rest: 1, hand: 0, lit: 0, live: 0 });
     await view.unmount();
   });
 
@@ -209,7 +216,7 @@ describe('the felt cloth', () => {
     await frames(3200, each);
     expect(seen.at(-1)).toBe(0);
     expect(Math.max(...steps(seen))).toBeLessThan(0.05);
-    expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
+    expect(drawn()).toEqual({ rest: 1, hand: 0, lit: 0, live: 0 });
     expect(mock.bakes).toHaveLength(1 + LIT_PER_TARGET);
     await view.unmount();
   });
@@ -231,14 +238,14 @@ describe('the felt cloth', () => {
     await frames(160, sway(lamp));
     settle(lamp, [TABLE_CENTRE[0] + 200, TABLE_CENTRE[1] - 60, TABLE_CENTRE[2]]);
     await frames(160, sway(lamp));
-    expect(drawn()).toEqual({ rest: 0, lit: 1, live: 0 });
+    expect(drawn()).toEqual({ rest: 0, hand: 0, lit: 1, live: 0 });
     await frames(6000, sway(lamp));
-    expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
+    expect(drawn()).toEqual({ rest: 1, hand: 0, lit: 0, live: 0 });
     expect(bakes('weave')).toHaveLength(1);
     expect(bakes('lit')).toHaveLength(2 * LIT_PER_TARGET);
     settle(lamp, TABLE_CENTRE);
     await frames(6000, sway(lamp));
-    expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
+    expect(drawn()).toEqual({ rest: 1, hand: 0, lit: 0, live: 0 });
     expect(bakes('lit')).toHaveLength(2 * LIT_PER_TARGET);
     await view.unmount();
   });
@@ -254,7 +261,7 @@ describe('the felt cloth', () => {
     await view.rerender(<FeltCanvas lamp={lamp} sx={1.1} sy={1.1} stops={FeltGradient} cards={table} />);
     await frames(96, sway(lamp));
     expect(bakes('weave')).toHaveLength(1);
-    expect(drawn()).toEqual({ rest: 0, lit: 0, live: 1 });
+    expect(drawn()).toEqual({ rest: 0, hand: 0, lit: 0, live: 1 });
     await frames(400, sway(lamp));
     expect(bakes('weave')).toEqual([
       [DESIGN.width * 2, DESIGN.height * 2],
@@ -263,7 +270,7 @@ describe('the felt cloth', () => {
     expect(first.every((i) => i.dispose.mock.calls.length > 0)).toBe(true);
     expect(planesHeld()).toHaveLength(WEAVE_PLANES);
     await frames(HANDED_OVER_MS, sway(lamp));
-    expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
+    expect(drawn()).toEqual({ rest: 1, hand: 0, lit: 0, live: 0 });
     await view.unmount();
   });
 
@@ -304,7 +311,7 @@ describe('the felt cloth', () => {
     expect(bakes('cloth')).toHaveLength(LIT_PER_TARGET);
     expect(held('cloth')).toHaveLength(LIT_PER_TARGET);
     await frames(HANDED_OVER_MS, sway(lamp));
-    expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
+    expect(drawn()).toEqual({ rest: 1, hand: 0, lit: 0, live: 0 });
     expect(overKind()).toBe('cloth');
     await view.unmount();
   });
@@ -315,16 +322,25 @@ describe('the felt cloth', () => {
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     expect(mock.images.length).toBeGreaterThan(0);
-    expect(drawn()).toEqual({ rest: 0, lit: 0, live: 1 });
+    expect(drawn()).toEqual({ rest: 0, hand: 0, lit: 0, live: 1 });
     expect(unfreed()).toEqual([]);
     await view.unmount();
   });
 
-  it('frees every bake when it unmounts', async () => {
+  it('frees the cloths of the target it lit longest ago, and every bake when it unmounts', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     expect(overKind()).toBe('lit');
+    const first = held('lit');
+    expect(first).toHaveLength(LIT_PER_TARGET);
+    for (const dx of [-200, 200, 100]) {
+      settle(lamp, [TABLE_CENTRE[0] + dx, TABLE_CENTRE[1] - 60, TABLE_CENTRE[2]]);
+      await frames(6000, sway(lamp));
+    }
+    expect(bakes('lit')).toHaveLength(4 * LIT_PER_TARGET);
+    expect(first.every((i) => i.dispose.mock.calls.length === 1)).toBe(true);
+    expect(held('lit')).toHaveLength(3 * LIT_PER_TARGET);
     expect(unfreed().length).toBeGreaterThan(0);
     await view.unmount();
     await frames(64);
@@ -348,7 +364,7 @@ describe('the felt cloth', () => {
     const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     await frames(HANDED_OVER_MS, sway(lamp));
-    expect(drawn()).toEqual({ rest: 1, lit: 0, live: 0 });
+    expect(drawn()).toEqual({ rest: 1, hand: 0, lit: 0, live: 0 });
     await view.unmount();
   });
 });

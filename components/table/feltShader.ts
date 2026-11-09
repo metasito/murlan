@@ -143,13 +143,33 @@ const PLANES = "uniform shader uG0,uG1;\n";
 /** The cloth again, lit from the weave's planes `uG0`–`uG1`, sampled nearest at the device pixel they were baked on. */
 export const LIT_SKSL = `${UNIFORMS}\n${PLANES}${LIT_BODY}\nhalf4 main(vec2 xy){return half4(cloth(xy));}`;
 
+const SETTLED = `uniform shader uA,uB;
+uniform float uLean;
+half4 settled(vec2 p){half4 b=uB.eval(p)*uLean;return b+uA.eval(p)*(1.-b.a);}`;
+
 /**
- * A settled lamp's felt: the cloth lit at either end of its sway, `uA` and `uB`, crossed by where the
- * lamp is. Two reads and nothing else: the lit cloth is drawn over it at the paint's alpha, which Skia
- * skips at 0. Not one shader branching on the weight: a masked rasteriser such as SwiftShader runs
- * both sides of a uniform branch, so the lit cloth would cost every settled frame.
+ * A settled lamp's felt: the cloth lit at either end of its sway, `uA` and `uB`, `uB` laid over `uA`
+ * at `uLean`, as `main` drew them as two images. In one shader, so the felt's antialiased edge is laid
+ * on the rail once, at that composite's own coverage.
  */
-export const REST_SKSL = "uniform shader uA,uB;\nuniform float uLean;\nhalf4 main(vec2 p){return mix(uA.eval(p),uB.eval(p),uLean);}";
+export const REST_SKSL = `${SETTLED}\nhalf4 main(vec2 p){return settled(p);}`;
+
+/**
+ * The settled felt `uW` of the way to the cloth lit where the lamp is. No branch on `uW`: a masked
+ * rasteriser such as SwiftShader runs both sides of one, so the felt draws `REST_SKSL` alone at 0.
+ */
+const handOver = (head: string, body: string) => `${UNIFORMS}\n${head}${SETTLED}\nuniform float uW;\n${body}\nhalf4 main(vec2 p){return mix(settled(p),half4(cloth(p)),uW);}`;
+
+/** Over the planes: children `uG0`, `uG1`, `uA`, `uB`. */
+export const HAND_LIT_SKSL = handOver(PLANES, LIT_BODY);
+/** Where no planes could be baked: children `uA`, `uB`. */
+export const HAND_CLOTH_SKSL = handOver("", CLOTH_BODY);
+
+/** Which of a settled felt's draws shows, each one shader over the rail: its cross alone while none of it is lit, the hand-over otherwise. */
+export function settledDraws(weight: number): { cross: number; hand: number } {
+  "worklet";
+  return weight > 0 ? { cross: 0, hand: 1 } : { cross: 1, hand: 0 };
+}
 
 /** Below this the flare draws nothing an 8-bit felt shows. */
 export const FLARE_SEEN = 0.005;
@@ -161,7 +181,6 @@ export function flareShare(f: number): number {
   const t = Math.min(1, Math.max(0, (f - FLARE_SEEN) / (FLARE_LIT - FLARE_SEEN)));
   return t * t * (3 - 2 * t);
 }
-
 
 export function weaveUniforms(k: number, plane: number): ClothUniforms {
   const { uPitch, uType, uTwo, uMott, uDepth, uCover, uFuzz, uSheen } = TWILL;

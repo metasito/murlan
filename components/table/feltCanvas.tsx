@@ -41,7 +41,7 @@ import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
 import { useGreyLayer } from "./greyLayer";
-import { CLOTH_SKSL, clothUniforms, FELT_K_CAP, flareShare, LIT_SKSL, REST_SKSL, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
+import { CLOTH_SKSL, clothUniforms, FELT_K_CAP, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
@@ -66,6 +66,8 @@ const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
 const WEAVE = Skia.RuntimeEffect.Make(WEAVE_SKSL);
 const LIT = Skia.RuntimeEffect.Make(LIT_SKSL);
 const REST = Skia.RuntimeEffect.Make(REST_SKSL);
+const HAND_LIT = Skia.RuntimeEffect.Make(HAND_LIT_SKSL);
+const HAND_CLOTH = Skia.RuntimeEffect.Make(HAND_CLOTH_SKSL);
 const NEAREST = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 
 // On Android `opaque` swaps the canvas for a SurfaceView; on iOS it needs the Skia patch.
@@ -382,7 +384,7 @@ function bakeSettled(aim: Pool, base: ClothUniforms, planes: SkImage[] | null, g
 }
 
 // CanvasKit frees nothing itself. Skia commits the new image in a layout effect, before an effect's cleanup releases the old.
-const release = (free: () => void) => (DISPOSE_PATHS ? disposeAfterReactions(free) : free());
+const free = (image: SkImage) => (DISPOSE_PATHS ? disposeAfterReactions(() => image.dispose()) : image.dispose());
 
 /** The most recently used cloths, so a lamp that returns to a target it has lit already redraws nothing. */
 class ClothCache {
@@ -396,7 +398,7 @@ class ClothCache {
     for (const [oldest, image] of this.images) {
       if (this.images.size <= CACHED_CLOTHS) break;
       this.images.delete(oldest);
-      disposeAfterReactions(() => image.dispose());
+      free(image);
     }
     return hit;
   }
@@ -404,7 +406,7 @@ class ClothCache {
   dispose() {
     const all = [...this.images.values()];
     for (const key of [...this.images.keys()]) this.images.delete(key);
-    all.forEach((image) => release(() => image.dispose()));
+    all.forEach(free);
   }
 }
 
@@ -414,9 +416,8 @@ interface Weave {
   cloths: ClothCache;
 }
 
-const freeImage = (image: SkImage | null) => image && release(() => image.dispose());
 const freeWeave = ({ planes, cloths }: Weave) => {
-  if (planes) release(() => planes.forEach((plane) => plane.dispose()));
+  planes?.forEach(free);
   cloths.dispose();
 };
 
@@ -428,7 +429,7 @@ const SIZE_SETTLES_MS = 200;
  * unmounts. A new `make` is called once its window has held still `SIZE_SETTLES_MS`; until then
  * `held` is the last one's, and `current` false.
  */
-function useOwned<T>(make: () => T, free: (value: T) => void): { held: T | null; current: boolean } {
+function useOwned<T>(make: () => T, drop: (value: T) => void): { held: T | null; current: boolean } {
   const [owned, setOwned] = useState<{ make: () => T; value: T } | null>(null);
   const unadopted = useRef<{ value: T } | null>(null);
   useEffect(() => {
@@ -446,15 +447,15 @@ function useOwned<T>(make: () => T, free: (value: T) => void): { held: T | null;
   useEffect(() => {
     if (!owned) return;
     if (unadopted.current?.value === owned.value) unadopted.current = null;
-    return () => free(owned.value);
-  }, [owned, free]);
+    return () => drop(owned.value);
+  }, [owned, drop]);
   // A bake made after the last commit, when the felt unmounts before adopting it.
   useEffect(
     () => () => {
       const left = unadopted.current;
-      if (left) free(left.value);
+      if (left) drop(left.value);
     },
-    [unadopted, free]
+    [unadopted, drop]
   );
   return { held: owned?.value ?? null, current: owned?.make === make };
 }
@@ -468,7 +469,6 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   image.dispose();
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
-
 
 /** Once a settled felt's cross is drawn, hands the lit cloth over to it, unless the lamp has moved on since. */
 function settleOnto(lamp: SharedValue<Lamp>, settle: SharedValue<number>, aim: string) {
@@ -490,8 +490,8 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const k = full * c;
   const gx = dpr * sx * c;
   const gy = dpr * sy * c;
-  const makeRail = useCallback(() => bakeRail(k), [k]);
-  const rail = useOwned(makeRail, freeImage).held;
+  const rail = useMemo(() => bakeRail(k), [k]);
+  useEffect(() => () => void (rail && free(rail)), [rail]);
   const makeWeave = useCallback((): Weave => ({ planes: bakeWeave(k, gx, gy), cloths: new ClothCache() }), [k, gx, gy]);
   const owned = useOwned(makeWeave, freeWeave);
   const weave = owned.current ? owned.held : null;
@@ -534,7 +534,10 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   }));
   const lean = useDerivedValue(() => ({ uLean: Math.min(1, Math.max(0, 0.5 + (lamp.value.lx - lamp.value.tx) / (2 * SWAY))) }));
   const weight = useDerivedValue(() => Math.max(settle.value, flareShare(lamp.value.f)));
-  const under = useDerivedValue(() => (weight.value < 1 ? 1 : 0));
+  const draws = useDerivedValue(() => settledDraws(weight.value));
+  const cross = useDerivedValue(() => draws.value.cross);
+  const hand = useDerivedValue(() => draws.value.hand);
+  const handing = useDerivedValue(() => ({ ...uniforms.value, ...lean.value, uW: weight.value }));
   const light = useDerivedValue(() => ({ x: lamp.value.lx, y: lamp.value.ly }));
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(lamp.value.f));
   const coat = useDerivedValue(() => RAIL_LIGHT.coat(lamp.value.f));
@@ -588,7 +591,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
             <RadialGradient c={light} r={RAIL_LIGHT.coatRadius} colors={coat} />
           </RoundedRect>
           {rest && REST && (
-            <Rect x={0} y={0} width={width} height={height} opacity={under}>
+            <Rect x={0} y={0} width={width} height={height} opacity={cross}>
               <Shader source={REST} uniforms={lean}>
                 {[rest.left, rest.right].map((image, i) => (
                   <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
@@ -596,8 +599,24 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
               </Shader>
             </Rect>
           )}
-          {planes && LIT ? (
-            <Rect x={0} y={0} width={width} height={height} opacity={rest ? weight : undefined}>
+          {rest && planes && HAND_LIT ? (
+            <Rect x={0} y={0} width={width} height={height} opacity={hand}>
+              <Shader source={HAND_LIT} uniforms={handing}>
+                {[...planes, rest.left, rest.right].map((image, i) => (
+                  <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+                ))}
+              </Shader>
+            </Rect>
+          ) : rest && HAND_CLOTH ? (
+            <Rect x={0} y={0} width={width} height={height} opacity={hand}>
+              <Shader source={HAND_CLOTH} uniforms={handing}>
+                {[rest.left, rest.right].map((image, i) => (
+                  <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+                ))}
+              </Shader>
+            </Rect>
+          ) : planes && LIT ? (
+            <Rect x={0} y={0} width={width} height={height}>
               <Shader source={LIT} uniforms={uniforms}>
                 {planes.map((plane, i) => (
                   <ImageShader key={i} image={plane} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
@@ -606,7 +625,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
             </Rect>
           ) : (
             CLOTH && (
-              <Rect x={0} y={0} width={width} height={height} opacity={rest ? weight : undefined}>
+              <Rect x={0} y={0} width={width} height={height}>
                 <Shader source={CLOTH} uniforms={uniforms} />
               </Rect>
             )

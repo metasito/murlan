@@ -50,12 +50,12 @@ afterEach(() => {
 });
 
 describe('the felt rail on native', () => {
-  it('disposes the old image on a re-bake and the last one on unmount', async () => {
+  it('bakes the rail with its first frame, disposes the old image on a re-bake and the last one on unmount', async () => {
     const view = await render(felt(1));
-    await frames(32);
     expect(mockBaked.map((image) => image.dispose.mock.calls.length)).toEqual([0]);
     await view.rerender(felt(1.5));
-    await frames(400);
+    expect(mockBaked.map((image) => image.dispose.mock.calls.length)).toEqual([1, 0]);
+    await frames(32);
     expect(mockBaked.map((image) => image.dispose.mock.calls.length)).toEqual([1, 0]);
     await view.unmount();
     expect(mockBaked.map((image) => image.dispose.mock.calls.length)).toEqual([1, 1]);

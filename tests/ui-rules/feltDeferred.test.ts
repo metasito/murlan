@@ -4,14 +4,16 @@
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { CLOTH_SKSL, FELT_K_CAP, FLARE_SEEN, LIT_SKSL, REST_SKSL, WEAVE_PLANES, WEAVE_SKSL, clothUniforms, flareShare, weaveUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
-import { TABLE_CENTRE, lampControls, lightUniforms, restingLamp, stepLamp } from "../../components/table/lampRig.ts";
+import { CLOTH_SKSL, FELT_K_CAP, FLARE_SEEN, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, WEAVE_PLANES, WEAVE_SKSL, clothUniforms, flareShare, settledDraws, weaveUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
+import { LIGHT_ABOVE, SWAY, TABLE_CENTRE, lampControls, lightUniforms, restingLamp, stepLamp } from "../../components/table/lampRig.ts";
 import { FeltGradients } from "../../lib/tokens.ts";
 
 const require = createRequire(import.meta.url);
 
-/** Device pixels per design point: DPR 1, a DPR 2 phone, and the felt's cap. */
-const DENSITIES = [1, 2, FELT_K_CAP];
+/** Device pixels per design point on each axis: DPR 1, a DPR 2 phone, between, the felt's cap, and a window wider than the table. The cloth's `uK` is the lesser. */
+type Density = readonly [gx: number, gy: number];
+const DENSITIES: Density[] = [[1, 1], [2, 2], [2.2, 2.2], [FELT_K_CAP, FELT_K_CAP], [FELT_K_CAP, 2.2]];
+const kOf = ([gx, gy]: Density) => Math.min(gx, gy);
 const LAMPS: [x: number, y: number][] = [
   [437, 362],
   [784, 201],
@@ -26,9 +28,9 @@ const LIGHTS = [
 ];
 const TILE = 32;
 /** Design points: the felt's rounded corner, and round each lamp. */
-const tiles = (lamp: [number, number]) => [[106, 46], [lamp[0] - TILE / 2, lamp[1] - TILE / 2]] as const;
-/** The error is a share of the albedo: the felts brightest in green and in red. */
-const FELTS = ["verde", "bordeaux"] as const;
+const EDGE = [106, 46] as const;
+const tiles = (lamp: [number, number]) => [EDGE, [lamp[0] - TILE / 2, lamp[1] - TILE / 2]] as const;
+const FELTS = ["verde", "blu", "bordeaux", "notte"] as const;
 
 const LEVEL = 1 / 255;
 
@@ -38,6 +40,8 @@ let cloth: CK;
 let weave: CK;
 let lit: CK;
 let rest: CK;
+let handLit: CK;
+let handCloth: CK;
 
 before(async () => {
   const init = require("canvaskit-wasm/bin/full/canvaskit.js");
@@ -52,6 +56,8 @@ before(async () => {
   weave = make(WEAVE_SKSL, "the weave");
   lit = make(LIT_SKSL, "the lit cloth");
   rest = make(REST_SKSL, "the settled felt");
+  handLit = make(HAND_LIT_SKSL, "the hand-over over the planes");
+  handCloth = make(HAND_CLOTH_SKSL, "the hand-over over the cloth");
 });
 
 function flat(effect: CK, values: ClothUniforms): Float32Array {
@@ -67,12 +73,12 @@ function flat(effect: CK, values: ClothUniforms): Float32Array {
 
 type Layer = [shader: CK, alpha: number];
 
-/** The tile at `origin`, `TILE` points square, drawn at `k` device pixels a point: each layer over the last, at its paint's alpha. */
-function draw(surface: CK, k: number, origin: readonly [number, number], layers: CK | Layer[]) {
+/** The tile at `origin`, `TILE` points square, drawn at `g` device pixels a point: each layer over the last, at its paint's alpha. */
+function draw(surface: CK, [gx, gy]: Density, origin: readonly [number, number], layers: CK | Layer[]) {
   const canvas = surface.getCanvas();
   canvas.clear(ck.TRANSPARENT);
   canvas.save();
-  canvas.scale(k, k);
+  canvas.scale(gx, gy);
   canvas.translate(-origin[0], -origin[1]);
   for (const [shader, alpha] of Array.isArray(layers) ? layers : [[layers, 1] as Layer]) {
     const paint = new ck.Paint();
@@ -85,31 +91,38 @@ function draw(surface: CK, k: number, origin: readonly [number, number], layers:
   surface.flush();
 }
 
-function floats(k: number, origin: readonly [number, number], shader: CK | Layer[]): Float32Array {
-  const side = Math.round(TILE * k);
-  const info = { width: side, height: side, colorType: ck.ColorType.RGBA_F32, alphaType: ck.AlphaType.Premul, colorSpace: ck.ColorSpace.SRGB };
-  const mem = ck.Malloc(Float32Array, side * side * 4);
-  const surface = ck.MakeRasterDirectSurface(info, mem, side * 16);
-  draw(surface, k, origin, shader);
+const sides = ([gx, gy]: Density) => [Math.round(TILE * gx), Math.round(TILE * gy)] as const;
+
+function floats(g: Density, origin: readonly [number, number], shader: CK | Layer[]): Float32Array {
+  const [width, height] = sides(g);
+  const info = { width, height, colorType: ck.ColorType.RGBA_F32, alphaType: ck.AlphaType.Premul, colorSpace: ck.ColorSpace.SRGB };
+  const mem = ck.Malloc(Float32Array, width * height * 4);
+  const surface = ck.MakeRasterDirectSurface(info, mem, width * 16);
+  draw(surface, g, origin, shader);
   const out = Float32Array.from(mem.toTypedArray());
   surface.delete();
   ck.Free(mem);
   return out;
 }
 
-/** The weave's planes for a tile, as the felt bakes them: an 8-bit surface each, read back nearest at the pixel they were baked on. */
-function planes(k: number, origin: readonly [number, number]): CK[] {
-  const side = Math.round(TILE * k);
-  const place = ck.Matrix.multiply(ck.Matrix.translated(origin[0], origin[1]), ck.Matrix.scaled(1 / k, 1 / k));
+/** A tile as the felt bakes it: an 8-bit surface, read back nearest at the pixel it was baked on. */
+function baked(g: Density, origin: readonly [number, number], shader: CK): CK {
+  const [width, height] = sides(g);
+  const place = ck.Matrix.multiply(ck.Matrix.translated(origin[0], origin[1]), ck.Matrix.scaled(1 / g[0], 1 / g[1]));
+  const surface = ck.MakeSurface(width, height);
+  draw(surface, g, origin, shader);
+  const image = surface.makeImageSnapshot();
+  const child = image.makeShaderOptions(ck.TileMode.Clamp, ck.TileMode.Clamp, ck.FilterMode.Nearest, ck.MipmapMode.None, place);
+  surface.delete();
+  image.delete();
+  return child;
+}
+
+function planes(g: Density, origin: readonly [number, number]): CK[] {
   return Array.from({ length: WEAVE_PLANES }, (_, plane) => {
-    const surface = ck.MakeSurface(side, side);
-    const shader = weave.makeShader(flat(weave, weaveUniforms(k, plane)));
-    draw(surface, k, origin, shader);
-    const image = surface.makeImageSnapshot();
-    const child = image.makeShaderOptions(ck.TileMode.Clamp, ck.TileMode.Clamp, ck.FilterMode.Nearest, ck.MipmapMode.None, place);
+    const shader = weave.makeShader(flat(weave, weaveUniforms(kOf(g), plane)));
+    const child = baked(g, origin, shader);
     shader.delete();
-    surface.delete();
-    image.delete();
     return child;
   });
 }
@@ -120,13 +133,13 @@ interface Gap {
   inside: number;
 }
 
-function gap(stops: readonly string[], k: number, lamp: [number, number], light: (typeof LIGHTS)[number], origin: readonly [number, number]): Gap {
-  const values: ClothUniforms = { ...clothUniforms(stops as never, k), ...lightUniforms(light.reach), uLamp: lamp, uFlare: light.uFlare };
+function gap(stops: readonly string[], g: Density, lamp: [number, number], light: (typeof LIGHTS)[number], origin: readonly [number, number]): Gap {
+  const values: ClothUniforms = { ...clothUniforms(stops as never, kOf(g)), ...lightUniforms(light.reach), uLamp: lamp, uFlare: light.uFlare };
   const one = cloth.makeShader(flat(cloth, values));
-  const children = planes(k, origin);
+  const children = planes(g, origin);
   const two = lit.makeShaderWithChildren(flat(lit, values), children);
-  const want = floats(k, origin, one);
-  const got = floats(k, origin, two);
+  const want = floats(g, origin, one);
+  const got = floats(g, origin, two);
   [one, two, ...children].forEach((s) => s.delete());
   let worst = 0;
   let at = 0;
@@ -137,8 +150,8 @@ function gap(stops: readonly string[], k: number, lamp: [number, number], light:
     if (d > worst) [worst, at] = [d, i];
   }
   const px = Math.floor(at / 4);
-  const side = Math.round(TILE * k);
-  const where = `k ${k}, lamp (${lamp}), flare ${light.uFlare}, reach ${light.reach}, tile (${origin}) px (${px % side}, ${Math.floor(px / side)}) channel ${at % 4}: ${want[at]} want, ${got[at]} got`;
+  const side = sides(g)[0];
+  const where = `g ${g}, lamp (${lamp}), flare ${light.uFlare}, reach ${light.reach}, tile (${origin}) px (${px % side}, ${Math.floor(px / side)}) channel ${at % 4}: ${want[at]} want, ${got[at]} got`;
   return { worst, where, inside };
 }
 
@@ -154,35 +167,52 @@ function clothOf(sksl: string): string {
   assert.fail("vec4 cloth( never closes");
 }
 
-const SWAY_ENDS = [
-  [0.2, 0.4, 0.6],
-  [0.7, 0.15, 0.3],
-] as const;
+const TARGET = LAMPS[4];
+const RAIL = [0.31, 0.17, 0.09, 1] as const;
 
-/** The settled felt at `w` as the canvas layers it, against `w` of its own cloth over the cross of two flat ends, both on the CPU raster in floats. */
-function settledGap(stops: readonly string[], k: number, lamp: [number, number], w: number, over: boolean): number {
-  const lean = 0.3;
-  const values: ClothUniforms = { ...clothUniforms(stops as never, k), ...lightUniforms(1), uLamp: lamp, uFlare: 0.4, uLean: lean };
-  const origin = [lamp[0] - TILE / 2, lamp[1] - TILE / 2] as const;
-  const ends = SWAY_ENDS.map(([r, g, b]) => ck.Shader.MakeColor(ck.Color4f(r, g, b, 1), ck.ColorSpace.SRGB));
-  const weave = over ? planes(k, origin) : [];
-  const own = over ? lit.makeShaderWithChildren(flat(lit, values), weave) : cloth.makeShader(flat(cloth, values));
+/** A settled felt's tile: its ends baked as the canvas bakes them, the live cloth with the lamp `lean` of the way across its sway, and the shaders that lay them. */
+function settledTile(stops: readonly string[], g: Density, lean: number, origin: readonly [number, number], over: boolean, flare = 0.4) {
+  const [tx, ty] = TARGET;
+  const base = { ...clothUniforms(stops as never, kOf(g)), ...lightUniforms(1) };
+  const weave = over ? planes(g, origin) : [];
+  const own = (dx: number, flare: number) => {
+    const values: ClothUniforms = { ...base, uLamp: [tx + dx, ty - LIGHT_ABOVE], uFlare: flare };
+    return over ? lit.makeShaderWithChildren(flat(lit, values), weave) : cloth.makeShader(flat(cloth, values));
+  };
+  const ends = [-SWAY, SWAY].map((dx) => {
+    const shader = own(dx, 0);
+    const child = baked(g, origin, shader);
+    shader.delete();
+    return child;
+  });
+  const live = own((2 * lean - 1) * SWAY, flare);
+  const values: ClothUniforms = { ...base, uLamp: [tx + (2 * lean - 1) * SWAY, ty - LIGHT_ABOVE], uFlare: flare, uLean: lean };
   const settled = rest.makeShaderWithChildren(flat(rest, { uLean: lean }), ends);
-  const want = floats(k, origin, own);
-  const got = floats(k, origin, [
-    [settled, w < 1 ? 1 : 0],
-    [own, w],
-  ]);
-  [own, settled, ...weave, ...ends].forEach((s) => s.delete());
-  const cross = SWAY_ENDS[0].map((a, i) => a + (SWAY_ENDS[1][i] - a) * lean).concat(1);
-  let worst = 0;
-  for (let i = 0; i < want.length; i++) worst = Math.max(worst, Math.abs(cross[i % 4] * (1 - w) + want[i] * w - got[i]));
-  return worst;
+  const hand = (w: number) => (over ? handLit : handCloth).makeShaderWithChildren(flat(over ? handLit : handCloth, { ...values, uW: w }), [...weave, ...ends]);
+  const rail = ck.Shader.MakeColor(ck.Color4f(...RAIL), ck.ColorSpace.SRGB);
+  const free = () => [live, settled, rail, ...weave, ...ends].forEach((s) => s.delete());
+  return { ends, live, settled, hand, rail, free };
 }
+
+/** The felt over its rail at `w`, through the draws `settledDraws` picks. */
+function felt(g: Density, origin: readonly [number, number], tile: ReturnType<typeof settledTile>, w: number): Float32Array {
+  const d = settledDraws(w);
+  const hand = tile.hand(w);
+  const out = floats(g, origin, [
+    [tile.rail, 1],
+    [tile.settled, d.cross],
+    [hand, d.hand],
+  ]);
+  hand.delete();
+  return out;
+}
+
+const worstApart = (a: Float32Array, b: Float32Array) => a.reduce((m, v, i) => Math.max(m, Math.abs(v - b[i])), 0);
 
 describe("the felt lit from its baked weave is the cloth", () => {
   test("the lit pass reads the weave from its planes, not from the cloth's own noise", () => {
     assert.ok(LIT_SKSL.includes("uG0.eval(p)") && LIT_SKSL.includes(`uG${WEAVE_PLANES - 1}.eval(p)`), "the lit cloth reads no plane");
+    assert.ok(CLOTH_SKSL.includes("vn(vec2(tid*1.7") && CLOTH_SKSL.includes("h21(floor(p*uK))"), "the cloth no longer draws the slub and fuzz this test looks for");
     assert.ok(!LIT_SKSL.includes("vn(vec2(tid*1.7"), "the lit cloth still draws the slub");
     assert.ok(!LIT_SKSL.includes("h21(floor(p*uK))"), "the lit cloth still draws the fuzz");
   });
@@ -196,30 +226,32 @@ describe("the felt lit from its baked weave is the cloth", () => {
     }
   });
 
-  test("a settled felt's shader is its two ends' reads and nothing else: the lit cloth is a layer over it, so a masked rasteriser never runs it at rest", () => {
+  test("a settled felt at rest is one shader of its two ends' reads, so a masked rasteriser never runs the cloth", () => {
     assert.equal(REST_SKSL.match(/\.eval\(/g)?.length, 2);
     for (const term of ["cloth(", "uG0", "uW", "if("]) assert.ok(!REST_SKSL.includes(term), `the settled felt carries ${term}`);
+    for (const w of [0, 0.01, 0.5, 1]) assert.ok(settledDraws(w).cross + settledDraws(w).hand === 1, `w ${w} draws the felt ${settledDraws(w).cross + settledDraws(w).hand} times`);
+    assert.deepEqual(settledDraws(0), { cross: 1, hand: 0 });
   });
 
-  for (const felt of FELTS) {
-    const stops = FeltGradients[felt];
-    test(`${felt}: under one 8-bit level from the one-pass cloth, at every density and lamp`, () => {
+  for (const name of FELTS) {
+    const stops = FeltGradients[name];
+    test(`${name}: under one 8-bit level from the one-pass cloth, at every density and lamp`, () => {
       let worst: Gap = { worst: 0, where: "nowhere", inside: 0 };
       let inside = 0;
-      for (const k of DENSITIES) {
+      for (const g of DENSITIES) {
         for (const lamp of LAMPS) {
           for (const light of LIGHTS) {
             for (const origin of tiles(lamp)) {
-              const g = gap(stops, k, lamp, light, origin);
-              inside += g.inside;
-              if (g.worst > worst.worst) worst = g;
+              const one = gap(stops, g, lamp, light, origin);
+              inside += one.inside;
+              if (one.worst > worst.worst) worst = one;
             }
           }
         }
       }
       assert.ok(inside > 0, "no tile drew any felt");
       assert.ok(worst.worst < LEVEL, `${(worst.worst / LEVEL).toFixed(3)} levels apart at ${worst.where}`);
-      console.log(`${felt}: worst ${(worst.worst / LEVEL).toFixed(3)} levels at ${worst.where}`);
+      console.log(`${name}: worst ${(worst.worst / LEVEL).toFixed(3)} levels at ${worst.where}`);
     });
   }
 
@@ -240,13 +272,67 @@ describe("the felt lit from its baked weave is the cloth", () => {
   });
 
   for (const over of [true, false]) {
-    test(`the settled felt ${over ? "over the planes" : "over the cloth"} is the cross at 0, its own cloth at 1, and the line between them`, () => {
-      for (const w of [0, 0.01, 0.3, 0.5, 0.99, 1]) {
-        for (const k of DENSITIES) {
-          const worst = settledGap(FeltGradients.verde, k, LAMPS[4], w, over);
-          assert.ok(worst < 1e-5, `w ${w}, k ${k}: ${worst / LEVEL} levels off`);
+    test(`over the rail, the settled felt ${over ? "over the planes" : "over the cloth"} is main's two crossed ends at 0, the live cloth at 1, and the line between them, edge included`, () => {
+      const lean = 0.3;
+      for (const g of DENSITIES) {
+        for (const origin of tiles(TARGET)) {
+          const tile = settledTile(FeltGradients.verde, g, lean, origin, over);
+          const main = floats(g, origin, [
+            [tile.rail, 1],
+            [tile.ends[0], 1],
+            [tile.ends[1], lean],
+          ]);
+          const live = floats(g, origin, [
+            [tile.rail, 1],
+            [tile.live, 1],
+          ]);
+          if (origin === EDGE) {
+            const edge = floats(g, origin, tile.ends[0]).filter((a, i) => i % 4 === 3 && a > 0 && a < 1).length;
+            assert.ok(edge > 0, `g ${g}: the corner tile has no edge pixel`);
+          }
+          const at = (w: number) => felt(g, origin, tile, w);
+          for (const w of [0, 0.01, 0.5, 0.99, 1]) {
+            const got = at(w);
+            const off = got.reduce((m, v, i) => Math.max(m, Math.abs((1 - w) * main[i] + w * live[i] - v)), 0);
+            assert.ok(off < 1e-5, `w ${w}, g ${g}, tile (${origin}): ${(off / LEVEL).toFixed(3)} levels off`);
+          }
+          const span = worstApart(main, live);
+          for (const [a, b] of [[1, 1 - 1 / 60], [1 / 60, 0]]) {
+            const step = worstApart(at(a), at(b));
+            assert.ok(step <= span / 60 + 1e-5, `g ${g}, tile (${origin}): w ${a} to ${b} steps ${(step / LEVEL).toFixed(3)} levels, ${(span / 60 / LEVEL).toFixed(3)} at most`);
+          }
+          tile.free();
         }
       }
     });
   }
+
+  test("a settled felt's crossed ends stay as close to the lit cloth at its lean as they are, and never drift further", () => {
+    const MEAN_CEILING = 0.76;
+    const WORST_CEILING = 2.73;
+    let sum = 0;
+    let n = 0;
+    let worst = 0;
+    for (const name of FELTS) {
+      for (const g of DENSITIES) {
+        for (const lean of [0.25, 0.5, 0.75]) {
+          const origin = tiles(TARGET)[1];
+          const tile = settledTile(FeltGradients[name], g, lean, origin, true, 0);
+          const cross = floats(g, origin, tile.settled);
+          const live = floats(g, origin, tile.hand(1));
+          for (let i = 0; i < cross.length; i++) {
+            if (i % 4 === 3) continue;
+            const d = Math.abs(cross[i] - live[i]) / LEVEL;
+            sum += d;
+            n++;
+            worst = Math.max(worst, d);
+          }
+          tile.free();
+        }
+      }
+    }
+    console.log(`crossed ends from the lit cloth: mean ${(sum / n).toFixed(3)}, worst ${worst.toFixed(3)} levels`);
+    assert.ok(sum / n <= MEAN_CEILING, `mean ${(sum / n).toFixed(3)} levels, ceiling ${MEAN_CEILING}`);
+    assert.ok(worst <= WORST_CEILING, `worst ${worst.toFixed(3)} levels, ceiling ${WORST_CEILING}`);
+  });
 });
