@@ -146,12 +146,12 @@ test("the check sees an unbounded await however it is spelled", () => {
   const owners = "await closeTableOwners(SHUTDOWN_BUDGET.tableOwners);";
   assert.deepEqual(plant(owners, "await closeTableOwners();").unbudgeted, ["await closeTableOwners()"]);
   assert.deepEqual(
-    plant(owners, "await new Promise((r) => setTimeout(r, 5_000 + SHUTDOWN_BUDGET.tableOwners));").unbudgeted.length,
+    plant(owners, "await new Promise((r) => r(5_000 + SHUTDOWN_BUDGET.tableOwners));").unbudgeted.length,
     1
   );
   const pool = "await within(SHUTDOWN_BUDGET.poolEnd, ended);";
   assert.equal(
-    plant(pool, "await Promise.all([within(SHUTDOWN_BUDGET.poolEnd, ended), new Promise((r) => setTimeout(r, 5_000))]);").unbudgeted.length,
+    plant(pool, "await Promise.all([within(SHUTDOWN_BUDGET.poolEnd, ended), new Promise((r) => r(5_000))]);").unbudgeted.length,
     1
   );
   assert.equal(plant(owners, "if (signal) { await sleep(5_000); }\n    " + owners).unbudgeted.length, 1);
