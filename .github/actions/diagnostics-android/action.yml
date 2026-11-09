@@ -15,7 +15,7 @@ runs:
   using: composite
   steps:
     - name: Generate the native project, on the NDK React Native pins
-      shell: bash
+      shell: bash -e {0}
       run: |
         npx expo prebuild --platform android --no-install
         want=$(sed -n 's/^ndkVersion = "\(.*\)"$/\1/p' node_modules/react-native/gradle/libs.versions.toml)
@@ -30,7 +30,7 @@ runs:
         cache: gradle
         cache-jdk: false
     - name: Build a diagnostics release
-      shell: bash
+      shell: bash -e {0}
       env:
         OUT_DIR: ${{ inputs.out-dir }}
       run: |
@@ -44,13 +44,13 @@ runs:
         echo "APP_ID=$("$aapt" dump packagename "$apk")" >> "$GITHUB_ENV"
         mkdir -p "$OUT_DIR"
     - name: Enable KVM
-      shell: bash
+      shell: bash -e {0}
       run: |
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
     - name: Start the collector
-      shell: bash
+      shell: bash -e {0}
       env:
         OUT_DIR: ${{ inputs.out-dir }}
         RECORD: ${{ inputs.record }}

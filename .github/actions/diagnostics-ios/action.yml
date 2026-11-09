@@ -16,13 +16,13 @@ runs:
   using: composite
   steps:
     - name: Find and boot an iPhone simulator
-      shell: bash
+      shell: bash -e {0}
       run: |
         udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
         echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
         xcrun simctl boot "$udid"
     - name: Build a diagnostics release for the simulator
-      shell: bash
+      shell: bash -e {0}
       env:
         OUT_DIR: ${{ inputs.out-dir }}
       run: |
@@ -40,7 +40,7 @@ runs:
         echo "APP_EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" >> "$GITHUB_ENV"
         mkdir -p "$OUT_DIR"
     - name: Install the app and start the collector
-      shell: bash
+      shell: bash -e {0}
       env:
         OUT_DIR: ${{ inputs.out-dir }}
         RECORD: ${{ inputs.record }}
@@ -51,7 +51,7 @@ runs:
         for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
         curl -sf http://127.0.0.1:5099/
     - name: Install Maestro
-      shell: bash
+      shell: bash -e {0}
       run: |
         export MAESTRO_VERSION=2.10.0
         curl -Ls "https://get.maestro.mobile.dev" | bash

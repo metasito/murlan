@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: Bench scenario the branch registers
+        description: Bench scenario the branch registers (the Android start-row wait expects the spike scenario's rows)
         default: spike
         required: true
       platform:
@@ -62,6 +62,7 @@ jobs:
             adb shell dumpsys meminfo "$APP_ID" > "$RUNNER_TEMP/spike/meminfo-early.txt" 2>&1 || true
             adb shell dumpsys gfxinfo "$APP_ID" reset > /dev/null 2>&1 || true
             i=0; until grep -q '"k":"run".*"phase":"end"' "$RUNNER_TEMP/spike/android.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt $((WAIT_SECONDS / 2)) ] || { echo "::error::The scenario never ended."; exit 1; }; sleep 2; done
+            grep -q "\"name\":\"$SCENARIO\",\"phase\":\"end\"" "$RUNNER_TEMP/spike/android.ndjson" || { echo "::error::Scenario $SCENARIO never ran."; exit 1; }
             adb shell dumpsys meminfo "$APP_ID" > "$RUNNER_TEMP/spike/meminfo-end.txt" 2>&1 || true
             adb shell dumpsys gfxinfo "$APP_ID" > "$RUNNER_TEMP/spike/gfxinfo.txt" 2>&1 || true
             adb shell dumpsys SurfaceFlinger --latency > "$RUNNER_TEMP/spike/surfaceflinger-latency.txt" 2>&1 || true
@@ -97,6 +98,7 @@ jobs:
             echo "$(date -u +%H:%M:%S) pid=${pid:-none} rss_kb=$( [ -n "$pid" ] && ps -o rss= -p "$pid" | tr -d ' ')" >> "$RUNNER_TEMP/spike/host-rss.txt"
             sleep 2
           done
+          grep -q "\"name\":\"$SCENARIO\",\"phase\":\"end\"" "$RUNNER_TEMP/spike/ios.ndjson" || { echo "::error::Scenario $SCENARIO never ran."; exit 1; }
       - name: Collect crash reports
         if: always()
         run: cp "$HOME/Library/Logs/DiagnosticReports/"*"$APP_EXE"* "$RUNNER_TEMP/spike/" 2>/dev/null || true
