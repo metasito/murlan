@@ -40,7 +40,8 @@ rule is what closes this.
 A change to the guard (the script, this workflow, its test, CODEOWNERS) is a target change, and
 today it lands with no review required.
 
-`tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list, every nightly
+`tests/tooling/targetFreeze.test.ts` holds `.github/CODEOWNERS` equal to the list and to `JUDGES`
+(rule 53's judge, routed to the owner but frozen with nothing), every nightly
 spec inside it, no other workflow naming a job `Target freeze`, and the workflow's shape: its
 trigger, branches and types, read-only permissions, a checkout of the base, pinned actions, and its
 one `run`, verbatim. It plants diffs in a scratch repository and judges them: mixed, target-only

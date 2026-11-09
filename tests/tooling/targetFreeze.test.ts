@@ -7,7 +7,9 @@ import path from "node:path";
 import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
-import { CODE, TARGETS, codeowners, freezeVerdict, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { CODE, JUDGES, TARGETS, codeowners, freezeVerdict, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { ownedBy } from "../../tools/ci/codeowners.mjs";
+import { wiringOf } from "../../tools/ci/test-verdict.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -23,6 +25,22 @@ const freezeRun = () => steps().find((s) => s.name === "Target freeze")!.run!;
 describe("the list looks at the repository as it is", () => {
   test("every target and code pattern names a tracked file", () => {
     assert.deepEqual(unmatched(tracked), []);
+  });
+
+  test("every judge names a tracked file, owned and not frozen", () => {
+    for (const j of JUDGES) {
+      const named = tracked.filter(matcher(j.pattern));
+      assert.ok(named.length > 0, `${j.pattern} names no tracked file`);
+      assert.deepEqual(named.filter(isTarget), [], j.pattern);
+    }
+    assert.ok(tracked.filter(matcher("tools/ci/results-*.mjs")).length >= 4, "the reporters are no longer under the judges' pattern");
+  });
+
+  test("every file of the runners' wiring is owned, so a reporter added to a config is a judge before it lands", () => {
+    const wiring = wiringOf(tracked, (f) => fs.readFileSync(path.join(root, f), "utf8"), JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts);
+    for (const f of ["tools/ci/e2e-budget.mjs", "tools/ci/native-budget.mjs", "tools/ci/preflightMemory.mjs", "tools/ci/results-writer.mjs", "scripts/nodeTest.mjs", "jest.config.js"]) assert.ok(wiring.includes(f), `${f} is not derived as wiring`);
+    const owned = ownedBy(codeowners());
+    assert.deepEqual(wiring.filter((f) => !owned(f)), []);
   });
 
   test("every nightly spec is a target, so tiers.mjs and the freeze cannot drift apart", () => {
@@ -170,7 +188,7 @@ describe("planted diffs", () => {
   const representative = [...TARGETS.map((t) => tracked.find(matcher(t.pattern))!), ...CODE.map((d) => tracked.find((f) => f.startsWith(d))!)];
   const spares = ["tests/e2e/fixtures/lantern-table/index.html", "tests/e2e/fixtures/spare/index.html", inScratch("spare.nightly.spec.ts")];
   const SELF = "tools/ci/target-freeze.mjs";
-  const tools = [SELF, "scripts/lib/entry.mjs", "tools/loop/cli.mjs", "tools/loop/session-env.mjs"];
+  const tools = [SELF, "tools/ci/codeowners.mjs", "scripts/lib/entry.mjs", "tools/loop/cli.mjs", "tools/loop/session-env.mjs"];
   const FIXTURE = "tests/e2e/fixtures/lantern-table/index.html";
   const targetAndCode = () => {
     write(FIXTURE, "moved\n");

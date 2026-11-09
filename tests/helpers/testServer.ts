@@ -104,8 +104,8 @@ export function hasDatabase(): boolean {
 /**
  * Integration tests need a real Postgres and Redis. Someone checking out the
  * repo without them must still be able to run `npm test`, so integration
- * suites should skip (via this message) rather than fail. CI fails a run that
- * prints it (`.github/workflows/ci.yml`).
+ * suites should skip (via this message) rather than fail. CI gate fails a run
+ * that skips one (RULES.md 53).
  */
 export function skipMessage(): string {
   return process.env.DATABASE_URL

@@ -1,54 +1,17 @@
 /**
- * Which suites a change runs, for ci.yml's scope job: `node tools/ci/scope.mjs <base>` prints
- * `app=`, `harness=`, `scans=` and `native=` lines for `$GITHUB_OUTPUT`. It runs before any
- * `npm ci`, so it imports only `node:` modules and repository files that do the same.
- *
- * Every rule is an allowlist of what may skip, so a path no rule names runs the suite.
+ * Which jobs a change runs, for ci.yml's scope job: `node tools/ci/scope.mjs <base>` prints a
+ * `jobs=` line (scopeOf.mjs's JOBS, as JSON) and a `native=` line for `$GITHUB_OUTPUT`; with no
+ * base it runs everything, and `--none` runs nothing. It runs before any `npm ci`, so it imports
+ * only `node:` modules and repository files that do the same. The decision itself is
+ * tools/ci/scopeOf.mjs's.
  */
 import { readFileSync } from "node:fs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { changedFiles, git } from "../loop/cli.mjs";
 import { needsNative, patchReader } from "./nativeScope.mjs";
+import { jobsOf, scopeOf } from "./scopeOf.mjs";
 
-/**
- * Prose the suite asserts *on* is not prose to this decision: `rulesAreSingleSourced.test.ts`
- * reads RULES.md, CLAUDE.md, the command files and docs/agents/, and `docs/**` TypeScript is in
- * tsconfig.json. Derived by `tests/tooling/ciScope.test.ts`, which reds on a path it misses.
- */
-export const ASSERTED_PROSE =
-  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/adr\/README\.md$|docs\/.*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$|CONTEXT\.md$|README\.md$)/;
-
-export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
-
-/**
- * Deliberately the loop's *tests* and not the loop: `scripts/contextSurface.mjs` imports
- * `loop-derive.mjs`, so the loop's source can stop the browser suite booting. Nothing imports a test.
- */
-export const QUEUE_LOOP_TESTS = /^tools\/loop\/tests\//;
-
-/**
- * What the loop's suite (docs/agents/loop-harness.md) asserts on beyond its own code: the protocol
- * files, `.claude/settings.json`'s hook paths, package.json's script names, and ci.yml, whose job
- * names `check-steps.mjs` pins each delegated step to. Derived by `tests/tooling/ciScope.test.ts`.
- */
-export const HARNESS =
-  /^(tools\/loop\/|scripts\/lib\/(entry|proc|blockingStdout)\.mjs$|scripts\/nodeTest\.mjs$|tools\/ci\/(preflightMemory|native-budget|e2e-budget|e2e-shard|e2ePortRange|e2eOwner|budget-gate)\.mjs$|tests\/helpers\/(importShellGuard\.ts|processWorlds\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs|exitGuard\.mjs|exitWatch\.mjs|timeoutHeadroom\.mjs|timeoutHeadroomReporter\.mjs)$|docs\/agents\/|\.claude\/|CLAUDE\.md$|package\.json$|jest\.config\.js$|\.github\/workflows\/ci\.yml$)/;
-
-/**
- * `scans` holds `docReferences.test.ts` and the other scans that list the repository from its
- * root: they reach every tracked path, so any change runs them.
- *
- * @param {string[]} changed
- * @returns {{app: boolean, harness: boolean, scans: boolean}}
- */
-export function scopeOf(changed) {
-  const only = (re) => changed.length > 0 && changed.every((f) => re.test(f));
-  return {
-    app: changed.some((f) => ASSERTED_PROSE.test(f)) || !(only(PROSE) || only(QUEUE_LOOP_TESTS)),
-    harness: changed.some((f) => HARNESS.test(f)),
-    scans: changed.length > 0,
-  };
-}
+export { ASSERTED_PROSE, HARNESS, JOBS, jobsOf, PROSE, QUEUE_LOOP_TESTS, scopeOf } from "./scopeOf.mjs";
 
 /** From `base` itself, not the merge base: a push's `before` is the commit it replaced. */
 export const SCOPE_CHANGES = Object.freeze({ range: "..", worktree: false, untracked: false });
@@ -69,7 +32,12 @@ export function scopeAt(base, at = git()) {
   }
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const scope = process.argv[2] ? scopeAt(process.argv[2]) : EVERYTHING;
-  for (const [key, value] of Object.entries(scope)) console.log(`${key}=${value}`);
+/** @param {string | undefined} arg @returns {string[]} the `$GITHUB_OUTPUT` lines */
+export function outputs(arg, at = git()) {
+  // A run with no base is a dispatch or the schedule, and each asks for the device builds itself.
+  const { native, ...scope } =
+    arg === "--none" ? { app: false, harness: false, scans: false, native: false } : arg ? scopeAt(arg, at) : { ...EVERYTHING, native: false };
+  return [`jobs=${JSON.stringify(jobsOf(scope))}`, `native=${native}`];
 }
+
+if (isInvokedDirectly(process.argv[1], import.meta.url)) for (const line of outputs(process.argv[2])) console.log(line);
