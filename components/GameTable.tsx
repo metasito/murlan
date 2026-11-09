@@ -950,18 +950,19 @@ export function GameTable({
 
         <Animated.View
           testID="game-hud-stack"
-          onLayout={(e) => setChipWidths((w) => (w.turn === e.nativeEvent.layout.width ? w : { ...w, turn: e.nativeEvent.layout.width }))}
           pointerEvents={stackFocused ? "none" : "box-none"}
           {...clockVeil}
           style={[
             styles.hudCentre,
-            { left: hud.turn.left, top: hud.turn.top },
+            hud.turn.centred
+              ? { left: hud.turn.centred.left, width: hud.turn.centred.width, top: hud.turn.top, alignItems: "center" }
+              : { left: hud.turn.left, top: hud.turn.top },
             (holdingForStart || (darkenStyle && linkGreyed)) && HELD_CLOCK_Z,
             stackFadeStyle,
           ]}
         >
           <A11yVeil veil={clockVeil}>
-            <View testID={choiceOpen ? "exchange-prompt" : undefined}>
+            <View testID={choiceOpen ? "exchange-prompt" : undefined} onLayout={(e) => setChipWidths((w) => (w.turn === e.nativeEvent.layout.width ? w : { ...w, turn: e.nativeEvent.layout.width }))}>
               <WindowTurnChip
                 scale={chips}
                 room={hud.turn.room}

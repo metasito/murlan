@@ -136,8 +136,8 @@ export interface ChipWidths { combo: number; turn: number }
 interface ChipRow {
   /** Its room is the whole row left of the score pill: the combo pill is never cut for the turn chip. */
   combo: { left: number; top: number; room: number };
-  /** Its room is the band between the combo pill, as wide as it is, and the score pill; its `left` centres it on the felt, or keeps it a gap clear of its neighbours. */
-  turn: { left: number; top: number; room: number; w: number };
+  /** Its room is the band between the combo pill, as wide as it is, and the score pill; its `left` centres it on the felt, or keeps it a gap clear of its neighbours. `centred` is the span, symmetric about the felt's centre line, that a chip no wider than it is centred in by alignment, so its place needs no measure; null where it is clamped. */
+  turn: { left: number; top: number; room: number; w: number; centred: { left: number; width: number } | null };
 }
 
 function chipRow(frame: TableFrame, pill: PillAnchor, widths: ChipWidths): ChipRow {
@@ -147,9 +147,11 @@ function chipRow(frame: TableFrame, pill: PillAnchor, widths: ChipWidths): ChipR
   const bandLeft = comboLeft + comboW + frame.pad;
   const turnW = Math.min(widths.turn, bandRight - bandLeft);
   const left = Math.min(Math.max(pill.centreX - turnW / 2, bandLeft), bandRight - turnW);
+  const half = Math.min(pill.centreX - bandLeft, bandRight - pill.centreX);
+  const centred = turnW <= 2 * half ? { left: pill.centreX - half, width: 2 * half } : null;
   return {
     combo: { left: comboLeft, top: frame.tableTop, room: bandRight - comboLeft },
-    turn: { left, top: frame.tableTop, room: bandRight - bandLeft, w: turnW },
+    turn: { left, top: frame.tableTop, room: bandRight - bandLeft, w: turnW, centred },
   };
 }
 
