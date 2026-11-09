@@ -8,8 +8,9 @@ import path from "node:path";
 import { identityOf } from "../../scripts/lib/proc.mjs";
 
 /**
- * Eight times the slowest file CI has measured, `tests/tooling/mutationRun.test.ts`, whose one heavy
- * test alone took 77.5 s, so it spends half the share tests/helpers/timeoutHeadroom.mjs allows.
+ * Past the longest limit any test asks for (420 s, tests/integration/revokeWithoutRedis.test.ts) by
+ * half again, so a test that runs to its own limit is ended by it, not by this deadline;
+ * tests/tooling/testHangs.test.ts holds the suite to that.
  */
 export const FILE_DEADLINE_MS = 720_000;
 
