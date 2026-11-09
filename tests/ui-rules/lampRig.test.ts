@@ -337,15 +337,14 @@ describe("a lamp that has settled", () => {
     assert.equal(framesToSettle(s, false, 600), 600);
   });
 
-  test("is settled at rest with the sway frozen", () => {
+  test("is not settled by a freeze alone: the mockup's clock runs through it", () => {
     const s = restingLamp(TABLE_CENTRE);
     lampControls.freeze(s, 1);
-    assert.ok(lampSettled(s, false));
+    assert.ok(!lampSettled(s, false));
   });
 
   test("settles after a glide, a dim, a flare and a kick, and wakes for each", () => {
     const s = restingLamp(TABLE_CENTRE);
-    lampControls.freeze(s, 1);
     const steps: Record<string, (l: Lamp) => void> = {
       glide: (l) => lampControls.setTarget(l, [100, 100, 0.5], false),
       dim: (l) => lampControls.hold(l, "lost", 0.3, 2),
@@ -354,8 +353,8 @@ describe("a lamp that has settled", () => {
     };
     for (const [name, move] of Object.entries(steps)) {
       move(s);
-      assert.ok(!lampSettled(s, false), `${name} leaves the lamp moving`);
-      assert.ok(framesToSettle(s, false) < 60 * 60, `${name} settles`);
+      assert.ok(!lampSettled(s, true), `${name} leaves the lamp moving`);
+      assert.ok(framesToSettle(s, true) < 60 * 60, `${name} settles`);
     }
   });
 

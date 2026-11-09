@@ -182,11 +182,11 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
 
 const SETTLED = 1e-4;
 
-/** Whether a further step would move nothing: still, converged on its targets, and the flare and kick spent. */
+/** Whether a further step would move nothing: under reduced motion, converged on its targets, and the flare and kick spent. */
 export function lampSettled(s: Lamp, reduced: boolean): boolean {
   "worklet";
   return (
-    (reduced || s.freeze >= 1) &&
+    reduced &&
     Math.abs(s.tx - s.x) < SETTLED &&
     Math.abs(s.ty - s.y) < SETTLED &&
     Math.abs(s.tr - s.r) < SETTLED &&

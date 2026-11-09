@@ -92,6 +92,7 @@ export function animate(
   // Setting the size above cleared the canvas, so an asleep scene must still paint it once.
   let cleared = true;
   let asleep = false;
+  let stopped = false;
   let resumed = false;
   let id = 0;
   const frame = (now: number) => {
@@ -136,9 +137,12 @@ export function animate(
   };
   id = requestAnimationFrame(frame);
   return {
-    stop: () => cancelAnimationFrame(id),
+    stop() {
+      stopped = true;
+      cancelAnimationFrame(id);
+    },
     wake() {
-      if (!asleep) return;
+      if (stopped || !asleep) return;
       asleep = false;
       resumed = true;
       id = requestAnimationFrame(frame);

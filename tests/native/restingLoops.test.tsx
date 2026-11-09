@@ -18,6 +18,18 @@ jest.mock('react-native-reanimated', () => {
     },
   };
 });
+const mockHops = { n: 0, ui: false };
+jest.mock('react-native-worklets', () => {
+  const actual = jest.requireActual<typeof import('react-native-worklets')>('react-native-worklets');
+  return {
+    ...actual,
+    isRNRuntime: () => !mockHops.ui,
+    scheduleOnRN: (...args: Parameters<typeof actual.scheduleOnRN>) => {
+      mockHops.n++;
+      return actual.scheduleOnRN(...args);
+    },
+  };
+});
 jest.mock('@shopify/react-native-skia', () => {
   const React = require('react') as typeof import('react');
   const call: object = new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : call), apply: () => call });
@@ -44,6 +56,8 @@ const frames = (n: number) => act(async () => void jest.advanceTimersByTime(n * 
 
 beforeEach(() => {
   mockControllers.length = 0;
+  mockHops.n = 0;
+  mockHops.ui = false;
   jest.useFakeTimers();
 });
 afterEach(() => {
@@ -82,6 +96,19 @@ describe('useDuring', () => {
     const view = await renderHook(() => useDuring(() => true));
     await frames(5);
     expect(running()).toBe(0);
+    await view.unmount();
+  });
+
+  it('makes no hop to wake a callback that is already running', async () => {
+    const view = await renderHook(() => useDuring(() => true, true));
+    await frames(5);
+    const before = mockHops.n;
+    mockHops.ui = true;
+    await act(async () => {
+      for (let i = 0; i < 50; i++) view.result.current();
+    });
+    await frames(5);
+    expect(mockHops.n).toBe(before);
     await view.unmount();
   });
 

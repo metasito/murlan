@@ -88,6 +88,7 @@ export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): (
   });
   const [wake] = useState(() => () => {
     "worklet";
+    if (dirty.value) return;
     dirty.value = true;
     if (isRNRuntime()) arm();
     else scheduleOnRN(arm);
