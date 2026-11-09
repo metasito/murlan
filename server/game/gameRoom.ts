@@ -182,6 +182,11 @@ export function beginShutdown(): void {
   shuttingDown = true;
 }
 
+/** For a test process that outlives the shutdown it staged; production never undoes one. */
+export function __resetShutdown(): void {
+  shuttingDown = false;
+}
+
 export function isShuttingDown(): boolean {
   return shuttingDown;
 }

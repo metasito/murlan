@@ -1,9 +1,8 @@
-// A file of its own: `beginShutdown` cannot be undone inside a process.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { applyOrForward } from "../../server/game/tableRouter.ts";
-import { activeGames, beginShutdown } from "../../server/game/gameRoom.ts";
+import { activeGames, __resetShutdown, beginShutdown } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { onlineTable } from "../helpers/onlineTable.ts";
@@ -49,5 +48,6 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);
+    __resetShutdown();
   }
 });
