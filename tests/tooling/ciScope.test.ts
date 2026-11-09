@@ -7,6 +7,7 @@ import { STEPS } from "../../tools/loop/check-steps.mjs";
 import ts from "typescript";
 import { parse } from "yaml";
 import { JOBS, outputs, scopeOf } from "../../tools/ci/scope.mjs";
+import { SUITES } from "../../tools/ci/test-verdict.mjs";
 import { moduleEdges } from "../helpers/moduleEdges.ts";
 import { localPath } from "../helpers/specifiers.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
@@ -170,6 +171,33 @@ describe("scopeOf, change by change", () => {
   for (const [name, changed, want] of rows) {
     test(name, () => assert.deepEqual(scopeOf(changed), want));
   }
+});
+
+describe("every tracked source file under a code directory runs the app suites", () => {
+  const dirs = ["app", "components", "context", "lib", "server", "shared", "modules"];
+  const missed = (scopeFn: typeof scopeOf) =>
+    dirs.flatMap((d) => tracked.filter((f) => f.startsWith(`${d}/`) && SOURCE.test(f) && !scopeFn([f]).app));
+  test("none of them is skipped, so a suite never misses the file it pins", () => {
+    for (const d of dirs) assert.ok(tracked.some((f) => f.startsWith(`${d}/`) && SOURCE.test(f)), `${d}/ holds no tracked source: the scan reads nothing`);
+    assert.deepEqual(missed(scopeOf), []);
+  });
+  test("planted: a scope that exempts components/table/ is caught", () => {
+    const planted = ((changed: string[]) => (changed.every((f) => f.startsWith("components/table/")) ? { app: false, harness: false, scans: true } : scopeOf(changed))) as typeof scopeOf;
+    assert.ok(missed(planted).includes("components/table/scorePillModel.ts"));
+  });
+});
+
+describe("the target freeze's own test is in the suite no change can skip", () => {
+  const TEST = "tests/tooling/targetFreeze.test.ts";
+  const verifyRuns = (verify: (s: ReturnType<typeof scopeOf>) => boolean, changed: string[]) => verify(scopeOf(changed));
+  test("npm test lists it, and verify runs on a change of any single path, prose included", () => {
+    assert.ok(tracked.includes(TEST));
+    assert.ok(SUITES.find((s) => s.name === "npm test")!.lists(TEST));
+    for (const changed of [["docs/research/a-note.md"], ["tools/loop/tests/x.test.ts"], [TEST], ["lib/e2eTrace.ts"]]) assert.ok(verifyRuns(JOBS.verify, changed), changed.join());
+  });
+  test("planted: a verify job gated on app alone is caught", () => {
+    assert.equal(verifyRuns((s) => s.app, ["docs/research/a-note.md"]), false);
+  });
 });
 
 test("ci.yml's scope step asks scope.mjs", () => {

@@ -18,9 +18,10 @@ type Sample = { file: string; code: string };
 type Plant = Sample & { hits: number };
 type Guard = { id: string; why: string; selector: string; refine?: unknown; scoped?: unknown; files: string[]; ignores?: Ignore[]; plant: Plant | Plant[]; spare: Sample[] };
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
-const { GUARDS, CLIENT, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
+const { GUARDS, CLIENT, SCREENS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
   CLIENT: string[];
+  SCREENS: string[];
   plugin: { meta: { name: string; version?: string }; rules: Record<string, unknown> };
   guardBlocks: () => Block[];
 };
@@ -117,6 +118,95 @@ describe("the guard registry's floor", () => {
     const groups = (f: string) => f.split("/").slice(0, f.startsWith("tests/") ? 2 : 1).join("/");
     const planted = new Set([guard.plant].flat().map((p) => groups(p.file)));
     assert.deepEqual([...new Set(code.map(groups))].filter((r) => !planted.has(r)), [], "a directory the short-edge guard must read has no plant");
+  });
+
+  // The directories each broad-glob guard is meant to read, committed here so narrowing a guard's
+  // `files` is a change to this table, not a silent loss. `tests` stands for each tracked directory
+  // directly under it. The plant is the guard's own first one, moved into each directory.
+  const SCREEN_ROOTS = ["app", "components", "context", "lib"];
+  const CLIENT_ROOTS = [...SCREEN_ROOTS, "locales", "modules", "shared"];
+  const ENGINE_ROOTS = [...SCREEN_ROOTS, "modules"];
+  const NATIVE = ["tests/native"];
+  const sameGlobs = (a: string[], b: string[]) => JSON.stringify(a) === JSON.stringify(b);
+  const INTENT: Record<string, string[]> = {
+    "no-focused-test": ["tests", "tools/loop/tests"],
+    "no-cwd-root": ["tests"],
+    "intents-through-send": CLIENT_ROOTS,
+    "e2e-flag-owner": CLIENT_ROOTS,
+    "socket-owner": CLIENT_ROOTS,
+    "skia-image-fit": ["app", "components"],
+    "image-resize-mode": ["app", "components"],
+    "svg-aspect": ["app", "components"],
+    "modal-keeps-landscape": ["app", "components"],
+    "web-drops-a11y-prop": ["app", "components"],
+    "animate-compositor-props": ["app", "components"],
+    "seat-identity": ["app", "components"],
+    "screens-unconditional": ["app"],
+    "table-text": ["components/table"],
+    "table-text-floor": ["components/table"],
+    "codes-through-payload": ["server"],
+    "server-reads-one-clock": ["server"],
+    "shared-no-client": ["shared"],
+    "game-no-client-i18n": ["lib/game"],
+    "audio-engine-owner": ENGINE_ROOTS,
+    "haptics-engine-owner": ENGINE_ROOTS,
+    "no-expo-audio": ENGINE_ROOTS,
+    "diagnostics-owner": ENGINE_ROOTS,
+    "feedback-owner": ENGINE_ROOTS,
+    "motion-and-connectivity-are-knobs": NATIVE,
+    "window-is-a-knob": NATIVE,
+    "socket-is-faked-at-the-wire": NATIVE,
+    "account-renders-through-the-app": NATIVE,
+    "native-mocks-name-their-module": NATIVE,
+    "jest-is-called-by-name": NATIVE,
+    "table-renders-through-the-app": NATIVE,
+  };
+  const NOT_HERE: Record<string, string> = {
+    "one-table-scale": "has its own narrowing test above, per client root and tests directory",
+  };
+  // A guard on SCREENS is committed to the four SCREENS roots, derived so a new one needs no edit here.
+  const intentOf = (guard: Guard) => INTENT[guard.id] ?? (sameGlobs(guard.files, SCREENS) ? SCREEN_ROOTS : undefined);
+  const broad = (guards: Guard[]) => guards.filter((g) => g.files.some((f) => f.includes("**")) && !(g.id in NOT_HERE));
+
+  test("2, intent: every guard with a ** glob is committed to its directories, or excluded here with its reason", () => {
+    assert.deepEqual(broad(GUARDS).filter((g) => !intentOf(g)).map((g) => g.id), [], "a broad-glob guard with no INTENT entry can be narrowed unseen");
+    assert.deepEqual([...Object.keys(INTENT), ...Object.keys(NOT_HERE)].filter((id) => !GUARDS.some((g) => g.id === id)), [], "INTENT names a guard that is gone");
+    assert.ok(Object.values(NOT_HERE).every((why) => why.trim()));
+  });
+
+  test("2, intent, planted: a ** guard missing from the table is found", () => {
+    const planted = [...GUARDS, { ...GUARDS[0]!, id: "planted-guard", files: ["lib/**/*.ts"] }];
+    assert.deepEqual(broad(planted).filter((g) => !intentOf(g)).map((g) => g.id), ["planted-guard"]);
+  });
+
+  const extsOf = (guard: Guard) => new Set(guard.files.flatMap((g) => (/\.(?:\{([\w,]+)\}|(\w+))$/.exec(g) ?? []).slice(1, 3).flatMap((e) => e?.split(",") ?? [])));
+  const dirsOf = (guard: Guard, root: string) => {
+    const exts = extsOf(guard);
+    const under = tracked.filter((f) => f.startsWith(`${root}/`) && exts.has(path.extname(f).slice(1)));
+    return root === "tests" ? [...new Set(under.map((f) => f.split("/").slice(0, 2).join("/")))] : [root];
+  };
+
+  test("2, intent: a broad-glob guard reads every directory it is committed to, and a plant moved into each fires it", async () => {
+    const lost: string[] = [];
+    for (const guard of GUARDS.filter(intentOf)) {
+      const [id, roots] = [guard.id, intentOf(guard)!];
+      const exts = extsOf(guard);
+      const plant = [guard.plant].flat()[0]!;
+      for (const root of roots) {
+        const dirs = dirsOf(guard, root);
+        assert.ok(dirs.length > 0, `${id}: ${root} holds no tracked file the guard reads`);
+        const named = guard.files.map((g) => g.split("/").pop()!);
+        for (const f of tracked.filter((f) => f.startsWith(`${root}/`) && exts.has(path.extname(f).slice(1)) && named.some((n) => minimatch(path.basename(f), n, { dot: true })))) {
+          if (!matches(f, guard.files) && !matches(f, globsOf(guard))) lost.push(`${id}: ${f} is unread`);
+        }
+        for (const dir of dirs) {
+          const moved = `${dir}/${path.basename(plant.file)}`;
+          if (!matches(moved, guard.files) || matches(moved, globsOf(guard))) lost.push(`${id}: ${dir} is outside what it reads`);
+          else if ((await reported(guarded, plant.code, moved, ruleOf(guard))).length !== plant.hits) lost.push(`${id}: its plant does not fire ${plant.hits} times in ${dir}`);
+        }
+      }
+    }
+    assert.deepEqual(lost, [], "a guard was narrowed below what INTENT commits it to");
   });
 
   test("3, stale: every file an exemption covers is one the guard would report, so a widened glob goes red", async () => {
