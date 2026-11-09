@@ -12,6 +12,13 @@ export const TEXT_METRICS = {
       "widestGlyph": 807
     }
   },
+  "fallbackEm": {
+    "U+1F0CF": 1.25,
+    "U+1F4A3": 1.25,
+    "U+2605": 1.05,
+    "U+2660": 1.05,
+    "U+26A0": 1.25
+  },
   "runs": {
     "it": {
       "hudCombo": {
@@ -232,11 +239,9 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 8040,
+          "units": 8592,
           "chars": 19,
-          "fallback": [
-            "U+00D2"
-          ],
+          "fallback": [],
           "slots": [
             "name"
           ]

@@ -10,6 +10,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { OUT, TABLE_TEXT, renderTextMetrics, textMetrics } from "../../scripts/build-text-metrics.mjs";
 import { WEB_FONTS } from "../../scripts/fontSubsetChars.mjs";
 import { TEXT_METRICS } from "../../components/table/textMetrics.generated.ts";
@@ -84,6 +85,242 @@ test("every code a reconnected note translates is what the server emits, and is 
   }
 });
 
+const COMPILER_OPTIONS = ts.getParsedCommandLineOfConfigFile(path.join(repoRoot, "tsconfig.json"), {}, {
+  ...ts.sys,
+  onUnRecoverableConfigFileDiagnostic: (d) => {
+    throw new Error(ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+  },
+})!.options;
+
+/** Every tracked source the notice renderers reach by import or re-export, as TypeScript resolves them. */
+function reachedFrom(entries: string[], added: Record<string, string> = {}): Record<string, string> {
+  const rel = (abs: string) => path.relative(repoRoot, abs).split(path.sep).join("/");
+  const host: ts.ModuleResolutionHost = { ...ts.sys, fileExists: (f) => rel(f) in added || ts.sys.fileExists(f) };
+  const load = (file: string) => added[file] ?? read(file);
+  const sources: Record<string, string> = {};
+  for (const queue = [...entries]; queue.length; ) {
+    const file = queue.pop()!;
+    if (file in sources) continue;
+    sources[file] = load(file);
+    const source = ts.createSourceFile(file, sources[file], ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    for (const st of source.statements) {
+      if (!(ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) || !st.moduleSpecifier) continue;
+      const found = ts.resolveModuleName((st.moduleSpecifier as ts.StringLiteral).text, path.join(repoRoot, file), COMPILER_OPTIONS, host).resolvedModule;
+      if (!found || found.isExternalLibraryImport) continue;
+      const target = rel(found.resolvedFileName);
+      if (!target.startsWith("..") && !target.split("/").includes("node_modules") && /\.tsx?$/.test(target) && !target.endsWith(".d.ts")) queue.push(target);
+    }
+  }
+  return sources;
+}
+
+const NOTICE_ENTRIES = readdirSync(path.join(repoRoot, "components", "table", "notices"))
+  .filter((f) => f.endsWith(".tsx") && f !== "gallery.tsx")
+  .map((f) => `components/table/notices/${f}`);
+
+/** A file a notice, or the table that composes it, imports that translates, the keys it is excused for (neither measured nor spoken-only by name), and the calls whose key it cannot read. */
+const NOT_NOTICE_TEXT: Record<string, { why: string; keys: string[]; opaque: string[] }> = {
+  "components/table/matchBoard.tsx": {
+    why: "the match board's own words; its BoardButton is imported by the vote notices",
+    keys: [
+      "matchBoard.notRecorded", "matchBoard.provisional", "matchBoard.ratingLabel", "matchBoard.tooManyBots", "matchBoard.wins", "matchBoard.youWon",
+      "result.home", "result.matchDrawTitle", "result.matchOverTitle", "result.newMatch", "result.tableStops", "matchBoard.notRecordedSpoken", "matchBoard.ratingSpoken",
+    ],
+    opaque: [],
+  },
+  "components/CardView.tsx": { why: "a card's spoken hint", keys: [], opaque: [] },
+  "lib/cardNames.ts": { why: "spoken card names", keys: ["cardView.jokerBlack", "cardView.jokerColored", "cards.nameFormat"], opaque: ["key", "key"] },
+  "lib/game/scorePill.ts": { why: "the score pill's rows, which are no notice kind", keys: ["lobby.team", "result.singleRoundFormat", "scorePill.race"], opaque: [] },
+  "lib/table/playRefusal.ts": { why: "RejectFloat's words, a runtime run bounded by noticeBox", keys: [], opaque: ["key"] },
+  "components/table/hand.tsx": { why: "the hand's spoken move actions", keys: ["gameTable.moveCardLeft", "gameTable.moveCardRight"], opaque: [] },
+  "app/tutorial.tsx": {
+    why: "the tutorial's own card words; its chip text is CHIP_KEYS, measured through its owner",
+    keys: [
+      "tutorial.progressText", "tutorial.skip", "tutorial.cardTitleComplete", "tutorial.cardTitleQuickGuide", "tutorial.onTable", "tutorial.yourHand", "tutorial.pass",
+      "tutorial.playCombination", "tutorial.continue", "tutorial.yourHandAfterReceiving", "tutorial.justReceived", "tutorial.giveback", "tutorial.rereadRules", "tutorial.backToHome",
+    ],
+    opaque: ["CHIP_KEYS.yourTurn"],
+  },
+  "lib/i18n.ts": { why: "the translator itself", keys: ["common.unknownError"], opaque: ["pluralKey(base, count)"] },
+};
+
+/** Words a notice's source translates that are not a Text run it draws, with what carries them instead. */
+const NOT_A_RUN: Record<string, string> = {
+  "onlineGame.leftTableLeave": "a BoardButton's label, a control beside the notice",
+  "onlineGame.leftTableReclaim": "a BoardButton's label, a control beside the notice",
+  "game.endMatchVoteHint": "the vote's accessibility hint",
+  "game.endMatchVoteTally": "A11yStatus, spoken",
+  "game.endMatchVoteTallyVoted": "A11yStatus, spoken",
+  "game.endMatchWithdrawButton": "the vote's accessibility label",
+};
+/** A `t(...)` whose key the source cannot show, and the owner's export the spec takes it from. */
+const KEY_FROM_OWNER: Record<string, { owner: string; calls: string[] }> = {
+  "lib/comboName.ts": { owner: "COMBO_NAME_KEYS", calls: ["COMBO_NAME_KEYS[type]"] },
+  "components/turnTimerUi.ts": { owner: "CHIP_KEYS", calls: ["key", "key"] },
+};
+
+/** Every catalogue key `text` passes to `t`/`tn` as a literal or a choice of literals, and each call whose key it cannot read. */
+function translated(file: string, text: string): { keys: Set<string>; opaque: string[] } {
+  const keys = new Set<string>();
+  const opaque: string[] = [];
+  const literals = (e: ts.Expression): string[] | null => {
+    if (ts.isParenthesizedExpression(e)) return literals(e.expression);
+    if (ts.isStringLiteralLike(e)) return [e.text];
+    if (ts.isConditionalExpression(e)) {
+      const arms = [literals(e.whenTrue), literals(e.whenFalse)];
+      return arms.every((a) => a !== null) ? arms.flat() as string[] : null;
+    }
+    return null;
+  };
+  const visit = (n: ts.Node) => {
+    if (ts.isCallExpression(n)) {
+      const callee = ts.isPropertyAccessExpression(n.expression) ? n.expression.name.text : ts.isIdentifier(n.expression) ? n.expression.text : "";
+      if ((callee === "t" || callee === "tn") && n.arguments[0]) {
+        const found = literals(n.arguments[0]);
+        if (found) found.forEach((k) => keys.add(k));
+        else opaque.push(n.arguments[0].getText().replace(/\s+/g, " "));
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+  return { keys, opaque };
+}
+
+/** Each `t()` whose key the scan cannot read, by its expression, against the ones the file is allowed; a swapped expression is both a new call and a vanished one. */
+function opaqueDrift(file: string, actual: string[], allowed: string[]): string[] {
+  const left = [...allowed];
+  const extra = actual.filter((call) => {
+    const at = left.indexOf(call);
+    if (at === -1) return true;
+    left.splice(at, 1);
+    return false;
+  });
+  return [
+    ...extra.map((call) => `${file}: t(${call}) passes a key this scan cannot read`),
+    ...left.map((call) => `${file} is allowed t(${call}) and no longer makes it`),
+  ];
+}
+
+/** What in `sources` a notice translates and the spec does not measure, and every exemption and opaque call that has gone stale. */
+function unmeasured(sources: Record<string, string>): string[] {
+  const found = new Map<string, string>();
+  const stale: string[] = [];
+  for (const [file, text] of Object.entries(sources)) {
+    const { keys, opaque } = translated(file, text);
+    const excused = NOT_NOTICE_TEXT[file];
+    if (excused) {
+      for (const key of keys) if (!spec.has(key) && !/a11y/i.test(key) && !excused.keys.includes(key)) stale.push(`${file}: t("${key}") is not measured, and ${file} is excused only for ${excused.why}`);
+      for (const key of excused.keys) {
+        if (!keys.has(key)) stale.push(`${file} is excused for ${key} and no longer translates it`);
+        else if (spec.has(key)) stale.push(`${file}: ${key} is measured, so it is not excused`);
+      }
+      stale.push(...opaqueDrift(file, opaque, excused.opaque));
+      continue;
+    }
+    for (const key of keys) found.set(key, file);
+    const owner = KEY_FROM_OWNER[file];
+    stale.push(...opaqueDrift(file, opaque, owner?.calls ?? []));
+  }
+  const problems = [...found].flatMap(([key, file]) => (spec.has(key) || /a11y/i.test(key) || key in NOT_A_RUN ? [] : [`${file}: t("${key}") is not measured`]));
+  for (const [key, why] of Object.entries(NOT_A_RUN)) {
+    if (spec.has(key)) stale.push(`${key} is measured, so it is not "${why}"`);
+    else if (!found.has(key)) stale.push(`${key} is listed as "${why}" and no notice source translates it`);
+  }
+  for (const file of Object.keys(NOT_NOTICE_TEXT)) if (!(file in sources)) stale.push(`${file} is excused as not notice text and no notice reaches it`);
+  return [...problems, ...stale];
+}
+
+/** Every file under the shipped source roots that imports a notice renderer, whatever it passes it. */
+function importersOfNotices(added: Record<string, string>): Record<string, string> {
+  const rel = (abs: string) => path.relative(repoRoot, abs).split(path.sep).join("/");
+  const host: ts.ModuleResolutionHost = { ...ts.sys, fileExists: (f) => rel(f) in added || ts.sys.fileExists(f) };
+  const found: Record<string, string> = {};
+  for (const root of ["app", "components", "context", "lib"]) {
+    for (const f of readdirSync(path.join(repoRoot, root), { recursive: true, encoding: "utf8" })) {
+      const file = `${root}/${f.split(path.sep).join("/")}`;
+      if (!/\.tsx?$/.test(file) || file.endsWith(".d.ts") || file.startsWith("components/table/notices/")) continue;
+      const text = added[file] ?? read(file);
+      if (!text.includes("notices")) continue;
+      const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const imports = source.statements.some((st) => {
+        if (!(ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) || !st.moduleSpecifier) return false;
+        const hit = ts.resolveModuleName((st.moduleSpecifier as ts.StringLiteral).text, path.join(repoRoot, file), COMPILER_OPTIONS, host).resolvedModule;
+        return !!hit && rel(hit.resolvedFileName).startsWith("components/table/notices/");
+      });
+      if (imports) found[file] = text;
+    }
+  }
+  return found;
+}
+
+/** The notice renderers' closure, the `.ts` models the table composes, and every file that hands a notice its words as props. */
+const noticeSources = (added: Record<string, string> = {}) => {
+  const composed = Object.entries(reachedFrom(["components/GameTable.tsx", "components/table/pile.tsx"], added)).filter(([file]) => file.endsWith(".ts"));
+  return { ...Object.fromEntries(composed), ...importersOfNotices(added), ...reachedFrom(NOTICE_ENTRIES, added) };
+};
+
+test("every key a table notice translates is measured, or named as words it does not draw as a run", () => {
+  const sources = noticeSources();
+  assert.ok(Object.keys(sources).length >= 8, "the scan has stopped finding the notice sources");
+  assert.deepEqual(unmeasured(sources), []);
+  const seen = new Set(Object.entries(sources).flatMap(([f, text]) => [...translated(f, text).keys]));
+  for (const key of ["common.retry", "offlineBanner.text", "gameShared.emptyHand", "game.seatLeft", "onlineGame.leftTableTitle"])
+    assert.ok(seen.has(key), `the scan no longer reads ${key}`);
+});
+
+test("a key a notice starts translating that nobody measured fails the scan", () => {
+  const sources = noticeSources();
+  sources["components/table/notices/tableLines.tsx"] += '\nexport const planted = (t: (k: string) => string) => t("game.newlyAdded");\n';
+  assert.deepEqual(unmeasured(sources), ['components/table/notices/tableLines.tsx: t("game.newlyAdded") is not measured']);
+});
+
+test("a model a notice starts importing is scanned for the keys it translates", () => {
+  const model = "components/table/pileModel.ts";
+  const entry = "components/table/notices/pileNotices.tsx";
+  const sources = noticeSources({
+    [model]: 'export const pileWords = (t: (k: string) => string) => t("game.pileX");',
+    [entry]: `${read(entry)}\nimport { pileWords } from "../pileModel";\nexport const planted = pileWords;\n`,
+  });
+  assert.ok(model in sources, "the scan did not follow the notice's import to the new model");
+  assert.deepEqual(unmeasured(sources), [`${model}: t("game.pileX") is not measured`]);
+});
+
+test("words a table model computes and passes down to a notice are scanned too", () => {
+  const labels = "components/table/spokenLabels.ts";
+  assert.ok(labels in noticeSources(), "the scan does not reach the table's models");
+  const planted = noticeSources({ [labels]: `${read(labels)}\nexport const comboNote = (t: (k: string) => string) => t("gameShared.comboNote");\n` });
+  assert.deepEqual(unmeasured(planted), [`${labels}: t("gameShared.comboNote") is not measured`]);
+});
+
+test("a file that hands a notice its words as a prop is scanned, .tsx included", () => {
+  const seats = "components/table/seats.tsx";
+  const real = noticeSources();
+  for (const file of [seats, "components/GameTable.tsx", "components/table/hand.tsx", "components/table/pile.tsx"]) assert.ok(file in real, `${file} imports a notice and is not scanned`);
+  const mark = 'scale={scale} />}';
+  assert.ok(read(seats).includes(`<PassedMark side={anchor === "centre" ? "top" : "side"} disc={disc} ${mark}`), "the plant found no PassedMark");
+  const planted = noticeSources({ [seats]: read(seats).replace(`disc={disc} ${mark}`, `disc={disc} label={t("game.passedShort")} ${mark}`) });
+  assert.deepEqual(unmeasured(planted), [`${seats}: t("game.passedShort") is not measured`]);
+});
+
+test("a runtime-keyed call is pinned by its expression, so a swap fails", () => {
+  const chips = "components/turnTimerUi.ts";
+  const swapped = noticeSources({ [chips]: read(chips).replace("i.t(key, { name: i.onMoveName })", "i.t(otherKey, { name: i.onMoveName })") });
+  assert.deepEqual(unmeasured(swapped).sort(), [`${chips} is allowed t(key) and no longer makes it`, `${chips}: t(otherKey) passes a key this scan cannot read`].sort());
+});
+
+test("an excused file is excused for its listed keys only", () => {
+  const board = "components/table/matchBoard.tsx";
+  const planted = noticeSources({ [board]: `${read(board)}\nexport const voteLine = (t: (k: string) => string) => t("matchBoard.voteLine");\n` });
+  assert.equal(unmeasured(planted).length, 1);
+  assert.match(unmeasured(planted)[0]!, /t\("matchBoard.voteLine"\) is not measured, and components\/table\/matchBoard.tsx is excused only for/);
+  const gone = noticeSources({ [board]: read(board).replace('t("matchBoard.wins"', 't("matchBoard.winsNow"') });
+  assert.deepEqual(unmeasured(gone).sort(), [
+    `${board} is excused for matchBoard.wins and no longer translates it`,
+    `${board}: t("matchBoard.winsNow") is not measured, and ${board} is excused only for the match board's own words; its BoardButton is imported by the vote notices`,
+  ].sort());
+});
+
 test("a glyph the served font lacks is listed by codepoint, not measured as nothing", () => {
   for (const locale of SUPPORTED_LOCALES) {
     for (const [key, run] of runsOf(TEXT_METRICS, locale)) {
@@ -94,6 +331,18 @@ test("a glyph the served font lacks is listed by codepoint, not measured as noth
     SUPPORTED_LOCALES.some((l) => runsOf(TEXT_METRICS, l).some(([, run]) => run.fallback.length > 0)),
     "no run lists a fallback glyph, yet the combo names carry emoji Rajdhani has none of"
   );
+});
+
+test("every fallback glyph a run lists has an assumed width, and no other does", () => {
+  const listed = new Set(SUPPORTED_LOCALES.flatMap((l) => runsOf(TEXT_METRICS, l).flatMap(([, run]) => run.fallback)));
+  assert.ok(listed.size > 0, "no run lists a fallback glyph: the check has stopped seeing the emoji");
+  assert.deepEqual(Object.keys(TEXT_METRICS.fallbackEm).sort(), [...listed].sort());
+});
+
+test("a letter the served font lacks stops the generator rather than being given a width", async () => {
+  const key = specKeys[0]!;
+  const en = { ...catalogs.en, [key]: "Ж" } as Record<string, string>;
+  await assert.rejects(() => textMetrics({ root: repoRoot, locales: { ...catalogs, en } }), /U\+0416 \(Ж\).*no width to assume for a letter/);
 });
 
 test("the served subsets shape like the full fonts wherever they have the glyph", async () => {
