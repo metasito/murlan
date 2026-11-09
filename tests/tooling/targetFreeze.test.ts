@@ -120,7 +120,7 @@ describe("the list looks at the repository as it is", () => {
   test("app code imports nothing under tests/, so the walk that stops at app code loses no helper", () => {
     const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
     const into = tracked
-      .filter((f) => APP.test(f) && SOURCE.test(f) && !/\.(test|spec)\./.test(f))
+      .filter((f) => APP.test(f) && SOURCE.test(f))
       .flatMap((f) => importsOf(f, read(f)).map((i) => [f, (i.startsWith("@/") ? i.slice(2) : path.posix.join(path.posix.dirname(f), i))] as const))
       .filter(([, target]) => target.startsWith("tests/"))
       .map(([f, target]) => `${f} -> ${target}`);
@@ -335,6 +335,8 @@ describe("planted diffs", () => {
       fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
       edit(SELF, '  { pattern: "tests/e2e/tiers.mjs", what: "which specs are nightly" },\n', '  // { pattern: "tests/e2e/tiers.mjs" },\n');
     });
+    branch("head-syntax", () => edit(SELF, "export const OWNER", "}{ export const OWNER"));
+    branch("head-bare", () => edit(SELF, 'import fs from "node:fs";', 'import fs from "node:fs";\nimport "zz-not-installed";'));
     branch("no-self", () => fs.rmSync(path.join(dir, SELF)));
     branch("spoof", () => {
       write(".github/workflows/ci.yml", "jobs:\n  fake:\n    name: Target freeze\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n");
@@ -452,6 +454,25 @@ describe("planted diffs", () => {
     assert.equal(quoted.code, 1);
     assert.match(quoted.out, /but its list still holds them, so every later pull request would be refused: tests\/e2e\/tiers\.mjs$/);
     assert.equal(judge("retired-commented").code, 0);
+  });
+
+  test("a head whose list cannot be evaluated is red and says why, not that it could not be read", () => {
+    const cause = (head: string, node?: string) => {
+      const lines: string[] = [];
+      const code = run("main", head, at(), (l) => lines.push(l), node);
+      return { code, out: lines.join("\n") };
+    };
+    for (const [head, node, reason] of [
+      ["head-syntax", undefined, /SyntaxError|did not evaluate/],
+      ["head-bare", undefined, /zz-not-installed|ERR_MODULE_NOT_FOUND/],
+      ["code-only", "24.9.0", /Node 24\.9\.0 does not deny the network/],
+    ] as const) {
+      const { code, out } = cause(head, node);
+      assert.equal(code, 1, head);
+      assert.match(out, new RegExp(`^::error::could not evaluate ${head}'s target list: `));
+      assert.match(out, reason);
+      assert.doesNotMatch(out, /merge base|could not read/);
+    }
   });
 
   test("a head that deletes the script is refused with its own message", () => {

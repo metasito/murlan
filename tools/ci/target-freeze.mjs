@@ -123,9 +123,9 @@ export function unmatched(tracked, list = { targets: TARGETS.map((t) => t.patter
  * @param {ReturnType<typeof git>} at
  * @returns {{ targets: string[], code: string[] }}
  */
-export function listAt(head, at) {
-  const major = Number(process.versions.node.split(".")[0]);
-  if (major < SANDBOXED_NODE) throw new Error(`Node ${process.versions.node} does not deny the network under --permission; evaluating head's list needs Node ${SANDBOXED_NODE} or later`);
+export function listAt(head, at, node = process.versions.node) {
+  const major = Number(node.split(".")[0]);
+  if (major < SANDBOXED_NODE) throw new Error(`Node ${node} does not deny the network under --permission; evaluating head's list needs Node ${SANDBOXED_NODE} or later`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "target-freeze-head-"));
   try {
     const seen = new Set();
@@ -173,8 +173,9 @@ export function codeowners() {
  * @param {string | undefined} head
  * @param {ReturnType<typeof git>} at
  * @param {(line: string) => void} log
+ * @param {string} node
  */
-export function run(base, head, at = git(), log = console.log) {
+export function run(base, head, at = git(), log = console.log, node = process.versions.node) {
   if (!base || !head) {
     log("::error::target-freeze needs the base and head commits to diff.");
     return 1;
@@ -196,7 +197,14 @@ export function run(base, head, at = git(), log = console.log) {
       return 1;
     }
     const headFiles = at.text(["ls-tree", "-r", "-z", "--name-only", head]).split("\0").filter(Boolean);
-    const emptied = unmatched(headFiles, listAt(head, at));
+    let headList;
+    try {
+      headList = listAt(head, at, node);
+    } catch (err) {
+      log(`::error::could not evaluate ${head}'s target list: ${String(err?.message ?? err).split("\n")[0]}`);
+      return 1;
+    }
+    const emptied = unmatched(headFiles, headList);
     if (emptied.length) {
       log(`::error::these patterns name no file in ${head} but its list still holds them, so every later pull request would be refused: ${emptied.join(", ")}`);
       return 1;

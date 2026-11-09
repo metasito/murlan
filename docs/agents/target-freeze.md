@@ -84,8 +84,10 @@ effect, re-export and dynamic imports, `.js` specifiers). Each file it reaches t
 must be in that test's `PLUMBING`, with the reason it measures nothing, and every entry must still
 be reached. The test is a target, so widening `PLUMBING` is reviewed as the list is. App files it
 reaches stop the walk; each must also be imported by the app, so a threshold written for the specs
-alone cannot hide in `lib/`. `lib/e2eTrace.ts` is app code: `components/` import it for the trace
-they emit.
+alone cannot hide in `lib/`. A guard holds that no file under those roots, test-named ones included,
+imports anything under `tests/`. It reads static imports only: a computed dynamic `import(path)`
+cannot be seen by any static scan, so the guard is not complete. `lib/e2eTrace.ts` is app code:
+`components/` import it for the trace they emit.
 
 Some targets take their values from the app, so a code change moves them without touching the
 list:
