@@ -178,22 +178,29 @@ The gate runs the base's copy of `tools/ci/test-verdict.mjs`, extracted with `gi
 of the merge commit on a pull request, `HEAD` on a push to main, and `origin/main`'s tip on a
 dispatch or a schedule; the judge reds when `BASE` is `HEAD` on anything but a push to main. A base
 without the judge is red, unless the head adds both `tools/ci/results-writer.mjs` and
-`tools/ci/test-verdict.mjs` to a main holding neither: only then the head judges its own run, with a
-warning, and that is this mechanism's own pull request; a pull request into any other branch is
-red. A base that deleted or renamed either is red.
+`tools/ci/test-verdict.mjs` to a main whose history never held the judge (the commits API, since the
+gate's checkout is two commits deep; an unreadable answer is red): only then the head judges its own
+run, with a warning, and that is this mechanism's own pull request, so once it lands the branch can
+never be taken again. A pull request into any other branch is red, and so is a base that deleted or
+renamed either.
 
 The records are the head's: every test job runs the head's reporters through the head's configs.
-So the base's judge names a change to that wiring (`WIRING` in `tools/ci/test-verdict.mjs`: the
-reporters, `scripts/nodeTest.mjs`, `jest.config.js`, the Playwright configs, and `package.json`
-when a script that runs a suite or names a runner differs) on every run, in a `Runners' wiring
-changed` error annotation and the gate's summary line, and reds it beside any file the base's
-`.github/CODEOWNERS` gives no reviewer. A reporter change still lands, beside owner-reviewed files
-only. Which jobs a change runs is `JOBS` in `tools/ci/scopeOf.mjs`: `scope.mjs` prints it as the
+So the base's judge names a change to that wiring on every run, in a `Runners' wiring changed` error
+annotation and the gate's summary line, and reds it beside any file the base's `.github/CODEOWNERS`
+gives no reviewer (the last matching line decides, and a line naming no owner un-owns, as on
+GitHub). The wiring is derived, at the base and at the head, by `wiringOf` in
+`tools/ci/test-verdict.mjs`: `jest.config.js` and `tests/e2e/playwright*.config.ts`, every file they
+name as a `reporter`, `reporters`, `globalSetup` or `globalTeardown`, every file a judged suite's
+`package.json` script names (`--test-reporter`, `--import`, the launcher), and every file those
+import, transitively; plus `package.json` when a script that runs a suite or names a runner differs.
+So a budget reporter that rewrites a result to "passed" before the results reporter reads it is
+wiring, and so is a reporter a config newly names. `tests/tooling/targetFreeze.test.ts` holds every
+derived file owned in `.github/CODEOWNERS`. A reporter change still lands, beside owner-reviewed
+files only. Which jobs a change runs is `JOBS` in `tools/ci/scopeOf.mjs`: `scope.mjs` prints it as the
 scope job's `jobs` output, every job's `if:` reads its own key, and the verdict reds a job the base's
 scope runs that was skipped. On a push to main the scope is not bound, since the scope job skips a
 tree its pull request already passed. The verdict, the ledger, the reporters, `gate.mjs`,
-`scope.mjs`, `scopeOf.mjs`, `ci.yml`, and the configs that wire the reporters in (`package.json`,
-`scripts/nodeTest.mjs`, `jest.config.js`, `tests/e2e/playwright*.config.ts`) are `JUDGES` in
+`scope.mjs`, `scopeOf.mjs`, `ci.yml`, `package.json` and every derived wiring file are `JUDGES` in
 `tools/ci/target-freeze.mjs`, rendered into `.github/CODEOWNERS` beside
 rule 52's targets but frozen with nothing. Text from the head is escaped before it reaches a
 `::error::` line. `tests/tooling/testVerdict.test.ts` plants every bypass in a scratch project, runs
@@ -212,8 +219,10 @@ from the default branch by a `workflow_run` trigger on CI, judging CI's artifact
 workflow and main's judge, required by the ruleset.
 The base's judge reads records the head's wiring wrote. A wiring change beside owner-reviewed files
 only is green on the owner's review alone, and that review is all that stands between a forged
-"passed" and a merge; the head's own test files, setup files and runner versions, which can make a
-test report a pass, are not `WIRING` at all. The `workflow_run` check above does not close it
+"passed" and a merge. The derivation reads only the hook keys above and static relative imports:
+the head's own test files, jest's `setupFilesAfterEnv` and `testEnvironment`, a module loaded by a
+computed path, and the runner packages and their versions can all make a test report a pass, and
+none of them is wiring. The `workflow_run` check above does not close it
 either, since CI's artifacts are still the head's; only a run with main's configs and reporters would.
 A runner that stops at a test's own early `return` reports a pass. A skip is heard by file and
 title, not by project or platform: an android-only skip passes on the ios run of the same test

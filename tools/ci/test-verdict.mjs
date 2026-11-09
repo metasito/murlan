@@ -41,24 +41,77 @@ export const SUITES = [
 const NAME = /^test-results-(.+)-(\d+)-(\d+)$/;
 
 /**
- * What turns a run into the records this verdict reads. Every test job runs the head's copy, so a
- * head can make it report a pass for anything: a change to it is named on every run, and lands
- * only beside files the base's CODEOWNERS gives its owner to review.
+ * The runners' configs. With every file they name as a reporter, globalSetup or globalTeardown,
+ * every file a judged suite's script names, and every file those import, they are the wiring: what
+ * runs in the runner's own process and turns a run into the records this verdict reads. Every test
+ * job runs the head's copy, so a head can make it report a pass for anything: a change to it is
+ * named on every run, and lands only beside files the base's CODEOWNERS gives its owner to review.
  */
-export const WIRING = Object.freeze(["tools/ci/results-*.mjs", "scripts/nodeTest.mjs", "jest.config.js", "tests/e2e/playwright*.config.ts"]);
+export const CONFIGS = Object.freeze(["jest.config.js", "tests/e2e/playwright*.config.ts"]);
 const PACKAGE = "package.json";
 const CODEOWNERS = ".github/CODEOWNERS";
 const SELF = "tools/ci/test-verdict.mjs";
-const wired = WIRING.map(matcher);
+const configs = CONFIGS.map(matcher);
 const runsTests = (/** @type {string} */ name, /** @type {string} */ command) => /^(loop:)?test(:|$)/.test(name) || /reporter|jest|playwright|nodeTest/.test(command);
+const HOOK = /\b(reporters?|globalSetup|globalTeardown)\s*:/g;
+const SOURCE = /\.(m?js|cjs|tsx?)$/;
+
+/** The expression after `at` up to the `,` or closing bracket that ends it. */
+function valueAt(/** @type {string} */ text, /** @type {number} */ at) {
+  let depth = 0;
+  for (let i = at; i < text.length; i++) {
+    const c = /** @type {string} */ (text[i]);
+    if (c === '"' || c === "'" || c === "`") {
+      for (i++; i < text.length && text[i] !== c; i++) if (text[i] === "\\") i++;
+    } else if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c)) {
+      if (depth-- === 0) return text.slice(at, i);
+    } else if (c === "," && depth === 0) return text.slice(at, i);
+  }
+  return text.slice(at);
+}
+const literals = (/** @type {string} */ text) => [...text.matchAll(/(["'`])((?:\\.|(?!\1).)*)\1/g)].map((m) => /** @type {string} */ (m[2]));
+const imports = (/** @type {string} */ text) => [...text.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)(["'])(\.{1,2}\/[^"']+)\1/g)].map((m) => /** @type {string} */ (m[2]));
+
+/**
+ * The wiring of the tree `listing`, read through `textOf`.
+ * @param {string[]} listing
+ * @param {(file: string) => string | null} textOf
+ * @param {Record<string, string>} scripts package.json's
+ * @param {typeof SUITES} [suites]
+ */
+export function wiringOf(listing, textOf, scripts, suites = SUITES) {
+  const tracked = new Set(listing);
+  const resolved = (/** @type {string} */ from, /** @type {string} */ ref) => {
+    const rel = ref.replace(/^\$\{[^}]*\}\//, "");
+    const bases = rel === ref ? [path.posix.join(from, ref), path.posix.normalize(ref)] : [path.posix.normalize(rel)];
+    return bases.flatMap((b) => ["", ".ts", ".tsx", ".mjs", ".js"].map((x) => b + x)).find((f) => tracked.has(f));
+  };
+  const found = new Set(listing.filter((f) => configs.some((m) => m(f))));
+  const add = (/** @type {string} */ from, /** @type {string} */ ref) => {
+    const f = resolved(from, ref);
+    if (f) found.add(f);
+  };
+  for (const suite of suites) {
+    const command = scripts[suite.name.replace(/^npm (run )?/, "")] ?? "";
+    for (const token of command.split(/[\s=]+/)) if (SOURCE.test(token) && !token.includes("*")) add("", token.replace(/^["']|["']$/g, ""));
+  }
+  for (const config of [...found]) {
+    const text = textOf(config) ?? "";
+    for (const m of text.matchAll(HOOK)) for (const ref of literals(valueAt(text, /** @type {number} */ (m.index) + m[0].length))) if (SOURCE.test(ref)) add(path.posix.dirname(config), ref);
+  }
+  for (const file of found) for (const ref of imports(textOf(file) ?? "")) add(path.posix.dirname(file), ref);
+  return [...found].sort();
+}
 
 /**
  * The wiring `changed` touches; package.json counts by the scripts that run a suite or name a runner.
  * @param {string[]} changed
  * @param {{ base: Record<string, string>, head: Record<string, string> }} scripts package.json's at each side
+ * @param {Set<string>} wired the wiring of the base and of the head
  */
-export function wiringIn(changed, scripts) {
-  const files = changed.filter((f) => wired.some((m) => m(f)));
+export function wiringIn(changed, scripts, wired) {
+  const files = changed.filter((f) => wired.has(f));
   const names = [...new Set([...Object.keys(scripts.base), ...Object.keys(scripts.head)])].filter(
     (n) => scripts.base[n] !== scripts.head[n] && runsTests(n, `${scripts.base[n] ?? ""} ${scripts.head[n] ?? ""}`),
   );
@@ -363,7 +416,10 @@ export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}
     const changed = own ? [] : at(["diff", "--name-only", "-z", env.BASE, "HEAD"]).split("\0").filter(Boolean);
     const renamed = own ? [] : renames(at(["diff", "-M", "--name-status", "-z", env.BASE, "HEAD"]));
     const scope = own ? null : scopeOf(changed);
-    const files = own ? [] : wiringIn(changed, { base: scriptsAt(at, env.BASE), head: scriptsAt(at, "HEAD") });
+    const scripts = { base: scriptsAt(at, env.BASE), head: scriptsAt(at, "HEAD") };
+    const wiringAt = (/** @type {string} */ rev, /** @type {string[]} */ tree) => wiringOf(tree, (f) => textAt(at, rev, f), rev === "HEAD" ? scripts.head : scripts.base);
+    const baseListing = own ? [] : at(["ls-tree", "-r", "-z", "--name-only", env.BASE]).split("\0").filter(Boolean);
+    const files = own ? [] : wiringIn(changed, scripts, new Set([...wiringAt(env.BASE, baseListing), ...wiringAt("HEAD", listing)]));
     const reviewed = ownedBy(own ? "" : (textAt(at, env.BASE, CODEOWNERS) ?? ""));
     const baseJudges = !own && textAt(at, env.BASE, SELF) !== null;
     const wiring = { files, unreviewed: changed.filter((f) => !reviewed(f)), baseJudges };

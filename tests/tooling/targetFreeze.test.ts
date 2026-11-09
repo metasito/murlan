@@ -8,6 +8,8 @@ import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
 import { CODE, JUDGES, TARGETS, codeowners, freezeVerdict, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { ownedBy } from "../../tools/ci/codeowners.mjs";
+import { wiringOf } from "../../tools/ci/test-verdict.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -32,6 +34,13 @@ describe("the list looks at the repository as it is", () => {
       assert.deepEqual(named.filter(isTarget), [], j.pattern);
     }
     assert.ok(tracked.filter(matcher("tools/ci/results-*.mjs")).length >= 4, "the reporters are no longer under the judges' pattern");
+  });
+
+  test("every file of the runners' wiring is owned, so a reporter added to a config is a judge before it lands", () => {
+    const wiring = wiringOf(tracked, (f) => fs.readFileSync(path.join(root, f), "utf8"), JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts);
+    for (const f of ["tools/ci/e2e-budget.mjs", "tools/ci/native-budget.mjs", "tools/ci/preflightMemory.mjs", "tools/ci/results-writer.mjs", "scripts/nodeTest.mjs", "jest.config.js"]) assert.ok(wiring.includes(f), `${f} is not derived as wiring`);
+    const owned = ownedBy(codeowners());
+    assert.deepEqual(wiring.filter((f) => !owned(f)), []);
   });
 
   test("every nightly spec is a target, so tiers.mjs and the freeze cannot drift apart", () => {

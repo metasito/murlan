@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { parse } from "yaml";
-import { escape, LEDGER, readArtifacts, renames, run, SUITES, verdict } from "../../tools/ci/test-verdict.mjs";
+import { escape, LEDGER, readArtifacts, renames, run, SUITES, verdict, wiringOf } from "../../tools/ci/test-verdict.mjs";
+import { ownedBy } from "../../tools/ci/codeowners.mjs";
 import { JOBS } from "../../tools/ci/scopeOf.mjs";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -443,13 +444,21 @@ describe("the gate step", () => {
   describe("the runners' wiring, which the head runs and the base cannot vouch for", () => {
     const REPORTER = "tools/ci/results-node-reporter.mjs";
     const pkg = (test: string, more = {}) => JSON.stringify({ scripts: { test, lint: "eslint ." }, ...more });
+    const BUDGET = "tools/ci/e2e-budget.mjs";
+    const CONFIG = "tests/e2e/playwright.config.ts";
+    const configNaming = (...reporters: string[]) =>
+      `import { resolve } from "node:path";\nexport default {\n  globalSetup: resolve(__dirname, "../../tools/ci/preflightMemory.mjs"),\n  reporter: process.env.CI\n    ? [["list"], ${reporters.map((r) => `[resolve(__dirname, "../../${r}")]`).join(", ")}]\n    : [["list"]],\n  retries: 0,\n};\n`;
     const baseTree = {
       "tools/ci/test-verdict.mjs": "",
-      ".github/CODEOWNERS": "/tools/ci/results-*.mjs @o\npackage.json @o\n",
+      ".github/CODEOWNERS": "/tools/ci/ @o\n/tools/ci/test-verdict.mjs\n/tools/ci/results-*.mjs @o\npackage.json @o\n/tests/e2e/playwright*.config.ts @o\n",
       [REPORTER]: "report",
-      "package.json": pkg("node --test"),
+      [BUDGET]: "export default class { onTestEnd() {} }\n",
+      "tools/ci/preflightMemory.mjs": "export default () => {};\n",
+      [CONFIG]: configNaming(BUDGET, "tools/ci/results-playwright-reporter.mjs"),
+      "package.json": pkg("node --test --test-reporter=./tools/ci/results-node-reporter.mjs"),
       "app.ts": "1",
     };
+    const FORGED = "export default class { onTestEnd(_test, result) { result.status = \"passed\"; } }\n";
     /** Commits the base, then the head over it in a scratch repository, and runs the verdict with real git. */
     function judgeHead(head: Record<string, string>, base: Record<string, string | null> = {}) {
       const dir = mkdtempSync(path.join(work, "wiring-"));
@@ -493,8 +502,24 @@ describe("the gate step", () => {
 
     test("package.json counts by its test scripts: a test script changed is wiring, a dependency is not", () => {
       annotated(judgeHead({ "package.json": pkg("node --test --test-reporter=./forged.mjs"), "app.ts": "2" }), "package\\.json \\(test\\)");
-      const deps = judgeHead({ "package.json": pkg("node --test", { dependencies: { a: "1" } }), "app.ts": "2" });
+      const deps = judgeHead({ "package.json": pkg("node --test --test-reporter=./tools/ci/results-node-reporter.mjs", { dependencies: { a: "1" } }), "app.ts": "2" });
       assert.ok(!deps.some((l) => /wiring/.test(l)), deps.join("\n"));
+    });
+
+    test("a reporter a config names forges a pass, so it is wiring: annotated alone, red beside a file no owner reviews", () => {
+      const alone = judgeHead({ [BUDGET]: FORGED });
+      annotated(alone, BUDGET);
+      assert.ok(!redBeside(alone), alone.join("\n"));
+      const beside = judgeHead({ [BUDGET]: FORGED, "app.ts": "2" });
+      has(beside, /::error::the runners' wiring changes \(tools\/ci\/e2e-budget\.mjs\) beside app\.ts/);
+      annotated(judgeHead({ "tools/ci/preflightMemory.mjs": FORGED }), "tools/ci/preflightMemory\\.mjs");
+    });
+
+    test("a reporter the head's config newly names is wiring, and the base's ownerless line un-owns its judge", () => {
+      const NEW = "tools/ci/forged.mjs";
+      const said = judgeHead({ [NEW]: FORGED, [CONFIG]: configNaming(NEW, "tools/ci/results-playwright-reporter.mjs"), "tools/ci/test-verdict.mjs": "x" });
+      annotated(said, `${CONFIG.replace(/\./g, "\\.")}, ${NEW.replace(/\./g, "\\.")}`);
+      has(said, /beside tools\/ci\/test-verdict\.mjs, which/);
     });
 
     test("a head judging its own run, on a base with no judge, is annotated, and its own rule is not what holds it", () => {
@@ -502,6 +527,36 @@ describe("the gate step", () => {
       has(said.filter((l) => l.startsWith("::error title=")), /and the head judges itself/);
       assert.ok(!redBeside(said), said.join("\n"));
     });
+  });
+
+  test("CODEOWNERS reads as GitHub does: the last matching line decides, and one naming no owner un-owns", () => {
+    const owned = ownedBy("/tools/ @o\n/tools/ci/x.mjs\n*.md # docs\n/tools/ci/y.mjs # dropped\n/tools/ci/z.mjs @o # kept\n");
+    assert.deepEqual(["tools/a.mjs", "tools/ci/x.mjs", "README.md", "tools/ci/y.mjs", "tools/ci/z.mjs"].map(owned), [true, false, false, false, true]);
+    assert.equal(ownedBy("/tools/ci/x.mjs\n/tools/ @o\n")("tools/ci/x.mjs"), true);
+  });
+
+  test("the wiring is derived from the configs and the judged suites' scripts, through their imports", () => {
+    const tree: Record<string, string> = {
+      "jest.config.js": "const rootDir = __dirname;\nmodule.exports = { reporters: ['default', `${rootDir}/tools/ci/native-budget.mjs`], globalTeardown: `${rootDir}/t/down.mjs`, setupFilesAfterEnv: [`${rootDir}/t/setup.ts`] };\n",
+      "tools/ci/native-budget.mjs": 'import { HARD } from "./e2e-budget.mjs";\n',
+      "tools/ci/e2e-budget.mjs": "",
+      "t/down.mjs": "",
+      "t/setup.ts": "",
+      "scripts/nodeTest.mjs": 'import { x } from "./lib/proc.mjs";\n',
+      "scripts/lib/proc.mjs": "",
+      "tools/ci/results-node-reporter.mjs": "",
+      "unrelated.mjs": "",
+    };
+    const scripts = { test: "node scripts/nodeTest.mjs --test-reporter=./tools/ci/results-node-reporter.mjs \"tests/**/*.test.ts\"", lint: "node unrelated.mjs" };
+    assert.deepEqual(wiringOf(Object.keys(tree), (f) => tree[f] ?? null, scripts), [
+      "jest.config.js",
+      "scripts/lib/proc.mjs",
+      "scripts/nodeTest.mjs",
+      "t/down.mjs",
+      "tools/ci/e2e-budget.mjs",
+      "tools/ci/native-budget.mjs",
+      "tools/ci/results-node-reporter.mjs",
+    ]);
   });
 
   test("CI gate runs the base branch's verdict over every test job's uploaded results", () => {
@@ -532,6 +587,17 @@ describe("which commit's judge the gate step runs, the step itself run over scra
   const always = { "scripts/lib/entry.mjs": "", "tests/e2e/tiers.mjs": "", "app.ts": "1" };
 
   /** Commits each tree over the last (null deletes a file), the last as HEAD, and runs the step as GitHub's bash does. */
+  /** A `gh` answering the commits API from the scratch repository's own history, as GitHub would; `down` fails every call. */
+  function fakeGh(hub: "history" | "down") {
+    const bin = mkdtempSync(path.join(work, "gh-"));
+    const answer =
+      hub === "down"
+        ? "process.exit(1);"
+        : `const u = new URL(process.argv[3], "https://x/"); const n = execFileSync("git", ["rev-list", "--count", u.searchParams.get("sha"), "--", u.searchParams.get("path")], { encoding: "utf8" }).trim(); if (!/^repos\\/o\\/r\\/commits$/.test(u.pathname.slice(1)) || !process.argv.includes("length")) process.exit(2); console.log(Math.min(Number(n), 1));`;
+    writeFileSync(path.join(bin, "gh"), `#!/usr/bin/env node\nconst { execFileSync } = require("node:child_process");\n${answer}\n`, { mode: 0o755 });
+    return bin;
+  }
+  let hub: "history" | "down" = "history";
   const gate = (...commits: Record<string, string | null>[]) => gateInto("main", ...commits);
   function gateInto(baseRef: string, ...commits: Record<string, string | null>[]) {
     const dir = mkdtempSync(path.join(work, "gate-"));
@@ -551,7 +617,7 @@ describe("which commit's judge the gate step runs, the step itself run over scra
     }
     const ran = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
       cwd: dir,
-      env: { ...env, EVENT: "pull_request", REF: "refs/pull/1/merge", BASE_REF: baseRef, RUNNER_TEMP: mkdtempSync(path.join(work, "runner-")) },
+      env: { ...env, PATH: `${fakeGh(hub)}${path.delimiter}${process.env.PATH}`, GITHUB_REPOSITORY: "o/r", EVENT: "pull_request", REF: "refs/pull/1/merge", BASE_REF: baseRef, RUNNER_TEMP: mkdtempSync(path.join(work, "runner-")) },
       encoding: "utf8",
     });
     return { code: ran.status, out: `${ran.stdout}${ran.stderr}` };
@@ -578,6 +644,16 @@ describe("which commit's judge the gate step runs, the step itself run over scra
   test("a base that deleted its judge is red", () => {
     red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }, { "app.ts": "2" }));
     red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [JUDGE]: null }, { "app.ts": "2" }));
+  });
+
+  test("a head that adds both back to a main that once held the judge is red, and so is one whose history cannot be read", () => {
+    red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }, { [WRITER]: "", [JUDGE]: judgeBy("head") }));
+    hub = "down";
+    try {
+      red(gate({ [WRITER]: "", [JUDGE]: judgeBy("head") }));
+    } finally {
+      hub = "history";
+    }
   });
 
   test("a base that renamed its judge is red", () => {

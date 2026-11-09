@@ -15,14 +15,15 @@ export function matcher(pattern) {
 }
 
 /**
- * Whether a CODEOWNERS file gives `file` an owner to review it.
+ * Whether a CODEOWNERS file gives `file` an owner to review it. The last matching line decides,
+ * and a line naming no owner un-owns what it matches.
  * @param {string} text
  */
 export function ownedBy(text) {
-  const matchers = text
+  const lines = text
     .split("\n")
-    .map((l) => l.trim().split(/\s+/))
-    .filter(([pattern, owner]) => pattern && !pattern.startsWith("#") && owner)
-    .map(([pattern]) => matcher(/** @type {string} */ (pattern).replace(/^\//, "")));
-  return (/** @type {string} */ file) => matchers.some((m) => m(file));
+    .map((l) => l.replace(/(^|\s)#.*$/, "").trim().split(/\s+/))
+    .filter(([pattern]) => pattern)
+    .map(([pattern, owner]) => ({ matches: matcher(/** @type {string} */ (pattern).replace(/^\//, "")), owned: Boolean(owner) }));
+  return (/** @type {string} */ file) => lines.findLast((l) => l.matches(file))?.owned ?? false;
 }
