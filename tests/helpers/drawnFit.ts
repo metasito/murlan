@@ -75,5 +75,5 @@ export const fits: Record<Fit, (a: Box, b: Rect, priced: Priced) => boolean> = {
   same: (a, b) => near(a.x, b.x) && near(a.y, b.y) && near(a.w, b.w) && near(a.h, b.h),
   inside: (a, b) => near(centre(a).x, centre(b).x) && near(centre(a).y, centre(b).y) && a.w <= b.w + TOLERANCE && a.h <= b.h + TOLERANCE,
   words: (a, b, p) => near(a.y, b.y) && near(a.h, b.h) && (p.drift ? within(a, b, p.drift) : placed(a, b, p.align)) && linearly(a, b, p.overcount, p.drift, p.capped),
-  line: (a, b, p) => near(a.y + a.h, b.y + b.h) && a.y >= b.y - TOLERANCE && placed(a, b, p.align) && linearly(a, b, p.overcount),
+  line: (a, b, p) => near(a.y + a.h, b.y + b.h) && a.y >= b.y - TOLERANCE && placed(a, b, p.align) && linearly(a, b, p.overcount, 0, p.capped),
 };

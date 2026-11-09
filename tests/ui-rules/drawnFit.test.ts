@@ -74,6 +74,15 @@ describe("the drawn fits see what they are for", () => {
     assert.ok(!fits.words(plate(ROW.x, ROW.w, hinted), priced, { ...held, capped: false }));
   });
 
+  test("a name the label held to its width is that wide, whatever the clipped words measure", () => {
+    const hinted = word("BESNIK", LINEAR - 3);
+    const held = { align: "flex-end" as const, overcount: 0, capped: true };
+    const name = (w: number): Box => ({ x: ROW.x + ROW.w - w, y: ROW.y + 4, w, h: ROW.h - 4, text: hinted });
+    assert.ok(fits.line(name(ROW.w), priced, held));
+    assert.ok(!fits.line(name(ROW.w - 10), priced, held));
+    assert.ok(!fits.line(name(ROW.w), priced, { ...held, capped: false }));
+  });
+
   test("a plate drawn wider than its linear price does not fit", () => {
     assert.ok(!fits.words(plate(ROW.x, linearW + TOLERANCE + 0.5), priced, { align: "flex-start", overcount: OVERCOUNT }));
   });

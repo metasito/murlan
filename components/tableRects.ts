@@ -149,6 +149,7 @@ export function tableRects(input: {
     const labelW = seatLabelW(anchor, scale);
     const w = Math.min(priced("snapped"), labelW);
     overcount[as] = w - Math.min(priced("linear"), labelW);
+    capped[as] = priced("snapped") > labelW + EPS;
     const bottom = anchors[dir].y - ring / 2 - seatLabelRows(scale, seatBadgeH(state.seats[dir]!.badge?.kind, scale), seatLabelRise(dir, scale))[row];
     const labelLeft = anchors[dir].x - ring / 2 + seatLabelLeft(anchor, scale, layout.nameInset[dir]);
     return box(aligned(SEAT_LABEL_ALIGN[anchor], labelLeft, labelW, w), bottom - h, w, h);
