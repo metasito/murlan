@@ -154,31 +154,26 @@ function isStraight(cards: Card[]): boolean {
   return false;
 }
 
-function getStraightStrength(cards: Card[]): number {
-  if (cards.some((c) => c.isJoker)) return 0;
-
-  for (const aceAsHigh of [true, false]) {
-    const faceValues = cards
-      .map((c) => getStraightFaceValue(c.rank, aceAsHigh))
-      .filter((v): v is number => v !== null);
-    if (!isConsecutiveRanks(faceValues, cards.length)) continue;
-
-    if (faceValues.length === 0) return 0;
-    const sorted = [...faceValues].sort((a, b) => a - b);
-    return sorted[sorted.length - 1];
+/**
+ * A straight's cards lowest face first, with the face each stands for: the one reading of the Ace that strength and the
+ * order the table shows both take. A 13-card straight reads A-2-…-K, the Ace low (docs/GAME-RULES.md § 6); a shorter one
+ * puts the Ace high when it can. Null when the cards are no straight.
+ */
+function readStraight(cards: Card[]): { card: Card; face: number }[] | null {
+  if (cards.some((c) => c.isJoker)) return null;
+  for (const aceAsHigh of cards.length === STRAIGHT_MAX_LEN ? [false, true] : [true, false]) {
+    const ranked = cards.map((card) => ({ card, face: getStraightFaceValue(card.rank, aceAsHigh) ?? 0 }));
+    if (isConsecutiveRanks(ranked.map((r) => r.face), cards.length)) return ranked.sort((a, b) => a.face - b.face);
   }
-  return 0;
+  return null;
 }
 
-/** A straight's cards lowest face first, the Ace at whichever end `getStraightStrength` read it: the order the table shows them in. */
+function getStraightStrength(cards: Card[]): number {
+  return readStraight(cards)?.at(-1)?.face ?? 0;
+}
+
 function straightFaceOrder(cards: Card[]): Card[] {
-  // A 13-card straight reads A-2-…-K (docs/GAME-RULES.md § 6), which is the Ace low.
-  for (const aceAsHigh of cards.length === STRAIGHT_MAX_LEN ? [false, true] : [true, false]) {
-    const ranked = cards.map((card) => ({ card, face: getStraightFaceValue(card.rank, aceAsHigh) }));
-    if (!isConsecutiveRanks(ranked.map((r) => r.face ?? 0), cards.length)) continue;
-    return ranked.sort((a, b) => (a.face ?? 0) - (b.face ?? 0)).map((r) => r.card);
-  }
-  return cards;
+  return readStraight(cards)?.map((r) => r.card) ?? cards;
 }
 
 function isBomb(cards: Card[]): boolean {

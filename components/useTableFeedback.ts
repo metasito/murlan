@@ -106,8 +106,6 @@ interface TableFeedback {
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
   rejectPlay: () => void;
-  /** Increments when a play empties a hand; the table's Sweep reads it. */
-  goingOutTrigger: number;
   /** Call once, at the flight's contact, when that play emptied a hand. */
   celebrateGoingOut: () => void;
   /** The escalation's own shake (#763): a translate, decaying to rest. */
@@ -259,8 +257,6 @@ export function useTableFeedback({
   // decays back to 1 within the one beat.
   const passaFlashVal = useOwnedValue(0);
   const { kickStyle, giocaRejectX, rejectPlay, shakeStyle, tableMotion } = useImpactFeedback(landing, reduceMotion, screenShake, scale);
-  // Sweep and the pile's catch own their animations; this just says "again".
-  const [goingOutTrigger, setGoingOutTrigger] = useState(0);
 
   const { moment } = timeline;
   useEffect(() => () => cancelLandingPulses(), []);
@@ -327,7 +323,6 @@ export function useTableFeedback({
   const celebrateGoingOut = useCallback(() => {
     if (reduceMotion) return;
     traceOnset("moment", "goingOut");
-    setGoingOutTrigger((t) => t + 1);
   }, [reduceMotion]);
 
   return {
@@ -335,7 +330,6 @@ export function useTableFeedback({
     kickStyle,
     giocaRejectX,
     rejectPlay,
-    goingOutTrigger,
     celebrateGoingOut,
     shakeStyle,
     tableMotion,
