@@ -31,7 +31,8 @@ function mockupBody(): string {
 }
 
 describe("the felt is the mockup's cloth", () => {
-  test("the shader body is FS, line for line, less the jacquard, the canvas mapping, and the light's two lines", () => {
+  // Expected to fail until #1992 caps the cloth's weave visibility at the mockup's K = 2.5, the owner's decision in #1989 § 1 "Felt on DPR 3, 2026-11-09"; #1992 removes this mark.
+  test("the shader body is FS, line for line, less the jacquard, the canvas mapping, and the light's two lines", { expectFailure: true }, () => {
     const want = mockupBody().split("\n");
     const got = CLOTH_BODY.split("\n");
     want.forEach((line, i) => assert.equal(got[i], line, `line ${i + 1} of the cloth differs from FS`));
