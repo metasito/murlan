@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 import { deadlineMs, EXIT_MARKERS_ENV, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
 import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMarginMs, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
 import { EXIT_TICK_MS, exitGuard, haltable } from "../helpers/exitGuard.mjs";
@@ -17,6 +18,55 @@ import { gate } from "../soak/gateBudget.ts";
 import { NO_BACKGROUND_JIT } from "../../scripts/nodeTest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+const LIMITED_CALLS = new Set(["test", "it", "describe", "suite", "before", "after", "beforeEach", "afterEach"]);
+
+/**
+ * Every limit a node:test call asks for, read off the syntax tree: the options of a test, a suite
+ * or a hook, wherever they sit in its arguments. Options that are not an object literal, or that
+ * spread another, name no limit, so they come back unresolved (`expr` empty) rather than unseen.
+ */
+function timeoutsAsked(file: string, text: string): { expr: string; why: string; line: number }[] {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const found: { expr: string; why: string; line: number }[] = [];
+  const imported = new Set<string>();
+  for (const stmt of source.statements) {
+    const named = ts.isImportDeclaration(stmt) && stmt.moduleSpecifier.getText().includes("node:test") ? stmt.importClause?.namedBindings : undefined;
+    if (named && ts.isNamedImports(named)) for (const el of named.elements) imported.add((el.propertyName ?? el.name).text);
+  }
+  const calleeName = (e: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(e)) return imported.has(e.text) ? e.text : undefined;
+    if (!ts.isPropertyAccessExpression(e)) return undefined;
+    if (ts.isIdentifier(e.expression) && imported.has(e.expression.text) && ["skip", "only", "todo"].includes(e.name.text)) return e.expression.text;
+    return LIMITED_CALLS.has(e.name.text) ? e.name.text : undefined;
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const name = calleeName(node.expression);
+      if (name !== undefined && LIMITED_CALLS.has(name)) {
+        const line = source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+        const hook = !["test", "it", "describe", "suite"].includes(name);
+        const optionsAt = node.arguments.length >= (hook ? 2 : 3) ? 1 : -1;
+        node.arguments.forEach((arg, at) => {
+          if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) return;
+          if (!ts.isObjectLiteralExpression(arg)) {
+            if (at === optionsAt) found.push({ expr: "", why: `options not a literal: ${arg.getText()}`, line });
+            return;
+          }
+          for (const prop of arg.properties) {
+            if (ts.isSpreadAssignment(prop)) found.push({ expr: "", why: `options spread: ${prop.getText()}`, line });
+            else if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === "timeout") found.push({ expr: "timeout", why: "", line });
+            else if (ts.isPropertyAssignment(prop) && prop.name.getText() === "timeout") found.push({ expr: prop.initializer.getText().replace(/\s+/g, " "), why: "", line });
+          }
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
 const script = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")).scripts.test as string;
 
 /** Only what a child needs to find node and a temp dir: whatever else the parent's run was given (a shard, a context) is not the planted run's. */
@@ -91,20 +141,35 @@ describe("a test file that never finishes fails npm test by name", () => {
     const asked: number[] = [];
     const unresolved: string[] = [];
     for (const [file, text] of sourcesUnder(repoRoot, ["tests", "tools/loop/tests"], /\.(test\.tsx?|mjs)$/)) {
-      const code = blankCommentsAndStrings(text);
-      for (const call of code.matchAll(/\b(?:test|it|describe)(?:\.\w+)?\s*\(\s*[^,]*,\s*\{([^}]*)\}/g)) {
-        const expr = /\btimeout:\s*([^,}]+)/.exec(call[1])?.[1].trim();
-        if (expr === undefined) continue;
-        const line = code.slice(0, call.index).split("\n").length;
-        const bare = expr.replace(/GATE\.timeoutMs|\bFORCED_EXIT_MS\b/g, (name) => String(known[name])).replaceAll("_", "");
-        const value = /^[\d+*\s()-]+$/.test(bare) ? Number(Function(`return (${bare})`)()) : NaN;
+      for (const limit of timeoutsAsked(file, text)) {
+        const bare = limit.expr.replace(/GATE\.timeoutMs|\bFORCED_EXIT_MS\b/g, (name) => String(known[name])).replaceAll("_", "");
+        const value = limit.expr !== "" && /^[\d+*\s()-]+$/.test(bare) ? Number(Function(`return (${bare})`)()) : NaN;
         if (Number.isFinite(value)) asked.push(value);
-        else unresolved.push(`unresolvable timeout at ${file}:${line}: ${expr}`);
+        else unresolved.push(`unresolvable timeout at ${file}:${limit.line}: ${limit.expr || limit.why}`);
       }
     }
     assert.deepEqual(unresolved, []);
     assert.ok(asked.length >= 5 && Math.max(...asked) >= 420_000, "the scan finds the longest limits");
     assert.ok(FILE_DEADLINE_MS >= 1.5 * Math.max(...asked), `${Math.max(...asked)} ms test limit`);
+  });
+
+  describe("the scan of the limits a test asks for", () => {
+    const read = (code: string) => timeoutsAsked("planted.test.ts", `import { test, suite, before } from "node:test";\n${code}`).map((l) => l.expr || l.why);
+
+    test("reads a limit on a test, a suite and a hook", () => {
+      assert.deepEqual(read('test("x", { timeout: 5 }, () => {}); suite("y", { timeout: 6 }, () => {}); before(() => {}, { timeout: 7 }); t.test("z", { skip: f({ a: 1 }), timeout: 8 }, () => {});'), ["5", "6", "7", "8"]);
+    });
+
+    test("cannot resolve options held in a variable or spread, and says so", () => {
+      assert.equal(read('test("x", opts, () => {});').length, 1);
+      assert.equal(read('test("x", { ...opts }, () => {});').length, 1);
+      assert.equal(read('before(() => {}, hookOpts);').length, 1);
+      assert.equal(read('test("x", { timeout }, () => {});')[0], "timeout");
+    });
+
+    test("is not fooled by a nested object before the limit", () => {
+      assert.deepEqual(read('test("x", { env: { A: 1 }, timeout: 9 }, () => {});'), ["9"]);
+    });
   });
 
   test("the deadline can be shortened and never lengthened or switched off", () => {
