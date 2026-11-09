@@ -67,8 +67,9 @@ make every intended change unlandable:
 - `tests/e2e/pileBeaten.spec.ts` and `reconnect.spec.ts`, which mostly assert app behaviour.
 - A threshold written inside app code. The list covers only the files it names.
 
-The measuring helpers (`tableTrace.ts`, `renderCounters.ts`, `virtualClock.ts`) are targets, and
-`targetFreeze.test.ts` makes every other helper a target spec imports be named as plumbing.
+The measuring helpers (`tableTrace.ts`, `renderCounters.ts`, `virtualClock.ts`) and the measurement conditions
+(`phones.ts`, `settle.ts`, `safeArea.ts`) are targets, and `targetFreeze.test.ts` makes every other
+helper reachable from a target spec through imports be named as plumbing.
 
 Some targets take their values from the app, so a code change moves them without touching the
 list:

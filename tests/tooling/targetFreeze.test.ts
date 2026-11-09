@@ -13,6 +13,22 @@ import { trackedFiles } from "../helpers/trackedFiles.ts";
 const root = path.resolve(import.meta.dirname, "..", "..");
 const WORKFLOW = ".github/workflows/target-freeze.yml";
 const tracked = trackedFiles(root);
+const reachableHelpers = (specs: string[], all: string[], read: (f: string) => string) => {
+  const seen = new Set<string>();
+  const queue = [...specs];
+  while (queue.length) {
+    const from = queue.pop()!;
+    for (const [, rel] of read(from).matchAll(/from\s+"(\.[^"]+)"|import\s+"(\.[^"]+)"/g).map((m) => [m[0], m[1] ?? m[2]])) {
+      const base = path.posix.join(path.posix.dirname(from), rel).replace(/\.(ts|mjs)$/, "");
+      const file = all.find((f) => (f === `${base}.ts` || f === `${base}.mjs`) && /^tests\//.test(f));
+      if (file && !seen.has(file)) {
+        seen.add(file);
+        if (!isTarget(file)) queue.push(file);
+      }
+    }
+  }
+  return [...seen];
+};
 const inScratch = (p: string) => `tests/e2e/${p}`;
 const workflowText = fs.readFileSync(path.join(root, WORKFLOW), "utf8");
 const workflow = parse(workflowText);
@@ -56,22 +72,26 @@ describe("the list looks at the repository as it is", () => {
     assert.equal(freezeVerdict([target, "components/x.tsx"]).ok, false);
   });
 
-  test("every e2e helper a target spec imports is a target or named here as plumbing, so a new measuring helper must be decided", () => {
-    const plumbing = new Set(["fixtures", "offlineSeed", "press", "phones", "selectors", "settle", "bot", "cardOnCardCss", "navigation", "online", "safeArea"].map((n) => (n === "fixtures" ? "tests/e2e/fixtures.ts" : `tests/e2e/helpers/${n}.ts`)));
-    const imported = new Set<string>();
-    for (const spec of tracked.filter((f) => isTarget(f) && /^tests\/e2e\/[^/]+\.ts$/.test(f))) {
-      for (const [, rel] of fs.readFileSync(path.join(root, spec), "utf8").matchAll(/from\s+"(\.\/[^"]+)"/g)) {
-        const base = path.posix.join("tests/e2e", rel).replace(/\.ts$/, "");
-        const file = tracked.find((f) => f === `${base}.ts`);
-        if (file) imported.add(file);
-      }
-    }
-    assert.ok(imported.size >= 8, `only ${imported.size} helpers found`);
-    assert.deepEqual([...imported].filter((f) => !isTarget(f) && !plumbing.has(f)), []);
+  test("every test helper reachable from a target spec is a target or named here as plumbing, so a new measuring helper must be decided", () => {
+    const plumbing = new Set(["tests/e2e/fixtures.ts", "tests/support/game.ts", ...["offlineSeed", "press", "selectors", "bot", "cardOnCardCss", "navigation", "online"].map((n) => `tests/e2e/helpers/${n}.ts`)]);
+    const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
+    const reached = reachableHelpers(tracked.filter((f) => isTarget(f) && /^tests\/e2e\/[^/]+\.ts$/.test(f)), tracked, read);
+    assert.ok(reached.length >= 8, `only ${reached.length} helpers found`);
+    assert.deepEqual(reached.filter((f) => !isTarget(f) && !plumbing.has(f)), []);
+  });
+
+  test("a measuring helper reached only through a plumbing module is found", () => {
+    const files: Record<string, string> = {
+      "tests/e2e/a.nightly.spec.ts": 'import { x } from "./helpers/press";',
+      "tests/e2e/helpers/press.ts": 'import { y } from "./counter";',
+      "tests/e2e/helpers/counter.ts": "export const y = 1;",
+    };
+    const reached = reachableHelpers(["tests/e2e/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
+    assert.deepEqual(reached.filter((f) => !isTarget(f)), ["tests/e2e/helpers/press.ts", "tests/e2e/helpers/counter.ts"]);
   });
 
   test("the measuring helpers are targets", () => {
-    for (const f of ["renderCounters", "virtualClock", "tableTrace"]) assert.ok(isTarget(`tests/e2e/helpers/${f}.ts`), f);
+    for (const f of ["renderCounters", "virtualClock", "tableTrace", "phones", "settle", "safeArea"]) assert.ok(isTarget(`tests/e2e/helpers/${f}.ts`), f);
     assert.equal(freezeVerdict(["tests/e2e/helpers/renderCounters.ts", "components/table/lampRig.ts"]).ok, false);
   });
 
