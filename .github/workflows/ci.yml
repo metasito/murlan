@@ -781,6 +781,24 @@ jobs:
       # count, and this suite's tests run from under a second to ninety-four
       # (tools/ci/e2e-shard.mjs). 20 minutes was a ceiling for the unsharded
       # suite and is left alone: it is a hang detector, not a budget.
+      # Postgres and Valkey for scripts/e2e-server.mjs, from the cache GitHub holds rather than from
+      # the registry mirror once per shard: the first shard of a cold key pulls them, and a cache
+      # entry already written is kept, so the rest of that run's shards only lose the race.
+      - name: Docker images the e2e stack runs
+        id: stack
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/dev-stack-images.tar
+          key: dev-stack-images-${{ hashFiles('scripts/dev-stack.mjs') }}
+      - name: Load the cached Docker images
+        if: steps.stack.outputs.cache-hit == 'true'
+        run: docker load -i "$RUNNER_TEMP/dev-stack-images.tar"
+      - name: Pull the Docker images once and keep them
+        if: steps.stack.outputs.cache-hit != 'true'
+        run: |
+          node scripts/dev-stack.mjs pull
+          node scripts/dev-stack.mjs images | xargs docker save -o "$RUNNER_TEMP/dev-stack-images.tar"
+
       - name: Browser tests
         timeout-minutes: 20
         run: npm run test:e2e -- $(node tools/ci/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})

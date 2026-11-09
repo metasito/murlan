@@ -19,10 +19,11 @@ const BROWSER_DIRS = { chromium: "chromium", "chromium-headless-shell": "chromiu
  *   wantedBrowsers: { name: string, revision: string }[],
  *   browserState: (dir: string) => "present" | { aliasOf: string } | { copyOf: string } | "missing",
  *   dockerUp: boolean,
+ *   unreadable?: Map<string, string>,
  * }} facts
  * @returns {{ level: "error" | "warn", text: string }[]}
  */
-export function toolchainFindings({ node, wantNodeMajor, wantedBrowsers, browserState, dockerUp }) {
+export function toolchainFindings({ node, wantNodeMajor, wantedBrowsers, browserState, dockerUp, unreadable = new Map() }) {
   const findings = [];
   if (Number(node.split(".")[0]) !== wantNodeMajor) {
     findings.push({ level: "error", text: `Node ${node} runs here; deploy/runtime.json and .node-version pin ${wantNodeMajor}. Tests and plants can pass here and fail in CI.` });
@@ -39,6 +40,7 @@ export function toolchainFindings({ node, wantNodeMajor, wantedBrowsers, browser
       findings.push({ level: "warn", text: `${dir} is ${how} of ${of}: e2e results here come from a different browser build than CI's.` });
     }
   }
+  for (const [dir, why] of unreadable) findings.push({ level: "warn", text: `${dir} in the browser store cannot be read (${why}): it was left out of the comparison of builds.` });
   if (!dockerUp) findings.push({ level: "warn", text: "the docker daemon is not answering; e2e and the integration stack need it (start it by hand in a cloud container)." });
   return findings;
 }
@@ -69,25 +71,42 @@ function fingerprint(dir) {
   }
 }
 
+/** The store's builds as `browserState` reads them, and the entries it could not read: one broken symlink among the siblings is a finding of its own, not the end of the check. */
+export function readStore(store) {
+  const unreadable = new Map();
+  const print = (dir) => {
+    try {
+      return fingerprint(path.join(store, dir));
+    } catch (err) {
+      unreadable.set(dir, err?.code ?? String(err?.message ?? err));
+      return undefined;
+    }
+  };
+  const browserState = (dir) => {
+    const at = path.join(store, dir);
+    if (!existsSync(at)) return "missing";
+    if (lstatSync(at).isSymbolicLink()) return { aliasOf: path.basename(realpathSync(at)) };
+    const kind = dir.slice(0, dir.lastIndexOf("-") + 1);
+    const mine = fingerprint(at);
+    const twin = mine && readdirSync(store).find((d) => d !== dir && d.startsWith(kind) && print(d) === mine);
+    return twin ? { copyOf: twin } : "present";
+  };
+  return { browserState, unreadable };
+}
+
 function report(inform) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const require = createRequire(path.join(root, "package.json"));
   const wantNodeMajor = JSON.parse(readFileSync(path.join(root, "deploy", "runtime.json"), "utf8")).node;
   const browsers = JSON.parse(readFileSync(path.join(path.dirname(require.resolve("playwright-core/package.json")), "browsers.json"), "utf8")).browsers;
   const store = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), ".cache", "ms-playwright");
+  const { browserState, unreadable } = readStore(store);
   return toolchainFindings({
     node: process.versions.node,
     wantNodeMajor,
     wantedBrowsers: browsers.filter((b) => b.name in BROWSER_DIRS),
-    browserState: (dir) => {
-      const at = path.join(store, dir);
-      if (!existsSync(at)) return "missing";
-      if (lstatSync(at).isSymbolicLink()) return { aliasOf: path.basename(realpathSync(at)) };
-      const kind = dir.slice(0, dir.lastIndexOf("-") + 1);
-      const mine = fingerprint(at);
-      const twin = readdirSync(store).find((d) => d !== dir && d.startsWith(kind) && fingerprint(path.join(store, d)) === mine);
-      return twin && mine ? { copyOf: twin } : "present";
-    },
+    browserState,
+    unreadable,
     dockerUp: spawnSync("docker", ["info"], { stdio: "ignore", timeout: inform ? 2_000 : 15_000 }).status === 0,
   });
 }

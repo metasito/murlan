@@ -220,6 +220,11 @@ try {
     process.exit(0);
   }
 
+  if (cmd === "images") {
+    console.log([IMAGE, VALKEY_IMAGE].join("\n"));
+    process.exit(0);
+  }
+
   if (cmd === "down") {
     docker(["rm", "-f", NAME]);
     for (const name of [VALKEY_NAME, ...RETIRED_NAMES]) docker(["rm", "-f", name]);
@@ -234,6 +239,12 @@ try {
     sleep: sleepSync,
     paths: dockerDesktopPaths(),
   });
+
+  if (cmd === "pull") {
+    pullImage({ present: () => docker(["image", "inspect", IMAGE]).status === 0, pull: () => docker(["pull", "-q", IMAGE]), sleep: sleepSync });
+    pullImage({ present: () => docker(["image", "inspect", VALKEY_IMAGE]).status === 0, pull: () => docker(["pull", "-q", VALKEY_IMAGE]), sleep: sleepSync });
+    process.exit(0);
+  }
 
   let port = publishedPort();
   if (port !== null && requested !== undefined && port !== BASE_PORT) {
