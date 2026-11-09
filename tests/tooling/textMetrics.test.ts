@@ -118,12 +118,21 @@ const NOTICE_ENTRIES = readdirSync(path.join(repoRoot, "components", "table", "n
   .filter((f) => f.endsWith(".tsx") && f !== "gallery.tsx")
   .map((f) => `components/table/notices/${f}`);
 
-/** A file a notice imports that translates, and draws no notice run with it. */
-const NOT_NOTICE_TEXT: Record<string, string> = {
-  "components/table/matchBoard.tsx": "the match board's own words, its BoardButton imported by the vote notices",
-  "components/CardView.tsx": "a card's spoken hint",
-  "lib/cardNames.ts": "spoken card names",
-  "lib/i18n.ts": "the translator itself",
+/** A file a notice, or the table that composes it, imports that translates, the keys it is excused for (neither measured nor spoken-only by name), and the calls whose key it cannot read. */
+const NOT_NOTICE_TEXT: Record<string, { why: string; keys: string[]; opaque: number }> = {
+  "components/table/matchBoard.tsx": {
+    why: "the match board's own words; its BoardButton is imported by the vote notices",
+    keys: [
+      "matchBoard.notRecorded", "matchBoard.provisional", "matchBoard.ratingLabel", "matchBoard.tooManyBots", "matchBoard.wins", "matchBoard.youWon",
+      "result.home", "result.matchDrawTitle", "result.matchOverTitle", "result.newMatch", "result.tableStops", "matchBoard.notRecordedSpoken", "matchBoard.ratingSpoken",
+    ],
+    opaque: 0,
+  },
+  "components/CardView.tsx": { why: "a card's spoken hint", keys: [], opaque: 0 },
+  "lib/cardNames.ts": { why: "spoken card names", keys: ["cardView.jokerBlack", "cardView.jokerColored", "cards.nameFormat"], opaque: 2 },
+  "lib/game/scorePill.ts": { why: "the score pill's rows, which are no notice kind", keys: ["lobby.team", "result.singleRoundFormat", "scorePill.race"], opaque: 0 },
+  "lib/table/playRefusal.ts": { why: "RejectFloat's words, a runtime run bounded by noticeBox", keys: [], opaque: 1 },
+  "lib/i18n.ts": { why: "the translator itself", keys: ["common.unknownError"], opaque: 1 },
 };
 
 /** Words a notice's source translates that are not a Text run it draws, with what carries them instead. */
@@ -137,6 +146,7 @@ const NOT_A_RUN: Record<string, string> = {
 };
 /** A `t(...)` whose key the source cannot show, and the owner's export the spec takes it from. */
 const KEY_FROM_OWNER: Record<string, string> = {
+  "lib/comboName.ts": "COMBO_NAME_KEYS",
   "components/turnTimerUi.ts": "CHIP_KEYS",
 };
 
@@ -174,8 +184,14 @@ function unmeasured(sources: Record<string, string>): string[] {
   const stale: string[] = [];
   for (const [file, text] of Object.entries(sources)) {
     const { keys, opaque } = translated(file, text);
-    if (file in NOT_NOTICE_TEXT) {
-      if (!keys.size && !opaque.length) stale.push(`${file} is listed as "${NOT_NOTICE_TEXT[file]}" and translates nothing`);
+    const excused = NOT_NOTICE_TEXT[file];
+    if (excused) {
+      for (const key of keys) if (!spec.has(key) && !/a11y/i.test(key) && !excused.keys.includes(key)) stale.push(`${file}: t("${key}") is not measured, and ${file} is excused only for ${excused.why}`);
+      for (const key of excused.keys) {
+        if (!keys.has(key)) stale.push(`${file} is excused for ${key} and no longer translates it`);
+        else if (spec.has(key)) stale.push(`${file}: ${key} is measured, so it is not excused`);
+      }
+      if (opaque.length !== excused.opaque) stale.push(`${file} passes ${opaque.length} keys this scan cannot read, excused for ${excused.opaque}`);
       continue;
     }
     for (const key of keys) found.set(key, file);
@@ -188,11 +204,15 @@ function unmeasured(sources: Record<string, string>): string[] {
     if (spec.has(key)) stale.push(`${key} is measured, so it is not "${why}"`);
     else if (!found.has(key)) stale.push(`${key} is listed as "${why}" and no notice source translates it`);
   }
-  for (const file of Object.keys(NOT_NOTICE_TEXT)) if (!(file in sources)) stale.push(`${file} is listed as not notice text and no notice reaches it`);
+  for (const file of Object.keys(NOT_NOTICE_TEXT)) if (!(file in sources)) stale.push(`${file} is excused as not notice text and no notice reaches it`);
   return [...problems, ...stale];
 }
 
-const noticeSources = (added: Record<string, string> = {}) => reachedFrom(NOTICE_ENTRIES, added);
+/** The notice renderers' closure, and the `.ts` modules the table composes that pass notice words down to them as props. */
+const noticeSources = (added: Record<string, string> = {}) => {
+  const composed = Object.entries(reachedFrom(["components/GameTable.tsx", "components/table/pile.tsx"], added)).filter(([file]) => file.endsWith(".ts"));
+  return { ...Object.fromEntries(composed), ...reachedFrom(NOTICE_ENTRIES, added) };
+};
 
 test("every key a table notice translates is measured, or named as words it does not draw as a run", () => {
   const sources = noticeSources();
@@ -218,6 +238,25 @@ test("a model a notice starts importing is scanned for the keys it translates", 
   });
   assert.ok(model in sources, "the scan did not follow the notice's import to the new model");
   assert.deepEqual(unmeasured(sources), [`${model}: t("game.pileX") is not measured`]);
+});
+
+test("words a table model computes and passes down to a notice are scanned too", () => {
+  const labels = "components/table/spokenLabels.ts";
+  assert.ok(labels in noticeSources(), "the scan does not reach the table's models");
+  const planted = noticeSources({ [labels]: `${read(labels)}\nexport const comboNote = (t: (k: string) => string) => t("gameShared.comboNote");\n` });
+  assert.deepEqual(unmeasured(planted), [`${labels}: t("gameShared.comboNote") is not measured`]);
+});
+
+test("an excused file is excused for its listed keys only", () => {
+  const board = "components/table/matchBoard.tsx";
+  const planted = noticeSources({ [board]: `${read(board)}\nexport const voteLine = (t: (k: string) => string) => t("matchBoard.voteLine");\n` });
+  assert.equal(unmeasured(planted).length, 1);
+  assert.match(unmeasured(planted)[0]!, /t\("matchBoard.voteLine"\) is not measured, and components\/table\/matchBoard.tsx is excused only for/);
+  const gone = noticeSources({ [board]: read(board).replace('t("matchBoard.wins"', 't("matchBoard.winsNow"') });
+  assert.deepEqual(unmeasured(gone).sort(), [
+    `${board} is excused for matchBoard.wins and no longer translates it`,
+    `${board}: t("matchBoard.winsNow") is not measured, and ${board} is excused only for the match board's own words; its BoardButton is imported by the vote notices`,
+  ].sort());
 });
 
 test("a glyph the served font lacks is listed by codepoint, not measured as nothing", () => {
