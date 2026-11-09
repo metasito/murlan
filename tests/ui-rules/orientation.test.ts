@@ -14,7 +14,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
+import ts from "typescript";
+import { localPath } from "../helpers/specifiers.ts";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -24,21 +26,28 @@ describe("orientation is never narrowed behind the player's back", () => {
     assert.match(lock, /export function useLandscapeLock\(/);
     assert.match(lock, /lockAsync\(\s*ScreenOrientation\.OrientationLock\.LANDSCAPE\s*\)/);
     const target = path.posix.join("lib", "device", "orientation");
-    const resolve = (from: string, spec: string) =>
-      (spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? path.posix.join(path.posix.dirname(from), spec) : spec)
-        .replace(/\.(tsx?|jsx?)$/, "")
-        .replace(/\/index$/, "");
+    const bare = (p: string) => p.replace(/\.(tsx?|jsx?)$/, "").replace(/\/index$/, "");
     // Every way to reach a module's bindings; a clause of `null` takes all of them.
-    const reaches = (src: string): { spec: string; clause: string | null }[] => [
-      ...[...src.matchAll(/\b(?:import|export)\s+(?:type\s+)?([^;'"]*?)\s*from\s*["']([^"']+)["']/g)].map((m) => ({ spec: m[2], clause: m[1] })),
-      ...[...src.matchAll(/\b(?:require|import)\s*\(\s*["']([^"']+)["']\s*\)/g)].map((m) => ({ spec: m[1], clause: null })),
-    ];
+    const reaches = (file: string, text: string): { to: string; clause: string | null }[] => {
+      const out: { to: string; clause: string | null }[] = [];
+      const visit = (node: ts.Node) => {
+        const spec = (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier : undefined;
+        if (spec) {
+          const to = localPath(file, spec.text);
+          if (to !== null) out.push({ to: bare(to), clause: node.getText().slice(0, spec.getStart() - node.getStart()) });
+        } else if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || node.expression.getText() === "require")) {
+          const to = localPath(file, node.arguments[0].text);
+          if (to !== null) out.push({ to: bare(to), clause: null });
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS));
+      return out;
+    };
     const importers = sourcesUnder(repoRoot, ["app", "components", "context", "lib", "modules"])
-      .filter(([f]) => resolve(f, f) !== target)
+      .filter(([f]) => bare(f) !== target)
       .filter(([f, text]) =>
-        reaches(blankComments(text)).some(
-          ({ spec, clause }) => resolve(f, spec) === target && (clause === null || /\*|\buseLandscapeLock\b/.test(clause))
-        )
+        reaches(f, text).some(({ to, clause }) => to === target && (clause === null || /\*|\buseLandscapeLock\b/.test(clause)))
       )
       .map(([f]) => f);
     assert.deepEqual(importers, ["components/GameTable.tsx"]);

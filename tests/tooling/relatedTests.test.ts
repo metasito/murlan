@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { join, posix, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import ts from "typescript";
 import { minimatch } from "minimatch";
+import { localPath } from "../helpers/specifiers.ts";
 import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, NATIVE_TEST, nearTests, onLocalProjects } from "../../tools/loop/related-tests.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..");
@@ -56,7 +57,7 @@ describe("a native test that reads source by path", () => {
   function fsReaders(sources: Map<string, string>): string[] {
     const imports = (f: string) => ts.preProcessFile(sources.get(f)!, true, true).importedFiles.map(({ fileName }) => fileName);
     const resolve = (from: string, spec: string) => {
-      const base = spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? posix.join(posix.dirname(from), spec) : undefined;
+      const base = localPath(from, spec) ?? undefined;
       return base === undefined ? undefined : ["", ".tsx", ".ts", ".js", "/index.tsx", "/index.ts"].map((e) => base + e).find((f) => sources.has(f));
     };
     const reaches = (start: string) => {
@@ -127,4 +128,11 @@ describe("what native:related runs and what it leaves to CI", () => {
     const out = ["Running one project: ios", join(repoRoot, "tests", "native", "a.test.tsx"), "", `${join(repoRoot, "tests", "native", "b.test.tsx")} `].join("\r\n");
     assert.deepEqual(listedTests(out, repoRoot), [T("a"), T("b")]);
   });
+});
+
+test("a native test importing a changed module by any path mapping is near it, not only by `@/`", () => {
+  const source = (t: string) => (t === "a.test.tsx" ? "import x from '@shared/http';" : t === "b.test.tsx" ? "import x from '@/lib/theme';" : "");
+  const related = ["a.test.tsx", "b.test.tsx"];
+  assert.deepEqual(nearTests({ changed: ["shared/http.ts"], related, source }), ["a.test.tsx"]);
+  assert.deepEqual(nearTests({ changed: ["lib/theme.ts"], related, source }), ["b.test.tsx"]);
 });

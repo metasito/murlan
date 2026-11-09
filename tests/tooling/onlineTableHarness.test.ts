@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
 import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -29,19 +30,12 @@ const under = (dirs: string[], keep: RegExp) => sourcesUnder(repoRoot, dirs, kee
 const rel = (file: string) => path.relative(repoRoot, file).replace(/\\/g, "/");
 
 test("the online-table harness is reachable only from the browser suite", () => {
-  const source = blankComments(readFileSync(HARNESS, "utf8"));
-  const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
-
-  // Resolved rather than matched on the leading dot: `../../../lib/game/gameEngine`
-  // starts with one and lands in the product, which is exactly what this
-  // refuses. A sibling helper (`tests/e2e/helpers/offlineSeed.ts`) does reach
-  // that way, deliberately — this one may not, because what it reaches into
+  // A sibling helper (`tests/e2e/helpers/offlineSeed.ts`) reaches the product through
+  // `../../../lib/...` deliberately; this one may not, because what it reaches into
   // would then be a seam the product carries.
-  const outside = imports.filter((spec) => {
-    if (spec === "@playwright/test") return false;
-    if (!spec.startsWith(".")) return true;
-    return !path.resolve(path.dirname(HARNESS), spec).startsWith(path.join(repoRoot, "tests"));
-  });
+  const outside = moduleEdges(rel(HARNESS), readFileSync(HARNESS, "utf8"), { types: true })
+    .filter((e) => e.spec !== "@playwright/test" && !(e.local && e.to.startsWith("tests/")))
+    .map((e) => e.spec);
   assert.deepEqual(
     outside,
     [],

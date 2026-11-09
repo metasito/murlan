@@ -64,3 +64,8 @@ test("every callee shutdownBudget trusts has exactly one proof here, and no proo
 for (const [name, proof] of Object.entries(PROOFS)) {
   test(`${name} gives up at its budget on work that never finishes`, (t) => proof(t));
 }
+
+test("plant: a callee that ignores its budget turns a proof red", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  await assert.rejects(elapsed(t, new Promise<void>(() => {}), 1_000), /still waiting after 1000ms/);
+});

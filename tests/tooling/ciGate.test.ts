@@ -8,7 +8,7 @@ import { parse } from "yaml";
 import * as budgetGate from "../../tools/ci/budget-gate.mjs";
 import { gateVerdict, run } from "../../tools/ci/gate.mjs";
 
-type Step = { name?: string; id?: string; run?: string; env?: Record<string, string> };
+type Step = { name?: string; id?: string; uses?: string; run?: string; env?: Record<string, string> };
 type Job = { name?: string; if?: string; needs?: string | string[]; steps?: Step[] };
 const root = path.resolve(import.meta.dirname, "..", "..");
 const jobs = parse(readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8")).jobs as Record<string, Job>;
@@ -81,4 +81,53 @@ test("the gate's entry point fails closed on what it cannot read", () => {
   assert.equal(run({ NEEDS: JSON.stringify({ lint: { result: "failure" } }) }, quiet), 1);
   assert.equal(run({}, quiet), 1);
   assert.equal(run({ NEEDS: "not json" }, quiet), 1);
+});
+
+test("a daily schedule runs the whole suite on main, and only the weekly one compiles devices and commits timings", () => {
+  const raw = readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
+  const crons = ((parse(raw).on.schedule ?? []) as { cron: string }[]).map((s) => s.cron);
+  assert.equal(crons.length, 2, "one weekly cron, one daily");
+  const [weekly, daily] = [crons.find((c) => /\* 1$/.test(c)), crons.find((c) => /\* 0,2-6$/.test(c))];
+  assert.ok(weekly && daily, "a weekly and a daily cron");
+  assert.doesNotMatch(raw, /github\.event_name\s*==\s*['"]schedule['"]/, "a daily run would compile devices and commit timings");
+  assert.equal(raw.match(new RegExp(`github\\.event\\.schedule == '${weekly.replace(/\*/g, "\\*")}'`, "g"))?.length, 3);
+});
+
+type UploadStep = Step & { uses?: string; "continue-on-error"?: boolean; if?: string; with?: { name?: string; overwrite?: boolean | string } };
+
+/** Each upload that is not half of a pair: a first attempt with no unguarded retry straight after, or a lone attempt. */
+export function unretriedUploads(steps: UploadStep[]): string[] {
+  const upload = (s?: UploadStep) => /^actions\/upload-artifact@/.test(s?.uses ?? "");
+  const retries = (first: UploadStep | undefined, s: UploadStep | undefined) =>
+    upload(first) && first!["continue-on-error"] === true && !!first!.id && upload(s) && s!.with?.name === first!.with?.name && !s!["continue-on-error"] && s!.with?.overwrite === true && /(^|[^\w!])!cancelled\(\)/.test(String(s!.if)) && String(s!.if).includes(`steps.${first!.id}.outcome == 'failure'`);
+  const bad: string[] = [];
+  steps.forEach((s, i) => {
+    if (!upload(s)) return;
+    const label = s.with?.name ?? `step ${i}`;
+    if (s["continue-on-error"] === true) {
+      if (!retries(s, steps[i + 1])) bad.push(`${label}: continue-on-error with no unguarded retry of the same artifact straight after`);
+    } else if (!retries(steps[i - 1], s)) bad.push(`${label}: a single attempt, so a dropped connection reds the job after the suite passed`);
+  });
+  return bad;
+}
+
+test("every artifact upload is tried twice: a guarded first attempt, then a retry that fails the job", () => {
+  const all = Object.values(jobs).flatMap((j) => (j.steps ?? []) as UploadStep[]);
+  assert.ok(all.filter((s) => /^actions\/upload-artifact@/.test(s.uses ?? "")).length >= 22, "the scan finds the uploads it guards");
+  for (const job of Object.values(jobs)) assert.deepEqual(unretriedUploads((job.steps ?? []) as UploadStep[]), []);
+});
+
+test("an upload with no retry, a retry that may itself fail, and one for another artifact are each red", () => {
+  const first = { id: "up", uses: "actions/upload-artifact@x", "continue-on-error": true, with: { name: "a" } };
+  const retry = { if: "${{ !cancelled() && steps.up.outcome == 'failure' }}", uses: "actions/upload-artifact@x", with: { name: "a", overwrite: true } };
+  assert.deepEqual(unretriedUploads([first, retry]), []);
+  assert.equal(unretriedUploads([{ ...first, "continue-on-error": undefined }]).length, 1);
+  assert.equal(unretriedUploads([retry]).length, 1);
+  assert.equal(unretriedUploads([first]).length, 1);
+  assert.equal(unretriedUploads([first, { ...retry, "continue-on-error": true }]).length, 2);
+  assert.equal(unretriedUploads([first, { ...retry, with: { name: "b" } }]).length, 2);
+  assert.equal(unretriedUploads([first, { ...retry, if: "${{ always() }}" }]).length, 2);
+  assert.equal(unretriedUploads([first, { ...retry, with: { name: "a" } }]).length, 2, "a retry without overwrite gets a 409 when the first attempt created the record");
+  assert.equal(unretriedUploads([first, { ...retry, with: { name: "a", overwrite: false } }]).length, 2);
+  assert.equal(unretriedUploads([first, { ...retry, if: "${{ steps.up.outcome == 'failure' }}" }]).length, 2, "a retry that is not gated on !cancelled() runs after a cancel");
 });

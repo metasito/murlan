@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { blankComments, blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
+import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -50,7 +51,7 @@ test("the offline table and its harness both take a bot's turn from offlineBotMo
 
 test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/bot.ts", () => {
   const importers = appSources()
-    .filter(([, text]) => /from\s+["'](?:\.\/|@\/lib\/game\/|[./]+\/lib\/game\/)bot(?:\.ts)?["']/.test(blankComments(text)))
+    .filter(([rel, text]) => moduleEdges(rel, text, { types: true }).some((e) => e.to === "lib/game/bot"))
     .map(([rel]) => rel);
 
   assert.deepEqual(importers, ["lib/game/autoMove.ts"]);
