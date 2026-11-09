@@ -121,7 +121,7 @@ hypotheses next time.
 
 - **The hand sitting below the bottom edge is the design.** 29–33px on phones, 75–80px on
   tablets. The prototype's own hand is `26/90` of a card below the safe line, which is 33px
-  at iPhone 12 card height (`tests/e2e/fixtures/prototype-table.html`).
+  at iPhone 12 card height.
 - **The blank box on "Passa e gioca" is `phone-portrait-outline` itself**, not a missing
   glyph. `tests/e2e/helpers/glyphCoverage.ts` reports zero failures across `/`, `/lobby`,
   `/rules`, `/auth` and `/(online)/profile`.
