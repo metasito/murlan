@@ -1107,8 +1107,15 @@ jobs:
           adds=$(git diff --no-renames --name-status "$base" HEAD -- tools/ci/results-writer.mjs tools/ci/test-verdict.mjs)
           if git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null; then
             from=$base
-          elif [ "$into" = main ] && [ "$adds" = "$(printf 'A\ttools/ci/results-writer.mjs\nA\ttools/ci/test-verdict.mjs')" ] &&
-            [ "$(gh api "repos/$GITHUB_REPOSITORY/commits?sha=$(git rev-parse "$base")&path=tools/ci/test-verdict.mjs&per_page=1" --jq length)" = 0 ]; then
+          elif [ "$into" = main ] && [ "$adds" = "$(printf 'A\ttools/ci/results-writer.mjs\nA\ttools/ci/test-verdict.mjs')" ]; then
+            held=$(gh api "repos/$GITHUB_REPOSITORY/commits?sha=$(git rev-parse "$base")&path=tools/ci/test-verdict.mjs&per_page=1" --jq length) || {
+              echo "::error::the GitHub API call reading whether main ever held tools/ci/test-verdict.mjs failed, so nothing may judge this run"
+              exit 1
+            }
+            if [ "$held" != 0 ]; then
+              echo "::error::the base has no tools/ci/test-verdict.mjs, but main once held one, so the head may not judge itself and nothing may judge this run"
+              exit 1
+            fi
             echo "::warning::the head adds the runners' results and their judge to a main that never held one, so it judges its own run"
             from=HEAD
           else
