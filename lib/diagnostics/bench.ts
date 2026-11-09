@@ -17,6 +17,7 @@ export interface BenchContext {
   gallery: Readonly<Record<string, readonly string[]>>;
   /** One gallery fixture mounted over the table, or none. */
   showNotice(shot: NoticeShot | null): void;
+  showSpike?(config: import("@/components/table/spike/SwaySpikeNative").SpikeConfig | null): Promise<void>;
 }
 
 export type NoticeShot = { kind: string; fixture: number };

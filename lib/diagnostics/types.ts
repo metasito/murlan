@@ -33,6 +33,7 @@ export interface DiagRows {
   seatState: { id: string; of: number; hold: number };
   lampLegibility: { side: LampSide; ratio: number };
   throw: Record<never, never>;
+  spike: { name: string; phase: "start" | "end"; mb: number | null };
   half: { name: "frozen" | "swaying" | "on" | "off"; pair: number };
   notice: { kind: string; shape: string; phase: "enter" | "exit" | "still" | "unmounted"; ms: number; dt: number; src?: "gallery" };
   blink: { kind: string; period: number };

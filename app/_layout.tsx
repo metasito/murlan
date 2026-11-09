@@ -75,6 +75,7 @@ export function RootLayoutNav() {
         <Stack.Screen name="(online)" />
         <Stack.Screen name="join/[code]" />
         <Stack.Screen name="game" />
+        <Stack.Screen name="spike" />
         {/* The iOS capture harness (app/capture.tsx). Registered only in a
             development or e2e build: the screen refuses to render in a production one
             either way, and a route a player can reach and be shown nothing on

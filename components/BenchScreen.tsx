@@ -21,6 +21,7 @@ import { FrameProbe, armFrames, recordFrames } from "@/lib/diagnostics/FrameProb
 import { startJsLag } from "@/lib/diagnostics/jsLag";
 import { probe } from "@/lib/diagnostics/probe";
 import "@/lib/diagnostics/scenarios";
+import { SwaySpikeNative, type SpikeConfig } from "@/components/table/spike/SwaySpikeNative";
 
 const COPY = { runAll: "Run all", refused: (host: string) => `Bench refused host "${host}": use the PC's dotted IPv4 address.` } as const;
 
@@ -98,6 +99,7 @@ export function BenchScreen() {
   const interrupted = useRef(false);
   const stopJs = useRef<(() => void) | null>(null);
   const drain = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [spike, setSpike] = useState<SpikeConfig | null>(null);
   const showNotice = useRef<(shot: NoticeShot | null) => void>(() => {});
   const bindStage = useCallback((show: (shot: NoticeShot | null) => void) => {
     showNotice.current = show;
@@ -196,6 +198,10 @@ export function BenchScreen() {
           feltSample,
           gallery: GALLERY,
           showNotice: (shot) => showNotice.current(shot),
+          showSpike: async (config) => {
+            setSpike(config);
+            await new Promise((r) => setTimeout(r, 300));
+          },
         };
         const queued = benchScenarios().filter(([name]) => !only || only.includes(name));
         const names = queued.map(([name]) => name);
@@ -263,7 +269,11 @@ export function BenchScreen() {
   return (
     <>
       <FrameProbe />
-      {table.state ? (
+      {spike ? (
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          <SwaySpikeNative config={spike} />
+        </View>
+      ) : table.state ? (
         <GameTable
           gameState={table.state}
           viewerSeat={0}
