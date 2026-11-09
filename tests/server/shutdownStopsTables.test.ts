@@ -1,4 +1,3 @@
-// A file of its own: a shutdown cannot be undone inside a process.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
@@ -6,13 +5,14 @@ import type { Server as HttpServer } from "node:http";
 import { recordingRuntime, stubTransport } from "../helpers/recordingRuntime.ts";
 import { shutdown } from "../../server/http/shutdown.ts";
 import { openDatabase, pool } from "../../server/store/db.ts";
-import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
+import { activeGames, __resetShutdown, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { arm, pending } from "../../server/game/gameTimers.ts";
 import { claimRoom, ownsRoom } from "../../server/game/gameOwnership.ts";
 
 const ROOM = "shutdown-stops-tables-room";
 
 test("a shutdown stops every table before the drain, and drops the locks only after it", async (t) => {
+  t.after(__resetShutdown);
   t.mock.method(Client.prototype, "connect", async () => {});
   t.mock.method(Client.prototype, "end", async () => {});
   t.mock.method(Client.prototype, "query", async () => ({ rows: [{ locked: true }] }));

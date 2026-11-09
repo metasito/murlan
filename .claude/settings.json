@@ -31,6 +31,11 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/loop-status.mjs", "--startup"]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/scripts/toolchain.mjs", "--inform"]
           }
         ]
       }
