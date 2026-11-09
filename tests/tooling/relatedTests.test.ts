@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { join, posix, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import ts from "typescript";
 import { minimatch } from "minimatch";
 import { localPath } from "../helpers/specifiers.ts";
