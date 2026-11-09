@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { STEPS } from "../../tools/loop/check-steps.mjs";
-import { scopeOf } from "../../tools/ci/scope.mjs";
+import { parse } from "yaml";
+import { JOBS, outputs, scopeOf } from "../../tools/ci/scope.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 /**
@@ -78,16 +79,28 @@ function testsListingTheRepo(): string[] {
     });
 }
 
-/** The CI jobs whose command's glob loads `file`, with the scope outputs that gate each. */
-function jobsRunning(file: string, workflow: string): { job: string; gate: string[] }[] {
+/** The CI jobs whose command's glob loads `file`. */
+function jobsRunning(file: string): string[] {
   const scripts = JSON.parse(read("package.json")).scripts;
   return STEPS.flatMap((s) => {
     const glob = /"([^"]+\*[^"]*)"\s*$/.exec(scripts[s.args.at(-1)!] ?? "")?.[1];
-    if (!s.job || glob === undefined || !path.posix.matchesGlob(file, glob)) return [];
-    const job = new RegExp(`\\n {2}${s.job}:\\n[\\s\\S]*?\\n {4}if: (.*)\\n`).exec(workflow);
-    assert.ok(job, `ci.yml has no job ${s.job} with an if:`);
-    return [{ job: s.job, gate: [...job[1].matchAll(/needs\.scope\.outputs\.(\w+) == 'true'/g)].map((m) => m[1]) }];
+    return s.job && glob !== undefined && path.posix.matchesGlob(file, glob) ? [s.job] : [];
   });
+}
+
+/** Every way `workflow`'s job conditions part from JOBS: a job gated on scope reads its own key and nothing else. */
+function conditionsOffJobs(workflow: string): string[] {
+  const jobs = parse(workflow).jobs as Record<string, { needs?: string | string[]; if?: string }>;
+  const own = (job: string) => `fromJSON(needs.scope.outputs.jobs)['${job}']`;
+  return [
+    ...Object.keys(JOBS).filter((job) => jobs[job]?.if !== own(job)).map((job) => `${job}: if: is ${JSON.stringify(jobs[job]?.if)}, not ${own(job)}`),
+    ...Object.entries(jobs)
+      .filter(([job, j]) => !(job in JOBS) && /needs\.scope\.outputs\.jobs/.test(j.if ?? ""))
+      .map(([job]) => `${job} reads the scope's jobs, but JOBS has no ${job}`),
+    ...Object.entries(jobs)
+      .filter(([, j]) => /needs\.scope\.outputs\.(app|harness|scans)\b/.test(j.if ?? ""))
+      .map(([job]) => `${job} reads a scope key, not its job's`),
+  ];
 }
 
 type Key = "app" | "harness" | "scans";
@@ -120,16 +133,14 @@ describe("scopeOf runs the suite that reads a change", () => {
   });
 
   test("a test that lists the repository runs on a change to any tracked path", () => {
-    const workflow = read(".github/workflows/ci.yml");
     const listers = testsListingTheRepo();
     for (const known of ["docReferences", "handBuiltNodeModulesPaths", "licence", "ciScope"]) {
       assert.ok(listers.includes(`tests/tooling/${known}.test.ts`), `${known} is not seen to list the repo`);
     }
     const skipped = listers.flatMap((lister) => {
-      const jobs = jobsRunning(lister, workflow);
+      const jobs = jobsRunning(lister);
       if (jobs.length === 0) return [`${lister}: no CI job runs it`];
-      const scope = (f: string): Record<string, boolean> => scopeOf([f]);
-      const runs = (f: string) => jobs.some(({ gate }) => gate.some((key) => scope(f)[key]));
+      const runs = (f: string) => jobs.some((job) => JOBS[job]?.(scopeOf([f])));
       return tracked.filter((f) => !runs(f)).map((f) => `${f} skips ${lister}`);
     });
     assert.deepEqual(skipped.slice(0, 20), [], `${skipped.length} path/scan pairs skip the scan`);
@@ -168,4 +179,34 @@ test("ci.yml's scope step asks scope.mjs", () => {
   assert.ok(step, "ci.yml has no `scope` step");
   assert.match(step[0], /node tools\/ci\/scope\.mjs "\$base" \| tee -a "\$GITHUB_OUTPUT"/);
   assert.doesNotMatch(step[0], /grep/, "a second copy of the decision in bash");
+  assert.doesNotMatch(step[0], />> "\$GITHUB_OUTPUT"/, "an output written by bash, not by scope.mjs");
+});
+
+describe("every job the scope gates reads its own key of JOBS", () => {
+  const workflow = read(".github/workflows/ci.yml");
+
+  test("ci.yml's conditions are JOBS's", () => assert.deepEqual(conditionsOffJobs(workflow), []));
+
+  test("scope.mjs prints every JOBS key, in each of its three modes", () => {
+    const keys = Object.keys(JOBS).sort();
+    const jobs = (lines: string[]) => JSON.parse(lines.find((l) => l.startsWith("jobs="))!.slice("jobs=".length));
+    assert.deepEqual(outputs("--none").at(1), "native=false");
+    assert.ok(Object.values(jobs(outputs("--none"))).every((v) => v === false));
+    assert.ok(Object.values(jobs(outputs(undefined))).every((v) => v === true));
+    for (const mode of [outputs("--none"), outputs(undefined), outputs("HEAD")]) assert.deepEqual(Object.keys(jobs(mode)).sort(), keys);
+  });
+
+  const plants: [string, (w: string) => string, RegExp][] = [
+    ["verify gated on the app alone", (w) => w.replace("fromJSON(needs.scope.outputs.jobs)['verify']", "needs.scope.outputs.app == 'true'"), /^verify: if: is "needs\.scope\.outputs\.app == 'true'"/],
+    ["browser reading lint's key", (w) => w.replace("fromJSON(needs.scope.outputs.jobs)['browser']", "fromJSON(needs.scope.outputs.jobs)['lint']"), /^browser: if: is/],
+    ["build always running", (w) => w.replace("fromJSON(needs.scope.outputs.jobs)['build']", "always()"), /^build: if: is "always\(\)"/],
+    ["a job JOBS does not hold", (w) => w.replace("needs: [native, browser]\n    if: ${{ !cancelled() && github.event_name == 'pull_request' }}", "needs: [native, browser]\n    if: fromJSON(needs.scope.outputs.jobs)['timing-budget']"), /timing-budget reads the scope's jobs, but JOBS has no timing-budget/],
+  ];
+  for (const [name, mutate, want] of plants) {
+    test(`planted: ${name} is caught`, () => {
+      const planted = mutate(workflow);
+      assert.notEqual(planted, workflow, "the plant changed nothing");
+      assert.ok(conditionsOffJobs(planted).some((p) => want.test(p)), conditionsOffJobs(planted).join("\n"));
+    });
+  }
 });
