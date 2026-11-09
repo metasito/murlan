@@ -5,6 +5,7 @@ import type { TraceFrame } from "../e2e/helpers/traceDiff.ts";
 
 type Plant = {
   greyInMs?: number;
+  fadeOutMs?: number;
   pillAt?: number;
   clearAt?: number;
   soundAt?: number;
@@ -43,7 +44,7 @@ function side(start: number, sound: string, p: Plant = {}): TraceFrame[] {
     if ((!held || p.swayWhileHeld) && !(p.stayFrozen && t >= back)) ph += ((t - prev) / 1000) * 0.84;
     prev = t;
     const greyOf = (from: number) => Math.min(1, (t - from) / greyIn) * 0.85;
-    const grey = t < drop ? 0 : t < back ? greyOf(drop) : t < again ? Math.max(0, 1 - (t - back) / 400) * 0.85 : greyOf(again);
+    const grey = t < drop ? 0 : t < back ? greyOf(drop) : t < again ? Math.max(0, 1 - (t - back) / (p.fadeOutMs ?? 400)) * 0.85 : greyOf(again);
     const onsets: string[] = [];
     const crossed = (at: number) => at <= t && at > t - frameMs;
     if (crossed(drop) || crossed(again)) onsets.push("moment:drop");
@@ -212,6 +213,19 @@ test("a stall just before the anchor lets the grey be that much further on, and 
   assert.ok(greyFailures(lamped(stamped(base, 8))).length > 0);
 });
 
+test("one shift of the grey is allowed, within the ceiling: a fade of the wrong length fails behind a stall or a late stamp", () => {
+  const faded = (fadeOutMs: number) => appSide({ fadeOutMs });
+  const at = (f: TraceFrame[]) => f.findIndex((x) => x.onsets.includes("moment:net-ok"));
+  const stallBefore = (f: TraceFrame[], n: number) => lamped(f.filter((_, i) => i < at(f) - n - 1 || i >= at(f) - 1));
+  assert.deepEqual(greyFailures(stallBefore(faded(400), 20)), []);
+  for (const ms of [100, 200, 300]) assert.ok(greyFailures(stallBefore(faded(ms), 20)).length > 0, `${ms}`);
+  const late = (f: TraceFrame[], by: number) =>
+    lamped(f.map((x, i) => ({ ...x, onsets: i === at(f) ? x.onsets.filter((o) => o !== "moment:net-ok") : i === at(f) + by ? [...x.onsets, "moment:net-ok"] : x.onsets })).filter((_, i) => i <= at(f) || i > at(f) + by - 1));
+  assert.ok(greyFailures(late(faded(500), 4)).length > 0);
+  assert.deepEqual(greyFailures(late(faded(400), 8)), []);
+  assert.ok(greyFailures(late(faded(400), 40)).length > 0);
+});
+
 test("the lamp's clock is held to its frames over the level's window, not over the whole trace", () => {
   const r = appSide();
   const lost = r.find((f) => f.onsets.includes("moment:net-bad"))!.t;
@@ -223,7 +237,7 @@ test("the lamp's clock is held to its frames over the level's window, not over t
 });
 
 test("a stall that ended before the pill was due excuses none of a real delay", () => {
-  const r = side(52_345, RECONNECT_SOUND.app, { pillAt: 800 });
+  const r = side(52_345, RECONNECT_SOUND.app, { pillAt: 650 });
   const due = r.find((f) => f.onsets.includes("moment:drop"))!.t + 500;
   const app = r.filter((f) => !(f.t > due - 400 && f.t < due + 5));
   const land = app.find((f) => f.onsets.includes("moment:net-net"))!.t;

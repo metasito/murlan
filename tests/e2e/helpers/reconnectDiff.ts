@@ -192,10 +192,13 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
 
   /** The anchor is stamped from a passive effect, so a stall just before it moves the stamp past where the curve began: the curve may be that much further on. */
   const shiftAt = (anchor: number) =>
-    sides.app.reduce((took, f, i) => {
-      const span = i > 0 ? f.t - sides.app[i - 1].t : 0;
-      return f.t > anchor - STAMP_FRAMES * frame && f.t <= anchor && span > STALL_FRAMES * frame ? took + span - frame : took;
-    }, 0);
+    Math.min(
+      JITTER_CEILING_MS,
+      sides.app.reduce((took, f, i) => {
+        const span = i > 0 ? f.t - sides.app[i - 1].t : 0;
+        return f.t > anchor - STAMP_FRAMES * frame && f.t <= anchor && span > STALL_FRAMES * frame ? took + span - frame : took;
+      }, 0)
+    );
   const grey = (f: TraceFrame) => f.grey ?? 0;
   const level = (f: TraceFrame) => f.lamp?.level ?? 1;
   const curves: Curve[] = [
@@ -218,14 +221,19 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
   for (const { field, what, anchor, frames, own, read, tolerance, span, stallOver } of curves) {
     const shift = shiftAt(a[anchor]);
     const shifts = [...Array.from({ length: Math.floor(shift / STEP_MS) }, (_, i) => i * STEP_MS), shift];
-    for (let d = 0; d <= span; d += STEP_MS * 3) {
+    const ds = Array.from({ length: Math.floor(span / (STEP_MS * 3)) + 1 }, (_, i) => i * STEP_MS * 3);
+    const misses = (s: number) =>
+      ds.map((d) => {
+        const got = readAt(frames, own + d, read, stallOver);
+        const want = between(sides.mockup, m[anchor] + d + s, read);
+        return got === null || want === null || got[0] > want + tolerance || got[1] < want - tolerance;
+      });
+    const best = shifts.map((s) => ({ s, miss: misses(s) })).reduce((x, y) => (y.miss.filter(Boolean).length < x.miss.filter(Boolean).length ? y : x));
+    ds.forEach((d, i) => {
+      if (!best.miss[i]) return;
       const got = readAt(frames, own + d, read, stallOver);
-      const mockupNow = between(sides.mockup, m[anchor] + d, read);
-      const want = shifts.flatMap((s) => between(sides.mockup, m[anchor] + d + s, read) ?? []);
-      if (got === null || mockupNow === null || got[0] > Math.max(...want) + tolerance || got[1] < Math.min(...want) - tolerance) {
-        fail(field, m[anchor] + d, mockupNow, got && (got[0] === got[1] ? got[0] : got), `${what} ${d} ms after the ${anchor}`);
-      }
-    }
+      fail(field, m[anchor] + d, between(sides.mockup, m[anchor] + d + best.s, read), got && (got[0] === got[1] ? got[0] : got), `${what} ${d} ms after the ${anchor}`);
+    });
   }
 
   for (const side of ["mockup", "app"] as const) {
