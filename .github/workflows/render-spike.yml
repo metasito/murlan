@@ -1,0 +1,168 @@
+# The render spike (rest-architecture PR 0): dispatch it on the spike branch, which registers the bench scenario.
+name: Render spike
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Bench scenario the branch registers
+        default: spike
+        required: true
+      platform:
+        description: Which platform to run
+        type: choice
+        options: [both, android, ios]
+        default: both
+      timeout_seconds:
+        description: Seconds to wait for the scenario to end
+        default: "600"
+        required: true
+
+concurrency:
+  group: render-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  EXPO_PUBLIC_DIAGNOSTICS: "1"
+  SCENARIO: ${{ inputs.scenario }}
+  WAIT_SECONDS: ${{ inputs.timeout_seconds }}
+
+jobs:
+  android:
+    if: inputs.platform != 'ios'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/install
+      - name: Generate the native project, on the NDK React Native pins
+        run: |
+          npx expo prebuild --platform android --no-install
+          want=$(sed -n 's/^ndkVersion = "\(.*\)"$/\1/p' node_modules/react-native/gradle/libs.versions.toml)
+          have=$(ls "$ANDROID_HOME/ndk" | grep "^${want%%.*}\." | sort -V | tail -1)
+          [ -n "$have" ] || { echo "::error::No NDK ${want%%.*}.x under $ANDROID_HOME/ndk."; exit 1; }
+          sed -i "1i ext.ndkVersion = \"$have\"" android/build.gradle
+          grep -q 'usesCleartextTraffic="true"' android/app/src/main/AndroidManifest.xml
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-jdk: false
+      - name: Build a diagnostics release
+        run: |
+          ./android/gradlew -p android assembleRelease -PreactNativeArchitectures=x86_64 -x lintVitalRelease --no-daemon
+          apk=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          [ -n "$apk" ] || { echo "::error::assembleRelease produced no APK."; exit 1; }
+          unzip -q "$apk" -d "$RUNNER_TEMP/apk"
+          node scripts/e2eBuildMark.mjs --present "$RUNNER_TEMP/apk" --mark diagnostics
+          aapt=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
+          echo "APP_APK=$GITHUB_WORKSPACE/$apk" >> "$GITHUB_ENV"
+          echo "APP_ID=$("$aapt" dump packagename "$apk")" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/spike"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Start the collector
+        run: |
+          nohup node scripts/diagnostics-collector.mjs "$RUNNER_TEMP/spike/android.ndjson" > "$RUNNER_TEMP/spike/collector.log" 2>&1 &
+          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:5099/
+      - name: Run the spike on the emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-boot-anim -gpu swangle_indirect -camera-back none
+          disable-animations: false
+          emulator-boot-timeout: 900
+          script: |
+            timeout 300 adb wait-for-device
+            i=0; until adb shell "getprop init.svc.bootanim | grep -q stopped && cmd package list packages > /dev/null 2>&1"; do i=$((i+1)); [ $i -lt 150 ] || { echo "::error::The framework never began serving."; exit 1; }; sleep 2; done
+            adb shell settings put global hide_error_dialogs 1
+            timeout 300 adb install -r "$APP_APK"
+            adb shell "am start -W -a android.intent.action.VIEW -d 'murlan://bench?host=10.0.2.2&scenario=$SCENARIO&capture=0' $APP_ID"
+            sleep 20
+            adb shell dumpsys meminfo "$APP_ID" > "$RUNNER_TEMP/spike/meminfo-early.txt" 2>&1 || true
+            adb shell dumpsys gfxinfo "$APP_ID" reset > /dev/null 2>&1 || true
+            i=0; until grep -q "\"name\":\"$SCENARIO\",\"phase\":\"end\"" "$RUNNER_TEMP/spike/android.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt $((WAIT_SECONDS / 2)) ] || { echo "::error::The scenario never ended."; exit 1; }; sleep 2; done
+            adb shell dumpsys meminfo "$APP_ID" > "$RUNNER_TEMP/spike/meminfo-end.txt" 2>&1 || true
+            adb shell dumpsys gfxinfo "$APP_ID" > "$RUNNER_TEMP/spike/gfxinfo.txt" 2>&1 || true
+            adb shell dumpsys SurfaceFlinger --latency > "$RUNNER_TEMP/spike/surfaceflinger-latency.txt" 2>&1 || true
+      - name: Upload the spike record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: render-spike-android
+          path: ${{ runner.temp }}/spike/
+
+  ios:
+    if: inputs.platform != 'android'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/install
+      - name: Find and boot an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+      - name: Build a diagnostics release for the simulator
+        run: |
+          npx expo prebuild --platform ios --no-install
+          pod install --project-directory=ios
+          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          scheme=$(basename "$workspace" .xcworkspace)
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+          app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
+          [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+          node scripts/e2eBuildMark.mjs --present "$app" --mark diagnostics
+          echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
+          echo "APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
+          echo "APP_EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/spike"
+      - name: Install the app and start the collector
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_UDID"
+          xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
+          nohup node scripts/diagnostics-collector.mjs "$RUNNER_TEMP/spike/ios.ndjson" > "$RUNNER_TEMP/spike/collector.log" 2>&1 &
+          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:5099/
+      - name: Install Maestro
+        run: |
+          export MAESTRO_VERSION=2.10.0
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
+      - name: Open the bench by its deep link
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
+        run: |
+          printf 'appId: ${MAESTRO_APP_ID}\n---\n- openLink: "murlan://bench?host=localhost&scenario=%s&capture=0"\n- tapOn:\n    text: "Open"\n    optional: true\n' "$SCENARIO" > "$RUNNER_TEMP/spike.yaml"
+          maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" "$RUNNER_TEMP/spike.yaml"
+      - name: Wait for the scenario, sampling the app's memory
+        run: |
+          i=0; until grep -q "\"name\":\"$SCENARIO\",\"phase\":\"end\"" "$RUNNER_TEMP/spike/ios.ndjson" 2>/dev/null; do
+            i=$((i+1)); [ $i -lt $((WAIT_SECONDS / 2)) ] || { echo "::error::The scenario never ended."; exit 1; }
+            pid=$(pgrep -x "$APP_EXE" | head -1)
+            echo "$(date -u +%H:%M:%S) pid=${pid:-none} rss_kb=$( [ -n "$pid" ] && ps -o rss= -p "$pid" | tr -d ' ')" >> "$RUNNER_TEMP/spike/host-rss.txt"
+            sleep 2
+          done
+      - name: Collect crash reports
+        if: always()
+        run: cp "$HOME/Library/Logs/DiagnosticReports/"*"$APP_EXE"* "$RUNNER_TEMP/spike/" 2>/dev/null || true
+      - name: Upload the spike record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: render-spike-ios
+          path: ${{ runner.temp }}/spike/
