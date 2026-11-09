@@ -464,7 +464,7 @@ describe("the gate step", () => {
       [SETUP]: 'require("./mocks/http");\n',
       "tests/native/mocks/http.ts": "export {};\n",
     };
-    const FORGED ="export default class { onTestEnd(_test, result) { result.status = \"passed\"; } }\n";
+    const FORGED = "export default class { onTestEnd(_test, result) { result.status = \"passed\"; } }\n";
     /** Commits the base, then the head over it in a scratch repository, and runs the verdict with real git. */
     function judgeHead(head: Record<string, string>, base: Record<string, string | null> = {}) {
       const dir = mkdtempSync(path.join(work, "wiring-"));
@@ -551,7 +551,11 @@ describe("the gate step", () => {
 
   test("the wiring is derived from the configs and the judged suites' scripts, through their imports", () => {
     const tree: Record<string, string> = {
-      "jest.config.js": "const rootDir = __dirname;\nmodule.exports = { reporters: ['default', `${rootDir}/tools/ci/native-budget.mjs`], globalTeardown: `${rootDir}/t/down.mjs`, setupFilesAfterEnv: [`${rootDir}/t/setup.ts`] };\n",
+      "jest.config.js": "const rootDir = __dirname;\nmodule.exports = { reporters: ['default', `${rootDir}/tools/ci/native-budget.mjs`], globalTeardown: `${rootDir}/t/down.mjs`, setupFilesAfterEnv: [`${rootDir}/t/setup.ts`], testEnvironment: '<rootDir>/t/env.mjs', setupFiles: ['<rootDir>/t/noExtension', '<rootDir>t/bare.ts'], moduleNameMapper: { x: '<rootDir>/README' } };\n",
+      "t/env.mjs": "",
+      "t/noExtension.ts": "",
+      "t/bare.ts": "",
+      README: "",
       "tools/ci/native-budget.mjs": 'import { HARD } from "./e2e-budget.mjs";\n',
       "tools/ci/e2e-budget.mjs": "",
       "t/down.mjs": "",
@@ -566,7 +570,10 @@ describe("the gate step", () => {
       "jest.config.js",
       "scripts/lib/proc.mjs",
       "scripts/nodeTest.mjs",
+      "t/bare.ts",
       "t/down.mjs",
+      "t/env.mjs",
+      "t/noExtension.ts",
       "t/setup.ts",
       "tools/ci/e2e-budget.mjs",
       "tools/ci/native-budget.mjs",

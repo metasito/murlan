@@ -22,6 +22,8 @@ const IOS_ONLY = {
     'Asks which moment each table change raises; nothing from GameTable to lib/device/feedback branches on ios against android.',
   'oneSoundPerMoment.test.tsx':
     'Times the effects a bot round starts in the mocked audio graph; nothing from GameTable to lib/device/feedback branches on ios against android.',
+  'tableTextContrast.test.tsx':
+    'Loads the table components as each platform itself (ios, android, web), variants included, in the one project that runs it, so a second project repeats the same three loads.',
   'pileMountsOnceFull.test.tsx': PILE_ON_ONE_PLATFORM,
   'pileMountsOnceReduced.test.tsx': PILE_ON_ONE_PLATFORM,
 };
