@@ -81,11 +81,9 @@ interface Known {
 }
 
 const ANY = "[^,]+";
-const ISLAND = "62/[^,]+";
 /** The cases on `viewport`, in `locale`, at `inset`, each a regex alternation, whose label goes on with `rest`. */
 const on = (viewport: string, locale: string, inset: string, rest: string) =>
   new RegExp(`^(?:${viewport}) \\(\\d+x\\d+\\), (?:${inset}), (?:${locale}), ${rest}`);
-const PLAYED = "(?!exchange |longest username,)";
 
 /**
  * What the table on main breaks, each found by this test and none fixed here. A break outside an
@@ -93,46 +91,6 @@ const PLAYED = "(?!exchange |longest username,)";
  * more or fewer times than it says, so a fix has to narrow the entry and the list only shrinks.
  */
 const KNOWN: readonly Known[] = [
-  {
-    defect: "the exchange's pills are wider than the chip row: nothing keeps the turn chip clear of its neighbours",
-    ticket: "#1988 item 105",
-    breaks: { "hudCombo overlaps hudTurn": 368, "hudTurn overlaps scorePill": 194 },
-    where: [
-      on("iPhone SE", ANY, ANY, "exchange (?!oneWay as winner)"),
-      on("iPhone SE", "en", ANY, "exchange oneWay as winner"),
-      on("iPhone SE", "it|sq", ISLAND, "exchange oneWay as winner"),
-      on("iPhone 12", "en|it", ISLAND, "exchange give as watcher"),
-      on("iPhone 16 Pro", "en", ISLAND, "exchange give as watcher"),
-      on("4:3 tablet", ANY, ANY, "exchange (?:give|twoJokers|oneWay as watcher)"),
-      on("4:3 tablet", "it|sq", ANY, "exchange oneWay as loser"),
-      on("iPad Pro", ANY, ANY, "exchange give"),
-      on("iPad Pro", "en", ANY, "exchange oneWay as watcher"),
-      on("iPad Pro", "it|sq", ANY, "exchange twoJokers"),
-    ],
-  },
-  {
-    defect: "on the smallest phone the combo pill meets the turn chip once glyphs land on whole pixels: the chip row leaves no room for either's width",
-    ticket: "#1988 item 106",
-    breaks: { "hudCombo overlaps hudTurn": 256 },
-    where: [
-      on("iPhone SE", "it", ISLAND, `${PLAYED}.*, combo ⟦gameShared.emptyTable⟧`),
-      on("iPhone SE", "sq", ISLAND, `${PLAYED}.*, combo ⟦gameShared.emptyTable⟧, turn (?!⟦gameShared.yourTurn⟧)`),
-      on("iPhone SE", "it", ISLAND, `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧`),
-      on("iPhone SE", "sq", ISLAND, `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧`),
-      on("iPhone SE", "sq", "0/0", `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧.*, turn (?!⟦gameShared.yourTurn⟧)`),
-    ],
-  },
-  {
-    defect: "the turn chip's name slot has no bound: an account's longest name runs it off the chip row",
-    ticket: "#1988 item 107",
-    breaks: { "hudCombo overlaps hudTurn": 39, "hudTurn overlaps scorePill": 31 },
-    where: [
-      on("iPhone SE|4:3 tablet|iPad Pro", ANY, ANY, "longest username,"),
-      on("iPhone 12", "en", ISLAND, "longest username,"),
-      on("iPhone 12", "it|sq", ANY, "longest username,"),
-      on("iPhone 16 Pro", "it|sq", ISLAND, "longest username,"),
-    ],
-  },
   {
     defect: "a badge lifts its seat's name a badge row higher, the top seat's into the turn chip",
     ticket: "#1988 item 109",
@@ -223,9 +181,16 @@ describe("the rules see what they are for", () => {
     assert.equal(intersects(a, { x: 9.9, y: 0, w: 10, h: 10 }), true);
   });
 
-  test("a chip too wide for its row is an overlap", () => {
-    const wide = Array.from({ length: 4 }, () => ({ runs: [{ run: "text:exchange.pileGives", slots: ["w".repeat(30), "w".repeat(30), "w".repeat(30)] }] }));
-    const t = tableRects({ ...tablet, state: { ...state, chips: { combo: wide, turn: [] } } });
+  test("a chip too wide for its row is an overlap, and a note cut is named", () => {
+    const sentence = { runs: [{ run: "text:exchange.pileGives", slots: ["w".repeat(30), "w".repeat(30), "w".repeat(30)] }] };
+    const long = turnScenes("w".repeat(30)).find((s) => s.name.includes("turnOf"))!.turn;
+    const named = tableRects({ ...tablet, state: { ...state, chips: { combo: [], turn: long } } });
+    assert.deepEqual(brokenRules(named), [], "a turn chip is held to its band whatever it holds");
+    const cut = tableRects({ ...tablet, state: { ...state, chips: { combo: [sentence, sentence, sentence, sentence], turn: [] } } });
+    assert.ok(brokenRules(cut).includes("hudCombo cuts its words"), brokenRules(cut).join("; "));
+    const t = tableRects({ ...tablet, state: { ...state, chips: { combo: [], turn: long } } });
+    const combo = t.rects.hudCombo ?? { x: 0, y: t.rects.hudTurn!.y, w: 0, h: t.rects.hudTurn!.h };
+    t.rects.hudCombo = { ...combo, w: t.rects.hudTurn!.x + 1 - combo.x };
     assert.ok(brokenRules(t).some((m) => m.startsWith("hudCombo overlaps")), brokenRules(t).join("; "));
   });
 });

@@ -11,7 +11,7 @@ import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatLab
 import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
 import { sideNameInset } from "./table/legibilityRing.ts";
-import { pillAnchorFor, type PillAnchor } from "./table/scorePillModel.ts";
+import { pillAnchorFor, scorePillBox, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot } from "./table/noticeModel.ts";
 import { computeTableFrame, SIDE_SEAT_GAP, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
 
@@ -38,8 +38,8 @@ export interface TableLayout {
   chipsBottom: number;
   /** The scale the HUD's chips are drawn at: the table's, or less where the window is too narrow for the row. */
   chips: number;
-  /** The combo pill's top-left corner, and the band the turn chip is aligned across. */
-  hud: { combo: { left: number; top: number; align: Align }; turn: { left: number; right: number; top: number; align: Align } };
+  /** The chip row for pills drawn `widths` wide: the combo pill from the left, the score pill at rest on the right, and the turn chip between, a gap clear of both. */
+  chipRow(widths: ChipWidths): ChipRow;
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
   /** The hand zone at its designed place, and the padding its row and buttons stand on. */
@@ -87,6 +87,8 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const btn = actionBtnSize(scale);
   const btnY = aligned(HAND_ZONE_ALIGN, handZone.y, handZone.h - handZone.padBottom, btn);
   const knob = physicalTouchTarget(scale);
+  const chips = chipScale(scale, width);
+  const pill = pillAnchorFor(frame, width, scale);
   const sideY = midTop + sideSlotHeight(scale) / 2;
   const anchors: Record<FlyDirection | "pile", Point> = {
     pile: { x, y: midTop + midH / 2 },
@@ -105,11 +107,8 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     seatPoint: (dir) => ({ dx: anchors[dir].x - anchors.pile.x, dy: anchors[dir].y - anchors.pile.y }),
     floatTop: tableFloor - frame.bottomPad - floatAboveFoot(scale),
     chipsBottom: frame.tableTop + CHIP_H(scale) + frame.pad,
-    chips: chipScale(scale, width),
-    hud: {
-      combo: { left: frame.tableLeft + frame.pad, top: frame.tableTop, align: "flex-start" },
-      turn: { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop, align: "center" },
-    },
+    chips,
+    chipRow: (widths) => chipRow(frame, pill, widths),
     rail: {
       width: frame.rail,
       menu: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: frame.tableTop, w: knob, h: knob },
@@ -126,7 +125,32 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
       right: sideNameInset("right", anchors.right.x, ring, width),
     },
     tableBox: { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus },
-    pill: pillAnchorFor(frame, width, scale),
+    pill,
+  };
+}
+
+/** What the chip row's two pills measure as drawn: the widths they come to inside the rooms `chipRow` gave them. */
+export interface ChipWidths { combo: number; turn: number }
+
+interface ChipRow {
+  /** Its room is the whole row left of the score pill: the combo pill is never cut for the turn chip. */
+  combo: { left: number; top: number; room: number };
+  /** Its room is the band between the combo pill, as wide as it is, and the score pill; its `left` centres it on the felt, or keeps it a gap clear of its neighbours. `centred` is the span, symmetric about the felt's centre line, that a chip no wider than it is centred in by alignment, so its place needs no measure; null where it is clamped. */
+  turn: { left: number; top: number; room: number; w: number; centred: { left: number; width: number } | null };
+}
+
+function chipRow(frame: TableFrame, pill: PillAnchor, widths: ChipWidths): ChipRow {
+  const comboLeft = frame.tableLeft + frame.pad;
+  const bandRight = scorePillBox(0, 0, pill).x - frame.pad;
+  const comboW = Math.min(widths.combo, bandRight - comboLeft);
+  const bandLeft = comboLeft + comboW + frame.pad;
+  const turnW = Math.min(widths.turn, bandRight - bandLeft);
+  const left = Math.min(Math.max(pill.centreX - turnW / 2, bandLeft), bandRight - turnW);
+  const half = Math.min(pill.centreX - bandLeft, bandRight - pill.centreX);
+  const centred = turnW <= 2 * half ? { left: pill.centreX - half, width: 2 * half } : null;
+  return {
+    combo: { left: comboLeft, top: frame.tableTop, room: bandRight - comboLeft },
+    turn: { left, top: frame.tableTop, room: bandRight - bandLeft, w: turnW, centred },
   };
 }
 

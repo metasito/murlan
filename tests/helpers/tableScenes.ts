@@ -110,14 +110,15 @@ export function exchangeScenes(name: string): ChipScene[] {
       ["give", announce(winnerIdx, loserIdx, { cardReceived: card("K"), cardGiven: card("4") })],
     ];
     for (const [shape, shown] of shapes) {
-      for (const stages of [
-        { key: "", receive: "rest", give: "waiting", ready: true },
-        { key: "", receive: "rest", give: "rest", ready: true },
+      // The choice opens only once the received card has landed (`choiceOpensAt`), so the card's note and the choice never share a stage.
+      for (const { label, stages, live } of [
+        { label: "receive", stages: { key: "", receive: "rest", give: "waiting", ready: false }, live: view },
+        { label: "choice", stages: { key: "", receive: "landed", give: "waiting", ready: true }, live: view },
       ] as const) {
-        const { chip, pillNote } = exchangeNotes({ shown, stages, live: shown.twoJokers ? CLOSED : view, players, viewerSeat: 0, spectating: false, t: tagged });
+        const { chip, pillNote } = exchangeNotes({ shown, stages, live: shown.twoJokers ? CLOSED : live, players, viewerSeat: 0, spectating: false, t: tagged });
         if (chip === null) continue;
         out.push({
-          name: `${shape} as ${seat}, give ${stages.give}`,
+          name: `${shape} as ${seat}, ${label}`,
           combo: [runsOf(pillNote ? pillNote.text : tagged("gameShared.emptyTable"), "text")],
           turn: [DOT, runsOf(chip, "text"), CLOCK],
         });

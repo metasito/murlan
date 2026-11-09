@@ -38,7 +38,7 @@ import {
 import { handCountOf, vacatedOf, type ViewedGameState } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import { tableLayout, type Seating } from "@/components/tableLayout";
+import { tableLayout, type ChipWidths, type Seating } from "@/components/tableLayout";
 import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
 import { useTableFloat } from "@/components/table/useTableFloat";
@@ -322,7 +322,9 @@ export function GameTable({
     [W, H, insets.top, insets.bottom, insets.left, insets.right]
   );
   const { scale } = layout;
-  const { chips, hud, rail, handZone, buttons } = layout;
+  const { chips, rail, handZone, buttons } = layout;
+  const [chipWidths, setChipWidths] = useState<ChipWidths>({ combo: 0, turn: 0 });
+  const hud = layout.chipRow(chipWidths);
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
   // the row reads as one band even though only the cards are cropped.
   const actionBtn = buttons.gioca.w;
@@ -934,11 +936,12 @@ export function GameTable({
           {...a11yGroup(topBarA11yLabel)}
           pointerEvents={focusMode ? "none" : undefined}
           {...behindVeil}
-          style={[styles.hudLeft, { left: hud.combo.left, top: hud.combo.top, alignItems: hud.combo.align }, focusFadeStyle, greyStyle]}
+          onLayout={(e) => setChipWidths((w) => (w.combo === e.nativeEvent.layout.width ? w : { ...w, combo: e.nativeEvent.layout.width }))}
+          style={[styles.hudLeft, { left: hud.combo.left, top: hud.combo.top }, focusFadeStyle, greyStyle]}
         >
           {/* The chip draws the words the group's label already says. */}
           <View {...a11yHidden()}>
-            <HudComboPill scale={chips} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} note={pillNote} />
+            <HudComboPill scale={chips} room={hud.combo.room} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} note={pillNote} />
           </View>
         </Animated.View>
 
@@ -948,15 +951,18 @@ export function GameTable({
           {...clockVeil}
           style={[
             styles.hudCentre,
-            { left: hud.turn.left, right: hud.turn.right, top: hud.turn.top, alignItems: hud.turn.align },
+            hud.turn.centred
+              ? { left: hud.turn.centred.left, width: hud.turn.centred.width, top: hud.turn.top, alignItems: "center" }
+              : { left: hud.turn.left, top: hud.turn.top },
             (holdingForStart || (darkenStyle && linkGreyed)) && HELD_CLOCK_Z,
             stackFadeStyle,
           ]}
         >
           <A11yVeil veil={clockVeil}>
-            <View testID={choiceOpen ? "exchange-prompt" : undefined}>
+            <View testID={choiceOpen ? "exchange-prompt" : undefined} onLayout={(e) => setChipWidths((w) => (w.turn === e.nativeEvent.layout.width ? w : { ...w, turn: e.nativeEvent.layout.width }))}>
               <WindowTurnChip
                 scale={chips}
+                room={hud.turn.room}
                 lit={turn.chip.lit}
                 chipText={turn.chip.text}
                 spokenSeat={turn.chip.spoken}
