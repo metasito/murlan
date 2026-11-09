@@ -6,40 +6,24 @@ import { test, expect } from "./fixtures";
 import { DEAL_SIZE, exchangeSave, offlineSave, seedSave } from "./helpers/offlineSeed";
 import { openApp } from "./helpers/navigation";
 import { openOnlineTable } from "./helpers/onlineTable";
-import { PHONES } from "./helpers/phones";
+import { PHONES, TABLETS } from "./helpers/phones";
 import { setSafeArea } from "./helpers/safeArea";
 import { INSETS } from "../helpers/phoneTable";
+import { fits, type Box, type Fit } from "../helpers/drawnFit";
 import { captureGameState, captureStateById, type CaptureState } from "../../lib/captureStates";
 import { createDeck } from "../../lib/game/gameEngine";
 import type { OfflineSave } from "../../lib/offlineSave";
 import { LOCALE_KEY } from "../../lib/storageKeys";
 import { catalogs, type Locale } from "../../shared/i18n";
 import type { EdgeInsets } from "../../components/tableFrame";
-import { tableRects, type Rect, type RectName } from "../../components/tableRects";
-import { TEXT_METRICS } from "../../components/table/textMetrics.generated";
+import { tableRects, type Rect, type RectName, type TableRects } from "../../components/tableRects";
 import { drawnChips, gameTable, type DrawnTable } from "../helpers/tableScenes";
 
-const TABLETS = [
-  { name: "4:3 tablet", width: 1024, height: 768 },
-  { name: "iPad Pro", width: 1366, height: 1024 },
-];
 const VIEWPORTS = [...PHONES, ...TABLETS];
 const PHONE_INSETS = Object.entries(INSETS);
 const LOCALES: readonly Locale[] = ["it", "en", "sq"];
 const STATES: readonly CaptureState[] = ["held", "pile-right", "bomb-landed"].map((id) => captureStateById(id)!);
 
-/**
- * How the solver's rect holds what the page draws.
- * - `same`: to the layout's rounding.
- * - `words`: a pill. Its height and line are the plate's; its width is a bound. A renderer lands each
- *   glyph's advance within a pixel of its linear one, either way, and `noticeWidth` prices a glyph at
- *   most a pixel above linear and a glyph the bundled faces lack at a full em, so the drawn words may
- *   fall short of the price by two pixels a glyph and that em.
- * - `inside`: a knob of its own fixed size, centred in the slot the solver gives it.
- * - `line`: a seat's name. Its words are priced as a pill's, and the label reserves a taller line
- *   than the font draws, under which the drawn line sits: the bottoms meet, the top may be lower.
- */
-type Fit = "same" | "inside" | "words" | "line";
 const DRAWN: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   rail: { sel: '[data-testid="control-rail"]', fit: "same" },
   railMenu: { sel: '[data-testid="control-rail"] > div:first-child [role="button"]', fit: "same" },
@@ -67,14 +51,6 @@ const RAIL: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   railMenu: DRAWN.railMenu,
   railFoot: { sel: '[data-testid="control-rail"] > div:last-child [role="button"]', fit: "inside" },
 };
-/** Layout rounds each edge to a device pixel, and a border's half pixel to one either side. */
-const TOLERANCE = 1;
-const PRICED = new Set(Object.values(TEXT_METRICS.faces).flatMap((f) => Object.keys(f.advances)));
-
-interface Box extends Rect {
-  /** A text box's words and the largest font size it sets them in. */
-  text?: { words: string; em: number };
-}
 interface Drawn { boxes: Partial<Record<RectName, Box>>; clip: Rect | null; texts: { combo: string; turn: string } }
 
 /** Each rect as the union of what its selector matched; a scrolled hand as the part its window shows. */
@@ -141,28 +117,16 @@ const clipTo = (r: Rect, c: Rect | null): Rect => {
   const y = Math.max(r.y, c.y);
   return { x, y, w: Math.min(r.x + r.w, c.x + c.w) - x, h: Math.min(r.y + r.h, c.y + c.h) - y };
 };
-const near = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE;
-const across = (a: Rect, b: Rect) => a.x >= b.x - TOLERANCE && a.x + a.w <= b.x + b.w + TOLERANCE;
-/** How far short of the priced width the drawn words may fall: `words` above. */
-const unpriced = (text: { words: string; em: number }) =>
-  [...text.words].reduce((sum, ch) => sum + (PRICED.has(ch) ? 2 : text.em), 0);
-const centre = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
-const fits: Record<Fit, (a: Box, b: Rect) => boolean> = {
-  same: (a, b) => near(a.x, b.x) && near(a.y, b.y) && near(a.w, b.w) && near(a.h, b.h),
-  inside: (a, b) => near(centre(a).x, centre(b).x) && near(centre(a).y, centre(b).y) && a.w <= b.w + TOLERANCE && a.h <= b.h + TOLERANCE,
-  words: (a, b) => near(a.y, b.y) && near(a.h, b.h) && across(a, b) && b.w - a.w <= unpriced(a.text!) + TOLERANCE,
-  line: (a, b) => near(a.y + a.h, b.y + b.h) && a.y >= b.y - TOLERANCE && across(a, b) && b.w - a.w <= unpriced(a.text!) + TOLERANCE,
-};
 const at = (r: Rect) => `${r.x.toFixed(1)},${r.y.toFixed(1)} ${r.w.toFixed(1)}x${r.h.toFixed(1)}`;
 
-function misfits(got: Drawn, want: Partial<Record<RectName, Rect | null>>, rects = DRAWN): string[] {
+function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
   const bad: string[] = [];
   for (const [name, spec] of Object.entries(rects) as [RectName, { fit: Fit }][]) {
-    const solved = want[name];
+    const solved = want.rects[name];
     const raw = got.boxes[name];
     const box = raw && name === "hand" ? { ...raw, ...clipTo(raw, got.clip) } : raw;
     if (!solved !== !box) bad.push(`${name}: drawn ${box ? at(box) : "nothing"}, solver ${solved ? at(solved) : "nothing"}`);
-    else if (solved && box && !fits[spec.fit](box, solved)) bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}`);
+    else if (solved && box && !fits[spec.fit](box, solved, want.aligns[name])) bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}`);
   }
   return bad;
 }
@@ -172,7 +136,7 @@ async function check(page: Page, where: string, vp: { width: number; height: num
   const chips = drawnChips(table, locale, got.texts, exchangeName);
   expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn})`).toEqual({ combo: expect.anything(), turn: expect.anything() });
   const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn! } } });
-  expect(misfits(got, solved.rects), where).toEqual([]);
+  expect(misfits(got, solved), where).toEqual([]);
 }
 
 for (const [v, vp] of VIEWPORTS.entries())
@@ -181,7 +145,7 @@ for (const [v, vp] of VIEWPORTS.entries())
     await page.setViewportSize({ width: vp.width, height: vp.height });
     for (const [i, locale] of LOCALES.entries()) {
       const capture = STATES[(i + v) % STATES.length];
-      const [inset, insets] = TABLETS.includes(vp) ? PHONE_INSETS[0] : PHONE_INSETS[(i + v) % PHONE_INSETS.length];
+      const [inset, insets] = PHONES.some((p) => p.name === vp.name) ? PHONE_INSETS[(i + v) % PHONE_INSETS.length] : PHONE_INSETS[0];
       const save = offlineSave({ seats: capture.playerCount, hand: DEAL_SIZE[capture.playerCount], turn: capture.turn });
       await open(page, baseURL!, { ...save, gameState: captureGameState(capture) }, locale, insets);
       await check(page, `${vp.name}, ${inset}, ${locale}, ${capture.id}`, vp, insets, locale, gameTable(captureGameState(capture)));
@@ -224,7 +188,7 @@ test("the rail's knobs are drawn in the solver's rects: online", async ({ browse
   try {
     const got = await settled(table.page, RAIL);
     const solved = tableRects({ width: SIXTEEN.width, height: SIXTEEN.height, insets: INSETS["0/0"], locale: "it", state: { seats: { top: null, left: null, right: null }, hand: { cards: 0, onTurn: false, faceDown: false, raised: false }, pile: 0, chips: { combo: [], turn: [] } } });
-    expect(misfits(got, solved.rects, RAIL), "iPhone 16 Pro, online").toEqual([]);
+    expect(misfits(got, solved, RAIL), "iPhone 16 Pro, online").toEqual([]);
   } finally {
     await table.close();
   }

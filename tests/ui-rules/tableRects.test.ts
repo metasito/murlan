@@ -8,36 +8,35 @@ import { SUPPORTED_LOCALES } from "../../shared/i18n.ts";
 import { USERNAME_MAX } from "../../shared/username.ts";
 import { brokenRules, intersects, RECT_NAMES, TABLE_RULES, tableRects, type TableState } from "../../components/tableRects.ts";
 import type { EdgeInsets } from "../../components/tableFrame.ts";
+import type { NoticeContent } from "../../components/table/noticeWidth.ts";
+import { PHONES, TABLETS } from "../e2e/helpers/phones.ts";
+import { INSETS } from "../helpers/phoneTable.ts";
 import { capturedTable, comboScene, exchangeScenes, turnScenes } from "../helpers/tableScenes.ts";
 
-const VIEWPORTS = [
-  { name: "iPhone SE", width: 568, height: 320 },
-  { name: "iPhone 12", width: 844, height: 390 },
-  { name: "iPhone Pro Max", width: 956, height: 440 },
-  { name: "4:3 tablet", width: 1024, height: 768 },
-  { name: "iPad Pro", width: 1366, height: 1024 },
-];
-
-const INSETS: Record<string, EdgeInsets> = {
-  none: { top: 0, bottom: 0, left: 0, right: 0 },
-  "island and home bar": { top: 0, left: 62, bottom: 21, right: 62 },
-  island: { top: 0, left: 62, bottom: 0, right: 0 },
-  "status bar and notch": { top: 24, left: 47, right: 34, bottom: 0 },
-};
+const VIEWPORTS = [...PHONES, ...TABLETS];
 
 const captured = () => ALL_CAPTURE_STATES.map((state) => ({ id: state.id, ...capturedTable(state) }));
 const longest = (names: string[]) => names.reduce((a, b) => ([...b].length > [...a].length ? b : a));
 
 const LONGEST_BOT = longest(captured().flatMap((s) => s.game.players.map((p) => p.name)));
 const FULL = { top: { name: LONGEST_BOT, cards: 13 }, left: { name: LONGEST_BOT, cards: 13 }, right: { name: LONGEST_BOT, cards: 13 } };
-const EXTREMES: { id: string; base: Omit<TableState, "chips"> }[] = [];
+const EXTREMES: Omit<TableState, "chips">[] = [];
 for (const hand of [0, 1, 13, 18])
-  for (const pile of [0, 1, 5, 12, 13])
-    EXTREMES.push({ id: `hand ${hand}, pile ${pile}`, base: { seats: FULL, hand: { cards: hand, onTurn: true, faceDown: false, raised: true }, pile } });
+  for (const pile of [0, 1, 5, 12, 13]) EXTREMES.push({ seats: FULL, hand: { cards: hand, onTurn: true, faceDown: false, raised: true }, pile });
 /** The widest name an account may take, on the move. */
 const LONGEST_USERNAME = "W".repeat(USERNAME_MAX);
 /** The exchange is announced over a fresh deal: every seat full, the pile empty. */
 const DEALT: Omit<TableState, "chips"> = { seats: FULL, hand: { cards: 13, onTurn: true, faceDown: false, raised: true }, pile: 0 };
+
+/** A pill's content as the keys and slots it reads, the opponent's name as `⟨name⟩`. */
+const tagOf = (content: NoticeContent) =>
+  content
+    .map((p) => ("runs" in p ? p.runs.map((r) => `⟦${r.run.slice(r.run.indexOf(":") + 1)}⟧${(r.slots ?? []).map((v) => `⟨${v}⟩`).join("")}`).join("") : "runtime" in p ? "⟨name⟩" : ""))
+    .join("");
+
+/** The side chairs as the fans and names they draw: `cards name` from the left, the top, the right. */
+const seatsOf = (seats: TableState["seats"]) =>
+  (["left", "top", "right"] as const).map((dir) => (seats[dir] ? `${seats[dir].cards} ${seats[dir].name}` : "empty")).join(" / ");
 
 interface Case { label: string; width: number; height: number; insets: EdgeInsets; locale: (typeof SUPPORTED_LOCALES)[number]; state: TableState }
 
@@ -46,23 +45,24 @@ function* cases(): Generator<Case> {
   for (const vp of VIEWPORTS)
     for (const [inset, insets] of Object.entries(INSETS))
       for (const locale of SUPPORTED_LOCALES) {
-        const at = `${vp.name} (${vp.width}x${vp.height}), ${inset}, ${locale}`;
+        const at = (scene: string, state: TableState): Case => ({
+          label: `${vp.name} (${vp.width}x${vp.height}), ${inset}, ${locale}, ${scene}, seats ${seatsOf(state.seats)}, hand ${state.hand.cards} ${state.hand.raised ? "raised" : "at rest"}, pile ${state.pile}, combo ${tagOf(state.chips.combo)}, turn ${tagOf(state.chips.turn)}`,
+          ...vp,
+          insets,
+          locale,
+          state,
+        });
         for (const s of states) {
           const name = longest(s.game.players.map((p) => p.name));
-          for (const turn of turnScenes(name)) {
-            const combo = comboScene(s.game.lastPlayedCombination, { you: false, name });
-            yield { label: `${at}, ${s.id}, ${s.base.hand.raised ? "raised" : "at rest"}, ${turn.name}`, ...vp, insets, locale, state: { ...s.base, chips: { combo, turn: turn.turn } } };
-          }
+          const combo = comboScene(s.game.lastPlayedCombination, { you: false, name });
+          for (const turn of turnScenes(name)) yield at(s.id, { ...s.base, chips: { combo, turn: turn.turn } });
         }
         const [onMove] = turnScenes(LONGEST_BOT).filter((t) => t.name.includes("turnOf"));
-        for (const e of EXTREMES) {
-          yield { label: `${at}, ${e.id}, ${onMove.name}`, ...vp, insets, locale, state: { ...e.base, chips: { combo: comboScene(null, { you: false, name: LONGEST_BOT }), turn: onMove.turn } } };
-        }
+        const empty = comboScene(null, { you: false, name: LONGEST_BOT });
+        for (const base of EXTREMES) yield at("extreme", { ...base, chips: { combo: empty, turn: onMove.turn } });
         const [onMoveLong] = turnScenes(LONGEST_USERNAME).filter((t) => t.name.includes("turnOf"));
-        yield { label: `${at}, longest username, ${onMoveLong.name}`, ...vp, insets, locale, state: { ...DEALT, chips: { combo: comboScene(null, { you: false, name: LONGEST_BOT }), turn: onMoveLong.turn } } };
-        for (const scene of exchangeScenes(LONGEST_BOT)) {
-          yield { label: `${at}, exchange ${scene.name}`, ...vp, insets, locale, state: { ...DEALT, chips: { combo: scene.combo, turn: scene.turn } } };
-        }
+        yield at("longest username", { ...DEALT, chips: { combo: empty, turn: onMoveLong.turn } });
+        for (const scene of exchangeScenes(LONGEST_BOT)) yield at(`exchange ${scene.name}`, { ...DEALT, chips: { combo: scene.combo, turn: scene.turn } });
       }
 }
 
@@ -72,50 +72,83 @@ interface Known {
   ticket: `#1988 item ${number}`;
   /** Each rule with the number of cases that break it today. */
   breaks: Readonly<Record<string, number>>;
-  where: RegExp;
+  /** The cases it covers, each of which breaks one of its rules. */
+  where: readonly RegExp[];
 }
+
+const ANY = "[^,]+";
+const ISLAND = "62/[^,]+";
+/** The cases on `viewport`, in `locale`, at `inset`, each a regex alternation, whose label goes on with `rest`. */
+const on = (viewport: string, locale: string, inset: string, rest: string) =>
+  new RegExp(`^(?:${viewport}) \\(\\d+x\\d+\\), (?:${inset}), (?:${locale}), ${rest}`);
+const PLAYED = "(?!exchange |longest username,)";
 
 /**
  * What the table on main breaks, each found by this test and none fixed here. A break outside an
- * entry is red; so is a rule of an entry broken more or fewer times than it says, so a fix has to
- * lower its count and the list only shrinks.
+ * entry is red; so is a case an entry covers that keeps all its rules, and a rule of an entry broken
+ * more or fewer times than it says, so a fix has to narrow the entry and the list only shrinks.
  */
 const KNOWN: readonly Known[] = [
   {
     defect: "a side name's line runs onto the top back of its own fan once sideNameInset slides it inboard",
     ticket: "#1988 item 103",
-    breaks: { "nameLeft overlaps fanLeft": 1899, "nameRight overlaps fanRight": 2064 },
-    where: /^iPhone (SE|12|Pro Max) /,
+    breaks: { "nameLeft overlaps fanLeft": 1899, "nameRight overlaps fanRight": 1899 },
+    where: [
+      on("iPhone 12|iPhone 16 Pro|iPhone 17 Pro Max", ANY, "0/0", ".*, seats 1\\d "),
+      on("iPhone [^(]+", ANY, ANY, ".*, seats 13 Besnik / 13 Besnik / 13 Besnik,"),
+    ],
   },
   {
     defect: "a straight of twelve or more on a tablet is laid across the side fans: fieldRoomW does not leave them room",
     ticket: "#1988 item 104",
-    breaks: { "fanLeft overlaps pile": 192, "fanRight overlaps pile": 192 },
-    where: /^(4:3 tablet|iPad Pro) .*, pile 1[23], /,
+    breaks: { "fanLeft overlaps pile": 144, "fanRight overlaps pile": 144 },
+    where: [on("4:3 tablet|iPad Pro", ANY, ANY, ".*, pile 1[23], ")],
   },
   {
     defect: "the exchange's pills are wider than the chip row: nothing keeps the turn chip clear of its neighbours",
     ticket: "#1988 item 105",
-    breaks: { "hudCombo overlaps hudTurn": 480, "hudTurn overlaps scorePill": 256 },
-    where: /, exchange /,
+    breaks: { "hudCombo overlaps hudTurn": 368, "hudTurn overlaps scorePill": 194 },
+    where: [
+      on("iPhone SE", ANY, ANY, "exchange (?!oneWay as winner)"),
+      on("iPhone SE", "en", ANY, "exchange oneWay as winner"),
+      on("iPhone SE", "it|sq", ISLAND, "exchange oneWay as winner"),
+      on("iPhone 12", "en|it", ISLAND, "exchange give as watcher"),
+      on("iPhone 16 Pro", "en", ISLAND, "exchange give as watcher"),
+      on("4:3 tablet", ANY, ANY, "exchange (?:give|twoJokers|oneWay as watcher)"),
+      on("4:3 tablet", "it|sq", ANY, "exchange oneWay as loser"),
+      on("iPad Pro", ANY, ANY, "exchange give"),
+      on("iPad Pro", "en", ANY, "exchange oneWay as watcher"),
+      on("iPad Pro", "it|sq", ANY, "exchange twoJokers"),
+    ],
   },
   {
     defect: "on the smallest phone the combo pill meets the turn chip once glyphs land on whole pixels: the chip row leaves no room for either's width",
     ticket: "#1988 item 106",
-    breaks: { "hudCombo overlaps hudTurn": 256 },
-    where: /^iPhone SE (?!.*, longest username, )/,
+    breaks: { "hudCombo overlaps hudTurn": 245 },
+    where: [
+      on("iPhone SE", "it", ISLAND, `${PLAYED}.*, combo ⟦gameShared.emptyTable⟧`),
+      on("iPhone SE", "sq", ISLAND, `${PLAYED}.*, combo ⟦gameShared.emptyTable⟧, turn (?!⟦gameShared.yourTurn⟧)`),
+      on("iPhone SE", "it", ISLAND, `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧.*, turn (?!⟦gameShared.yourTurn⟧)`),
+      on("iPhone SE", "sq", ISLAND, `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧`),
+      on("iPhone SE", "sq", "0/0", `${PLAYED}.*, combo ⟨name⟩⟦term.combo.bomb⟧.*, turn (?!⟦gameShared.(?:yourTurn|roundOver)⟧)`),
+    ],
   },
   {
     defect: "the turn chip's name slot has no bound: an account's longest name runs it off the chip row",
     ticket: "#1988 item 107",
-    breaks: { "hudCombo overlaps hudTurn": 46, "hudTurn overlaps scorePill": 40 },
-    where: /, longest username, /,
+    breaks: { "hudCombo overlaps hudTurn": 39, "hudTurn overlaps scorePill": 31 },
+    where: [
+      on("iPhone SE|4:3 tablet|iPad Pro", ANY, ANY, "longest username,"),
+      on("iPhone 12", "en", ISLAND, "longest username,"),
+      on("iPhone 12", "it|sq", ANY, "longest username,"),
+      on("iPhone 16 Pro", "it|sq", ISLAND, "longest username,"),
+    ],
   },
   {
-    defect: "at rest the hand zone and its buttons sit HAND_LIFT below their lifted place, past the bottom of the screen",
+    defect: "at rest the hand zone and its buttons sit a hand's lift below their lifted place, past the bottom of the screen",
     ticket: "#1988 item 108",
-    breaks: { "handZone leaves the window": 1680, "passa leaves the window": 1260, "gioca leaves the window": 1260, "hand leaves the window": 315 },
-    where: /, at rest, /,
+    breaks: { "handZone leaves the window": 1575, "passa leaves the window": 1050, "gioca leaves the window": 1050, "hand leaves the window": 210 },
+    where: [on("(?!iPad Pro)[^(]+", ANY, ANY, ".*, hand \\d+ at rest,")],
   },
 ];
 
@@ -124,7 +157,7 @@ describe("the table keeps its rules", () => {
     const all = [...cases()];
     assert.ok(all.length > 5000, `only ${all.length} cases`);
     assert.equal(new Set(all.map((c) => c.locale)).size, 3);
-    assert.equal(new Set(all.map((c) => c.width)).size, 5);
+    assert.deepEqual(new Set(all.map((c) => `${c.width}x${c.height}`)), new Set(VIEWPORTS.map((v) => `${v.width}x${v.height}`)));
     assert.ok(captured().length >= 13, "the capture list shrank");
     const seen = new Set<string>();
     for (const c of all.slice(0, 400)) for (const name of RECT_NAMES) if (tableRects(c).rects[name]) seen.add(name);
@@ -133,21 +166,32 @@ describe("the table keeps its rules", () => {
 
   test("on every viewport, safe area, locale and state", () => {
     const unknown: string[] = [];
+    const kept: string[] = [];
     const counted = new Map(KNOWN.map((k) => [k, Object.fromEntries(Object.keys(k.breaks).map((rule) => [rule, 0]))]));
+    const used = new Set<RegExp>();
     for (const c of cases()) {
-      for (const rule of brokenRules(tableRects(c))) {
-        const known = KNOWN.find((k) => rule in k.breaks && k.where.test(c.label));
+      const broken = brokenRules(tableRects(c));
+      for (const k of KNOWN) {
+        const where = k.where.find((w) => w.test(c.label));
+        if (!where) continue;
+        used.add(where);
+        if (!broken.some((rule) => rule in k.breaks)) kept.push(`${k.ticket} ${where}: ${c.label}`);
+      }
+      for (const rule of broken) {
+        const known = KNOWN.find((k) => rule in k.breaks && k.where.some((w) => w.test(c.label)));
         if (known) counted.get(known)![rule]++;
         else unknown.push(`${c.label}: ${rule}`);
       }
     }
     assert.deepEqual(unknown.slice(0, 20), [], `${unknown.length} broken`);
+    assert.deepEqual(kept.slice(0, 20), [], `${kept.length} cases an entry covers keep its rules`);
+    assert.deepEqual(KNOWN.flatMap((k) => k.where.filter((w) => !used.has(w)).map(String)), [], "an entry covers no case");
     for (const k of KNOWN) assert.deepEqual(counted.get(k), k.breaks, `${k.ticket}: ${k.defect}`);
   });
 });
 
 describe("the rules see what they are for", () => {
-  const tablet = { width: 1024, height: 768, insets: INSETS.none, locale: "it" as const };
+  const tablet = { width: 1024, height: 768, insets: INSETS["0/0"], locale: "it" as const };
   const state: TableState = {
     seats: FULL,
     hand: { cards: 13, onTurn: true, faceDown: false, raised: true },
@@ -190,7 +234,7 @@ describe("the rules see what they are for", () => {
   });
 
   test("a chip too wide for its row is an overlap", () => {
-    const wide = Array.from({ length: 4 }, () => ({ run: "text:exchange.pileGives", slots: ["w".repeat(30), "w".repeat(30), "w".repeat(30)] }));
+    const wide = Array.from({ length: 4 }, () => ({ runs: [{ run: "text:exchange.pileGives", slots: ["w".repeat(30), "w".repeat(30), "w".repeat(30)] }] }));
     const t = tableRects({ ...tablet, state: { ...state, chips: { combo: wide, turn: [] } } });
     assert.ok(brokenRules(t).some((m) => m.startsWith("hudCombo overlaps")), brokenRules(t).join("; "));
   });

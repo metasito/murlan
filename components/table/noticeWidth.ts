@@ -8,13 +8,15 @@ import { TEXT_METRICS } from "./textMetrics.generated.ts";
 
 export type NoticeLocale = keyof typeof TEXT_METRICS.runs;
 
+/** `${role}:${catalogue key}` as `TEXT_METRICS` names it, with the words each template slot is filled with. */
+export type CatalogueRun = { run: string; slots?: readonly string[] };
+
 /**
- * One child of a notice's plate, in drawing order. A `run` is `${role}:${catalogue key}` as
- * `TEXT_METRICS` names it, with the words each template slot is filled with; a `runtime` run is
- * words only render time knows, priced as `text` when the state has it and at the kind's bound when not.
+ * One child of a notice's plate, in drawing order: catalogue `runs` set as one text, or a `runtime`
+ * run of words only render time knows, priced as `text` when the state has it and at the kind's bound when not.
  */
 export type NoticePart =
-  | { run: string; slots?: readonly string[] }
+  | { runs: readonly CatalogueRun[] }
   | { runtime: NoticeRole; text?: string }
   | { dot: true };
 
@@ -34,7 +36,8 @@ function glyphs(box: NoticeBox, role: NoticeRole, scale: number) {
   const size = strong ? box.strongFontSize : box.fontSize;
   const tracking = role === "key" ? mockupPx(NOTICE_KEY.tracking, scale) : strong ? box.strongTracking : box.tracking;
   const advances: Readonly<Record<string, number>> = face.advances;
-  return { upem: face.upem, widest: face.widestGlyph, digit: face.tabularDigit, tabular: run.tabular, advances, upper: run.upper, size, tracking };
+  const digits: Readonly<Record<string, number>> = face.tabularDigits;
+  return { upem: face.upem, widest: face.widestGlyph, digit: face.tabularDigit, digits, tabular: run.tabular, advances, upper: run.upper, size, tracking };
 }
 
 /**
@@ -45,7 +48,7 @@ function glyphs(box: NoticeBox, role: NoticeRole, scale: number) {
 const snapped = (px: number): number => Math.ceil(px);
 
 /** What snapping can add to a run already shaped as one sum: under a pixel per glyph. */
-const SNAP_PER_GLYPH = 1;
+export const SNAP_PER_GLYPH = 1;
 
 /** Words shaped glyph by glyph, without kerning; a glyph the subset lacks is priced at the face's widest. */
 export function wordsWidth(
@@ -70,8 +73,8 @@ function runtimeWidth(kind: NoticeKind, locale: NoticeLocale, box: NoticeBox, ro
   const g = glyphs(box, role, scale);
   if ("chars" in bound) {
     const chars = text === undefined ? undefined : [...text].slice(0, bound.chars);
-    if (chars === undefined || g.tabular) return (chars?.length ?? bound.chars) * (snapped(((g.tabular ? g.digit : g.widest) / g.upem) * g.size) + g.tracking);
-    return wordsWidth(g, locale, chars.join(""));
+    if (chars === undefined) return bound.chars * (snapped(((g.tabular ? g.digit : g.widest) / g.upem) * g.size) + g.tracking);
+    return wordsWidth(g.tabular ? { ...g, advances: { ...g.advances, ...g.digits } } : g, locale, chars.join(""));
   }
   return Math.min(text === undefined ? Infinity : wordsWidth(g, locale, text), bound.maxWidth);
 }
@@ -95,8 +98,8 @@ export function noticeWidth(kind: NoticeKind, locale: NoticeLocale, scale: numbe
   const widths = content.map((part) =>
     "dot" in part
       ? box.dot
-      : "run" in part
-        ? runWidth(kind, locale, box, part.run, part.slots ?? [], scale)
+      : "runs" in part
+        ? part.runs.reduce((sum, r) => sum + runWidth(kind, locale, box, r.run, r.slots ?? [], scale), 0)
         : runtimeWidth(kind, locale, box, part.runtime, scale, part.text)
   );
   const inner = widths.reduce((sum, w) => sum + w, 0) + box.gap * Math.max(0, widths.length - 1);

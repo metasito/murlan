@@ -1,19 +1,26 @@
 // Where everything on the table sits, decided once per window: the frame, the seats' points, the
-// float, the chip row, the table's box and the score pill.
+// float, the chip row and HUD, the rail's knobs, the hand zone and its buttons, the table's box and
+// the score pill. The table's views are placed from these, and tableRects.ts reads the same.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { Player } from "@/lib/game/gameEngine";
 import { Spacing } from "../lib/tokens.ts";
-import { CARD_H, cardScale, FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
+import { CARD_H, cardScale, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
-import { CHIP_H, HAND_ZONE_H, SEAT_DISC, seatLabelH } from "./seatLayout.ts";
-import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
+import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatLabelH } from "./seatLayout.ts";
+import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
+import { aligned, type Align } from "./flexAlign.ts";
+import { sideNameInset } from "./table/legibilityRing.ts";
 import { pillAnchorFor, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot } from "./table/noticeModel.ts";
 import { computeTableFrame, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
 
+/** Where the rail holds each knob across its width: `rail`'s slots and `ControlRail` both read it. */
+export const RAIL_KNOB_ALIGN: Align = "center";
+
 export interface Point { x: number; y: number }
+export interface Rect { x: number; y: number; w: number; h: number }
 export interface Delta { dx: number; dy: number }
 
 export interface TableLayout {
@@ -30,6 +37,18 @@ export interface TableLayout {
   floatTop: number;
   /** Bottom edge of the chip row: the banner band's top, and the notification banner's in landscape. */
   chipsBottom: number;
+  /** The scale the HUD's chips are drawn at: the table's, or less where the window is too narrow for the row. */
+  chips: number;
+  /** The combo pill's top-left corner, and the band the turn chip is aligned across. */
+  hud: { combo: { left: number; top: number }; turn: { left: number; right: number; top: number; align: Align } };
+  /** The rail, and the slots of its two knobs. */
+  rail: { width: number; menu: Rect; foot: Rect };
+  /** The hand zone at its designed place, and the padding its row and buttons stand on. At rest it sits `handDrop` lower. */
+  handZone: Rect & { padBottom: number };
+  /** PASSA and GIOCA, in the hand zone at its designed place. */
+  buttons: { passa: Rect; gioca: Rect };
+  /** How far each seat's name slides inboard of its disc's outer edge. */
+  nameInset: Record<OpponentSide, number>;
   /**
    * The table overlay's box, as distances from each window edge. Its bottom is the table's own
    * edge, not the felt's: the hand runs to it and past it, which is what buys the table the height
@@ -63,7 +82,12 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const midTop = frame.tableTop + topBandHeight(scale);
   const tableFloor = height - frame.surplus;
   const midH = tableFloor - midTop - handZoneH;
-  const x = frame.tableLeft + (width - frame.tableLeft - frame.tableRight) / 2;
+  const tableW = width - frame.tableLeft - frame.tableRight;
+  const x = frame.tableLeft + tableW / 2;
+  const handZone = { x: frame.tableLeft, y: tableFloor - handZoneH, w: tableW, h: handZoneH, padBottom: frame.bottomPad };
+  const btn = actionBtnSize(scale);
+  const btnY = aligned(HAND_ZONE_ALIGN, handZone.y, handZone.h - handZone.padBottom, btn);
+  const knob = physicalTouchTarget(scale);
   const sideY = midTop + sideSlotHeight(scale) / 2;
   const anchors: Record<FlyDirection | "pile", Point> = {
     pile: { x, y: midTop + midH / 2 },
@@ -82,6 +106,26 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     seatPoint: (dir) => ({ dx: anchors[dir].x - anchors.pile.x, dy: anchors[dir].y - anchors.pile.y }),
     floatTop: tableFloor - frame.bottomPad - floatAboveFoot(scale),
     chipsBottom: frame.tableTop + CHIP_H(scale) + frame.pad,
+    chips: chipScale(scale, width),
+    hud: {
+      combo: { left: frame.tableLeft + frame.pad, top: frame.tableTop },
+      turn: { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop, align: "center" },
+    },
+    rail: {
+      width: frame.rail,
+      menu: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: frame.tableTop, w: knob, h: knob },
+      foot: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: height - frame.tableBottom - knob, w: knob, h: knob },
+    },
+    handZone,
+    buttons: {
+      passa: { x: frame.tableLeft, y: btnY, w: btn, h: btn },
+      gioca: { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn },
+    },
+    nameInset: {
+      top: 0,
+      left: sideNameInset("left", anchors.left.x, ring, width),
+      right: sideNameInset("right", anchors.right.x, ring, width),
+    },
     tableBox: { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus },
     pill: pillAnchorFor(frame, width, scale),
   };

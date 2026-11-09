@@ -3,6 +3,9 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import { Spacing } from "../lib/tokens.ts";
+import { tableFontSize } from "./cardFaceModel.ts";
+import type { Align } from "./flexAlign.ts";
+import type { NoticeRun } from "./table/noticeModel.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -27,7 +30,26 @@ export const ACTION_BTN_FLOOR = 48;
 /** Hand to button, and button to the edge of the play area. */
 export const HAND_ZONE_GAP = 26;
 /** How far the hand zone rises when the turn comes to the viewer, at scale 1: it rests this far below its designed place. */
-export const HAND_LIFT = 4;
+const HAND_LIFT = 4;
+
+/** The hand zone is lifted while the viewer has something to do with it: a turn to play, or a giveback to choose. */
+export function handRaised(i: { turnShown: boolean; isFinished: boolean; exchangeOpen: boolean; exchangeIsMine: boolean }): boolean {
+  return (i.turnShown && !i.isFinished && !i.exchangeOpen) || i.exchangeIsMine;
+}
+
+/** How far below its designed place the hand zone sits. */
+export function handDrop(raised: boolean, scale: number): number {
+  return raised ? 0 : HAND_LIFT * scale;
+}
+
+/**
+ * Where the hand zone holds its row and buttons. Bottom-aligned, not centred: the row's headroom is
+ * there for a selected card's lift, which is above it. Centred, half that headroom sits *under* the
+ * row and lifts the hand off the safe line, so the crop the cards are laid out against is a third
+ * shallower than the one they were solved for — and the buttons stop sitting on the line the
+ * prototype puts them on.
+ */
+export const HAND_ZONE_ALIGN: Align = "flex-end";
 
 export function actionBtnSize(scale: number): number {
   return Math.max(ACTION_BTN_FLOOR, ACTION_BTN * scale);
@@ -238,9 +260,13 @@ export function seatLabelH(scale: number): number {
   return (SEAT_NAME_LINE + SEAT_LABEL_GAP + SEAT_LABEL_PAD) * scale + CHIP_H(scale);
 }
 
-/** A seat name's size at scale 1, before `tableFontSize`'s floor, and its letter-spacing in points. */
-export const SEAT_NAME_FS = 11;
-export const SEAT_NAME_TRACKING = 1.5;
+/** A seat name's size at scale 1, before `tableFontSize`'s floor. */
+const SEAT_NAME_FS = 11;
+
+/** How a seat's name is set: the face, size, letter-spacing in points and case the label draws it in. */
+export function seatNameSet(scale: number): { face: NoticeRun["face"]; size: number; tracking: number; upper: boolean } {
+  return { face: "regular", size: tableFontSize(SEAT_NAME_FS, scale), tracking: 1.5, upper: true };
+}
 
 /**
  * Wide enough for a name the length of the longest the lobby deals in, at
@@ -255,27 +281,31 @@ export const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
  * is drawn off the edge of it, which is what tests/e2e/tableFit.spec.ts caught.
  *
  * Wider than `SIDE_SECTION_W`, and not derived from it. The plate leans inward
- * over the felt the way the fan does (`whoLabelLeft`), so the column is not its
+ * over the felt the way the fan does (`SEAT_LABEL_ALIGN`), so the column is not its
  * bound — while the floor above is real: at 80 this ellipsises "Besnik".
  */
 const SIDE_LABEL_MAX_W = 114;
 
-/** The width of a seat's floating label, which caps its name: the top seat's centres, a side seat's is pinned to its disc. */
-export function seatLabelW(anchor: "centre" | "left" | "right", scale: number): number {
+/** Which way a seat's label hangs from its disc: the top seat's centres, a side seat's is pinned to its disc's outer edge. */
+export type SeatAnchor = "centre" | "left" | "right";
+
+export function seatAnchor(side: OpponentSide): SeatAnchor {
+  return side === "top" ? "centre" : side;
+}
+
+/** Where a seat's label holds its name and badges: a side seat's run inwards from its disc, into the felt, not outwards past its own edge. */
+export const SEAT_LABEL_ALIGN: Record<SeatAnchor, Align> = { centre: "center", left: "flex-start", right: "flex-end" };
+
+/** The width of a seat's floating label, which caps its name. */
+export function seatLabelW(anchor: SeatAnchor, scale: number): number {
   return anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
 }
 
 /** The label's left edge from its disc's: centred on the disc, or flush with the edge `anchor` names and `inset` in from it. */
-export function seatLabelLeft(anchor: "centre" | "left" | "right", scale: number, inset: number): number {
+export function seatLabelLeft(anchor: SeatAnchor, scale: number, inset: number): number {
   const disc = SEAT_DISC * scale;
   const labelW = seatLabelW(anchor, scale);
   return anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? inset : disc - labelW - inset;
-}
-
-/** The left edge of a name `nameW` wide, from its disc's: the label aligns it to the edge `anchor` names, or centres it. */
-export function seatNameLeft(anchor: "centre" | "left" | "right", scale: number, inset: number, nameW: number): number {
-  const room = seatLabelW(anchor, scale) - nameW;
-  return seatLabelLeft(anchor, scale, inset) + (anchor === "left" ? 0 : anchor === "right" ? room : room / 2);
 }
 
 /**

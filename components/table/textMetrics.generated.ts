@@ -6,6 +6,18 @@ export const TEXT_METRICS = {
       "upem": 1000,
       "widestGlyph": 802,
       "tabularDigit": 533,
+      "tabularDigits": {
+        "0": 528,
+        "1": 327,
+        "2": 487,
+        "3": 504,
+        "4": 533,
+        "5": 497,
+        "6": 515,
+        "7": 412,
+        "8": 533,
+        "9": 515
+      },
       "advances": {
         "0": 528,
         "1": 327,
@@ -131,6 +143,18 @@ export const TEXT_METRICS = {
       "upem": 1000,
       "widestGlyph": 807,
       "tabularDigit": 542,
+      "tabularDigits": {
+        "0": 536,
+        "1": 334,
+        "2": 493,
+        "3": 509,
+        "4": 541,
+        "5": 506,
+        "6": 525,
+        "7": 431,
+        "8": 542,
+        "9": 525
+      },
       "advances": {
         "0": 536,
         "1": 334,

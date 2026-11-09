@@ -122,8 +122,9 @@ export async function textMetrics({
     const advances = Object.fromEntries(
       chars.map((ch) => [ch, font.nominalGlyph(ch.codePointAt(0))]).filter(([, gid]) => gid).map(([ch, gid]) => [ch, font.glyphHAdvance(gid)])
     );
-    const tabularDigit = Math.max(...shapeRun(font, "0123456789", true).map((g) => g.advance));
-    faces[name] = { family: fontFamily, upem: face.upem, widestGlyph: Math.max(...Object.values(advances)), tabularDigit, advances };
+    const tabularDigits = Object.fromEntries(shapeRun(font, "0123456789", true).map((g) => [String.fromCodePoint(g.cp), g.advance]));
+    const tabularDigit = Math.max(...Object.values(tabularDigits));
+    faces[name] = { family: fontFamily, upem: face.upem, widestGlyph: Math.max(...Object.values(advances)), tabularDigit, tabularDigits, advances };
   }
   const runs = {};
   for (const locale of SUPPORTED_LOCALES) {

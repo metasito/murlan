@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, type TextProps, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
-import { mockupPx } from "./noticeModel";
+import { mockupPx, NOTICE_FACES } from "./noticeModel";
 import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
@@ -10,11 +10,14 @@ import {
   SEAT_LABEL_PAD,
   seatGap,
   seatLabelH,
+  SEAT_LABEL_ALIGN,
+  seatAnchor,
   seatLabelLeft,
   seatLabelW,
+  seatNameSet,
   OPP_LABEL_MAX_W,
-  SEAT_NAME_FS,
-  SEAT_NAME_TRACKING,
+  type SeatAnchor,
+  type OpponentSide,
 } from "@/components/seatLayout";
 import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
@@ -44,7 +47,6 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
-import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
@@ -651,7 +653,7 @@ export const OpponentSeat = memo(function OpponentSeat({
         reconnecting={reconnecting}
         scale={scale}
         countdown={countdown}
-        anchor={top ? "centre" : place}
+        anchor={seatAnchor(place)}
         nameInset={nameInset}
         focusMode={focusMode}
         mark={mark}
@@ -704,7 +706,7 @@ function SeatWho({
    * whole table to spread into and centres; a side seat sits flush against its
    * own column, so a label centred there hangs off the screen.
    */
-  anchor?: "centre" | "left" | "right";
+  anchor?: SeatAnchor;
   nameInset?: number;
   focusMode?: boolean;
 }) {
@@ -712,6 +714,7 @@ function SeatWho({
   const lit = seatLit(isActive, mark);
   const labelW = seatLabelW(anchor, scale);
   const labelLeft = seatLabelLeft(anchor, scale, nameInset);
+  const nameSet = seatNameSet(scale);
   return (
     <View style={seatStyles.who}>
       {!focusMode && (
@@ -724,9 +727,8 @@ function SeatWho({
               bottom: disc,
               gap: SEAT_LABEL_GAP * scale,
               paddingBottom: SEAT_LABEL_PAD * scale,
+              alignItems: SEAT_LABEL_ALIGN[anchor],
             },
-            anchor === "left" && seatStyles.whoLabelLeft,
-            anchor === "right" && seatStyles.whoLabelRight,
           ]}
           pointerEvents="none"
         >
@@ -735,9 +737,15 @@ function SeatWho({
             {...({ dataSet: { lit: String(lit) } } as TextProps)}
             style={[
               seatStyles.oppName,
+              NOTICE_FACES[nameSet.face],
               // The cap rides the scale the glyphs do; fixed, it ellipsises
               // every name above a phone's own scale.
-              { fontSize: tableFontSize(SEAT_NAME_FS, scale), maxWidth: labelW },
+              {
+                fontSize: nameSet.size,
+                letterSpacing: nameSet.tracking,
+                textTransform: nameSet.upper ? "uppercase" : "none",
+                maxWidth: labelW,
+              },
               lit && seatStyles.oppNameActive,
             ]}
             numberOfLines={1}
@@ -812,22 +820,12 @@ const seatStyles = StyleSheet.create({
   // The gap and the pad ride the table's scale, so they are passed in rather
   // than set here — `seatLabelH` reserves this column's height from the same
   // two numbers, and a flat length here is height it would not know about.
-  whoLabel: {
-    position: "absolute",
-    alignItems: "center",
-  },
-  // A side seat's label runs inwards from the disc, into the felt, rather than
-  // outwards past the edge its own column is flush against.
-  whoLabelLeft: { alignItems: "flex-start" },
-  whoLabelRight: { alignItems: "flex-end" },
+  whoLabel: { position: "absolute" },
 
   // Bare on the felt, as the mockup's `.nm`: unlit, its ink is held to 4.5:1 over
   // the felt behind it by tests/e2e/seatNameContrast.spec.ts.
   oppName: {
-    fontFamily: "Rajdhani_600SemiBold",
     color: withAlpha(Colors.text, 0.75),
-    letterSpacing: SEAT_NAME_TRACKING,
-    textTransform: "uppercase",
     maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
   },

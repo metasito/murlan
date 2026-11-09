@@ -1,29 +1,29 @@
 // What the table's two HUD pills say in each state the table can be in, read off the functions the
 // table itself calls, with a `t` that returns the key instead of the words, so the content is the
 // catalogue keys the metrics measure and no mapping from state to words is written here.
-import type { NoticeContent, NoticePart } from "../../components/table/noticeWidth.ts";
+import type { CatalogueRun, NoticeContent, NoticePart } from "../../components/table/noticeWidth.ts";
 import { CHIP_KEYS, turnPresentation } from "../../components/turnTimerUi.ts";
 import { comboLabel } from "../../components/table/noticeModel.ts";
-import { exchangeNotes, type ExchangeView } from "../../components/table/exchangeModel.ts";
+import { exchangeNotes, readExchange, type ExchangeView } from "../../components/table/exchangeModel.ts";
 import type { ExchangeAnnounceData } from "../../lib/game/sharedGameFlow.ts";
 import { createDeck, type Card, type Combination, type GameState } from "../../lib/game/gameEngine.ts";
 import type { TFn, TranslationKey } from "../../lib/i18n.ts";
 import { CAPTURE_VIEWER_SEAT, captureGameState, type CaptureState } from "../../lib/captureStates.ts";
-import { seatDirection, type OpponentSide } from "../../components/seatLayout.ts";
+import { handRaised, seatDirection, type OpponentSide } from "../../components/seatLayout.ts";
 import type { TableState } from "../../components/tableRects.ts";
 import { catalogs, templateParts, type Locale } from "../../shared/i18n.ts";
 
 export const tagged = ((key: TranslationKey, params?: Record<string, string | number>) =>
   `⟦${key}⟧${Object.values(params ?? {}).map((v) => `⟨${v}⟩`).join("")}`) as TFn;
 
-/** `⟦key⟧⟨slot⟩…` as the runs of one role, each with the words its slots are filled with. */
-export function runsOf(tag: string, role: "text" | "strong"): NoticePart[] {
-  const out: NoticePart[] = [];
+/** `⟦key⟧⟨slot⟩…` as the one text of one role it is drawn as: its runs, each with the words its slots are filled with. */
+export function runsOf(tag: string, role: "text" | "strong"): NoticePart {
+  const runs: CatalogueRun[] = [];
   for (const m of tag.matchAll(/⟦([^⟧]+)⟧((?:⟨[^⟩]*⟩)*)/g)) {
     const slots = [...m[2].matchAll(/⟨([^⟩]*)⟩/g)].map((s) => s[1]);
-    out.push({ run: `${role}:${m[1]}`, slots });
+    runs.push({ run: `${role}:${m[1]}`, slots });
   }
-  return out;
+  return { runs };
 }
 
 const DECK = createDeck();
@@ -66,14 +66,14 @@ export function turnScenes(name: string): { name: string; turn: NoticeContent }[
     { roundOver: false, matchOver: false, dealing: false, mine: false },
   ];
   if (new Set(states.map((s) => say(s))).size !== Object.keys(CHIP_KEYS).length) throw new Error("the turn states no longer cover CHIP_KEYS");
-  return states.map((s) => ({ name: say(s), turn: [DOT, ...runsOf(say(s), "text"), CLOCK] }));
+  return states.map((s) => ({ name: say(s), turn: [DOT, runsOf(say(s), "text"), CLOCK] }));
 }
 
 /** The pill for a play on top of the pile: who played it, and what. */
 export function comboScene(combo: Combination | null, by: { you: boolean; name: string }): NoticeContent {
   const label = comboLabel(combo, tagged);
-  if (label === null) return runsOf(tagged("gameShared.emptyTable"), "text");
-  return [by.you ? runsOf(tagged("gameShared.you"), "text")[0] : { runtime: "text", text: by.name }, ...runsOf(label, "strong")];
+  if (label === null) return [runsOf(tagged("gameShared.emptyTable"), "text")];
+  return [by.you ? runsOf(tagged("gameShared.you"), "text") : { runtime: "text", text: by.name }, runsOf(label, "strong")];
 }
 
 /** Each chair's view of an open exchange between two players called `name`. */
@@ -118,8 +118,8 @@ export function exchangeScenes(name: string): ChipScene[] {
         if (chip === null) continue;
         out.push({
           name: `${shape} as ${seat}, give ${stages.give}`,
-          combo: pillNote ? runsOf(pillNote.text, "text") : runsOf(tagged("gameShared.emptyTable"), "text"),
-          turn: [DOT, ...runsOf(chip, "text"), CLOCK],
+          combo: [runsOf(pillNote ? pillNote.text : tagged("gameShared.emptyTable"), "text")],
+          turn: [DOT, runsOf(chip, "text"), CLOCK],
         });
       }
     }
@@ -160,10 +160,15 @@ export function gameTable(game: GameState): DrawnTable {
   };
 }
 
-/** The hand is lifted while its chair has something to do: its turn, or an open exchange's giveback. */
+/** A settled table: no deal running and an open exchange's legs landed, so its giveback is the viewer's to choose. */
 function raisedFor(game: GameState): boolean {
-  const phase = game.exchangePhase;
-  return phase?.kind === "open" ? phase.winnerIdx === CAPTURE_VIEWER_SEAT : game.currentTurnIndex === CAPTURE_VIEWER_SEAT;
+  const exchange = readExchange(game, CAPTURE_VIEWER_SEAT, false);
+  return handRaised({
+    turnShown: game.currentTurnIndex === CAPTURE_VIEWER_SEAT,
+    isFinished: game.players[CAPTURE_VIEWER_SEAT].finishPosition !== undefined,
+    exchangeOpen: exchange.open,
+    exchangeIsMine: exchange.open && exchange.viewerIsWinner,
+  });
 }
 
 /** The words a pill's content reads in `locale`, as its plate's text would. */
@@ -172,9 +177,12 @@ export function wordsOf(content: NoticeContent, locale: Locale): string {
     .map((part) => {
       if ("dot" in part) return "";
       if ("runtime" in part) return part.text ?? "";
-      const key = part.run.slice(part.run.indexOf(":") + 1);
-      const { runs } = templateParts(catalogs[locale][key as TranslationKey]);
-      return runs.map((r, i) => r + (part.slots?.[i] ?? "")).join("");
+      return part.runs
+        .map(({ run, slots }) => {
+          const { runs } = templateParts(catalogs[locale][run.slice(run.indexOf(":") + 1) as TranslationKey]);
+          return runs.map((r, i) => r + (slots?.[i] ?? "")).join("");
+        })
+        .join("");
     })
     .join("");
 }

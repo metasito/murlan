@@ -1,21 +1,22 @@
-// Every rect on the table, in window points, decided once: what the property test and the browser
-// spec hold the rendered table to. It composes the layout's owners and adds no number of its own.
+// Every rect on the table, in window points: the places `tableLayout` decides and the table's views
+// are set from, filled with what a state puts in them. What the property test and the browser spec
+// hold the rendered table to; it adds no place or number of its own.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { BACK_SCALE, CARD_H, CARD_W, chipScale, FIELD_SCALE, handCardSize, physicalTouchTarget, tableFontSize } from "./cardFaceModel.ts";
+import { BACK_SCALE, CARD_H, CARD_W, FIELD_SCALE, handCardSize } from "./cardFaceModel.ts";
 import { pileSlots } from "./flightPose.ts";
 import { fanCorners, fanPoint } from "./fanGeometry.ts";
 import { layoutHandRow } from "./handLayout.ts";
-import { actionBtnSize, CHIP_H, HAND_LIFT, SEAT_DISC, SEAT_LABEL_PAD, SEAT_NAME_FS, SEAT_NAME_LINE, SEAT_NAME_TRACKING, seatLabelW, seatNameLeft } from "./seatLayout.ts";
-import { sideNameInset } from "./table/legibilityRing.ts";
+import { CHIP_H, handDrop, SEAT_DISC, SEAT_LABEL_ALIGN, SEAT_LABEL_PAD, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatLabelW, seatNameSet } from "./seatLayout.ts";
 import type { OpponentSide } from "./seatLayout.ts";
+import { aligned, type Align } from "./flexAlign.ts";
 import { faceWordsWidth, noticeWidth, type NoticeContent, type NoticeLocale } from "./table/noticeWidth.ts";
 import { scorePillBox } from "./table/scorePillModel.ts";
 import type { EdgeInsets } from "./tableFrame.ts";
-import { tableLayout, type TableLayout } from "./tableLayout.ts";
+import { tableLayout, type Rect, type TableLayout } from "./tableLayout.ts";
 
-export interface Rect { x: number; y: number; w: number; h: number }
+export type { Rect };
 
 export const RECT_NAMES = [
   "window",
@@ -62,6 +63,8 @@ export interface TableRects {
   cards: Partial<Record<RectName, readonly Card[]>>;
   /** How far past the window a rect is drawn on purpose: the hand's crop and tilt. */
   bleed: Partial<Record<RectName, { bottom: number }>>;
+  /** Where a rect sized by priced words holds the words drawn in it, which may run narrower than the price. */
+  aligns: Partial<Record<RectName, Align>>;
 }
 
 const box = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
@@ -96,15 +99,11 @@ export function tableRects(input: {
 }): TableRects {
   const { width, height, insets, locale, state } = input;
   const layout = tableLayout({ width, height, insets });
-  const { scale, frame, anchors } = layout;
-  const chips = chipScale(scale, width);
-  const floor = height - frame.surplus;
-  const tableW = width - frame.tableLeft - frame.tableRight;
-  const tableMid = frame.tableLeft + tableW / 2;
+  const { scale, frame, anchors, chips, hud, rail, handZone, buttons } = layout;
 
-  const knob = physicalTouchTarget(scale);
   const comboW = noticeWidth("hudCombo", locale, chips, state.chips.combo);
   const turnW = noticeWidth("turn", locale, chips, state.chips.turn);
+  const turnRoom = width - hud.turn.left - hud.turn.right;
   const pill = scorePillBox(0, 0, layout.pill);
   const chipH = CHIP_H(chips);
 
@@ -117,26 +116,25 @@ export function tableRects(input: {
     return fanCorners({ x: anchors.pile.x + at.x, y: anchors.pile.y + at.y }, dir, count, scale * BACK_SCALE);
   };
   const fans = { top: fan("top"), left: fan("left"), right: fan("right") };
-  const nameSet = { size: tableFontSize(SEAT_NAME_FS, scale), tracking: SEAT_NAME_TRACKING, upper: true };
+  const { face, ...nameSet } = seatNameSet(scale);
   const name = (dir: OpponentSide): Rect | null => {
     const who = state.seats[dir];
     if (!who) return null;
-    const anchor = dir === "top" ? "centre" : dir;
-    const w = Math.min(faceWordsWidth("regular", nameSet, locale, who.name), seatLabelW(anchor, scale));
+    const anchor = seatAnchor(dir);
+    const labelW = seatLabelW(anchor, scale);
+    const w = Math.min(faceWordsWidth(face, nameSet, locale, who.name), labelW);
     const h = SEAT_NAME_LINE * scale;
     const bottom = anchors[dir].y - ring / 2 - SEAT_LABEL_PAD * scale;
-    const inset = dir === "top" ? 0 : sideNameInset(dir, anchors[dir].x, ring, width);
-    const left = anchors[dir].x - ring / 2 + seatNameLeft(anchor, scale, inset, w);
-    return box(left, bottom - h, w, h);
+    const labelLeft = anchors[dir].x - ring / 2 + seatLabelLeft(anchor, scale, layout.nameInset[dir]);
+    return box(aligned(SEAT_LABEL_ALIGN[anchor], labelLeft, labelW, w), bottom - h, w, h);
   };
 
   const fieldW = CARD_W(scale * FIELD_SCALE);
   const fieldH = CARD_H(scale * FIELD_SCALE);
   const pileCards = pileSlots(state.pile, fieldW, frame.fieldRoomW).map((at) => turned(anchors.pile.x + at.x, anchors.pile.y + at.y, fieldW, fieldH, at.rot));
 
-  const sink = state.hand.raised ? 0 : HAND_LIFT * scale;
-  const btn = actionBtnSize(scale);
-  const btnY = floor - frame.bottomPad - btn + sink;
+  const drop = handDrop(state.hand.raised, scale);
+  const sunk = (r: Rect): Rect => box(r.x, r.y + drop, r.w, r.h);
   const size = handCardSize(scale, state.hand.onTurn, state.hand.faceDown);
   const row = layoutHandRow({
     ids: Array.from({ length: state.hand.cards }, (_, i) => String(i)),
@@ -145,15 +143,15 @@ export function tableRects(input: {
     availW: frame.handAvailW,
     bottomPad: frame.bottomPad,
   });
-  const rowLeft = tableMid - row.width / 2;
-  const rowTop = floor - frame.bottomPad - row.visibleH - row.arcRise / 2 + sink;
+  const rowLeft = anchors.bottom.x - row.width / 2;
+  const rowTop = anchors.bottom.y + row.base - row.visibleH + drop;
   let hand: Rect | null = null;
   if (row.cards.length > 0) {
     const drawn = span(row.cards.map((c) => cover(turned(rowLeft + c.left + c.shift + size.w / 2, rowTop + row.visibleH - c.bottom - size.h / 2, size.w, size.h, c.rot))))!;
     if (row.scrollable) {
-      const x0 = Math.max(drawn.x, tableMid - frame.handAvailW / 2);
+      const x0 = Math.max(drawn.x, anchors.bottom.x - frame.handAvailW / 2);
       const y0 = Math.max(drawn.y, rowTop - row.topClearance);
-      const x1 = Math.min(drawn.x + drawn.w, tableMid + frame.handAvailW / 2);
+      const x1 = Math.min(drawn.x + drawn.w, anchors.bottom.x + frame.handAvailW / 2);
       const y1 = Math.min(drawn.y + drawn.h, rowTop + row.visibleH + row.crop + row.tiltOverhang);
       hand = box(x0, y0, x1 - x0, y1 - y0);
     } else hand = drawn;
@@ -163,11 +161,11 @@ export function tableRects(input: {
     layout,
     rects: {
       window: box(0, 0, width, height),
-      rail: box(0, 0, frame.rail, height),
-      railMenu: box((frame.rail - knob) / 2, frame.tableTop, knob, knob),
-      railFoot: box((frame.rail - knob) / 2, height - frame.tableBottom - knob, knob, knob),
-      hudCombo: box(frame.tableLeft + frame.pad, frame.tableTop, comboW, chipH),
-      hudTurn: box(tableMid - turnW / 2, frame.tableTop, turnW, chipH),
+      rail: box(0, 0, rail.width, height),
+      railMenu: rail.menu,
+      railFoot: rail.foot,
+      hudCombo: box(hud.combo.left, hud.combo.top, comboW, chipH),
+      hudTurn: box(aligned(hud.turn.align, hud.turn.left, turnRoom, turnW), hud.turn.top, turnW, chipH),
       scorePill: box(pill.x, pill.y, pill.w, pill.h),
       seatTop: state.seats.top && seat("top"),
       seatLeft: state.seats.left && seat("left"),
@@ -179,13 +177,20 @@ export function tableRects(input: {
       fanLeft: span(fans.left.map(cover)),
       fanRight: span(fans.right.map(cover)),
       pile: span(pileCards.map(cover)),
-      handZone: box(frame.tableLeft, floor - layout.handZoneH + sink, tableW, layout.handZoneH),
-      passa: box(frame.tableLeft, btnY, btn, btn),
-      gioca: box(width - frame.tableRight - btn, btnY, btn, btn),
+      handZone: sunk(handZone),
+      passa: sunk(buttons.passa),
+      gioca: sunk(buttons.gioca),
       hand,
     },
     cards: { fanTop: fans.top, fanLeft: fans.left, fanRight: fans.right, pile: pileCards },
     bleed: { hand: { bottom: row.crop + row.tiltOverhang } },
+    aligns: {
+      hudCombo: "flex-start",
+      hudTurn: hud.turn.align,
+      nameTop: SEAT_LABEL_ALIGN[seatAnchor("top")],
+      nameLeft: SEAT_LABEL_ALIGN[seatAnchor("left")],
+      nameRight: SEAT_LABEL_ALIGN[seatAnchor("right")],
+    },
   };
 }
 

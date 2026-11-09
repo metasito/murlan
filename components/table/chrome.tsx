@@ -17,7 +17,8 @@ import {
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { a11yState } from "@/lib/a11y";
-import { HAND_LIFT, SIDE_SECTION_W } from "@/components/seatLayout";
+import { handDrop, HAND_ZONE_ALIGN, SIDE_SECTION_W } from "@/components/seatLayout";
+import { RAIL_KNOB_ALIGN, type Rect } from "@/components/tableLayout";
 import type { Channel } from "@/lib/harnessChannels";
 
 /**
@@ -42,15 +43,18 @@ export const RAIL_TESTID = "control-rail";
 
 export function ControlRail({
   width,
-  topPad,
-  bottomPad,
+  height,
+  menu,
+  foot,
   top,
   bottom,
   veiled,
 }: {
   width: number;
-  topPad: number;
-  bottomPad: number;
+  height: number;
+  /** `tableLayout`'s knob slots: `top` hangs from the menu's, `bottom` stands on the foot's. */
+  menu: Rect;
+  foot: Rect;
   top?: ReactNode;
   bottom?: ReactNode;
   /**
@@ -63,14 +67,11 @@ export function ControlRail({
   return (
     <View
       testID={RAIL_TESTID}
-      style={[
-        railStyles.rail,
-        { width, paddingTop: topPad, paddingBottom: bottomPad },
-      ]}
+      style={[railStyles.rail, { width }]}
       {...veiled}
     >
-      <View>{top}</View>
-      <View>{bottom}</View>
+      <View style={[railStyles.slot, { width, top: menu.y }]}>{top}</View>
+      <View style={[railStyles.slot, { width, bottom: height - foot.y - foot.h }]}>{bottom}</View>
     </View>
   );
 }
@@ -122,11 +123,10 @@ const railStyles = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    alignItems: "center",
-    justifyContent: "space-between",
     zIndex: RAIL_Z,
     pointerEvents: "box-none",
   },
+  slot: { position: "absolute", left: 0, alignItems: RAIL_KNOB_ALIGN },
   knob: {
     alignItems: "center",
     justifyContent: "center",
@@ -203,14 +203,9 @@ export const sharedTableStyles = StyleSheet.create({
   // seat's own column on its way in, and the flight is drawn in here so that it
   // lands on the pile's centre rather than the screen's.
   centerSection: { flex: 1, alignItems: "center", justifyContent: "center", zIndex: Layer.table },
-  // Bottom-aligned, not centred: the row's headroom is there for a selected
-  // card's lift, which is above it. Centred, half that headroom sits *under*
-  // the row and lifts the hand off the safe line, so the crop the cards are
-  // laid out against is a third shallower than the one they were solved for —
-  // and the buttons stop sitting on the line the prototype puts them on.
   handSection: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: HAND_ZONE_ALIGN,
     justifyContent: "center",
   },
 });
@@ -239,7 +234,7 @@ export function useHandLift(active: boolean, scale: number) {
     // position — cards cropped by the bottom edge, buttons on the safe line —
     // is the one it holds while the player is using it. Lifting *from* that
     // position instead would spend the crop it is measured by.
-    const resting = active ? 0 : HAND_LIFT * scale;
+    const resting = handDrop(active, scale);
     if (!mounted.current || reduceMotion) {
       mounted.current = true;
       cancelAnimation(lift);

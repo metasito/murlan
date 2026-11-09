@@ -28,9 +28,8 @@ import {
 import { isOneWay, type ExchangeAnnounceData, type ExchangeHold } from "@/lib/game/sharedGameFlow";
 import {
   handVisibleH,
-  actionBtnSize,
   HAND_ZONE_GAP,
-  SEAT_DISC,
+  handRaised,
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
@@ -59,7 +58,6 @@ import { ExchangeLegs, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnPresentation, type TurnTimerConfig } from "@/components/turnTimerUi";
 import { sideSlotHeight, topBandHeight } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
-import { chipScale, physicalTouchTarget } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
 import type { MatchBoardActions, MatchRating } from "@/components/table/matchBoard";
 import { matchDim } from "@/lib/timeline/matchEnding";
@@ -99,7 +97,6 @@ import { useLinkHold } from "@/components/table/useLinkHold";
 import type { OwnLink } from "@/lib/ownLink";
 import { CardTableProvider, useCardTableValue } from "@/components/table/useCardRects";
 import { lampPools } from "@/components/table/lampRig";
-import { sideNameInset } from "@/components/table/legibilityRing";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useRoundEnding } from "@/components/table/useRoundEnding";
 import { roundVoteShown } from "@/lib/timeline/roundEnding";
@@ -326,11 +323,11 @@ export function GameTable({
     [W, H, insets.top, insets.bottom, insets.left, insets.right]
   );
   const { scale } = layout;
-  const chips = chipScale(scale, W);
+  const { chips, hud, rail, handZone, buttons } = layout;
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
   // the row reads as one band even though only the cards are cropped.
-  const actionBtn = actionBtnSize(scale);
-  const knobSize = physicalTouchTarget(scale);
+  const actionBtn = buttons.gioca.w;
+  const knobSize = rail.menu.w;
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
   const deviceOffline = useDeviceOffline();
@@ -634,10 +631,8 @@ export function GameTable({
     timeline,
   });
 
-  const { style: handLiftStyle, lift: handLift } = useHandLift(
-    (turnShown && !isFinished && !exchange.open) || exchangeIsMine,
-    scale
-  );
+  const handUp = handRaised({ turnShown, isFinished, exchangeOpen: exchange.open, exchangeIsMine });
+  const { style: handLiftStyle, lift: handLift } = useHandLift(handUp, scale);
 
   // Merged, never replaced: by the throw's commit the hand has already redrawn without the thrown cards.
   const handOrigins = useRef(new Map<string, CardFrom>());
@@ -894,7 +889,7 @@ export function GameTable({
           player={opponent.player}
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
-          nameInset={place === "top" ? 0 : sideNameInset(place, anchors[place].x, SEAT_DISC * scale, W)}
+          nameInset={layout.nameInset[place]}
           scale={scale}
           countdown={turn.clockSeat === opponent.seat ? countdown : undefined}
           focusMode={focusMode}
@@ -942,7 +937,7 @@ export function GameTable({
           {...a11yGroup(topBarA11yLabel)}
           pointerEvents={focusMode ? "none" : undefined}
           {...behindVeil}
-          style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle, greyStyle]}
+          style={[styles.hudLeft, hud.combo, focusFadeStyle, greyStyle]}
         >
           {/* The chip draws the words the group's label already says. */}
           <View {...a11yHidden()}>
@@ -956,7 +951,7 @@ export function GameTable({
           {...clockVeil}
           style={[
             styles.hudCentre,
-            { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop },
+            { left: hud.turn.left, right: hud.turn.right, top: hud.turn.top, alignItems: hud.turn.align },
             (holdingForStart || (darkenStyle && linkGreyed)) && HELD_CLOCK_Z,
             stackFadeStyle,
           ]}
@@ -1035,7 +1030,7 @@ export function GameTable({
           float={float}
           at={{ x: anchors.pile.x, y: layout.floatTop }}
           beside={{
-            giocaTop: frame.surplus + frame.bottomPad + actionBtn,
+            giocaTop: H - buttons.gioca.y,
             left: frame.tableLeft,
             right: frame.tableRight,
             mirrored: playOnLeft,
@@ -1068,9 +1063,10 @@ export function GameTable({
         <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, RAIL_Z, edgeGreyStyle]}>
           <ControlRail
             veiled={behindCoverOnly}
-            width={frame.rail}
-            topPad={frame.tableTop}
-            bottomPad={frame.tableBottom}
+            width={rail.width}
+            height={H}
+            menu={rail.menu}
+            foot={rail.foot}
             top={
               <RailKnob
                 onPress={() => setSettingsOpen((open) => !open)}
@@ -1152,7 +1148,7 @@ export function GameTable({
                 and the field centre in what is actually there rather than at a
                 guessed percentage. */}
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
-            <View style={[sharedTableStyles.midSection, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
+            <View style={[sharedTableStyles.midSection, { marginBottom: handZone.h }, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
                 {opponentSeat("left")}
               </View>
@@ -1231,9 +1227,14 @@ export function GameTable({
               testID="hand-zone"
               style={[
                 sharedTableStyles.handSection,
+                // By its edges, not `top` and `width`: those round to a layout unit apart from the table's own edges and move every glyph in the row by it.
                 {
-                  height: layout.handZoneH,
-                  paddingBottom: frame.bottomPad,
+                  position: "absolute",
+                  left: handZone.x - layout.tableBox.left,
+                  right: W - layout.tableBox.right - handZone.x - handZone.w,
+                  bottom: H - layout.tableBox.bottom - handZone.y - handZone.h,
+                  height: handZone.h,
+                  paddingBottom: handZone.padBottom,
                   gap: HAND_ZONE_GAP * scale,
                 },
                 // Play on the left mirrors the row rather than moving the rail,
@@ -1283,7 +1284,7 @@ export function GameTable({
                   store={shownSelection}
                   facts={giocaFacts}
                   giveTo={exchangeIsMine ? exchangeLoserName : null}
-                  lit={exchangeIsMine || (turnShown && !isFinished && !exchange.open)}
+                  lit={handUp}
                   rejectX={giocaRejectX}
                   rejectPlay={rejectPlay}
                   onRefuse={showRefusal}
@@ -1323,7 +1324,7 @@ const styles = StyleSheet.create({
   voteSpot: { position: "absolute", zIndex: BANNER_BAND_Z },
 
   hudLeft: { position: "absolute", zIndex: Layer.moment },
-  hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
+  hudCentre: { position: "absolute", zIndex: Layer.moment },
   pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
   greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   matchDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
