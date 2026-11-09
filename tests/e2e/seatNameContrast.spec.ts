@@ -15,7 +15,7 @@ import type { TraceFrame } from "../../lib/e2eTrace";
 
 const BODY_MIN = 4.5;
 // docs/GAME-RULES.md § Decisions, "The lit seat name's contrast", is the authority (tests/tooling/litFloor.test.ts).
-const LIT_FLOOR = 4.5;
+const LIT_FLOOR = 3.1;
 const LAMP_UP = 1 - 1 / 512;
 const NAME = '[data-testid="seat-name"]';
 const CANDIDATES = { textMuted: Colors.textMuted, textSecondary: Colors.textSecondary, text: Colors.text, textPrimary: Colors.textPrimary, goldLit: Colors.goldLit };

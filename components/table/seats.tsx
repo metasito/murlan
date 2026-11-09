@@ -804,12 +804,13 @@ const LAST_CARD_GLOW = { blur: 10, opacity: 0.6 } as const;
 const SEAT_NAME_FS = 11;
 // A text shadow does not stack, and the lit name's glyphs are too thin for one to darken the felt
 // between them: the web repeats the layer, native keeps the one.
-const HALO_BLUR = 2;
-const HALO_LAYERS = 14;
+const HALO_BLUR = 4;
+const HALO_ALPHA = 0.6;
+const HALO_LAYERS = 8;
 const SEAT_NAME_HALO: TextStyle =
   Platform.OS === "web"
-    ? ({ textShadow: Array(HALO_LAYERS).fill(`0 0 ${HALO_BLUR}px ${Colors.shadow}`).join(", ") } as TextStyle)
-    : { textShadowColor: Colors.shadow, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: HALO_BLUR };
+    ? ({ textShadow: Array(HALO_LAYERS).fill(`0 0 ${HALO_BLUR}px ${withAlpha(Colors.shadow, HALO_ALPHA)}`).join(", ") } as TextStyle)
+    : { textShadowColor: withAlpha(Colors.shadow, HALO_ALPHA), textShadowOffset: { width: 0, height: 0 }, textShadowRadius: HALO_BLUR };
 /** The disc's seated shadow, and the glow that replaces it on the seat on move. */
 const SEAT_SHADOW = 9;
 const SEAT_SHADOW_Y = 3;
