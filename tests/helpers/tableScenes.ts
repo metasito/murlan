@@ -154,10 +154,16 @@ export function gameTable(game: GameState): DrawnTable {
     lastBy: combo ? (game.players[game.lastPlayedBy]?.name ?? null) : null,
     base: {
       seats,
-      hand: { cards: viewer.hand.length, onTurn: game.currentTurnIndex === CAPTURE_VIEWER_SEAT, faceDown: false, raised: game.currentTurnIndex === CAPTURE_VIEWER_SEAT },
+      hand: { cards: viewer.hand.length, onTurn: game.currentTurnIndex === CAPTURE_VIEWER_SEAT, faceDown: false, raised: raisedFor(game) },
       pile: combo?.cards.length ?? 0,
     },
   };
+}
+
+/** The hand is lifted while its chair has something to do: its turn, or an open exchange's giveback. */
+function raisedFor(game: GameState): boolean {
+  const phase = game.exchangePhase;
+  return phase?.kind === "open" ? phase.winnerIdx === CAPTURE_VIEWER_SEAT : game.currentTurnIndex === CAPTURE_VIEWER_SEAT;
 }
 
 /** The words a pill's content reads in `locale`, as its plate's text would. */

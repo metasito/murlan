@@ -31,13 +31,15 @@ const STATES: readonly CaptureState[] = ["held", "pile-right", "bomb-landed"].ma
 /**
  * How the solver's rect holds what the page draws.
  * - `same`: to the layout's rounding.
- * - `words`: a pill. Its height and line are the plate's; its width is a bound, priced with every
- *   glyph up to the next whole pixel and a glyph the bundled faces lack at a full em, so what it may
- *   lose to a renderer that does neither is at most a pixel a glyph and that em.
+ * - `words`: a pill. Its height and line are the plate's; its width is a bound. A renderer lands each
+ *   glyph's advance within a pixel of its linear one, either way, and `noticeWidth` prices a glyph at
+ *   most a pixel above linear and a glyph the bundled faces lack at a full em, so the drawn words may
+ *   fall short of the price by two pixels a glyph and that em.
+ * - `inside`: a knob of its own fixed size, centred in the slot the solver gives it.
  * - `line`: a seat's name. Its words are priced as a pill's, and the label reserves a taller line
  *   than the font draws, under which the drawn line sits: the bottoms meet, the top may be lower.
  */
-type Fit = "same" | "words" | "line";
+type Fit = "same" | "inside" | "words" | "line";
 const DRAWN: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   rail: { sel: '[data-testid="control-rail"]', fit: "same" },
   railMenu: { sel: '[data-testid="control-rail"] > div:first-child [role="button"]', fit: "same" },
@@ -63,7 +65,7 @@ const DRAWN: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
 const RAIL: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   rail: DRAWN.rail,
   railMenu: DRAWN.railMenu,
-  railFoot: { sel: '[data-testid="control-rail"] > div:last-child [role="button"]', fit: "same" },
+  railFoot: { sel: '[data-testid="control-rail"] > div:last-child [role="button"]', fit: "inside" },
 };
 /** Layout rounds each edge to a device pixel, and a border's half pixel to one either side. */
 const TOLERANCE = 1;
@@ -141,11 +143,13 @@ const clipTo = (r: Rect, c: Rect | null): Rect => {
 };
 const near = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE;
 const across = (a: Rect, b: Rect) => a.x >= b.x - TOLERANCE && a.x + a.w <= b.x + b.w + TOLERANCE;
-/** What a renderer that neither snaps glyphs nor lacks one may draw short of the priced width. */
+/** How far short of the priced width the drawn words may fall: `words` above. */
 const unpriced = (text: { words: string; em: number }) =>
-  [...text.words].reduce((sum, ch) => sum + (PRICED.has(ch) ? 1 : text.em), 0);
+  [...text.words].reduce((sum, ch) => sum + (PRICED.has(ch) ? 2 : text.em), 0);
+const centre = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 const fits: Record<Fit, (a: Box, b: Rect) => boolean> = {
   same: (a, b) => near(a.x, b.x) && near(a.y, b.y) && near(a.w, b.w) && near(a.h, b.h),
+  inside: (a, b) => near(centre(a).x, centre(b).x) && near(centre(a).y, centre(b).y) && a.w <= b.w + TOLERANCE && a.h <= b.h + TOLERANCE,
   words: (a, b) => near(a.y, b.y) && near(a.h, b.h) && across(a, b) && b.w - a.w <= unpriced(a.text!) + TOLERANCE,
   line: (a, b) => near(a.y + a.h, b.y + b.h) && a.y >= b.y - TOLERANCE && across(a, b) && b.w - a.w <= unpriced(a.text!) + TOLERANCE,
 };
@@ -199,6 +203,7 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       const save = exchangeSave({ seats: 3, hand: DEAL_SIZE[3], winner: 0, loser: 1, names: [EXCHANGE_NAME, EXCHANGE_NAME, EXCHANGE_NAME] });
       await open(page, baseURL!, save, "it", insets);
+      await expect(page.getByTestId("exchange-prompt"), "the winner's hand lifts once the exchange asks").toBeVisible({ timeout: 15_000 });
       await check(page, `${vp.name}, exchange`, vp, insets, "it", gameTable(save.gameState), EXCHANGE_NAME);
     });
 
