@@ -10,6 +10,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { OUT, TABLE_TEXT, renderTextMetrics, textMetrics } from "../../scripts/build-text-metrics.mjs";
 import { WEB_FONTS } from "../../scripts/fontSubsetChars.mjs";
 import { TEXT_METRICS } from "../../components/table/textMetrics.generated.ts";
@@ -84,6 +85,94 @@ test("every code a reconnected note translates is what the server emits, and is 
   }
 });
 
+const NOTICE_SOURCES = [
+  ...readdirSync(path.join(repoRoot, "components", "table", "notices")).filter((f) => f.endsWith(".tsx") && f !== "gallery.tsx").map((f) => `components/table/notices/${f}`),
+  "components/table/exchangeModel.ts",
+  "components/table/floatModel.ts",
+  "components/table/connectionNote.ts",
+  "components/turnTimerUi.ts",
+  "lib/comboName.ts",
+];
+
+/** Words a notice's source translates that are not a Text run it draws, with what carries them instead. */
+const NOT_A_RUN: Record<string, string> = {
+  "onlineGame.leftTableLeave": "a BoardButton's label, a control beside the notice",
+  "onlineGame.leftTableReclaim": "a BoardButton's label, a control beside the notice",
+  "game.endMatchVoteHint": "the vote's accessibility hint",
+  "game.endMatchVoteTally": "A11yStatus, spoken",
+  "game.endMatchVoteTallyVoted": "A11yStatus, spoken",
+  "game.endMatchWithdrawButton": "the vote's accessibility label",
+};
+/** A `t(...)` whose key the source cannot show, and the owner's export the spec takes it from. */
+const KEY_FROM_OWNER: Record<string, string> = {
+  "components/turnTimerUi.ts": "CHIP_KEYS",
+  "lib/comboName.ts": "COMBO_NAME_KEYS",
+};
+
+/** Every catalogue key `text` passes to `t`/`tn` as a literal or a choice of literals, and each call whose key it cannot read. */
+function translated(file: string, text: string): { keys: Set<string>; opaque: string[] } {
+  const keys = new Set<string>();
+  const opaque: string[] = [];
+  const literals = (e: ts.Expression): string[] | null => {
+    if (ts.isParenthesizedExpression(e)) return literals(e.expression);
+    if (ts.isStringLiteralLike(e)) return [e.text];
+    if (ts.isConditionalExpression(e)) {
+      const arms = [literals(e.whenTrue), literals(e.whenFalse)];
+      return arms.every((a) => a !== null) ? arms.flat() as string[] : null;
+    }
+    return null;
+  };
+  const visit = (n: ts.Node) => {
+    if (ts.isCallExpression(n)) {
+      const callee = ts.isPropertyAccessExpression(n.expression) ? n.expression.name.text : ts.isIdentifier(n.expression) ? n.expression.text : "";
+      if ((callee === "t" || callee === "tn") && n.arguments[0]) {
+        const found = literals(n.arguments[0]);
+        if (found) found.forEach((k) => keys.add(k));
+        else opaque.push(n.getText().slice(0, 60));
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+  return { keys, opaque };
+}
+
+/** What in `sources` a notice translates and the spec does not measure, and every exemption and opaque call that has gone stale. */
+function unmeasured(sources: Record<string, string>): string[] {
+  const found = new Map<string, string>();
+  const stale: string[] = [];
+  for (const [file, text] of Object.entries(sources)) {
+    const { keys, opaque } = translated(file, text);
+    for (const key of keys) found.set(key, file);
+    const owner = KEY_FROM_OWNER[file];
+    if (opaque.length && !owner) stale.push(`${file}: ${opaque[0]} passes a key this scan cannot read`);
+    if (!opaque.length && owner) stale.push(`${file}: no longer passes an unreadable key, so ${owner} is not its to carry`);
+  }
+  const problems = [...found].flatMap(([key, file]) => (spec.has(key) || /a11y/i.test(key) || key in NOT_A_RUN ? [] : [`${file}: t("${key}") is not measured`]));
+  for (const [key, why] of Object.entries(NOT_A_RUN)) {
+    if (spec.has(key)) stale.push(`${key} is measured, so it is not "${why}"`);
+    else if (!found.has(key)) stale.push(`${key} is listed as "${why}" and no notice source translates it`);
+  }
+  return [...problems, ...stale];
+}
+
+const noticeSources = () => Object.fromEntries(NOTICE_SOURCES.map((f) => [f, read(f)]));
+
+test("every key a table notice translates is measured, or named as words it does not draw as a run", () => {
+  const sources = noticeSources();
+  assert.ok(Object.keys(sources).length >= 8, "the scan has stopped finding the notice sources");
+  assert.deepEqual(unmeasured(sources), []);
+  const seen = new Set(Object.entries(sources).flatMap(([f, text]) => [...translated(f, text).keys]));
+  for (const key of ["common.retry", "offlineBanner.text", "gameShared.emptyHand", "game.seatLeft", "onlineGame.leftTableTitle"])
+    assert.ok(seen.has(key), `the scan no longer reads ${key}`);
+});
+
+test("a key a notice starts translating that nobody measured fails the scan", () => {
+  const sources = noticeSources();
+  sources["components/table/notices/tableLines.tsx"] += '\nexport const planted = (t: (k: string) => string) => t("game.newlyAdded");\n';
+  assert.deepEqual(unmeasured(sources), ['components/table/notices/tableLines.tsx: t("game.newlyAdded") is not measured']);
+});
+
 test("a glyph the served font lacks is listed by codepoint, not measured as nothing", () => {
   for (const locale of SUPPORTED_LOCALES) {
     for (const [key, run] of runsOf(TEXT_METRICS, locale)) {
@@ -94,6 +183,18 @@ test("a glyph the served font lacks is listed by codepoint, not measured as noth
     SUPPORTED_LOCALES.some((l) => runsOf(TEXT_METRICS, l).some(([, run]) => run.fallback.length > 0)),
     "no run lists a fallback glyph, yet the combo names carry emoji Rajdhani has none of"
   );
+});
+
+test("every fallback glyph a run lists has an assumed width, and no other does", () => {
+  const listed = new Set(SUPPORTED_LOCALES.flatMap((l) => runsOf(TEXT_METRICS, l).flatMap(([, run]) => run.fallback)));
+  assert.ok(listed.size > 0, "no run lists a fallback glyph: the check has stopped seeing the emoji");
+  assert.deepEqual(Object.keys(TEXT_METRICS.fallbackEm).sort(), [...listed].sort());
+});
+
+test("a letter the served font lacks stops the generator rather than being given a width", async () => {
+  const key = specKeys[0]!;
+  const en = { ...catalogs.en, [key]: "Ж" } as Record<string, string>;
+  await assert.rejects(() => textMetrics({ root: repoRoot, locales: { ...catalogs, en } }), /U\+0416 \(Ж\).*no width to assume for a letter/);
 });
 
 test("the served subsets shape like the full fonts wherever they have the glyph", async () => {
