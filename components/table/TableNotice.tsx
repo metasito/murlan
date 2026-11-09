@@ -98,6 +98,7 @@ export function TableNotice<K extends NoticeKind>({
   kind,
   tone,
   scale,
+  room,
   shown = true,
   still = false,
   children,
@@ -105,6 +106,8 @@ export function TableNotice<K extends NoticeKind>({
   kind: K;
   tone: KindTone<K>;
   scale: number;
+  /** The widest the table lets the plate be; its words give way to the clock and the dot. */
+  room?: number;
   shown?: boolean;
   /** Shown on the frame it mounts and gone on the frame it hides: for a notice another clock times. */
   still?: boolean;
@@ -112,7 +115,7 @@ export function TableNotice<K extends NoticeKind>({
 }) {
   const shape: NoticeShape = NOTICES[kind].shape;
   const paint = (NoticePalette[shape] as Record<string, Paint>)[tone];
-  const box = useMemo(() => noticeBox(kind, scale), [kind, scale]);
+  const box = useMemo(() => noticeBox(kind, scale, room), [kind, scale, room]);
   const glow = noticeGlow(kind, tone, scale);
   const reduceMotion = usePrefersReducedMotion();
   const { enter, hold, exit } = noticeTiming(shape, reduceMotion);

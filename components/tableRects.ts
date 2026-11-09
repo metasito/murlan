@@ -110,11 +110,11 @@ export function tableRects(input: {
   const layout = tableLayout({ width, height, insets });
   const { scale, frame, anchors, chips, hud, rail, handZone, buttons } = layout;
 
-  const comboW = noticeWidth("hudCombo", locale, chips, state.chips.combo);
-  const turnW = noticeWidth("turn", locale, chips, state.chips.turn);
+  const comboW = noticeWidth("hudCombo", locale, chips, state.chips.combo, "snapped", hud.combo.maxW);
+  const turnW = noticeWidth("turn", locale, chips, state.chips.turn, "snapped", hud.turn.maxW);
   const overcount: TableRects["overcount"] = {
-    hudCombo: comboW - noticeWidth("hudCombo", locale, chips, state.chips.combo, "linear"),
-    hudTurn: turnW - noticeWidth("turn", locale, chips, state.chips.turn, "linear"),
+    hudCombo: comboW - noticeWidth("hudCombo", locale, chips, state.chips.combo, "linear", hud.combo.maxW),
+    hudTurn: turnW - noticeWidth("turn", locale, chips, state.chips.turn, "linear", hud.turn.maxW),
   };
   const turnRoom = width - hud.turn.left - hud.turn.right;
   const pill = scorePillBox(0, 0, layout.pill);

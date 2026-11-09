@@ -105,8 +105,8 @@ function runWidth(kind: NoticeKind, locale: NoticeLocale, box: NoticeBox, id: st
 }
 
 /** The plate's outer width: border, padding, then its children a `gap` apart. */
-export function noticeWidth(kind: NoticeKind, locale: NoticeLocale, scale: number, content: NoticeContent, pricing: Pricing = "snapped"): number {
-  const box = noticeBox(kind, scale);
+export function noticeWidth(kind: NoticeKind, locale: NoticeLocale, scale: number, content: NoticeContent, pricing: Pricing = "snapped", room?: number): number {
+  const box = noticeBox(kind, scale, room);
   const widths = content.map((part) =>
     "dot" in part
       ? box.dot

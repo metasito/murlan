@@ -27,16 +27,18 @@ export function OfflinePill({ scale, shown = true }: { scale: number; shown?: bo
 /** The last play, or, while an exchange runs, the exchange's note in its place: the pill lights to carry it. */
 export function HudComboPill({
   scale,
+  room,
   play,
   note = null,
 }: {
   scale: number;
+  room?: number;
   play: { name: string; combo: string } | null;
   note?: PillNote | null;
 }) {
   const { t } = useTranslation();
   return (
-    <TableNotice kind="hudCombo" tone={note ? "lit" : "neutral"} scale={scale}>
+    <TableNotice kind="hudCombo" tone={note ? "lit" : "neutral"} scale={scale} room={room}>
       {note ? (
         <NoticeText testID={note.testID}>{note.text}</NoticeText>
       ) : play === null ? (
@@ -56,6 +58,8 @@ type TurnChipProps = {
   /** False keeps an active clock counting toward its deadline without drawing it: the table has not shown the turn yet. */
   revealed?: boolean;
   scale: number;
+  /** The widest the chip may be drawn: the seat state's words ellipsize, the clock stays. */
+  room?: number;
   lit: boolean;
   /** The seat state as the chip draws it: short, uppercase, glanceable. */
   chipText: string;
@@ -92,6 +96,7 @@ export function WindowTurnChip({
   countdown,
   active,
   scale,
+  room,
   lit,
   chipText,
   spokenSeat,
@@ -151,7 +156,7 @@ export function WindowTurnChip({
   // The plate draws the words the group's name, or the button's, already says.
   const plate = (
     <View {...a11yHidden()}>
-      <TableNotice kind="turn" tone={tone} scale={scale}>
+      <TableNotice kind="turn" tone={tone} scale={scale} room={room}>
         <NoticeDot testID="turn-chip-dot" blink={connection?.state === "reconnecting"} />
         <NoticeText>{connection ? connection.text : chipText}</NoticeText>
         {action && <NoticeKey testID="turn-chip-retry">{action.label}</NoticeKey>}

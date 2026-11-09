@@ -941,7 +941,7 @@ export function GameTable({
         >
           {/* The chip draws the words the group's label already says. */}
           <View {...a11yHidden()}>
-            <HudComboPill scale={chips} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} note={pillNote} />
+            <HudComboPill scale={chips} room={hud.combo.maxW} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} note={pillNote} />
           </View>
         </Animated.View>
 
@@ -960,6 +960,7 @@ export function GameTable({
             <View testID={choiceOpen ? "exchange-prompt" : undefined}>
               <WindowTurnChip
                 scale={chips}
+                room={hud.turn.maxW}
                 lit={turn.chip.lit}
                 chipText={turn.chip.text}
                 spokenSeat={turn.chip.spoken}

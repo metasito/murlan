@@ -12,7 +12,7 @@ import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatLab
 import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
 import { sideNameInset } from "./table/legibilityRing.ts";
-import { pillAnchorFor, type PillAnchor } from "./table/scorePillModel.ts";
+import { pillAnchorFor, scorePillBox, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot } from "./table/noticeModel.ts";
 import { computeTableFrame, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
 
@@ -39,8 +39,11 @@ export interface TableLayout {
   chipsBottom: number;
   /** The scale the HUD's chips are drawn at: the table's, or less where the window is too narrow for the row. */
   chips: number;
-  /** The combo pill's top-left corner, and the band the turn chip is aligned across. */
-  hud: { combo: { left: number; top: number; align: Align }; turn: { left: number; right: number; top: number; align: Align } };
+  /** The combo pill's top-left corner and the widest it may be drawn, and the band the turn chip is aligned across, its width the chip's widest. */
+  hud: {
+    combo: { left: number; top: number; align: Align; maxW: number };
+    turn: { left: number; right: number; top: number; align: Align; maxW: number };
+  };
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
   /** The hand zone at its designed place, and the padding its row and buttons stand on. At rest it sits `handDrop` lower. */
@@ -88,6 +91,8 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const btn = actionBtnSize(scale);
   const btnY = aligned(HAND_ZONE_ALIGN, handZone.y, handZone.h - handZone.padBottom, btn);
   const knob = physicalTouchTarget(scale);
+  const chips = chipScale(scale, width);
+  const pill = pillAnchorFor(frame, width, scale);
   const sideY = midTop + sideSlotHeight(scale) / 2;
   const anchors: Record<FlyDirection | "pile", Point> = {
     pile: { x, y: midTop + midH / 2 },
@@ -106,11 +111,8 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     seatPoint: (dir) => ({ dx: anchors[dir].x - anchors.pile.x, dy: anchors[dir].y - anchors.pile.y }),
     floatTop: tableFloor - frame.bottomPad - floatAboveFoot(scale),
     chipsBottom: frame.tableTop + CHIP_H(scale) + frame.pad,
-    chips: chipScale(scale, width),
-    hud: {
-      combo: { left: frame.tableLeft + frame.pad, top: frame.tableTop, align: "flex-start" },
-      turn: { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop, align: "center" },
-    },
+    chips,
+    hud: chipRow(frame, width, chips, pill),
     rail: {
       width: frame.rail,
       menu: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: frame.tableTop, w: knob, h: knob },
@@ -127,7 +129,28 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
       right: sideNameInset("right", anchors.right.x, ring, width),
     },
     tableBox: { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus },
-    pill: pillAnchorFor(frame, width, scale),
+    pill,
+  };
+}
+
+/** What the combo pill is given of the chip row, `112 * chips + 48` points: its widest ordinary play in each language, with a little over. */
+const COMBO_ROOM = { perScale: 112, flat: 48 } as const;
+
+/**
+ * The chip row: the combo pill takes its room from the left, the score pill its own at rest on the
+ * right, and the turn chip the band between, a gap clear of both. It is centred on the felt's
+ * centre line where that band is wide enough on both sides, and slides right to keep its gap from
+ * the combo pill where it is not.
+ */
+function chipRow(frame: TableFrame, width: number, chips: number, pill: PillAnchor): TableLayout["hud"] {
+  const comboLeft = frame.tableLeft + frame.pad;
+  const comboMaxW = COMBO_ROOM.perScale * chips + COMBO_ROOM.flat;
+  const bandLeft = comboLeft + comboMaxW + frame.pad;
+  const bandRight = scorePillBox(0, 0, pill).x - frame.pad;
+  const left = Math.max(bandLeft, 2 * pill.centreX - bandRight);
+  return {
+    combo: { left: comboLeft, top: frame.tableTop, align: "flex-start", maxW: comboMaxW },
+    turn: { left, right: width - bandRight, top: frame.tableTop, align: "center", maxW: bandRight - left },
   };
 }
 

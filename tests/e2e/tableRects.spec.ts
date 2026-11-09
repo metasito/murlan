@@ -15,6 +15,7 @@ import { createDeck } from "../../lib/game/gameEngine";
 import type { OfflineSave } from "../../lib/offlineSave";
 import { LOCALE_KEY } from "../../lib/storageKeys";
 import { catalogs, type Locale } from "../../shared/i18n";
+import { USERNAME_MAX } from "../../shared/username";
 import type { EdgeInsets } from "../../components/tableFrame";
 import { tableRects, type Rect, type RectName, type TableRects } from "../../components/tableRects";
 import { drawnChips, gameTable, TABLETS, type DrawnTable } from "../helpers/tableScenes";
@@ -191,6 +192,7 @@ for (const [v, vp] of VIEWPORTS.entries())
   });
 
 const SIXTEEN = PHONES.find((p) => p.name === "iPhone 16 Pro")!;
+const SE = PHONES.find((p) => p.name === "iPhone SE")!;
 const ISLAND = INSETS["62/21/62"];
 /** Every seat one name, so the exchange's pills read words `exchangeScenes` says. */
 const EXCHANGE_NAME = "Besnik";
@@ -198,7 +200,7 @@ const EXCHANGE_NAME = "Besnik";
 const STRAIGHT_13 = ["A_hearts", "2_spades", "3_hearts", "4_spades", "5_hearts", "6_spades", "7_hearts", "8_spades", "9_hearts", "10_spades", "J_hearts", "Q_spades", "K_hearts"];
 
 test.describe("the table at its limits is drawn in the solver's rects", () => {
-  for (const vp of [SIXTEEN, TABLETS[1]]) {
+  for (const vp of [SE, SIXTEEN, TABLETS[1]]) {
     const insets = vp === SIXTEEN ? ISLAND : INSETS["0/0"];
     test(`an exchange: ${vp.name}`, async ({ page, baseURL }) => {
       test.setTimeout(120_000);
@@ -216,6 +218,20 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
       const save = offlineSave({ seats: 3, holding: [free.slice(0, 18), free.slice(18, 29), free.slice(29, 40)], pile: { cards: STRAIGHT_13, by: 2 } });
       await open(page, baseURL!, save, "sq", insets);
       await check(page, `${vp.name}, pile 13, hand 18`, vp, insets, "sq", gameTable(save.gameState));
+    });
+  }
+});
+
+test.describe("the chip row bounds the turn chip's name", () => {
+  for (const vp of [SE, SIXTEEN]) {
+    test(`an account's longest name on the move: ${vp.name}`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      const insets = vp === SIXTEEN ? ISLAND : INSETS["0/0"];
+      const name = "W".repeat(USERNAME_MAX);
+      const save = offlineSave({ seats: 3, hand: DEAL_SIZE[3], turn: 1, names: ["Ana", name, name] });
+      await open(page, baseURL!, save, "sq", insets);
+      await check(page, `${vp.name}, longest name on the move`, vp, insets, "sq", gameTable(save.gameState));
     });
   }
 });
