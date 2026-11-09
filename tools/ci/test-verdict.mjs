@@ -125,7 +125,7 @@ export function wiringIn(changed, scripts, wired) {
 
 /** @typedef {{ file: string, title: string, issue: number, expires: string }} Quarantined */
 /** @typedef {{ name: string, runs: { file: string, records: any[] }[] }} Artifact */
-/** @typedef {{ open: boolean, labelled: boolean, created: number }} Ticket */
+/** @typedef {{ open: boolean, labelled: boolean, created: number, body: string }} Ticket */
 /**
  * `scope` is null only on a push to main, whose scope job may skip a tree its pull request passed.
  * `wiring.unreviewed` is every changed file the base's CODEOWNERS gives no reviewer; `baseJudges`
@@ -192,6 +192,7 @@ function quarantine({ ledger, tickets, changed, now }) {
     }
     const t = tickets.get(e.issue);
     if (!t?.open || !t.labelled) problems.push(`${LEDGER} holds ${named(e)} under #${e.issue}, which is not an open issue labelled ${LABEL}`);
+    else if (!t.body.includes(e.file) || !t.body.includes(e.title)) problems.push(`${LEDGER} holds ${named(e)} under #${e.issue}, whose body does not name that test's file and title; an issue names the one test it quarantines`);
     else if (Date.parse(e.expires) > Math.floor(t.created / DAY) * DAY + QUARANTINE_DAYS * DAY)
       problems.push(`${LEDGER} quarantines ${named(e)} until ${e.expires}, more than ${QUARANTINE_DAYS} days after #${e.issue} was opened`);
     if (problems.length === red && list.length <= QUARANTINE_CAP) holds.add(key(e));
@@ -412,8 +413,8 @@ export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}
     /** @type {Map<number, Ticket>} */
     const tickets = new Map();
     for (const n of issues) {
-      const t = JSON.parse(hub(["api", `repos/${repo}/issues/${n}`, "--jq", `{state, created_at, pr: (.pull_request != null), labels: [.labels[].name]}`]));
-      tickets.set(n, { open: t.state === "open" && !t.pr, labelled: t.labels.includes(LABEL), created: Date.parse(t.created_at) });
+      const t = JSON.parse(hub(["api", `repos/${repo}/issues/${n}`, "--jq", `{state, created_at, body: (.body // ""), pr: (.pull_request != null), labels: [.labels[].name]}`]));
+      tickets.set(n, { open: t.state === "open" && !t.pr, labelled: t.labels.includes(LABEL), created: Date.parse(t.created_at), body: String(t.body) });
     }
     const listing = at(["ls-tree", "-r", "-z", "--name-only", "HEAD"]).split("\0").filter(Boolean);
     const own = env.BASE === "HEAD";

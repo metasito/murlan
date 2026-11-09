@@ -20,11 +20,11 @@ test("the scan sees jest.mock and jest.doMock of an audio module by any spelling
   const planted = (name: string) => `tests/native/${name}.test.tsx`;
   assert.deepEqual(
     mocks([
-      [planted("a"), 'jest.mock("expo-audio", () => ({}));'],
+      [planted("a"), 'jest.mock("react-native-audio-api", () => ({}));'],
       [planted("b"), 'jest.doMock("@/lib/device/feedback", () => ({}));'],
       [planted("c"), 'jest.mock("@/lib/device/other", () => ({}));'],
     ]),
-    [`${planted("a")} -> expo-audio`, `${planted("b")} -> lib/device/feedback`]
+    [`${planted("a")} -> react-native-audio-api`, `${planted("b")} -> lib/device/feedback`]
   );
 });
 

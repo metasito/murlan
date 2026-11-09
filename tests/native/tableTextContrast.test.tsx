@@ -12,7 +12,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, jest, test } from "@jest/globals";
 import { minimatch } from "minimatch";
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { Colors, FeltGradients, Gradient } from "../../lib/tokens.ts";
 import { contrastRatio } from "../../lib/contrast.ts";
 import { NOTICE_FACES } from "../../components/table/noticeModel.ts";
@@ -558,6 +558,11 @@ describe("a module is loaded as the variant its platform takes", () => {
       "tests/native/variants/mixed.android.ts",
       "tests/native/variants/mixed.web.ts",
     ]);
+  });
+
+  (Platform.OS === "ios" ? test : test.skip)("without the variants the plain module is what every platform gets", () => {
+    const plain = files.filter((f) => /\/(tone|sheet)\.ts$/.test(f) || f.endsWith("mixed.tsx"));
+    assert.deepEqual(OSES.map((os) => inkOn(os, variantsOf(plain))), ["#d4af37", "#d4af37", "#d4af37"]);
   });
 
   test("the variants of the app sources are found, whatever their extensions", () => {

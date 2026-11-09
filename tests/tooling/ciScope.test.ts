@@ -4,8 +4,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { STEPS } from "../../tools/loop/check-steps.mjs";
+import ts from "typescript";
 import { parse } from "yaml";
 import { JOBS, outputs, scopeOf } from "../../tools/ci/scope.mjs";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
+import { localPath } from "../helpers/specifiers.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 /**
@@ -47,15 +50,9 @@ function reachedFromLoop(): string[] {
     const file = queue.pop()!;
     if (seen.has(file)) continue;
     seen.add(file);
-    const specifiers = read(file).matchAll(
-      /(?:from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)["'](\.{1,2}\/[^"']+)["']/g,
-    );
-    for (const [, spec] of specifiers) {
-      const base = path.posix.normalize(path.posix.join(path.posix.dirname(file), spec));
-      const target = [base, `${base}.ts`, `${base}.mjs`, base.replace(/\.js$/, ".ts")].find((c) =>
-        tracked.includes(c),
-      );
-      assert.ok(target, `${file} imports ${spec}, which resolves to no tracked file`);
+    for (const edge of moduleEdges(file, read(file), { types: true }).filter((e) => e.local)) {
+      const target = ["", ".ts", ".tsx", ".mjs", ".js", ".cjs", "/index.ts", "/index.mjs"].map((x) => edge.to + x).find((c) => tracked.includes(c));
+      assert.ok(target, `${file} imports ${edge.spec}, which resolves to no tracked file`);
       queue.push(target);
     }
   }
@@ -71,10 +68,10 @@ function testsListingTheRepo(): string[] {
   return tracked
     .filter((f) => /\.(test|spec)\.m?[jt]sx?$/.test(f))
     .filter((file) => {
-      const specs = [...read(file).matchAll(/(?:from\s+|import\s*\(\s*)["'](\.{1,2}\/[^"']+)["']/g)];
-      const imported = specs
-        .map(([, spec]) => path.posix.normalize(path.posix.join(path.posix.dirname(file), spec)))
-        .filter((f) => tracked.includes(f));
+      const imported = moduleEdges(file, read(file), { types: true })
+        .filter((e) => e.local && e.via === "import")
+        .map((e) => localPath(file, e.spec))
+        .filter((f): f is string => f !== null && tracked.includes(f));
       return [file, ...imported].some((f) => ROOT_LISTING.test(read(f)));
     });
 }
@@ -152,8 +149,9 @@ describe("scopeOf, change by change", () => {
     ["prose alone skips the app suites and still runs the scans", ["docs/research/a-note.md"], { app: false, harness: false, scans: true }],
     ["a nested README is prose", ["tests/e2e/57-polish-audit/README.md"], { app: false, harness: false, scans: true }],
     ["the root README is asserted on, by licence.test.ts", ["README.md"], { app: true, harness: false, scans: true }],
-    ["docs TypeScript is in tsconfig.json", ["docs/research/a-note.ts"], { app: true, harness: false, scans: true }],
-    ["docs TSX too", ["docs/research/a-note.tsx"], { app: true, harness: false, scans: true }],
+    ["docs TypeScript is in tsconfig.json", ["docs/specs/a-note.ts"], { app: true, harness: false, scans: true }],
+    ["docs TSX too", ["docs/specs/a-note.tsx"], { app: true, harness: false, scans: true }],
+    ["research TypeScript is excluded from tsconfig.json", ["docs/research/a-note.ts"], { app: false, harness: false, scans: true }],
     ["a doc the suite asserts on is not prose", ["docs/GAME-RULES.md"], { app: true, harness: false, scans: true }],
     ["the agent docs run both suites", ["docs/agents/RULES.md"], { app: true, harness: true, scans: true }],
     ["the root CLAUDE.md runs both suites", ["CLAUDE.md"], { app: true, harness: true, scans: true }],
@@ -209,4 +207,10 @@ describe("every job the scope gates reads its own key of JOBS", () => {
       assert.ok(conditionsOffJobs(planted).some((p) => want.test(p)), conditionsOffJobs(planted).join("\n"));
     });
   }
+});
+
+test("docs/research is outside the typecheck and the lint, as the scope decision assumes", () => {
+  const tsconfig = ts.readConfigFile(path.join(repoRoot, "tsconfig.json"), ts.sys.readFile).config;
+  assert.ok(tsconfig.exclude.includes("docs" + "/research"));
+  assert.match(readFileSync(path.join(repoRoot, "eslint.config.js"), "utf8"), /"docs\/research\/\*\*"/);
 });

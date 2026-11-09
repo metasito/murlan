@@ -8,11 +8,11 @@
 
 /**
  * Prose the suite asserts *on* is not prose to this decision: `rulesAreSingleSourced.test.ts`
- * reads RULES.md, CLAUDE.md, the command files and docs/agents/, and `docs/**` TypeScript is in
- * tsconfig.json. Derived by `tests/tooling/ciScope.test.ts`, which reds on a path it misses.
+ * reads RULES.md, CLAUDE.md, the command files and docs/agents/, and `docs/**` TypeScript outside
+ * `docs/research/` is in tsconfig.json. Derived by `tests/tooling/ciScope.test.ts`, which reds on a path it misses.
  */
 export const ASSERTED_PROSE =
-  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/adr\/README\.md$|docs\/.*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$|CONTEXT\.md$|README\.md$)/;
+  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/adr\/README\.md$|docs\/(?!research\/).*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$|CONTEXT\.md$|README\.md$)/;
 
 export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
 
@@ -28,7 +28,7 @@ export const QUEUE_LOOP_TESTS = /^tools\/loop\/tests\//;
  * names `check-steps.mjs` pins each delegated step to. Derived by `tests/tooling/ciScope.test.ts`.
  */
 export const HARNESS =
-  /^(tools\/loop\/|scripts\/lib\/(entry|proc|blockingStdout)\.mjs$|scripts\/nodeTest\.mjs$|tools\/ci\/(preflightMemory|native-budget|results-writer|results-node-reporter|e2e-budget|e2e-shard|e2ePortRange|e2eOwner|budget-gate)\.mjs$|tests\/helpers\/(importShellGuard\.ts|processWorlds\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs|exitGuard\.mjs|exitWatch\.mjs|timeoutHeadroom\.mjs|timeoutHeadroomReporter\.mjs)$|docs\/agents\/|\.claude\/|CLAUDE\.md$|package\.json$|jest\.config\.js$|\.github\/workflows\/ci\.yml$)/;
+  /^(tools\/loop\/|scripts\/lib\/(entry|proc|blockingStdout|pathMappings)\.mjs$|scripts\/nodeTest\.mjs$|tools\/ci\/(preflightMemory|native-budget|results-writer|results-node-reporter|e2e-budget|e2e-shard|e2ePortRange|e2eOwner|budget-gate)\.mjs$|tests\/helpers\/(importShellGuard\.ts|processWorlds\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs|exitGuard\.mjs|exitWatch\.mjs|timeoutHeadroom\.mjs|timeoutHeadroomReporter\.mjs)$|docs\/agents\/|\.claude\/|CLAUDE\.md$|package\.json$|jest\.config\.js$|\.github\/workflows\/ci\.yml$)/;
 
 /**
  * `scans` holds `docReferences.test.ts` and the other scans that list the repository from its
