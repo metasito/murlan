@@ -11,7 +11,7 @@ const PAGE = `<!doctype html><style>
 
 const start = async (page: Page, baseURL: string, cls: string) => {
   await installVirtualClock(page, 1);
-  await page.goto(baseURL);
+  await page.goto(`${baseURL}/metadata.json`);
   await page.setContent(PAGE);
   await takeOver(page);
   await page.evaluate((cls) => document.getElementById("box")!.classList.add(cls), cls);
