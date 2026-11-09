@@ -11,7 +11,7 @@ import { closePresence } from "../store/presence.ts";
 import { cancelRevocationRetries } from "../socket/socketRegistry.ts";
 import { closeOwnership, forgetOwnerRecords } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
-import { settleDisconnects } from "../socket/socketPresence.ts";
+import { settleInFlight } from "../shared/inFlight.ts";
 import { flushTelemetry } from "../shared/telemetryBatch.ts";
 import { within } from "../shared/within.ts";
 import { stopHealth } from "./health.ts";
@@ -32,8 +32,8 @@ export const PLATFORM_GRACE_MS = runtime.sigtermGraceMs;
  */
 export const DRAIN_TIMEOUT_MS = QUERY_TIMEOUT_MS + 800;
 
-/** How long a departing player's seat has to reach the instance that owns their table. */
-const DISCONNECT_SETTLE_MS = 1_500;
+/** How long a departing player's seat has to reach the instance that owns their table, and the presence writes started with it to land. */
+const SETTLE_IN_FLIGHT_MS = 1_500;
 
 /**
  * The most each step of `shutdown` may take, in the order they run. Every step
@@ -44,10 +44,11 @@ export const SHUTDOWN_BUDGET = {
   handOff: 2_000,
   drainNotice: 250,
   ioClose: 500,
-  settleDisconnects: DISCONNECT_SETTLE_MS,
+  settleInFlight: SETTLE_IN_FLIGHT_MS,
   stopTables: 250,
   flushTelemetry: 200,
   ownerRecords: 250,
+  tableOwners: 250,
   drain: DRAIN_TIMEOUT_MS,
   poolEnd: 200,
   closeOwnership: 250,
@@ -131,13 +132,13 @@ export async function shutdown(
         }
       })()
     );
-    await settleDisconnects(SHUTDOWN_BUDGET.settleDisconnects);
+    await settleInFlight(SHUTDOWN_BUDGET.settleInFlight);
     await within(SHUTDOWN_BUDGET.stopTables, tables.stopTables());
     await within(SHUTDOWN_BUDGET.flushTelemetry, flushTelemetry());
     cancelRevocationRetries();
     stopHealth();
     await within(SHUTDOWN_BUDGET.ownerRecords, Promise.all([stopInbox(), forgetOwnerRecords()]));
-    closeTableOwners();
+    await closeTableOwners(SHUTDOWN_BUDGET.tableOwners);
     closePresence();
     closeRedis();
     // Disconnecting the sockets above starts writes — updateLastSeen, the

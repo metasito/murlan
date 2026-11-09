@@ -32,7 +32,7 @@ describe("a table's owner record", { skip: hasDatabase() ? false : skipMessage()
   });
 
   after(async () => {
-    closeTableOwners();
+    await closeTableOwners(1_000);
     closeRedis();
     await redis?.quit();
     await dropKeyspace(scoped);

@@ -10,6 +10,7 @@ import { logger } from "../shared/logger.ts";
 import { notifyUser } from "./push.ts";
 import { announceRoom, emitToUser, isUserOnline } from "./socketRegistry.ts";
 import { bumpSocial } from "../store/presence.ts";
+import { track } from "../shared/inFlight.ts";
 
 export interface FriendshipDeps {
   friendStore: Pick<
@@ -207,12 +208,12 @@ export function createFriendships(deps: FriendshipDeps) {
       } else {
         // Not awaited: the invite must not be held up by a push, and the row
         // above already means a failed push costs nothing.
-        void deps.notifyUser(friendUserId, {
+        void track(deps.notifyUser(friendUserId, {
           title: "Murlan",
           code: "FRIEND_INVITE",
           params: { username },
           data: { roomCode },
-        });
+        }));
       }
       // Not "delivered or lost" — the invite is written down either way, so
       // what the host learns is whether their friend is looking right now.

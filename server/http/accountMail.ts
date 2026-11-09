@@ -2,6 +2,7 @@ import { DEFAULT_LOCALE, isLocale, translate, type Locale } from "../../shared/i
 import { EMAIL_VERIFY_CODE_TTL_MS, PASSWORD_RESET_TOKEN_TTL_MS } from "./authTokens.ts";
 import { logger } from "../shared/logger.ts";
 import { sendMail } from "./mail.ts";
+import { track } from "../shared/inFlight.ts";
 
 /**
  * Names the account and says what to do if the reader didn't ask for this
@@ -27,8 +28,10 @@ export function mailLocale(value: unknown): Locale {
 
 /** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
 export function sendVerificationEmail(to: string, username: string, code: string, userId: string, locale: Locale): void {
-  sendMail(to, translate(locale, "mail.verifySubject"), verificationEmailBody(username, code, locale), userId)
-    .catch((err) => logger.error({ err, userId }, "sendVerificationEmail failed"));
+  void track(
+    sendMail(to, translate(locale, "mail.verifySubject"), verificationEmailBody(username, code, locale), userId)
+      .catch((err) => logger.error({ err, userId }, "sendVerificationEmail failed"))
+  );
 }
 
 /**
@@ -37,5 +40,5 @@ export function sendVerificationEmail(to: string, username: string, code: string
  * work the response waits on is the token mint, not the outbound HTTPS call.
  */
 export function sendPasswordResetEmail(to: string, token: string, userId: string, locale: Locale): void {
-  sendMail(to, translate(locale, "mail.resetSubject"), passwordResetEmailBody(token, locale), userId).catch((err) => logger.error({ err, userId }, "sendPasswordResetEmail failed"));
+  void track(sendMail(to, translate(locale, "mail.resetSubject"), passwordResetEmailBody(token, locale), userId).catch((err) => logger.error({ err, userId }, "sendPasswordResetEmail failed")));
 }

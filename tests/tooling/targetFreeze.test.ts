@@ -1,9 +1,11 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { builtinModules, createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import ts from "typescript";
 import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
@@ -15,6 +17,79 @@ import { trackedFiles } from "../helpers/trackedFiles.ts";
 const root = path.resolve(import.meta.dirname, "..", "..");
 const WORKFLOW = ".github/workflows/target-freeze.yml";
 const tracked = trackedFiles(root);
+const APP = /^(lib|components|app|context|locales|shared)\//;
+const SOURCE = /\.(ts|tsx|mjs|js)$/;
+const importsOf = (file: string, text: string) => ts.preProcessFile(text, true, true).importedFiles.map((i) => i.fileName);
+const aliases = Object.entries(ts.readConfigFile(path.join(root, "tsconfig.json"), ts.sys.readFile).config.compilerOptions.paths as Record<string, string[]>).map(
+  ([key, [target]]) => [key.replace(/\*$/, ""), target.replace(/^\.\//, "").replace(/\*$/, "")] as const,
+);
+const isPackage = (spec: string) => {
+  const name = spec.startsWith("node:") ? spec : spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/");
+  if (builtinModules.includes(name.replace(/^node:/, "")) || name.startsWith("node:")) return true;
+  const here = createRequire(path.join(root, "package.json"));
+  return [name, `${name}/package.json`].some((candidate) => {
+    try {
+      here.resolve(candidate);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+};
+/** The repository path a specifier names, before any extension is tried: undefined for a package. */
+const specPath = (from: string, spec: string) => {
+  if (spec.startsWith(".")) return path.posix.join(path.posix.dirname(from), spec);
+  const alias = aliases.find(([prefix]) => spec.startsWith(prefix));
+  if (alias) return alias[1] + spec.slice(alias[0].length);
+  return undefined;
+};
+/** A tracked file, or null when the specifier is a package; undefined when it names nothing. */
+const resolveImport = (from: string, spec: string, all: Set<string>) => {
+  const joined = specPath(from, spec);
+  if (joined === undefined) return isPackage(spec) ? null : undefined;
+  const base = joined.replace(/\.(m?js|tsx?)$/, "");
+  return [joined, ...[".ts", ".tsx", ".mjs", ".js", "/index.ts", "/index.tsx"].map((e) => base + e)].find((c) => all.has(c));
+};
+/** Test-side files reached from the roots through any import, the app files they stop at, and imports that name no tracked file. */
+const reach = (roots: string[], all: string[], read: (f: string) => string) => {
+  const known = new Set(all);
+  const helpers = new Set<string>();
+  const app = new Set<string>();
+  const unresolved: string[] = [];
+  const queue = [...roots];
+  while (queue.length) {
+    const from = queue.pop()!;
+    for (const spec of importsOf(from, read(from))) {
+      const file = resolveImport(from, spec, known);
+      if (file === null) continue;
+      if (!file) {
+        unresolved.push(`${from} -> ${spec}`);
+        continue;
+      }
+      if (roots.includes(file) || helpers.has(file) || app.has(file)) continue;
+      if (APP.test(file)) app.add(file);
+      else {
+        helpers.add(file);
+        if (SOURCE.test(file)) queue.push(file);
+      }
+    }
+  }
+  return { helpers: [...helpers], app: [...app], unresolved };
+};
+const PLUMBING: Record<string, string> = {
+  "tests/e2e/fixtures.ts": "turns a browser error into a failure; it measures nothing and can only add failures",
+  "tests/e2e/helpers/selectors.ts": "locators for the table and the hand; a locator that misses fails the spec rather than shifting a reading",
+  "tests/e2e/helpers/offlineSeed.ts": "puts the app in a saved state before a spec measures; the reading is taken after it",
+  "tests/e2e/helpers/press.ts": "a press that takes time; it drives the app and reads nothing",
+  "tests/e2e/helpers/navigation.ts": "menu clicks that cross the chrome before a table exists",
+  "tests/e2e/helpers/online.ts": "registers and joins an online room; it reads nothing",
+  "tests/e2e/helpers/bot.ts": "plays a game through the UI; it asserts progress, not geometry or cost",
+  "tests/e2e/helpers/labels.ts": "the Italian copy a spec looks a control up by; a changed label fails the lookup",
+  "tests/support/game.ts": "builds game states for the engine; no time, size or count is read through it",
+};
+const SPEC_ONLY_APP: Record<string, string> = {
+  "lib/game/simulate.ts": "the headless match player behind the state builders in tests/support/game.ts; no spec reads a measurement from it",
+};
 const inScratch = (p: string) => `tests/e2e/${p}`;
 const workflowText = fs.readFileSync(path.join(root, WORKFLOW), "utf8");
 const workflow = parse(workflowText);
@@ -74,12 +149,83 @@ describe("the list looks at the repository as it is", () => {
     assert.equal(freezeVerdict([target, "components/x.tsx"]).ok, false);
   });
 
+  test("everything a target reaches through imports is a target or plumbing with a reason, and every plumbing entry is reached", () => {
+    const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
+    const roots = tracked.filter((f) => isTarget(f) && SOURCE.test(f) && f.startsWith("tests/") && !f.startsWith("tests/tooling/"));
+    const { helpers, unresolved } = reach(roots, tracked, read);
+    assert.deepEqual(unresolved, [], "unresolved/untracked import");
+    assert.ok(helpers.length >= 8, `only ${helpers.length} helpers found`);
+    const reached = helpers.filter((f) => !isTarget(f));
+    assert.deepEqual(reached.filter((f) => !(f in PLUMBING)), []);
+    assert.deepEqual(Object.keys(PLUMBING).filter((f) => !reached.includes(f)), []);
+    for (const [f, why] of Object.entries(PLUMBING)) assert.ok(why.length > 20, f);
+  });
+
+  test("app code imports nothing under tests/, so the walk that stops at app code loses no helper", () => {
+    const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
+    const into = tracked
+      .filter((f) => APP.test(f) && SOURCE.test(f))
+      .flatMap((f) => importsOf(f, read(f)).map((i) => [f, specPath(f, i)] as const))
+      .filter(([, target]) => target?.startsWith("tests/"))
+      .map(([f, target]) => `${f} -> ${target}`);
+    assert.deepEqual(into, []);
+  });
+
+  test("an app file a target reaches is also imported by the app, so a threshold kept only for the specs is not hidden there", () => {
+    const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
+    const roots = tracked.filter((f) => isTarget(f) && SOURCE.test(f) && f.startsWith("tests/") && !f.startsWith("tests/tooling/"));
+    const known = new Set(tracked);
+    const appFiles = tracked.filter((f) => APP.test(f) && SOURCE.test(f) && !/\.(test|spec)\./.test(f));
+    const importedByApp = new Set(appFiles.flatMap((f) => importsOf(f, read(f)).map((i) => resolveImport(f, i, known))));
+    const specOnly = reach(roots, tracked, read).app.filter((f) => !importedByApp.has(f));
+    assert.deepEqual(specOnly.filter((f) => !(f in SPEC_ONLY_APP)), []);
+    assert.deepEqual(Object.keys(SPEC_ONLY_APP).filter((f) => !specOnly.includes(f)), []);
+  });
+
+  test("a measuring helper reached only through a plumbing module or a target, by any kind of import, is found", () => {
+    const files: Record<string, string> = {
+      "scratch/a.nightly.spec.ts": "import './plain'; export { COUNT } from './zzMeasure'; const x = import('./lazy.js');",
+      "scratch/plain.ts": "import { y } from './counter';",
+      "scratch/counter.ts": "export const y = 1;",
+      "scratch/zzMeasure.ts": "export const COUNT = 1;",
+      "scratch/lazy.ts": "export const z = 1;",
+    };
+    const { helpers } = reach(["scratch/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
+    assert.deepEqual(helpers.sort(), ["scratch/counter.ts", "scratch/lazy.ts", "scratch/plain.ts", "scratch/zzMeasure.ts"]);
+  });
+
+  test("an import that names no tracked file is reported, and a JSON import is a reached file", () => {
+    const files: Record<string, string> = {
+      "scratch/a.nightly.spec.ts": "import floor from './floor.json' with { type: 'json' }; import './zzUntracked';",
+      "scratch/floor.json": "{}",
+    };
+    const found = reach(["scratch/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
+    assert.deepEqual(found.helpers, ["scratch/floor.json"]);
+    assert.deepEqual(found.unresolved, ["scratch/a.nightly.spec.ts -> ./zzUntracked"]);
+  });
+
+  test("an alias from tsconfig is followed, and a specifier that is no package, relative path or alias is unresolved", () => {
+    assert.ok(aliases.some(([prefix, dir]) => prefix === "@shared/" && dir === "shared/"));
+    const files: Record<string, string> = {
+      "scratch/a.nightly.spec.ts": "import { f } from '@shared/zzFloor'; import { g } from '@zzunknown/x'; import fs from 'node:fs'; import { test } from '@playwright/test';",
+      "shared/zzFloor.ts": "export const f = 1;",
+    };
+    const found = reach(["scratch/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
+    assert.deepEqual(found.app, ["shared/zzFloor.ts"]);
+    assert.deepEqual(found.unresolved, ["scratch/a.nightly.spec.ts -> @zzunknown/x"]);
+  });
+
+  test("the measuring helpers are targets", () => {
+    for (const f of ["renderCounters", "virtualClock", "tableTrace", "phones", "settle", "safeArea"]) assert.ok(isTarget(`tests/e2e/helpers/${f}.ts`), f);
+    assert.equal(freezeVerdict(["tests/e2e/helpers/renderCounters.ts", "components/table/lampRig.ts"]).ok, false);
+  });
+
   test(".github/CODEOWNERS is the list's own rendering", () => {
     assert.equal(fs.readFileSync(path.join(root, ".github", "CODEOWNERS"), "utf8"), codeowners());
   });
 });
 
-describe("the workflow runs base's script on the head's objects, and nothing of the head's", () => {
+describe("the workflow runs base's script on the head's objects, and of the head's only its list", () => {
   test("it runs on every pull request into main, again when one is retargeted, and on nothing else", () => {
     assert.deepEqual(workflow.on, { pull_request_target: { branches: ["main"], types: ["opened", "synchronize", "reopened", "edited"] } });
   });
@@ -230,6 +376,23 @@ describe("planted diffs", () => {
       fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
       edit(SELF, '  { pattern: "tests/e2e/tiers.mjs", what: "which specs are nightly" },\n', "");
     });
+    at()(["switch", "-q", "--orphan", "unrelated"]);
+    at()(["checkout", "main", "--", "."]);
+    commit("unrelated history");
+    branch("emptied-kept", () => {
+      fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
+    });
+    branch("emptied-quoted", () => {
+      fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
+      edit(SELF, '{ pattern: "tests/e2e/tiers.mjs"', "{ pattern: `tests/e2e/${'tiers'}.mjs`");
+    });
+    branch("retired-commented", () => {
+      fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
+      edit(SELF, '  { pattern: "tests/e2e/tiers.mjs", what: "which specs are nightly" },\n', '  // { pattern: "tests/e2e/tiers.mjs" },\n');
+    });
+    branch("head-syntax", () => edit(SELF, "export const OWNER", "}{ export const OWNER"));
+    branch("head-bare", () => edit(SELF, 'import fs from "node:fs";', 'import fs from "node:fs";\nimport "zz-not-installed";'));
+    branch("no-self", () => fs.rmSync(path.join(dir, SELF)));
     branch("spoof", () => {
       write(".github/workflows/ci.yml", "jobs:\n  fake:\n    name: Target freeze\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n");
       write("components/GameTable.tsx", "moved\n");
@@ -315,8 +478,14 @@ describe("planted diffs", () => {
     for (const [base, head] of [["no-such-ref", "mixed"], ["main", "no-such-ref"]]) {
       const bad = judge(head, base);
       assert.equal(bad.code, 1);
-      assert.match(bad.out, /^::error::could not read \S+ or \S+, so nothing was judged: /);
+      assert.match(bad.out, /^::error::could not read \S+ or \S+, or they share no merge base, so nothing was judged: /);
     }
+  });
+
+  test("a head sharing no history with the base is red, not green", () => {
+    const bad = judge("unrelated");
+    assert.equal(bad.code, 1);
+    assert.match(bad.out, /or they share no merge base, so nothing was judged: Command failed: git diff /);
   });
 
   test("a pattern that names no file in the base turns it red", () => {
@@ -329,10 +498,46 @@ describe("planted diffs", () => {
     assert.deepEqual(judge("retired"), { code: 0, out: "targets only (2 files)" });
   });
 
+  test("a head that deletes a target's last file but keeps its pattern is red, not left to every later pull request", () => {
+    const { code, out } = judge("emptied-kept");
+    assert.equal(code, 1);
+    assert.match(out, /^::error::these patterns name no file in emptied-kept but its list still holds them, so every later pull request would be refused: tests\/e2e\/tiers\.mjs$/);
+  });
+
+  test("head's list is the one its module evaluates to: another quoting is read, a commented pattern is not", () => {
+    const quoted = judge("emptied-quoted");
+    assert.equal(quoted.code, 1);
+    assert.match(quoted.out, /but its list still holds them, so every later pull request would be refused: tests\/e2e\/tiers\.mjs$/);
+    assert.equal(judge("retired-commented").code, 0);
+  });
+
+  test("a head whose list cannot be evaluated is red and says why, not that it could not be read", () => {
+    const cause = (head: string, node?: string) => {
+      const lines: string[] = [];
+      const code = run("main", head, at(), (l) => lines.push(l), node);
+      return { code, out: lines.join("\n") };
+    };
+    for (const [head, node, reason] of [
+      ["head-syntax", undefined, /SyntaxError|did not evaluate/],
+      ["head-bare", undefined, /zz-not-installed|ERR_MODULE_NOT_FOUND/],
+      ["code-only", "24.9.0", /Node 24\.9\.0 does not deny the network/],
+    ] as const) {
+      const { code, out } = cause(head, node);
+      assert.equal(code, 1, head);
+      assert.match(out, new RegExp(`^::error::could not evaluate ${head}'s target list: `));
+      assert.match(out, reason);
+      assert.doesNotMatch(out, /merge base|could not read/);
+    }
+  });
+
+  test("a head that deletes the script is refused with its own message", () => {
+    assert.deepEqual(judge("no-self"), { code: 1, out: `::error::no-self has no ${SELF}, so no list would judge the pull requests after it.` });
+  });
+
   test("a head whose other workflow names a job Target freeze is refused", () => {
     assert.deepEqual(judge("spoof"), {
       code: 1,
-      out: "::error::.github/workflows/ci.yml names a job or step Target freeze, whose check would stand in for this one (RULES.md 52).",
+      out: "::error::.github/workflows/ci.yml names a job or step Target freeze: a job so named reports a check that would stand in for this one, and a step so named is refused because the scan cannot tell it from a job (RULES.md 52).",
     });
   });
 
@@ -349,6 +554,7 @@ describe("planted diffs", () => {
     for (const sha of ["1".repeat(40), ""]) {
       const bad = asPullRequest("code-only", sha);
       assert.notEqual(bad.code, 0, bad.out);
+      assert.match(bad.out, sha ? /fatal: .*not our ref 1{40}/ : /^::error::the fetched head is not \.$/m);
       assert.doesNotMatch(bad.out, /^(code only|targets only|no file changed)/m);
     }
   });

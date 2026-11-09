@@ -8,6 +8,7 @@ import { clearRoomTimers } from "./gameTimers.ts";
 import { clearForDeal } from "./seatLedger.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
+import { track } from "../shared/inFlight.ts";
 
 /**
  * What a fresh round resets, and how it reaches the table. Both the first deal
@@ -35,15 +36,15 @@ export async function dealRound(rt: TableRuntime, game: OnlineGameState, nextSta
 
   // Not awaited: a join already requires `waiting`, so nothing here depends on
   // the row, and a stalled pool must not hold the deal's broadcast.
-  void rt.writers
+  void track(rt.writers
     .updateRoomStatus(game.roomId, "in_progress")
     .catch((err: unknown) =>
       logger.warn({ err, roomId: game.roomId }, "Failed to set rooms.status = in_progress at the deal")
-    );
+    ));
 
   clearRoomTimers(game.roomId);
   armTurn(rt, game.roomId, false);
-  void publishState(rt, game);
+  void track(publishState(rt, game));
   rt.out.room(game.roomId).emit("game:started");
   emitMatchState(rt.out.room(game.roomId), game);
 }

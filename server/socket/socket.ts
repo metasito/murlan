@@ -13,6 +13,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { Session, SessionData } from "express-session";
 import { userStore } from "../store/userStore.ts";
 import { logger } from "../shared/logger.ts";
+import { track } from "../shared/inFlight.ts";
 import { trackEvent } from "../shared/events.ts";
 import { redeemSocketTicket, verifySocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "../http/cors.ts";
@@ -223,7 +224,7 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
     socket.on("disconnect", () => forgetPresence(userId, socket.id));
     recordPresence(userId, socket.id);
 
-    await announcePresence(ctx);
+    await track(announcePresence(ctx));
   });
 
   startSweeper(rt, resumeOrphanedTables);

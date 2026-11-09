@@ -13,6 +13,7 @@ import { evictUser } from "../../socket/socketRegistry.ts";
 import { friendships } from "../../socket/friendships.ts";
 import { trackEvent } from "../../shared/events.ts";
 import { payload } from "../../shared/payload.ts";
+import { track } from "../../shared/inFlight.ts";
 
 /**
  * A rename with no ceiling is how one account cycles through names to impersonate others between
@@ -83,7 +84,7 @@ export function mountAccount(app: Express): void {
     try {
       const user = await userStore.renameUser(userId, username);
       logger.info({ userId, username }, "User renamed");
-      void friendships.shownTo(userId).then(friendships.changedFor);
+      void track(friendships.shownTo(userId).then(friendships.changedFor));
       res.json(sessionUser(user));
     } catch (err) {
       // The check above and this write are not one transaction, so the name can be claimed in

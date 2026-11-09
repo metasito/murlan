@@ -7,6 +7,7 @@ import type { TableRuntime } from "../game/tableRuntime.ts";
 import { socketRoomMap, spectatorRoomMap, userRoom } from "../game/gameRoom.ts";
 import { logger } from "../shared/logger.ts";
 import { seatPresence, unseatPresence } from "../store/presence.ts";
+import { track } from "../shared/inFlight.ts";
 
 export async function stopSpectating(rt: TableRuntime, socket: Socket, userId: string): Promise<void> {
   const roomId = spectatorRoomMap.get(socket.id);
@@ -84,8 +85,10 @@ export async function stopSpectatingEverywhere(rt: TableRuntime, userId: string)
 export function registerStopSpectating(rt: TableRuntime) {
   rt.peers.on(STOP_SPECTATING, ({ userId }) => {
     if (typeof userId !== "string") return;
-    void stopLocalSpectating(rt, userId).catch((err: unknown) =>
-      logger.warn({ err, userId }, "Could not stop an account watching")
+    void track(
+      stopLocalSpectating(rt, userId).catch((err: unknown) =>
+        logger.warn({ err, userId }, "Could not stop an account watching")
+      )
     );
   });
 }
