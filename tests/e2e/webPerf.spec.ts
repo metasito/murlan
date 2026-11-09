@@ -36,6 +36,9 @@ interface RenderReport {
   particlesFps: number;
   handShadeFps: number;
   cardStylesPerS: number;
+  /** Animation-frame callbacks a second by caller, and the Reanimated frame callbacks active in the last frame. */
+  loopsPerS: Record<string, number>;
+  frameCallbacks: number;
   /** Which felt the trace saw draw through the window. */
   felts: TraceFrame["felt"][];
 }
@@ -114,6 +117,7 @@ async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport
       rec.times.push(now);
       if (rec.running) requestAnimationFrame(tick);
     };
+    (window as unknown as { murlanRenderCounts?: { exempt(callback: object): void } }).murlanRenderCounts?.exempt(tick);
     requestAnimationFrame(tick);
   });
 
@@ -173,6 +177,8 @@ async function renderReport(page: Page, perS: (n: number | undefined) => number)
     particlesFps: perS(counts.drewIn[COUNTED.particles]),
     handShadeFps: perS(counts.drewIn[COUNTED.handShade]),
     cardStylesPerS: perS(counts.styles.cards),
+    loopsPerS: Object.fromEntries(Object.entries(counts.loops).map(([caller, n]) => [caller, perS(n)])),
+    frameCallbacks: counts.frameCallbacks,
     felts,
   };
 }
@@ -378,18 +384,103 @@ test.describe("web frame performance", () => {
       playerCount: 2,
       gameMode: "free_for_all",
       viewport: { width: 844, height: 390 },
-      deviceScaleFactor: 3,
+      deviceScaleFactor: SKIA ? 1 : 3,
       motion: true,
+      prepare: async (seat) => {
+        if (!SKIA) return;
+        await countRenders(seat);
+        await skiaOnSoftware(seat);
+      },
     });
     try {
       await table.page.waitForTimeout(2_000);
+      await skiaFelt(table.page);
       const onlineIdle = await record(table.page, 2_000);
       console.log(`[web-perf] online-idle ${JSON.stringify(onlineIdle)}`);
+      expectSkia(onlineIdle, "the settled online table");
       expect(onlineIdle.frames, "no frames were observed on the online table").toBeGreaterThan(20);
       expect(onlineIdle.domNodes, "the table never rendered").toBeGreaterThan(100);
     } finally {
       await table.close();
     }
+  });
+
+  // Rule 49: a counter that cannot see a loop reports a table at rest whatever it runs. The loop here is
+  // planted, requested from this spec's own function and as a real Reanimated frame callback, and
+  // released again: the counts must show it and then lose it.
+  test("the render counter sees a loop it is planted and loses it when it is released", async ({ page, baseURL }) => {
+    test.setTimeout(3 * 60_000);
+    if (!SKIA) await countRenders(page);
+    await page.setViewportSize(PHONE_VIEWPORT);
+    await openApp(page, baseURL!);
+    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
+    await waitForViewerTurn(page);
+    await startRenderCounts(page);
+
+    const planted = (): Promise<RenderCounts> =>
+      page.evaluate(async () => {
+        const counter = (window as unknown as { murlanRenderCounts: { take(): never; exempt(callback: object): void } }).murlanRenderCounts;
+        for (let frame = 0; frame < 40; frame++) {
+          await new Promise<void>((resolve) => {
+            const done = () => resolve();
+            counter.exempt(done);
+            requestAnimationFrame(done);
+          });
+        }
+        return counter.take();
+      });
+    const plantedLoops = (counts: RenderCounts) =>
+      Object.entries(counts.loops).filter(([caller]) => caller.includes("plantedLoop")).reduce((n, [, count]) => n + count, 0);
+
+    const atRest = await planted();
+    console.log(`[web-perf] loops-at-rest ${JSON.stringify({ loops: atRest.loops, frameCallbacks: atRest.frameCallbacks })}`);
+    expect(plantedLoops(atRest), "the loop is not planted yet").toBe(0);
+
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        plantedOn: boolean;
+        plantedLoop(): void;
+        _frameCallbackRegistry: { registerFrameCallback(cb: () => void, id: number): void; manageStateFrameCallback(id: number, on: boolean): void };
+      };
+      w.plantedOn = true;
+      w.plantedLoop = function plantedLoop() {
+        if (w.plantedOn) requestAnimationFrame(w.plantedLoop);
+      };
+      requestAnimationFrame(w.plantedLoop);
+      w._frameCallbackRegistry.registerFrameCallback(() => {}, 987_654);
+      w._frameCallbackRegistry.manageStateFrameCallback(987_654, true);
+    });
+    const running = await planted();
+    expect(plantedLoops(running), "the planted requestAnimationFrame loop").toBeGreaterThan(10);
+    expect(running.frameCallbacks, "the planted Reanimated frame callback").toBe(atRest.frameCallbacks + 1);
+
+    await page.evaluate(() => {
+      const w = window as unknown as { plantedOn: boolean; _frameCallbackRegistry: { unregisterFrameCallback(id: number): void } };
+      w.plantedOn = false;
+      w._frameCallbackRegistry.unregisterFrameCallback(987_654);
+    });
+    await planted();
+    const released = await planted();
+    expect(plantedLoops(released), "the released loop").toBe(0);
+    expect(released.frameCallbacks, "the released frame callback").toBe(atRest.frameCallbacks);
+
+    const recorder = (on: boolean) =>
+      page.evaluate((start) => {
+        const trace = (window as unknown as { murlanTrace: { start(): void; stop(): void } }).murlanTrace;
+        if (start) trace.start();
+        else trace.stop();
+      }, on);
+    await recorder(true);
+    const tracing = await planted();
+    await recorder(false);
+    await planted();
+    const untraced = await planted();
+    expect(
+      Object.entries(tracing.loops)
+        .filter(([caller, n]) => !(caller in untraced.loops) && n > tracing.frames / 2)
+        .map(([caller]) => caller),
+      "callers the counter sees only while the trace records: its tick is counted"
+    ).toEqual([]);
   });
 
   // Lighthouse's mobile preset: 4x CPU, 150ms RTT, 1.6 Mbps down, 750 kbps up.

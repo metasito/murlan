@@ -34,6 +34,8 @@ export interface OnlineTableSetup extends RoomSetup {
   /** Plays with motion on, as a player does; otherwise reduced, so a functional spec does not wait on it. */
   motion?: boolean;
   deviceScaleFactor?: number;
+  /** Runs on each seat's page before it first navigates, for init scripts. */
+  prepare?: (page: Page) => Promise<void>;
 }
 
 export interface OpenedOnlineTable {
@@ -93,6 +95,7 @@ export async function openOnlineTable(
     contexts.map(async (context) => {
       const page = await context.newPage();
       await page.emulateMedia({ reducedMotion: setup.motion ? "no-preference" : "reduce" });
+      await setup.prepare?.(page);
       return { page, errors: collectConsoleErrors(page).entries };
     })
   );
