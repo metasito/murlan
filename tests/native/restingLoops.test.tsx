@@ -5,7 +5,7 @@ import React from 'react';
 import { act, render, renderHook } from '@testing-library/react-native';
 import type { FrameInfo } from 'react-native-reanimated';
 
-const mockControllers: { isActive: boolean }[] = [];
+const mockControllers: { isActive: boolean; setActive(active: boolean): void }[] = [];
 jest.mock('react-native-reanimated', () => {
   const actual = jest.requireActual<typeof import('react-native-reanimated')>('react-native-reanimated');
   return {
@@ -109,6 +109,20 @@ describe('useDuring', () => {
     });
     await frames(5);
     expect(mockHops.n).toBe(before);
+    await view.unmount();
+  });
+
+  it('registers again on a JS-side wake that arrives as the callback is about to settle', async () => {
+    const moving = makeMutable(true);
+    const view = await renderHook(() => useDuring(() => {
+      'worklet';
+      return moving.value;
+    }, true));
+    await frames(5);
+    const setActive = jest.spyOn(mockControllers[0], 'setActive');
+    moving.value = false;
+    await act(async () => view.result.current());
+    expect(setActive).toHaveBeenCalledWith(true);
     await view.unmount();
   });
 

@@ -61,7 +61,8 @@ export function repeatTimes(cycle: number, times: number, reverse = false): numb
 /**
  * A frame callback that runs only while it has something to move: `step` returns whether it does, and the callback is
  * released the frame it says no. The returned `wake` registers it again and may be called from either thread, after
- * the write that gave `step` something to do. `awake` is whether it runs from mount.
+ * the write that gave `step` something to do. From the JS thread it always registers: its write to `dirty` is queued
+ * behind that one, and a frame settling meanwhile must not be left to win. `awake` is whether it runs from mount.
  */
 export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): () => void {
   const dirty = useSharedValue(awake);
@@ -88,7 +89,7 @@ export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): (
   });
   const [wake] = useState(() => () => {
     "worklet";
-    if (dirty.value) return;
+    if (!isRNRuntime() && dirty.value) return;
     dirty.value = true;
     if (isRNRuntime()) arm();
     else scheduleOnRN(arm);
