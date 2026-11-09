@@ -137,7 +137,7 @@ export async function shutdown(
     cancelRevocationRetries();
     stopHealth();
     await within(SHUTDOWN_BUDGET.ownerRecords, Promise.all([stopInbox(), forgetOwnerRecords()]));
-    closeTableOwners();
+    await closeTableOwners();
     closePresence();
     closeRedis();
     // Disconnecting the sockets above starts writes — updateLastSeen, the

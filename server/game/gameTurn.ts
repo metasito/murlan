@@ -165,7 +165,7 @@ function runBotTurn(rt: TableRuntime, roomId: string) {
     return;
   }
 
-  void commitMove(rt, game, auto);
+  void track(commitMove(rt, game, auto));
 }
 
 /** What the seat was made to do, or null when nothing was played. */
@@ -183,7 +183,7 @@ function handleAutoPass(
   const auto = autoMoveForSeat(game.gameState, seat, "floor");
   if (!auto) return null;
 
-  void commitMove(rt, game, auto);
+  void track(commitMove(rt, game, auto));
   return auto.move.kind === "play" || auto.move.kind === "pass" ? "move" : "exchange";
 }
 

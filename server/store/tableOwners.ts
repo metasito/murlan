@@ -1,4 +1,5 @@
 import { logger } from "../shared/logger.ts";
+import { settleInFlight, track } from "../shared/inFlight.ts";
 import { instanceId, openRedis, redisKey, type RedisClient } from "./redis.ts";
 
 let client: RedisClient | null = null;
@@ -27,7 +28,11 @@ export function openTableOwners(url?: string): void {
   client = openRedis("owners", { url, offlineQueue: false });
 }
 
-export function closeTableOwners(): void {
+const CLOSE_SETTLE_MS = 1_000;
+
+/** Waits for the records and clears already started, which `destroy()` would cut off. */
+export async function closeTableOwners(): Promise<void> {
+  await settleInFlight(CLOSE_SETTLE_MS);
   client?.destroy();
   client = null;
 }
@@ -37,9 +42,13 @@ export function closeTableOwners(): void {
  * table. One connection carries every command, so a clear never overtakes the record it clears.
  */
 export function recordTableOwner(roomId: string, epoch: number, ttlMs: number): void {
-  void client
-    ?.set(tableOwnerKey(roomId), tableOwnerValue(epoch), { expiration: { type: "PX", value: ttlMs } })
-    .catch((err: unknown) => logger.warn({ err, roomId }, "Could not record a table's owner"));
+  const c = client;
+  if (!c) return;
+  void track(
+    c
+      .set(tableOwnerKey(roomId), tableOwnerValue(epoch), { expiration: { type: "PX", value: ttlMs } })
+      .catch((err: unknown) => logger.warn({ err, roomId }, "Could not record a table's owner"))
+  );
 }
 
 /**

@@ -4,6 +4,7 @@ import type { GameSocket as Socket } from "./socketTypes.ts";
 import { z } from "zod";
 import { logger } from "../shared/logger.ts";
 import { refuse as refusal, type Outcome, type Refusal } from "../shared/refusal.ts";
+import { track } from "../shared/inFlight.ts";
 
 /**
  * Boundary wrapper for socket events: validate the payload, rate limit the
@@ -231,9 +232,9 @@ export function onEvent<E extends keyof InboundSchemas>(
         decline(refusal("SERVER_ERROR"));
       }
     });
-    socket.data.intentQueue = run.catch((err: unknown) => {
+    socket.data.intentQueue = track(run.catch((err: unknown) => {
       logger.error({ err, event, userId: socket.data?.userId }, "Socket refusal could not be sent");
-    });
+    }));
   }) as Parameters<typeof socket.on<E>>[1]);
 }
 

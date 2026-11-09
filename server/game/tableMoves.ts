@@ -68,7 +68,7 @@ export function moveAction(
   }
 
   // Acked on apply: the round-ending move's results commit gates `game:round_over`, never the ack.
-  void commitMove(rt, game, result);
+  void track(commitMove(rt, game, result));
   return OK;
 }
 

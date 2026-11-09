@@ -1,7 +1,8 @@
 const inFlight = new Set<Promise<unknown>>();
 
 /** Work nobody awaits (a presence write, a notice, a disconnect handler) is registered here, so `settleInFlight` can wait for it before the clients it uses close. */
-export function track<T>(work: Promise<T>): Promise<T> {
+export function track<W extends Promise<unknown> | undefined>(work: W): W {
+  if (!work) return work;
   const settled = work.then(
     () => undefined,
     () => undefined
