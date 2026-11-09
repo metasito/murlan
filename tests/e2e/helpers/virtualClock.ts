@@ -41,13 +41,24 @@ export async function takeOver(page: Page): Promise<void> {
   if (offGrid > 0) await page.clock.runFor(offGrid);
 }
 
+// A paused animation holds its phase in a browser, so the clock holds it too.
+const STEP_ANIMATIONS = `for (const a of document.getAnimations()) {
+  if (a.playState === "running" && a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
+}`;
+
 export async function step(page: Page, ms: number = STEP_MS): Promise<void> {
   await page.clock.runFor(ms);
-  await page.evaluate((ms) => {
-    for (const a of document.getAnimations()) {
-      if (a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
-    }
-  }, ms);
+  await page.evaluate(`((ms) => { ${STEP_ANIMATIONS} })(${ms})`);
+}
+
+/** Every animation's name and `currentTime` now, in the order the document lists them. */
+export async function animationPhase(page: Page): Promise<{ name: string; currentTime: number | null }[]> {
+  return page.evaluate(() =>
+    document.getAnimations().map((a) => ({
+      name: a instanceof CSSAnimation ? a.animationName : a.id,
+      currentTime: a.currentTime === null ? null : Number(a.currentTime),
+    }))
+  );
 }
 
 /**
@@ -63,9 +74,7 @@ export async function stepThen<T>(page: Page, ms: number | null, read: string): 
     const ms = ${ms};
     if (ms !== null) {
       await clock.runFor(ms);
-      for (const a of document.getAnimations()) {
-        if (a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
-      }
+      ${STEP_ANIMATIONS}
     }
     return ${read};
   })()`) as Promise<T>;
