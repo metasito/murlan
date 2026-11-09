@@ -15,7 +15,7 @@ import type { TraceFrame } from "../../lib/e2eTrace";
 
 const BODY_MIN = 4.5;
 // docs/GAME-RULES.md § Decisions, "The lit seat name's contrast", is the authority (tests/tooling/litFloor.test.ts).
-const LIT_FLOOR = 1.9;
+const LIT_FLOOR = 4.5;
 const LAMP_UP = 1 - 1 / 512;
 const NAME = '[data-testid="seat-name"]';
 const CANDIDATES = { textMuted: Colors.textMuted, textSecondary: Colors.textSecondary, text: Colors.text, textPrimary: Colors.textPrimary, goldLit: Colors.goldLit };
@@ -229,7 +229,7 @@ for (const phone of PHONES) test.describe(phone.name, () => {
     for (const { what, ratio } of unlit) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);
   });
 
-  test(`${phone.name}: the lit seat name holds its regression floor over the lamp's pool`, () => {
+  test(`${phone.name}: the lit seat name holds its floor over the lamp's pool`, () => {
     const lit = byPhone.get(phone.name)!.filter((n) => n.lit).flatMap((n) => n.ratios);
     expect(lit.length, "every lit name judged twice").toBe(CAPTURE_STATES.filter((s) => s.side !== "bottom").length * 2);
     for (const { what, ratio } of lit) expect.soft(ratio, what).toBeGreaterThanOrEqual(LIT_FLOOR);
