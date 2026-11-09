@@ -13,6 +13,7 @@ import { isStaleTurn } from "../../lib/game/moves.ts";
 import type { MoveRefusal, SelectionRefusal } from "../../lib/game/gameEngine.ts";
 import type { AutoMove } from "../../lib/game/autoMove.ts";
 import type { TableAction } from "./tableActions.ts";
+import { track } from "../shared/inFlight.ts";
 
 /** The client words a refused selection from the engine's code (`gameErrorText`); the server never does. */
 const refusedSelection = (refusal: SelectionRefusal) => refuse("INVALID_MOVE", { refusal });
@@ -67,7 +68,7 @@ export function moveAction(
   }
 
   // Acked on apply: the round-ending move's results commit gates `game:round_over`, never the ack.
-  void commitMove(rt, game, result);
+  void track(commitMove(rt, game, result));
   return OK;
 }
 
@@ -97,5 +98,5 @@ export function commitMove(rt: TableRuntime, game: OnlineGameState, applied: Aut
     return handleRoundOver(rt, game.roomId, game);
   }
   armTurn(rt, game.roomId, false);
-  void publishState(rt, game);
+  void track(publishState(rt, game));
 }

@@ -11,6 +11,7 @@ import { activeGames } from "./gameRoom.ts";
 import { isTransientDbError, type CommittedRatings } from "./roundResults.ts";
 import type { RoundOverPayload } from "../../shared/protocol.ts";
 import type { PendingResult, RoundOutcome } from "../../shared/persistedEnvelope.ts";
+import { track } from "../shared/inFlight.ts";
 
 /**
  * The database writes a finished round performs, taken as an argument rather
@@ -42,7 +43,7 @@ export interface AppliedResults {
 
 /** docs/GAME-RULES.md § Decisions, "The next-round vote deadline". The next deal clears it. */
 export function armVoteDeadline(rt: TableRuntime, roomId: string) {
-  arm("voteDeadline", roomId, voteDeadlineMs(), () => void rt.expireVoteDeadline(roomId));
+  arm("voteDeadline", roomId, voteDeadlineMs(), () => void track(rt.expireVoteDeadline(roomId)));
 }
 
 /**
@@ -130,7 +131,7 @@ export function handleRoundOver(rt: TableRuntime, roomId: string, game: OnlineGa
     moveLog: game.moveLog && game.moveLog.length > 0 ? [...game.moveLog] : null,
   });
   game.roundOverDue = finishedAt;
-  void rt.writers.persistFinalState(roomId, game);
+  void track(rt.writers.persistFinalState(roomId, game));
   return settleRoundResults(rt, game);
 }
 
@@ -171,9 +172,9 @@ export async function settleRoundResults(rt: TableRuntime, game: OnlineGameState
   const due = game.pendingResults.find((e) => e.round === game.roundOverDue);
   if (due) {
     announce(rt, game, due.outcome, null);
-    void rt.writers
+    void track(rt.writers
       .updateRoomStatus(roomId, "finished")
-      .catch((err: unknown) => logger.warn({ err, roomId }, "Failed to set rooms.status = finished after the round ended"));
+      .catch((err: unknown) => logger.warn({ err, roomId }, "Failed to set rooms.status = finished after the round ended")));
   }
 }
 
@@ -187,7 +188,7 @@ function scheduleRetry(rt: TableRuntime, roomId: string): void {
     retry.timer = null;
     // Whichever game holds the table now: a new match at it carries the same pending rounds.
     const live = activeGames.get(roomId);
-    if (live && live.pendingResults.length > 0) void settleRoundResults(rt, live);
+    if (live && live.pendingResults.length > 0) void track(settleRoundResults(rt, live));
     else retries.delete(roomId);
   }, delayMs);
   (retry.timer as unknown as { unref?: () => void }).unref?.();

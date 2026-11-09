@@ -6,6 +6,8 @@
  * @property {string} id Rule id under the plugin: `murlan/${id}`.
  * @property {string} why Reported at the site: the owner module or doc, and what to do instead.
  * @property {string} selector esquery over the AST, several shapes joined with ", "; never raw text.
+ * @property {(node: any, context: import("eslint").Rule.RuleContext) => boolean} [refine] Narrows what the selector matched: a node it answers false for is not reported.
+ * @property {(context: import("eslint").Rule.RuleContext, report: (node: object) => void) => Record<string, (node: any) => void>} [scoped] Visitors for what a selector cannot say: where a name resolves to, or where a value flows. Each reports a node the selector does not, so no site is reported twice.
  * @property {string[]} files Flat-config globs the guard applies to.
  * @property {{ glob: string, reason: string }[]} [ignores] The only exemption form.
  * @property {{ file: string, code: string, hits: number } | { file: string, code: string, hits: number }[]} plant Each fires exactly `hits` times, linted as its `file`.
@@ -60,16 +62,137 @@ const seamsOf = ({ modules, packages }) => {
   ].join(", ");
 };
 
-// An element passing `attr` by name: one handed in through a spread, or as undefined, is drawn the default.
-const namesProp = (attr) => `:has(> JSXAttribute[name.name="${attr}"]:not([value.expression.type="Identifier"][value.expression.name="undefined"]))`;
-const RN_IMAGE = "/^(Image|ImageBackground)$/";
-const RN_WINDOW = "/^(useWindowDimensions|Dimensions)$/";
-const REQUIRE_RN = 'CallExpression[callee.name="require"][arguments.0.value="react-native"]';
+const IMAGE_NAMES = /^(Image|ImageBackground)$/;
+const WINDOW_NAMES = /^(useWindowDimensions|Dimensions)$/;
+const RN_MODULE = /^react-native(-web)?$/;
+const esRegex = (re) => `/${re.source}/`;
+const RN_IMAGE = esRegex(IMAGE_NAMES);
+const RN_WINDOW = esRegex(WINDOW_NAMES);
+const RN_SOURCE = esRegex(RN_MODULE);
 const LAYOUT = 'MemberExpression:matches([property.name="layout"], [property.value="layout"]):matches([object.property.name="nativeEvent"], [object.name="nativeEvent"])';
 const SIZE_ONLY = 'ObjectPattern:not(:has(> Property:not([computed=false][key.name=/^(width|height)$/][value.type="Identifier"]))):not(:has(> RestElement))';
-const NATIVE_EVENT = 'MemberExpression:matches([property.name="nativeEvent"], [property.value="nativeEvent"])';
-const DEEP_RN_WINDOW = "/^react-native\\x2FLibraries\\x2FUtilities\\x2F(useWindowDimensions|Dimensions)(\\.js)?$/";
+const DEEP_RN_WINDOW = "/^react-native(\\x2FLibraries\\x2FUtilities|-web\\x2Fdist\\x2F(cjs\\x2F)?exports)\\x2F(useWindowDimensions|Dimensions)(\\x2Findex)?(\\.js)?$/";
 const EVENT_PATTERN = ':matches(Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]) > ObjectPattern, VariableDeclarator:matches([init.property.name="nativeEvent"], [init.name="nativeEvent"]) > ObjectPattern)';
+
+const PASS_THROUGH = new Set(["ChainExpression", "TSAsExpression", "TSNonNullExpression", "TSSatisfiesExpression", "TSTypeAssertion"]);
+
+const unwrap = (node) => (node && PASS_THROUGH.has(node.type) ? unwrap(node.expression) : node);
+/** Whether a value can be undefined: undefined, `void 0`, a choice with such a branch, a `&&`, or a `??`/`||` whose right side can be, however it is wrapped. */
+function maybeUndefined(expr) {
+  const node = unwrap(expr);
+  if (!node) return true;
+  if (node.type === "Identifier") return node.name === "undefined";
+  if (node.type === "UnaryExpression") return node.operator === "void";
+  if (node.type === "ConditionalExpression") return maybeUndefined(node.consequent) || maybeUndefined(node.alternate);
+  if (node.type === "LogicalExpression") return node.operator === "&&" || maybeUndefined(node.right);
+  return false;
+}
+
+/** An element passing `attr` by name: one handed in through a spread, or whose value can be undefined, is drawn the default. */
+function namesAttribute(element, attr) {
+  const named = element.attributes.find((a) => a.type === "JSXAttribute" && a.name.name === attr);
+  return Boolean(named) && (named.value?.type !== "JSXExpressionContainer" || !maybeUndefined(named.value.expression));
+}
+
+const memberName = (node) => (node.computed ? node.property.value : node.property.name);
+
+const references = new WeakMap();
+function referenceOf(context, node) {
+  const scope = context.sourceCode.getScope(node);
+  if (!references.has(scope)) references.set(scope, new Map(scope.references.map((r) => [r.identifier, r])));
+  return references.get(scope).get(node);
+}
+
+const namedIn = (pattern, binding) => {
+  for (const p of pattern.properties) {
+    const value = p.type === "Property" && p.value.type === "AssignmentPattern" ? p.value.left : p.value;
+    if (value === binding && !p.computed) return p.key.name ?? p.key.value;
+  }
+  return undefined;
+};
+
+/**
+ * What an expression stands for when it comes from react-native (or react-native-web): `{ whole }` for the
+ * module object, `{ named }` for one of its exports, followed through imports, requires, awaited imports,
+ * aliases, member reads, destructurings and defaulted parameters.
+ */
+function fromReactNative(context, expr, depth = 0) {
+  const node = unwrap(expr);
+  if (!node || depth > 8) return null;
+  const next = (n) => fromReactNative(context, n, depth + 1);
+  switch (node.type) {
+    case "AwaitExpression":
+      return next(node.argument);
+    case "ImportExpression":
+      return RN_MODULE.test(node.source.value) ? { whole: true } : null;
+    case "CallExpression":
+      return node.callee.name === "require" && RN_MODULE.test(node.arguments[0]?.value) ? { whole: true } : null;
+    case "MemberExpression": {
+      const key = memberName(node);
+      return typeof key === "string" && next(node.object)?.whole ? { named: key } : null;
+    }
+    case "Identifier":
+    case "JSXIdentifier": {
+      const def = referenceOf(context, node)?.resolved?.defs[0];
+      if (!def) return null;
+      if (def.type === "ImportBinding") {
+        const declaration = def.parent;
+        if (!RN_MODULE.test(declaration.source.value) || declaration.importKind === "type" || def.node.importKind === "type") return null;
+        return def.node.type === "ImportSpecifier" ? { named: def.node.imported.name ?? def.node.imported.value } : { whole: true };
+      }
+      if (def.type === "Variable") {
+        const { id, init } = def.node;
+        if (id === def.name) return next(init);
+        if (id.type === "ObjectPattern") {
+          const key = namedIn(id, def.name);
+          return key !== undefined && next(init)?.whole ? { named: key } : null;
+        }
+      }
+      if (def.type === "Parameter") {
+        for (const param of def.node.params) {
+          if (param.type !== "AssignmentPattern") continue;
+          if (param.left === def.name) return next(param.right);
+          const key = param.left.type === "ObjectPattern" ? namedIn(param.left, def.name) : undefined;
+          if (key !== undefined && next(param.right)?.whole) return { named: key };
+        }
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Visitors for every way to pick `names` out of the react-native module object: a member read, a destructuring, an assignment to a pattern, a defaulted parameter. */
+function pickedFromModule(context, report, names, { renamedOnly = false } = {}) {
+  const picks = (pattern, source) => {
+    if (pattern?.type !== "ObjectPattern") return;
+    for (const p of pattern.properties) {
+      const key = p.type === "Property" && !p.computed ? (p.key.name ?? p.key.value) : undefined;
+      if (typeof key !== "string" || !names.test(key)) continue;
+      if (renamedOnly && p.value.type === "Identifier" && p.value.name === key) continue;
+      if (fromReactNative(context, source)?.whole) report(p);
+    }
+  };
+  return {
+    VariableDeclarator: (node) => picks(node.id, node.init),
+    AssignmentExpression: (node) => node.operator === "=" && picks(node.left, node.right),
+    AssignmentPattern: (node) => picks(node.left, node.right),
+    MemberExpression(node) {
+      if (names.test(memberName(node) ?? "") && fromReactNative(context, node.object)?.whole) report(node);
+    },
+  };
+}
+/** A value read of `nativeEvent` (as a member or as a bare name) and where it goes: only a member read or a destructuring may take it. */
+function nativeEventEscapes(node) {
+  let at = node;
+  while (at.parent && PASS_THROUGH.has(at.parent.type)) at = at.parent;
+  const parent = at.parent;
+  if (parent.type === "MemberExpression" && parent.object === at) return false;
+  if (parent.type === "VariableDeclarator" && parent.init === at) return parent.id.type !== "ObjectPattern";
+  if (parent.type === "AssignmentExpression" && parent.right === at) return parent.left.type !== "ObjectPattern";
+  return true;
+}
 
 /** @type {readonly Guard[]} */
 const GUARDS = [
@@ -98,7 +221,8 @@ const GUARDS = [
   {
     id: "skia-image-fit",
     why: "A Skia <Image> with no `fit` is drawn `contain`, and an <ImageShader> `none`: an image whose aspect or pixel size differs from its box is letterboxed or cropped, and only on windows shaped unlike the one it was checked on. Pass the fit by name, never through a spread or as undefined; an image laid over a design rect is `fill`, as components/table/feltCanvas.tsx draws its cloth.",
-    selector: `JSXOpeningElement[name.name=/^(Image|ImageShader)$/]:has(> JSXAttribute[name.name="image"]):not(${namesProp("fit")})`,
+    selector: 'JSXOpeningElement[name.name=/^(Image|ImageShader)$/]:has(> JSXAttribute[name.name="image"])',
+    refine: (node) => !namesAttribute(node, "fit"),
     files: DRAWN,
     plant: { file: "components/Plant.tsx", code: [
       "const a = <Image image={cloth} x={0} y={0} width={w} height={h} />;",
@@ -106,7 +230,10 @@ const GUARDS = [
       "const c = <ImageShader image={weave} rect={r} />;",
       "const d = <Image image={cloth} fit={undefined} width={w} height={h} />;",
       'const e = <Image image={cloth} {...{ fit: "fill" }} width={w} height={h} />;',
-    ].join("\n"), hits: 5 },
+      "const f = <Image image={cloth} fit={void 0} width={w} height={h} />;",
+      'const g = <ImageShader image={weave} fit={wide ? undefined : "fill"} rect={r} />;',
+      'const h = <Image image={cloth} fit={(undefined as any)!} width={w} height={h} />;',
+    ].join("\n"), hits: 8 },
     spare: [
       'const a = <Image image={cloth} fit="fill" width={w} height={h} />;',
       'const b = <Image source={art} resizeMode="stretch" />;',
@@ -119,44 +246,95 @@ const GUARDS = [
     id: "image-resize-mode",
     why: "A React Native <Image> or <ImageBackground> with no `resizeMode` is drawn `cover`: art whose aspect differs from its box is cropped, and only in boxes shaped unlike the one it was checked in. Pass it as the prop, by name, on an image under its own name (Image, Animated.Image), as components/CardView.tsx draws its card art.",
     selector: [
-      `JSXOpeningElement:matches([name.name=${RN_IMAGE}], [name.property.name=${RN_IMAGE}]):has(> JSXAttribute[name.name="source"]):not(${namesProp("resizeMode")})`,
-      `ImportDeclaration[source.value="react-native"] > ImportSpecifier[imported.name=${RN_IMAGE}]:not([local.name=${RN_IMAGE}])`,
-      `VariableDeclarator:has(> ${REQUIRE_RN}.init) > ObjectPattern > Property[key.name=${RN_IMAGE}]:not([value.name=${RN_IMAGE}])`,
-      `MemberExpression[property.name=${RN_IMAGE}]:has(> ${REQUIRE_RN}.object)`,
-      `CallExpression:matches([callee.name="createAnimatedComponent"], [callee.property.name="createAnimatedComponent"])[arguments.0.name=${RN_IMAGE}]`,
+      `ImportDeclaration[source.value=${RN_SOURCE}] > ImportSpecifier[imported.name=${RN_IMAGE}]:not([local.name=${RN_IMAGE}])`,
+      `ExportNamedDeclaration[source.value=${RN_SOURCE}]:not([exportKind="type"]) > ExportSpecifier[local.name=${RN_IMAGE}]:not([exportKind="type"])`,
+      `ExportAllDeclaration[source.value=${RN_SOURCE}]:not([exportKind="type"])`,
     ].join(", "),
+    scoped: (context, report) => ({
+      ...pickedFromModule(context, report, IMAGE_NAMES, { renamedOnly: true }),
+      Identifier(node) {
+        const { parent } = node;
+        if (!IMAGE_NAMES.test(node.name) || parent.type === "TSTypeQuery" || (parent.type === "MemberExpression" && parent.object === node)) return;
+        if (referenceOf(context, node)?.isRead() && fromReactNative(context, node)?.named === node.name) report(node);
+      },
+      JSXOpeningElement(node) {
+        const tag = node.name;
+        const tagged = tag.type === "JSXMemberExpression" ? IMAGE_NAMES.test(tag.property.name) : IMAGE_NAMES.test(fromReactNative(context, tag)?.named ?? "");
+        const carries = node.attributes.some((a) => a.type === "JSXSpreadAttribute" || a.name.name === "source");
+        if (tagged && carries && !namesAttribute(node, "resizeMode")) report(node);
+      },
+    }),
     files: DRAWN,
     plant: { file: "components/Plant.tsx", code: [
+      'import { Image, ImageBackground } from "react-native";',
+      'import { Image as RNImage } from "react-native";',
+      'import * as RN from "react-native";',
       "const a = <Image source={art} style={ART_FILL} />;",
       "const b = <ImageBackground\n  source={felt}\n  style={s}\n/>;",
       "const c = <MaskedView maskElement={<Image source={art} style={s} />} />;",
       "const d = <Animated.Image source={s} />;",
       'const e = <Image source={art} resizeMode={undefined} style={{ resizeMode: "cover" }} />;',
-      'import { Image as RNImage } from "react-native";',
       'const { Image: Pic } = require("react-native");',
       "const F = Animated.createAnimatedComponent(Image);",
       'const G = require("react-native").Image;',
-    ].join("\n"), hits: 9 },
+      "const Alias = Image;",
+      "let Late;\nLate = Image;",
+      "const Tabs = { photo: Image, plain: View };",
+      "const h = <Image {...imageProps} style={s} />;",
+      'const i = <Image source={art} resizeMode={tall ? "cover" : undefined} />;',
+      'const j = <Image source={art} resizeMode={tall && "cover"} />;',
+      'const k = <Image source={art} resizeMode={undefined ?? undefined} />;',
+      'const k2 = <Image source={art} resizeMode={void 0} />;',
+      'const k3 = <Image source={art} resizeMode={undefined as any} />;',
+      'const k4 = <Image source={art} resizeMode={a ? (b ? "cover" : undefined) : "contain"} />;',
+      'const k5 = <Image source={art} resizeMode={(tall ? "cover" : (undefined as unknown))!} />;',
+      'const M = RN.Image;\nconst N = RN["ImageBackground"];',
+      "const { Image: Pic2 } = RN;",
+      'const { ImageBackground: Back } = require("react-native");',
+      "const Both = RN;\nconst P = Both.Image;",
+      'export { Image as Pic3 } from "react-native";',
+      'export { ImageBackground } from "react-native";',
+      'export * from "react-native";',
+      "const l = <Image source={art} image={x} />;",
+      "const m = <RNImage source={art} />;",
+      'const Late2 = await import("react-native");\nconst P4 = Late2.Image;',
+      "({ Image: Pic5 } = RN);",
+      "function pick({ Image: Pic6 } = RN) {}",
+    ].join("\n"), hits: 33 },
     spare: [
-      'const a = <Image source={art} style={ART_FILL} resizeMode="stretch" />;',
+      'import { Image } from "react-native";\nconst a = <Image source={art} style={ART_FILL} resizeMode="stretch" />;',
       'const b = <Image image={cloth} fit="fill" width={w} height={h} />;',
-      'const c = <ImageBackground source={felt} resizeMode="cover" style={s} />;',
+      'import { ImageBackground } from "react-native";\nconst c = <ImageBackground source={felt} resizeMode="cover" style={s} />;',
       'const d = <Animated.Image source={s} resizeMode="stretch" />;',
       'import { Image, View } from "react-native";',
       'import { Image as SkImage } from "@shopify/react-native-skia";',
+      'import { Image } from "@shopify/react-native-skia";\nconst Alias = Image;\nconst a = <Image source={art} />;',
+      'import { Image } from "react-native";\nconst size = Image.resolveAssetSource(art);\nImage.prefetch(url);',
+      'import { Image } from "react-native";\nconst a = <Image source={art} resizeMode={fit} {...rest} />;',
+      'import { Image } from "react-native";\nconst a = <Image source={art} resizeMode={tall ? "cover" : "contain"} />;',
+      'import { Image } from "react-native";\nconst a = <Image source={art} resizeMode={fit ?? "cover"} />;',
+      'import * as Other from "./other";\nconst a = Other.Image;\nconst { Image: Pic } = Other;',
+      'import { Image } from "react-native";\ntype T = typeof Image;',
+      'const a = <Image image={cloth} fit="fill" {...rest} />;',
+      'import { Image } from "@shopify/react-native-skia";\nconst a = <Image image={cloth} fit="fill" {...rest} />;',
+      'import * as RN from "react-native";\nconst { View, Text } = RN;\nconst { Image } = require("react-native");',
+      'export type * from "react-native";',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "svg-aspect",
     why: "An <Svg> with a `viewBox` and no `preserveAspectRatio` is drawn `xMidYMid meet`: a box whose aspect drifts from the viewBox's letterboxes the drawing inside it. Pass it by name, never through a spread or as undefined, as components/table/scorePill.tsx draws its icons.",
-    selector: `JSXOpeningElement[name.name="Svg"]:has(> JSXAttribute[name.name="viewBox"]):not(${namesProp("preserveAspectRatio")})`,
+    selector: 'JSXOpeningElement[name.name="Svg"]:has(> JSXAttribute[name.name="viewBox"])',
+    refine: (node) => !namesAttribute(node, "preserveAspectRatio"),
     files: DRAWN,
     plant: { file: "components/Plant.tsx", code: [
       'const a = <Svg width={w} height={h} viewBox="0 0 7 5" />;',
       "const b = <Svg\n  viewBox={BOX}\n  width={s}\n  height={s}\n>{x}</Svg>;",
       'const c = <Svg viewBox="0 0 7 5" preserveAspectRatio={undefined} />;',
       'const d = <Svg viewBox="0 0 7 5" {...{ preserveAspectRatio: "none" }} />;',
-    ].join("\n"), hits: 4 },
+      'const e = <Svg viewBox="0 0 7 5" preserveAspectRatio={void 0} />;',
+      'const f = <Svg viewBox="0 0 7 5" preserveAspectRatio={a ? (b ? "none" : undefined) : "meet"} />;',
+    ].join("\n"), hits: 6 },
     spare: [
       'const a = <Svg width={w} height={h} viewBox="0 0 7 5" preserveAspectRatio="xMidYMid meet" />;',
       "const b = <Svg width={w} height={h} style={s} />;",
@@ -207,14 +385,17 @@ const GUARDS = [
   {
     id: "native-event-in-place",
     why: "An event's `nativeEvent` bound to a name of its own hides every later read through it from onlayout-size-only, which can follow only the name `nativeEvent`: destructure what the handler needs from it where it is read, as components/GameTable.tsx does.",
-    selector: [
-      `VariableDeclarator[id.type="Identifier"] > ${NATIVE_EVENT}.init`,
-      `AssignmentExpression > ${NATIVE_EVENT}.right`,
-      `:matches(VariableDeclarator[id.type="Identifier"], AssignmentExpression) > :matches(ChainExpression, TSAsExpression, TSNonNullExpression, TSSatisfiesExpression) > ${NATIVE_EVENT}.expression`,
-      'VariableDeclarator[id.type="Identifier"] > Identifier.init[name="nativeEvent"]',
-      'AssignmentExpression > Identifier.right[name="nativeEvent"]',
-      'ObjectPattern > Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]):not([value.type="Identifier"][value.name="nativeEvent"]):not([value.type="ObjectPattern"])',
-    ].join(", "),
+    selector: 'ObjectPattern > Property:matches([key.name="nativeEvent"], [key.value="nativeEvent"]):not([value.type="Identifier"][value.name="nativeEvent"]):not([value.type="ObjectPattern"])',
+    scoped: (context, report) => ({
+      MemberExpression(node) {
+        if (memberName(node) === "nativeEvent" && nativeEventEscapes(node)) report(node);
+      },
+      Identifier(node) {
+        if (node.name !== "nativeEvent") return;
+        const read = context.sourceCode.getScope(node).references.find((r) => r.identifier === node);
+        if (read?.isRead() && nativeEventEscapes(node)) report(node);
+      },
+    }),
     files: SCREENS,
     plant: { file: "components/Plant.tsx", code: [
       "function p(e) { const ne = e.nativeEvent; return ne.layout.y; }",
@@ -228,7 +409,18 @@ const GUARDS = [
       "function A(e) { let ne; ne = e.nativeEvent as LayoutEvent; }",
       "function B(e) { const { nativeEvent } = e; const ne = nativeEvent; }",
       "function C(e) { const { nativeEvent } = e; let ne; ne = nativeEvent; }",
-    ].join("\n"), hits: 11 },
+      "function D(e) { read(e.nativeEvent); }",
+      "function E(e) { return { ne: e.nativeEvent }; }",
+      "function F({ nativeEvent }) { const ne = (nativeEvent as any); }",
+      "function G({ nativeEvent }) { const ne = cond ? nativeEvent : null; }",
+      "function H(e) { return e.nativeEvent; }",
+      "function I({ nativeEvent }) { return place(nativeEvent); }",
+      "const J = (e) => e.nativeEvent;",
+      "function K({ nativeEvent }) { return { nativeEvent }; }",
+      "function L(e) { return [e?.nativeEvent]; }",
+      "function M(e) { return <Pin event={e.nativeEvent} />; }",
+      'function N(e) { read(e["nativeEvent"]); }',
+    ].join("\n"), hits: 22 },
     spare: [
       "function t(e) { const { pageX } = e.nativeEvent; return seat.layout.x + pageX; }",
       "const a = (e) => setH(e.nativeEvent.layout.height);",
@@ -237,19 +429,24 @@ const GUARDS = [
       "const d = seat.nativeEventCount;",
       "const f = (e) => setW(e?.nativeEvent?.layout?.width);",
       "const g = (e) => (e.nativeEvent as any).key;",
+      "function h(e) { const { pageX, pageY } = e.nativeEvent; return place(pageX, pageY); }",
+      "function i({ nativeEvent }) { const { layout } = nativeEvent; return layout.width; }",
+      "function j(e) { let w; ({ width: w } = e.nativeEvent.layout); return w; }",
+      "function k(e) { return e.nativeEvent.layout.width; }",
+      "function l(e) { return place(e); }",
+      "function m({ nativeEvent: { layout } }) { return layout.width; }",
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
     id: "window-through-orientation",
     why: "useWindowDimensions reads a size iOS can hand over in the wrong orientation on a cold start, and a second read of it drifts from the first: read the window with useOrientedWindow() or useIsLandscape() from lib/device/orientation.tsx, which measures the app's own root view.",
     selector: [
-      `ImportDeclaration[source.value="react-native"]:not([importKind="type"]) > ImportSpecifier[imported.name=${RN_WINDOW}]:not([importKind="type"])`,
-      `ExportNamedDeclaration[source.value="react-native"]:not([exportKind="type"]) > ExportSpecifier[local.name=${RN_WINDOW}]:not([exportKind="type"])`,
-      `VariableDeclarator:has(> ${REQUIRE_RN}.init) > ObjectPattern > Property[key.name=${RN_WINDOW}]`,
-      `MemberExpression[property.name=${RN_WINDOW}]:has(> ${REQUIRE_RN}.object)`,
+      `ImportDeclaration[source.value=${RN_SOURCE}]:not([importKind="type"]) > ImportSpecifier[imported.name=${RN_WINDOW}]:not([importKind="type"])`,
+      `ExportAllDeclaration[source.value=${RN_SOURCE}]:not([exportKind="type"])`,
+      `ExportNamedDeclaration[source.value=${RN_SOURCE}]:not([exportKind="type"]) > ExportSpecifier[local.name=${RN_WINDOW}]:not([exportKind="type"])`,
       importsOf(DEEP_RN_WINDOW, { values: true }),
-      `Program:has(ImportDeclaration[source.value="react-native"] > :matches(ImportNamespaceSpecifier, ImportDefaultSpecifier), VariableDeclarator[id.type="Identifier"] > ${REQUIRE_RN}.init) MemberExpression[object.type="Identifier"][property.name=${RN_WINDOW}]`,
     ].join(", "),
+    scoped: (context, report) => pickedFromModule(context, report, WINDOW_NAMES),
     files: SCREENS,
     ignores: [{ glob: "lib/device/orientation.tsx", reason: "the one reader of the window, falling back to it until the root view is measured" }],
     plant: { file: "components/Plant.tsx", code: [
@@ -265,7 +462,19 @@ const GUARDS = [
       'export { default as useWD2 } from "react-native/Libraries/Utilities/useWindowDimensions";',
       'export * from "react-native/Libraries/Utilities/Dimensions";',
       'const lazy = import("react-native/Libraries/Utilities/Dimensions.js");',
-    ].join("\n"), hits: 11 },
+      'import * as Web from "react-native-web";\nconst { useWindowDimensions: useWin } = Web;',
+      'import * as Native from "react-native";\nconst { Dimensions: Dim } = Native;\nconst d = Native["Dimensions"];',
+      'export * from "react-native";',
+      'export * from "react-native-web";',
+      'import { useWindowDimensions as webWindow } from "react-native-web";',
+      'import Dimensions from "react-native-web/dist/exports/Dimensions";',
+      'import RNW from "react-native-web";\nconst e = RNW.useWindowDimensions;',
+      'const RNR = require("react-native");\nconst { Dimensions: D3 } = RNR;',
+      'import * as Assigned from "react-native";\nlet D4;\n({ Dimensions: D4 } = Assigned);',
+      'const Lazy = await import("react-native");\nconst d5 = Lazy.Dimensions;\nconst { useWindowDimensions: u5 } = await import("react-native");',
+      'import * as Defaulted from "react-native";\nfunction f({ Dimensions: D6 } = Defaulted) {}',
+      'const Same = require("react-native");\nconst Alias = Same;\nconst d7 = Alias.useWindowDimensions;',
+    ].join("\n"), hits: 25 },
     spare: [
       'import { useOrientedWindow } from "@/lib/device/orientation";',
       "const { width, height } = useOrientedWindow();",
@@ -278,6 +487,15 @@ const GUARDS = [
       'import { useWindowDimensions as u2 } from "react-native-web-hooks/Libraries/Utilities/useWindowDimensions";',
       "const d = layout.Dimensions;",
       'import RN from "react-native";\nconst w = RN.PixelRatio.get();',
+      'import * as RN from "react-native";\nconst { PixelRatio } = RN;\nconst p = RN["PixelRatio"];',
+      "let size;\nconst [first] = list;\nfor (const { width } of items) keep(width);",
+      'import * as Mine from "./fakeWindow";\nconst { useWindowDimensions } = Mine;\nconst d = Mine.Dimensions;',
+      'const Dimensions = { get: () => 1 };\nconst { useWindowDimensions } = Dimensions;',
+      'export type * from "react-native";',
+      'import { Dimensions } from "react-native-web-hooks";',
+      'export * from "react-native-gesture-handler";',
+      'import * as Mine from "./fakeWindow";\nfunction f({ Dimensions } = Mine) {}\n({ Dimensions } = Mine);',
+      'const Lazy = await import("./fakeWindow");\nconst d = Lazy.Dimensions;',
     ].map((code) => ({ file: "components/Plant.tsx", code })),
   },
   {
@@ -310,7 +528,7 @@ const GUARDS = [
       'VariableDeclarator > ObjectPattern > Property[key.name="cardScale"]',
       `Identifier[name=${SHORT_EDGES}]:not(ImportSpecifier[imported.name=${SHORT_EDGES}] > .local, ExportSpecifier[local.name=${SHORT_EDGES}] > .exported, Property[shorthand=true] > .value)`,
       `MemberExpression[property.value=${SHORT_EDGES}]`,
-      'BinaryExpression[operator="/"][right.type="Literal"][right.value=390]',
+      ':matches(BinaryExpression[operator="/"], AssignmentExpression[operator="/="])[right.type="Literal"][right.value=390]',
       'VariableDeclarator[init.type="Literal"][init.value=390]',
     ].join(", "),
     files: [...CLIENT, "tests/**/*.{ts,tsx}"],
@@ -343,7 +561,8 @@ const GUARDS = [
         "const n = edge / 390.0;",
         "const o = 320 / 390;",
         "const BASE = 390;",
-      ].join("\n"), hits: 18 },
+        "let p = Math.min(w, h);\np /= 390;",
+      ].join("\n"), hits: 19 },
       { file: "tests/ui-rules/plant.test.ts", code: [
         'import { cardScale } from "../../components/cardFaceModel.ts";',
         "const a = cardScale(Math.min(844, 390));",
@@ -352,8 +571,19 @@ const GUARDS = [
       { file: "tests/e2e/plant.spec.ts", code: [
         "const scale = Math.min(vp.width, vp.height) / 390;",
         "const BASE_EDGE = 390;",
-      ].join("\n"), hits: 2 },
+        "let edge = vp.width;\nedge /= 390;",
+      ].join("\n"), hits: 3 },
       { file: "tests/native/plant.test.tsx", code: "const { cardScale: at } = require('@/components/cardFaceModel');", hits: 1 },
+      ...["bots", "differential", "engine", "helpers", "integration", "model", "server", "soak", "support", "tooling"].map((dir) => ({
+        file: `tests/${dir}/plant.test.ts`,
+        code: "const scale = Math.min(w, h) / 390;",
+        hits: 1,
+      })),
+      ...["app", "context", "lib", "locales", "modules", "shared"].map((dir) => ({
+        file: `${dir}/plant.ts`,
+        code: "const scale = Math.min(w, h) / BASE_SHORT_EDGE;",
+        hits: 1,
+      })),
     ],
     spare: [
       ...[
@@ -370,6 +600,7 @@ const GUARDS = [
         "const VIEWPORT = { width: 844, height: 390 };",
         "const tall = 390 * scale;",
         "const half = width / 2;",
+        "let w = width;\nw /= 2;\nw *= 390;",
       ].map((code) => ({ file: "tests/e2e/plant.spec.ts", code })),
     ],
   },
@@ -1030,16 +1261,42 @@ const GUARDS = [
     why: "A module mock names its module in a literal, so a guard can tell what it replaces (docs/agents/traps.md § Where a forbidden-shape rule goes): write the path out instead of building it.",
     selector: `${JEST_MOCK} > :first-child:not(Literal, TemplateLiteral[expressions.length=0])`,
     files: ["tests/native/**/*.{ts,tsx}"],
+    refine: (node, context) => {
+      const [id, factory] = node.parent.arguments;
+      const variable = (n) => (n?.type === "Identifier" ? referenceOf(context, n)?.resolved : undefined);
+      const bound = variable(id);
+      const once = bound?.defs.length === 1 && bound.defs[0].type === "Variable" && bound.defs[0].parent.kind === "const";
+      const body = factory?.type === "ArrowFunctionExpression" && factory.params.length === 0 ? factory.body : null;
+      const actual = body?.type === "CallExpression" && body.callee.type === "MemberExpression" && body.callee.object.name === "jest" && body.callee.property.name === "requireActual" ? body.arguments[0] : null;
+      const from = actual?.type === "CallExpression" && actual.arguments.length === 1 ? variable(actual.callee)?.defs[0] : null;
+      const swap = from?.type === "ImportBinding" && /(^|\/)harness\/platformVariants$/.test(from.parent.source.value) && from.node.imported?.name === "platformVariant";
+      return !(once && body && variable(swap ? actual.arguments[0] : actual) === bound);
+    },
     plant: { file: "tests/native/plant.test.tsx", code: [
       "const CONTEXT = '@/context/GameContext';",
       "jest.mock(CONTEXT, () => ({}));",
       "jest.doMock('@/context/' + 'SocketContext', () => ({}));",
       "jest.mock(`@/context/${name}`, () => ({}));",
       "jest.setMock(path.join('context', 'GameContext'), {});",
-    ].join("\n"), hits: 4 },
+      "jest.doMock('@/context/' + 'GameContext', () => ({ useGame: () => null }));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireActual(other));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(other)));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target, other)));",
+      "for (const target of targets) jest.doMock(target, () => ({ ...jest.requireActual(target), useGame: () => null }));",
+      "for (const target of targets) jest.doMock(target, (x) => jest.requireActual(target));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireMock(target));",
+      "let id = '@/context/GameContext';\nid = '@/context/Other';\njest.doMock(`${id}`, () => jest.requireActual(`${id}`));",
+      "function platformVariant(t) { return fake; }\nfor (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
+      "let i = 0;\njest.doMock(ids[i++], () => jest.requireActual(ids[i++]));",
+      "let moving = a;\nmoving = b;\njest.doMock(moving, () => jest.requireActual(moving));",
+      "import { platformVariant } from './elsewhere';\nfor (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
+    ].join("\n"), hits: 16 },
     spare: [
       "jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));",
       "jest.doMock(`expo-asset`, () => ({}));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireActual(target));",
+      "import { platformVariant } from './harness/platformVariants';\nfor (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
+      "import { platformVariant } from '../harness/platformVariants';\nfor (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
   {
@@ -1087,9 +1344,11 @@ const GUARDS = [
 
 // eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would
 // leave cached results standing.
+// The selectors are built from other files too (CHANNEL_KEYS), so the registry's resolved values go in beside the source.
 const version = require("node:crypto")
   .createHash("sha256")
-  .update(JSON.stringify(GUARDS.map(({ id, why, selector, files, ignores }) => ({ id, why, selector, files, ignores }))))
+  .update(require("node:fs").readFileSync(module.filename))
+  .update(JSON.stringify(GUARDS.map(({ id, selector, files, ignores }) => [id, selector, files, ignores])))
   .digest("hex")
   .slice(0, 16);
 
@@ -1100,7 +1359,10 @@ const plugin = {
       guard.id,
       {
         meta: { type: "problem", schema: [] },
-        create: (context) => ({ [guard.selector]: (node) => context.report({ node, message: guard.why }) }),
+        create: (context) => {
+          const report = (node) => context.report({ node, message: guard.why });
+          return { [guard.selector]: (node) => guard.refine?.(node, context) !== false && report(node), ...guard.scoped?.(context, report) };
+        },
       },
     ])
   ),
@@ -1117,4 +1379,4 @@ function guardBlocks() {
   ];
 }
 
-module.exports = { GUARDS, plugin, guardBlocks };
+module.exports = { GUARDS, CLIENT, plugin, guardBlocks };

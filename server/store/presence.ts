@@ -2,6 +2,7 @@
 // kept as state in Redis (ADR 0014, decision 8).
 import { randomUUID } from "node:crypto";
 import { logger } from "../shared/logger.ts";
+import { track } from "../shared/inFlight.ts";
 import { currentKeyspace, instanceId, openRedis, WatchError, type RedisClient } from "./redis.ts";
 
 export const HEARTBEAT_MS = 3_000;
@@ -194,7 +195,7 @@ export function openPresenceStore({
   }
 
   function writeSeat(socketId: string, roomId: string): void {
-    void client.set(key.table(socketId), roomId).catch(warn("Could not record the table a socket sits at"));
+    void track(client.set(key.table(socketId), roomId).catch(warn("Could not record the table a socket sits at")));
   }
 
   /** True when this call removed the entry naming this instance's `socketId`. */
@@ -215,15 +216,17 @@ export function openPresenceStore({
     const written = held?.socketId === socketId ? held.written : Promise.resolve();
     if (held?.socketId === socketId) mine.delete(userId);
     // After its own connect's write, or a late write would put back what this clears.
-    void written
-      .then(() => clear(userId, socketId))
-      .then(
-        () => unforgotten.delete(userId),
-        (err: unknown) => {
-          if (!mine.has(userId)) unforgotten.set(userId, socketId);
-          logger.warn({ err, userId }, "Could not clear where an account was connected");
-        }
-      );
+    void track(
+      written
+        .then(() => clear(userId, socketId))
+        .then(
+          () => unforgotten.delete(userId),
+          (err: unknown) => {
+            if (!mine.has(userId)) unforgotten.set(userId, socketId);
+            logger.warn({ err, userId }, "Could not clear where an account was connected");
+          }
+        )
+    );
   }
 
   async function liveAmong(ids: readonly string[]): Promise<Set<string>> {
@@ -362,9 +365,9 @@ export function openPresenceStore({
   }
 
   client.on("ready", () => {
-    void markEpoch().catch(warn("Could not mark the store's lifetime"));
-    void restore();
-    if (heartbeat) void beat().catch(warn("Presence heartbeat failed"));
+    void track(markEpoch().catch(warn("Could not mark the store's lifetime")));
+    void track(restore());
+    if (heartbeat) void track(beat().catch(warn("Presence heartbeat failed")));
   });
 
   let beating: Promise<void> | null = null;
@@ -383,7 +386,7 @@ export function openPresenceStore({
     id,
     record(userId, socketId) {
       const held: { socketId: string; at?: bigint; written: Promise<void> } = { socketId, written: Promise.resolve() };
-      held.written = connect(userId, held).catch(warn("Could not record where an account is connected"));
+      held.written = track(connect(userId, held).catch(warn("Could not record where an account is connected")));
       mine.set(userId, held);
       unforgotten.delete(userId);
     },
@@ -394,11 +397,11 @@ export function openPresenceStore({
     },
     unseat(socketId) {
       if (!seats.delete(socketId)) return;
-      void client.del(key.table(socketId)).catch(warn("Could not clear the table a socket sat at"));
+      void track(client.del(key.table(socketId)).catch(warn("Could not clear the table a socket sat at")));
     },
     locate,
     bumpSocial(userIds) {
-      void bump(userIds).catch(warn("Could not mark friend lists as changed"));
+      void track(bump(userIds).catch(warn("Could not mark friend lists as changed")));
     },
     async social(userId) {
       const [epoch, count] = await client.mGet([key.socialEpoch, key.social(userId)]);
@@ -418,7 +421,7 @@ export function openPresenceStore({
     leave() {
       alive = false;
       clearInterval(timer);
-      void client.del(key.instance(id)).catch(warn("Could not mark this instance as leaving"));
+      void track(client.del(key.instance(id)).catch(warn("Could not mark this instance as leaving")));
     },
     close() {
       clearInterval(timer);

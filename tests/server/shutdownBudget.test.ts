@@ -7,6 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import ts from "typescript";
+import { SELF_BOUNDED } from "../helpers/selfBounded.ts";
 import { openDatabase, pool, QUERY_TIMEOUT_MS } from "../../server/store/db.ts";
 import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS, SHUTDOWN_BUDGET } from "../../server/http/shutdown.ts";
 
@@ -72,4 +74,89 @@ test("the pool is the thing QUERY_TIMEOUT_MS bounds", () => {
     { statement_timeout: QUERY_TIMEOUT_MS, query_timeout: QUERY_TIMEOUT_MS },
     "the shutdown budget is derived from QUERY_TIMEOUT_MS, which is only true if the pool uses it"
   );
+});
+
+const budgetKey = (e: ts.Node | undefined): string | null =>
+  e && ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "SHUTDOWN_BUDGET" ? e.name.text : null;
+
+/** What a function body defers: an await inside one runs when it is called, not where it is written. */
+const isFunction = (n: ts.Node) => ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n);
+const isAwait = (n: ts.Node) => ts.isAwaitExpression(n) || (ts.isForOfStatement(n) && n.awaitModifier !== undefined);
+
+/**
+ * Every `await` and `for await` in `shutdown`, at any depth, must be `await within(SHUTDOWN_BUDGET.k, X)`
+ * or a self-bounded callee handed `SHUTDOWN_BUDGET.k` (or `{ drainMs: SHUTDOWN_BUDGET.k }`), and each
+ * entry bounds exactly one: a second use would run for its time again beyond what the sum counts.
+ * An await inside X, outside a nested function body, is not bounded by `within` (the wait happens
+ * before `within` is called), so it is read like any other.
+ */
+function inspectShutdown(source: string): { unbudgeted: string[]; used: Map<string, number> } {
+  const file = ts.createSourceFile("shutdown.ts", source, ts.ScriptTarget.Latest, true);
+  const unbudgeted: string[] = [];
+  const used = new Map<string, number>();
+  const bounded = (call: ts.Node): string | null => {
+    if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) return null;
+    const name = call.expression.text;
+    if (name === "within") return call.arguments.length === 2 ? budgetKey(call.arguments[0]) : null;
+    if (!(name in SELF_BOUNDED) || call.arguments.length !== 1) return null;
+    const arg = call.arguments[0]!;
+    if (ts.isObjectLiteralExpression(arg)) {
+      const prop = arg.properties[0];
+      return arg.properties.length === 1 && prop && ts.isPropertyAssignment(prop) && prop.name.getText() === "drainMs" ? budgetKey(prop.initializer) : null;
+    }
+    return budgetKey(arg);
+  };
+  const visit = (n: ts.Node) => {
+    if (isFunction(n)) return;
+    if (isAwait(n)) {
+      const key = ts.isAwaitExpression(n) ? bounded(n.expression) : null;
+      if (key === null || !(key in SHUTDOWN_BUDGET)) unbudgeted.push(n.getText().split("\n")[0]!.replace(/\s+/g, " "));
+      else used.set(key, (used.get(key) ?? 0) + 1);
+    }
+    ts.forEachChild(n, visit);
+  };
+  ts.forEachChild(file, (n) => {
+    if (ts.isFunctionDeclaration(n) && n.name?.text === "shutdown") ts.forEachChild(n.body!, visit);
+  });
+  return { unbudgeted, used };
+}
+
+const shutdownSource = readFileSync(path.resolve(import.meta.dirname, "..", "..", "server", "http", "shutdown.ts"), "utf8");
+
+test("every await in shutdown is bounded by an entry of SHUTDOWN_BUDGET, and each entry bounds exactly one", () => {
+  const { unbudgeted, used } = inspectShutdown(shutdownSource);
+  assert.deepEqual(unbudgeted, []);
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(SHUTDOWN_BUDGET).map((k) => [k, used.get(k) ?? 0])),
+    Object.fromEntries(Object.keys(SHUTDOWN_BUDGET).map((k) => [k, 1])),
+    "a budget entry bounds no awaited step, or bounds two"
+  );
+});
+
+test("the check sees an unbounded await however it is spelled", () => {
+  const plant = (from: string, to: string) => {
+    const planted = shutdownSource.replace(from, to);
+    assert.notEqual(planted, shutdownSource, `${from} is not in shutdown.ts`);
+    return inspectShutdown(planted);
+  };
+  const owners = "await closeTableOwners(SHUTDOWN_BUDGET.tableOwners);";
+  assert.deepEqual(plant(owners, "await closeTableOwners();").unbudgeted, ["await closeTableOwners()"]);
+  assert.equal(plant(owners, "await new Promise((r) => r(5_000 + SHUTDOWN_BUDGET.tableOwners));").unbudgeted.length, 1);
+  const pool = "await within(SHUTDOWN_BUDGET.poolEnd, ended);";
+  assert.equal(
+    plant(pool, "await Promise.all([within(SHUTDOWN_BUDGET.poolEnd, ended), new Promise((r) => r(5_000))]);").unbudgeted.length,
+    1
+  );
+  assert.equal(plant(owners, "if (signal) { await other(); }\n    " + owners).unbudgeted.length, 1);
+  assert.equal(plant(owners, "await closeTableOwners(SHUTDOWN_BUDGET.nothing);").unbudgeted.length, 1);
+  assert.equal(plant(pool, "await within(SHUTDOWN_BUDGET.poolEnd, await slow().then(() => ended));").unbudgeted.length, 1);
+  assert.equal(plant(owners, "for await (const x of stream()) void x;\n    " + owners).unbudgeted.length, 1);
+  const reused = plant(owners, owners + "\n    await within(SHUTDOWN_BUDGET.tableOwners, other());");
+  assert.equal(reused.unbudgeted.length, 0);
+  assert.equal(reused.used.get("tableOwners"), 2);
+});
+
+test("an entry named only in a comment bounds nothing", () => {
+  const planted = shutdownSource.replace("await closeTableOwners(SHUTDOWN_BUDGET.tableOwners);", "// SHUTDOWN_BUDGET.tableOwners");
+  assert.equal(inspectShutdown(planted).used.get("tableOwners"), undefined);
 });

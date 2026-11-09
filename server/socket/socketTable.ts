@@ -31,6 +31,7 @@ import { modeFits, type GameMode } from "../../lib/game/gameEngine.ts";
 import { refuse, type Refusal } from "../shared/refusal.ts";
 import type { ServerToClientEvents, WireRoomState } from "../../shared/protocol.ts";
 import { bumpSocial } from "../store/presence.ts";
+import { track } from "../shared/inFlight.ts";
 
 /**
  * Async because the seat holds are part of the room, not an extra message:
@@ -232,7 +233,7 @@ export function armLobbyGrace(
     return handleSeatRelease(rt, roomId, userId, { source: "disconnect" });
   }
   arm("lobbyGrace", seatKey(roomId, userId), lobbyGraceMs(), () => {
-    void (async () => {
+    void track((async () => {
       try {
         // Back in *this* room, not merely back online: a player who reconnects
         // straight into a different lobby is no longer holding this seat, and
@@ -243,7 +244,7 @@ export function armLobbyGrace(
       } catch (err) {
         logger.error({ err, userId, roomId }, "Lobby grace handler failed");
       }
-    })();
+    })());
   });
 }
 
@@ -358,7 +359,7 @@ function scheduleAutoStart(
   if (!room.autoStart || pending("autoStart", room.id)) return;
 
   arm("autoStart", room.id, autoStartDelayMs(), () => {
-    void (async () => {
+    void track((async () => {
       try {
         const current = await roomStore.getRoomById(room.id);
         if (!current || current.status !== "waiting" || !current.hostUserId) return;
@@ -377,7 +378,7 @@ function scheduleAutoStart(
       } catch (err) {
         logger.warn({ err, roomId: room.id }, "Matchmade table failed to deal itself");
       }
-    })();
+    })());
   });
 }
 

@@ -14,6 +14,7 @@ import { realClock } from "../http/clock.ts";
 import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { payload } from "../shared/payload.ts";
+import { track } from "../shared/inFlight.ts";
 
 let _rt: TableRuntime | null = null;
 
@@ -118,7 +119,7 @@ function revokeAcrossCluster(rt: TableRuntime, revocation: Revocation, attempt: 
       }
       const retry = setTimeout(() => {
         retries.delete(retry);
-        void revokeAcrossCluster(rt, revocation, attempt + 1);
+        void track(revokeAcrossCluster(rt, revocation, attempt + 1));
       }, delay);
       retries.add(retry);
       (retry as unknown as { unref?: () => void }).unref?.();
