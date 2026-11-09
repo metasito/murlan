@@ -111,3 +111,36 @@ describe('a halt or a retry while the socket is still opening', () => {
     expect(socket.connect.mock.calls.length).toBe(connects + 1);
   });
 });
+
+describe('retrying while the websocket is still opening', () => {
+  it.each([
+    ['opens', (e: ReturnType<typeof lastSocket>['io']['engine'] & object) => e.open()],
+    ['fails', (e: ReturnType<typeof lastSocket>['io']['engine'] & object) => e.fail(new Error('websocket error'))],
+    ['closes', (e: ReturnType<typeof lastSocket>['io']['engine'] & object) => e.end()],
+  ])('lets go of the abandoned attempt once it %s, closing it once and leaving no listener', (_, settle) => {
+    connectSocket('retry3', { onAuthFailure: () => {} });
+    const socket = lastSocket();
+    const abandoned = socket.io.engine!;
+    expect(abandoned.readyState).toBe('opening');
+
+    reconnectSocket(socket as unknown as Socket);
+
+    expect(socket.io.engine).not.toBe(abandoned);
+    expect(abandoned.listenerCount()).toBe(3);
+    settle(abandoned);
+    expect(abandoned.listenerCount()).toBe(0);
+    expect(abandoned.readyState).toBe('closed');
+    expect(abandoned.close.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+
+  it('leaves a settled engine to the manager', () => {
+    connectSocket('retry4', { onAuthFailure: () => {} });
+    const socket = lastSocket();
+    socket.open();
+    const engine = socket.io.engine!;
+
+    reconnectSocket(socket as unknown as Socket);
+
+    expect(engine.listenerCount()).toBe(0);
+  });
+});
