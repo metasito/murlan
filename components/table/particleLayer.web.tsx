@@ -1,7 +1,7 @@
 // The web's particle layer: one 2D canvas and one requestAnimationFrame loop, whether or not
 // CanvasKit has loaded — the felt swaps renderers, this never does (#1252).
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import type { SharedValue } from "react-native-reanimated";
+import { useAnimatedReaction, type SharedValue } from "react-native-reanimated";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RestAir } from "@/lib/tokens";
@@ -80,7 +80,7 @@ export function animate(
   reduced: boolean,
   sx: number,
   sy: number
-): (() => void) | undefined {
+): { stop(): void; wake(): void } | undefined {
   const c = cv.getContext("2d");
   if (!c) return;
   cv.width = Math.round(DESIGN.width * sx);
@@ -91,12 +91,24 @@ export function animate(
   let owed = 0;
   // Setting the size above cleared the canvas, so an asleep scene must still paint it once.
   let cleared = true;
-  let id = requestAnimationFrame(function frame(now) {
+  let asleep = false;
+  let stopped = false;
+  let resumed = false;
+  let id = 0;
+  const frame = (now: number) => {
+    if (resumed) {
+      resumed = false;
+      last = now;
+    }
     const frameS = (now - last) / 1000;
     owed += frameS;
     const l = lamp.value;
     last = now;
-    if (!cleared && (sceneAsleep(scene, l, reduced) || !stepDue(scene, owed, frameS, reduced))) return void (id = requestAnimationFrame(frame));
+    if (!cleared && sceneAsleep(scene, l, reduced)) {
+      asleep = true;
+      return;
+    }
+    if (!cleared && !stepDue(scene, owed, frameS, reduced)) return void (id = requestAnimationFrame(frame));
     // Held still, the time owed spans the sleep: stepping it all at once would jump the light.
     const dt = Math.min(0.05, reduced ? frameS : owed);
     owed = 0;
@@ -122,8 +134,20 @@ export function animate(
       drawMoth(c, scene.moth);
     }
     id = requestAnimationFrame(frame);
-  });
-  return () => cancelAnimationFrame(id);
+  };
+  id = requestAnimationFrame(frame);
+  return {
+    stop() {
+      stopped = true;
+      cancelAnimationFrame(id);
+    },
+    wake() {
+      if (stopped || !asleep) return;
+      asleep = false;
+      resumed = true;
+      id = requestAnimationFrame(frame);
+    },
+  };
 }
 
 export function ParticleLayer({ ref, rig, landing }: {
@@ -135,25 +159,37 @@ export function ParticleLayer({ ref, rig, landing }: {
   const [scene] = useState(() => createScene(Math.random));
   const canvas = useRef<HTMLCanvasElement>(null);
   const reduced = usePrefersReducedMotion();
+  const running = useRef<{ stop(): void; wake(): void } | undefined>(undefined);
   useLandingReaction(landing, (l) => {
     "worklet";
     for (const p of landingDust(l, reduced, sx, sy, Math.random)) spawn(scene.s, p);
+    running.current?.wake();
   });
   useBombBeat(landing, reduced, (l) => {
     "worklet";
     for (const p of bombFx(l, reduced, sx, sy, Math.random)) spawn(scene.s, p);
+    running.current?.wake();
     traceOnset("moment", "bombFx");
   });
+  useAnimatedReaction(
+    () => lamp.value.t,
+    () => running.current?.wake()
+  );
 
   useImperativeHandle(ref, () => ({
     emit(spawns) {
       for (const p of spawns) spawn(scene.s, p);
+      running.current?.wake();
     },
     ember(from, to) {
-      if (!reduced) startEmber(scene.ember, from, to);
+      if (reduced) return;
+      startEmber(scene.ember, from, to);
+      running.current?.wake();
     },
     rain() {
-      if (!reduced) startRain(scene.rain);
+      if (reduced) return;
+      startRain(scene.rain);
+      running.current?.wake();
     },
   }), [scene, reduced]);
 
@@ -162,10 +198,11 @@ export function ParticleLayer({ ref, rig, landing }: {
   useTraceSource("motes", useCallback(() => scene.lit, [scene]));
   useTraceSource("moth", useCallback(() => scene.moth && { x: scene.moth.mx * sx, y: scene.moth.my * sy }, [scene, sx, sy]));
 
-  useEffect(
-    () => (canvas.current ? animate(canvas.current, scene, lamp, reduced, sx, sy) : undefined),
-    [scene, lamp, reduced, sx, sy]
-  );
+  useEffect(() => {
+    const loop = canvas.current ? animate(canvas.current, scene, lamp, reduced, sx, sy) : undefined;
+    running.current = loop;
+    return loop?.stop;
+  }, [scene, lamp, reduced, sx, sy]);
 
   return (
     <canvas

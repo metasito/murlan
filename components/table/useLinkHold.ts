@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAnimatedStyle, useFrameCallback, useSharedValue, type FrameInfo } from "react-native-reanimated";
+import { useAnimatedStyle, useSharedValue, type FrameInfo } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
+import { useDuring } from "@/lib/motion";
 import { holdGrey, linkHeld, type OwnLink } from "@/lib/ownLink";
 import { viewFilterGrey } from "@/lib/platform";
 import { Reconnect } from "@/lib/theme";
@@ -24,14 +25,7 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "hold">
   const [greyed, setGreyed] = useState(held);
   if (greyed !== held && (held || reduceMotion)) setGreyed(held);
 
-  useEffect(() => {
-    const to = held ? Reconnect.grey : 0;
-    if (reduceMotion) grey.value = to;
-    ramp.value = { to, perMs: Reconnect.grey / (held ? Reconnect.greyIn : Reconnect.greyOut), started: false };
-    rig.freeze(held ? 1 : 0);
-  }, [held, reduceMotion, grey, ramp, rig]);
-
-  const [step] = useState(() => (frame: FrameInfo) => {
+  const [step] = useState(() => (frame: FrameInfo): boolean => {
     "worklet";
     const { to, perMs, started } = ramp.value;
     const g = grey.value;
@@ -39,15 +33,27 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "hold">
     if (!started) {
       ramp.value = { to, perMs, started: true };
       if (g === 0 && to === 0) scheduleOnRN(setGreyed, false);
-      return;
+      return g !== to;
     }
-    if (g === to) return;
+    if (g === to) return false;
     const d = perMs * (frame.timeSincePreviousFrame ?? 0);
     const next = g < to ? Math.min(to, g + d) : Math.max(to, g - d);
     grey.value = next;
     if (next === 0) scheduleOnRN(setGreyed, false);
+    return next !== to;
   });
-  useFrameCallback(step);
+  const wake = useDuring(step);
+
+  const rampedFor = useRef(`${held}${reduceMotion}`);
+  useEffect(() => {
+    rig.freeze(held ? 1 : 0);
+    if (rampedFor.current === `${held}${reduceMotion}`) return;
+    rampedFor.current = `${held}${reduceMotion}`;
+    const to = held ? Reconnect.grey : 0;
+    if (reduceMotion) grey.set(to);
+    ramp.set({ to, perMs: Reconnect.grey / (held ? Reconnect.greyIn : Reconnect.greyOut), started: false });
+    wake();
+  }, [held, reduceMotion, grey, ramp, rig, wake]);
 
   useEffect(() => {
     const before = was.current;
