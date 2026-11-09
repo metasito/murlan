@@ -1313,6 +1313,7 @@ const GUARDS = [
       'ObjectPattern > Property[key.value="jest"], ObjectPattern > Property[computed=true]',
       'MemberExpression[computed=true][object.name=/^(globalThis|global|window|self)$/]',
       'VariableDeclarator[init.name=/^(globalThis|global|window|self)$/] > ObjectPattern',
+      'CallExpression[callee.object.name="Reflect"][callee.property.name=/^(get|getOwnPropertyDescriptor)$/][arguments.0.name=/^(globalThis|global|window|self)$/]',
     ].join(", "),
     files: ["tests/native/**/*.{ts,tsx}"],
     plant: [
@@ -1335,6 +1336,7 @@ const GUARDS = [
       { file: "tests/native/plant.test.tsx", code: "const name = 'jest';\nglobalThis[name].doMock('@/context/GameContext', () => ({}));", hits: 1 },
       { file: "tests/native/plant.test.tsx", code: "globalThis.jest.doMock('@/context/GameContext', () => ({}));", hits: 1 },
       { file: "tests/native/plant.test.tsx", code: "const {\n  jest: k,\n} = globalThis;", hits: 2 },
+      { file: "tests/native/plant.test.tsx", code: "Reflect.get(globalThis, 'jest').doMock('@/context/GameContext', () => ({}));\nReflect.getOwnPropertyDescriptor(global, 'jest');", hits: 2 },
     ],
     spare: [
       "jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));",
@@ -1348,6 +1350,7 @@ const GUARDS = [
       "const host = globalThis as unknown as { fetch: () => string };\nObject.defineProperty(globalThis, 'fetch', { value: 1 });",
       "const display = globalThis.requestAnimationFrame;\n(globalThis as { window?: unknown }).window ??= globalThis;",
       "jest.spyOn(globalThis, 'setTimeout');",
+      "const v = Reflect.get(options, 'jest');\nReflect.defineProperty(globalThis, 'x', { value: 1 });",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
   {
