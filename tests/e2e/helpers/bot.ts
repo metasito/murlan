@@ -94,7 +94,7 @@ export async function playAnyLegal(page: Page): Promise<string | null> {
       if (!(await toggle(page, card(held)))) return null;
     }
     if (!(await toggle(page, card(label)))) return null;
-    if (await giocaAccepts(page, 1_000)) {
+    if (await giocaAccepts(page)) {
       return (await tap(page, page.locator(GIOCA_BTN)).then(() => true, () => false)) ? label : null;
     }
   }

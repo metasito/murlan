@@ -14,7 +14,7 @@ import { startProxy, targetOf, viaProxy, type Proxy } from "../helpers/tcpProxy.
 import express from "express";
 import { pool } from "../../server/store/db.ts";
 import { mountHealth, stopHealth } from "../../server/http/health.ts";
-import { beginShutdown } from "../../server/game/gameRoom.ts";
+import { __resetShutdown, beginShutdown } from "../../server/game/gameRoom.ts";
 import { sendToInstance } from "../../server/store/instanceInbox.ts";
 import { instanceId } from "../../server/store/redis.ts";
 
@@ -127,8 +127,8 @@ describe("the probes on one instance", { skip: hasDatabase() ? false : skipMessa
     assert.doesNotMatch(body, /^store_misconfigured_total\{[^}]*\} [1-9]/m, "the boot check found the store unlike the manifest's");
   });
 
-  // Last: a drain cannot be undone inside a process.
-  test("draining, the instance is live and not ready", async () => {
+  test("draining, the instance is live and not ready", async (t) => {
+    t.after(__resetShutdown);
     beginShutdown();
     const ready = await timed(`${server.url}/health/ready`);
     assert.equal(ready.status, 503);

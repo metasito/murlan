@@ -75,7 +75,7 @@ describe("every browser spec reaches exactly one shard", () => {
     assert.match(ciYml, /TIMINGS: \$\{\{ needs\.scope\.outputs\.timings \}\}\n\s+run: printf '%s' "\$TIMINGS" > tests\/e2e\/timings\.json/);
     assert.match(ciYml, /e2e-shard\.mjs \$\{\{ matrix\.shard \}\} \$\{\{ strategy\.job-total \}\}/);
     assert.match(ciYml, /if \[ "\$found" -ne "\$\{\{ needs\.scope\.outputs\.shard-count \}\}" \]/);
-    assert.match(ciYml, /if: \$\{\{ needs\.browser\.result == 'success' \}\}\n.*\n\s+with:\n\s+name: e2e-timings\n/);
+    assert.match(ciYml, /if: \$\{\{ needs\.browser\.result == 'success' \}\}\n(?:\s+(?:id|continue-on-error|uses):.*\n)+\s+with:\n\s+name: e2e-timings\n/);
   });
 
   test("the weekly timings commit passes this file before it lands, as its bot push runs no CI", () => {

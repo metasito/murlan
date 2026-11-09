@@ -17,14 +17,28 @@ import type { Card } from '@/lib/game/gameEngine';
 import { Reconnect } from '@/lib/tokens';
 import { flightOf, pileOf } from './helpers/landing';
 
+const shadeReads = { n: 0 };
+jest.mock('@/components/table/rail', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/rail')>('@/components/table/rail');
+  return {
+    ...actual,
+    levelShade: (level: number) => {
+      'worklet';
+      shadeReads.n++;
+      return actual.levelShade(level);
+    },
+  };
+});
+
 const at = { x: 0, y: 0 };
 const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, seats: { top: at, left: at, right: at } };
 const card = (id: string): Card => ({ id, rank: id.split('_')[0] as Card['rank'], suit: id.split('_')[1] as Card['suit'], isJoker: false });
 const rect: CardRect = { x: 437, y: 300, w: 58, h: 84, rot: 0, back: false, lift: 0, glow: 0, seen: 1 };
 const owned = (id: string) => makeMutable<CardRects>({ [id]: rect }) as unknown as OwnedRects;
 
-function Table({ light, still, children }: { light: SharedValue<GlossLight>; still?: SharedValue<GlossLight>; children: React.ReactNode }) {
-  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light, still ?? light);
+function Table({ light, level, children }: { light: SharedValue<GlossLight>; level?: SharedValue<number>; children: React.ReactNode }) {
+  const own = useSharedValue(light.value.level);
+  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light, light, level ?? own);
   return <CardTableProvider value={value}>{children}</CardTableProvider>;
 }
 
@@ -59,11 +73,38 @@ describe('the lamp level on the cards', () => {
     expect(box('hand', 'card-level-shade')).toMatchObject({ width: face.width, height: Number(face.height) });
   });
 
+  it('reads the level alone: the sway and a gloss step leave its style untouched', async () => {
+    jest.useFakeTimers();
+    const light = makeMutable<GlossLight>({ lx: 437, ly: 140, level: 0.75, r: 1, t: 0 });
+    const level = makeMutable(0.75);
+    await render(
+      <Table light={light} level={level}>
+        <View testID="hand">
+          <CardView card={card('7_clubs')} rectKey="hand:7_clubs" rects={owned('hand:7_clubs')} />
+        </View>
+      </Table>
+    );
+    await act(async () => void jest.advanceTimersByTime(100));
+    const read = shadeReads.n;
+    await act(async () => {
+      light.value = { ...light.value, lx: 450, ly: 150, r: 1.2, t: 1 };
+      jest.advanceTimersByTime(100);
+    });
+    expect(shadeReads.n).toBe(read);
+    await act(async () => {
+      level.value = 0.5;
+      jest.advanceTimersByTime(100);
+    });
+    expect(shadeReads.n).toBeGreaterThan(read);
+    jest.useRealTimers();
+  });
+
   it('renders nothing at lamp level 1', async () => {
     jest.useFakeTimers();
     const light = makeMutable<GlossLight>({ lx: 437, ly: 140, level: 1, r: 1, t: 0 });
+    const level = makeMutable(1);
     await render(
-      <Table light={light}>
+      <Table light={light} level={level}>
         <View testID="hand">
           <CardView card={card('7_clubs')} rectKey="hand:7_clubs" rects={owned('hand:7_clubs')} />
         </View>
@@ -72,7 +113,7 @@ describe('the lamp level on the cards', () => {
     const shade = () => getAnimatedStyle(screen.getByTestId('card-level-shade', { includeHiddenElements: true }) as Parameters<typeof getAnimatedStyle>[0]) as { display?: string };
     expect(shade().display).toBe('none');
     await act(async () => {
-      light.value = { ...light.value, level: 0.75 };
+      level.value = 0.75;
       jest.advanceTimersByTime(16);
     });
     expect(shade().display).toBe('flex');
@@ -98,7 +139,7 @@ describe('the lamp level on the cards', () => {
       useEffect(() => {
         onRig(rig);
       }, [onRig, rig]);
-      return <Table light={rig.glossLight}>{children}</Table>;
+      return <Table light={rig.glossLight} level={rig.shadeLevel}>{children}</Table>;
     }
     await render(
       <Rigged onRig={(rig) => (held.rig = rig)}>

@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import ts from "typescript";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ROOTS = ["lib", "components"];
@@ -24,9 +26,15 @@ function importsOf(checkFile: string): { values: Set<string>; types: Set<string>
   const src = readFileSync(checkFile, "utf8");
   const values = new Set<string>();
   const types = new Set<string>();
-  for (const m of src.matchAll(/^import (type )?\* as (\w+) from "(\.[^"]+)";$/gm)) {
-    const used = m[1] ? new RegExp(`typeof ${m[2]}\\b`) : new RegExp(`[[,]\\s*${m[2]}\\b`);
-    if (used.test(src)) (m[1] ? types : values).add(path.resolve(path.dirname(checkFile), m[3]));
+  const rel = path.relative(repoRoot, checkFile).split(path.sep).join("/");
+  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true);
+  for (const st of sf.statements) {
+    const ns = ts.isImportDeclaration(st) ? st.importClause?.namedBindings : undefined;
+    if (!ns || !ts.isNamespaceImport(ns) || !ts.isStringLiteral((st as ts.ImportDeclaration).moduleSpecifier)) continue;
+    const typeOnly = !!(st as ts.ImportDeclaration).importClause?.isTypeOnly;
+    const from = localPath(rel, ((st as ts.ImportDeclaration).moduleSpecifier as ts.StringLiteral).text);
+    const used = typeOnly ? new RegExp(`typeof ${ns.name.text}\\b`) : new RegExp(`[[,]\\s*${ns.name.text}\\b`);
+    if (from !== null && used.test(src)) (typeOnly ? types : values).add(path.join(repoRoot, from));
   }
   return { values, types };
 }

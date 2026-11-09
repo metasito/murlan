@@ -29,7 +29,6 @@ const mock = {
 jest.mock('@shopify/react-native-skia', () => {
   const R = require('react') as typeof import('react');
   const { View } = require('react-native') as typeof import('react-native');
-  const { jest: j } = require('@jest/globals') as typeof import('@jest/globals');
   const call: object = new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : call), apply: () => call });
   const element = ({ children }: { children?: React.ReactNode }) => R.createElement(R.Fragment, null, children);
   const surface = (gpu: boolean, bake?: { kind: Kind }) => {
@@ -41,7 +40,7 @@ jest.mock('@shopify/react-native-skia', () => {
         baked: gpu,
         kind: gpu ? mock.drawing : ('' as Kind),
         dead: false,
-        dispose: j.fn(),
+        dispose: jest.fn(),
         makeNonTextureImage: () => make(false),
         makeShaderOptions: () => call,
         width: () => 874,

@@ -1,10 +1,9 @@
-// A file of its own: `beginShutdown` cannot be undone inside a process, and `startTestServer` refuses to boot after it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer.ts";
 import { connectAs, waitFor, waitForWhere } from "../helpers/client.ts";
 import { befriend } from "../helpers/friends.ts";
-import { beginShutdown } from "../../server/game/gameRoom.ts";
+import { beginShutdown, isShuttingDown } from "../../server/game/gameRoom.ts";
 import { inFlightCount } from "../../server/shared/inFlight.ts";
 
 test("a socket the drain closes is announced offline, and stop() waits for the notice", { skip: hasDatabase() ? false : skipMessage(), timeout: 60_000 }, async () => {
@@ -26,4 +25,10 @@ test("a socket the drain closes is announced offline, and stop() waits for the n
     await server.stop();
   }
   assert.equal(inFlightCount(), 0);
+  assert.equal(isShuttingDown(), false, "stop() ends the shutdown the test staged, so the next server in this process boots");
+});
+
+test("a server boots after a drained one in the same process", { skip: hasDatabase() ? false : skipMessage(), timeout: 60_000 }, async () => {
+  const server = await startTestServer();
+  await server.stop();
 });

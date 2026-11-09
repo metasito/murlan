@@ -15,10 +15,13 @@ on:
         description: Also compile for Android and iOS
         type: boolean
         default: false
-  # Runs the two device compiles (`android-build`, `ios-build`) weekly; a change
-  # to native dependencies and `-f native=true` above run them too.
+  # Weekly runs the two device compiles (`android-build`, `ios-build`) and commits the
+  # timings; a change to native dependencies and `-f native=true` above run the compiles
+  # too. Daily runs the whole suite on main, which a merge skips when its pull request
+  # already passed that tree.
   schedule:
     - cron: "17 4 * * 1"
+    - cron: "17 2 * * 0,2-6"
 
 permissions:
   contents: read
@@ -297,8 +300,19 @@ jobs:
         run: npm test
       - name: Keep the runner's own results for CI gate
         if: ${{ !cancelled() }}
+        id: up1
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: test-results-verify-0-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload test-results-verify-0-${{ github.run_attempt }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up1.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: test-results-verify-0-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
@@ -335,16 +349,40 @@ jobs:
       - run: npm run test:native -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --cacheDirectory="$RUNNER_TEMP/jest-cache"
         env:
           MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
-      - if: ${{ !cancelled() }}
+      - name: Upload test-results-native-${{ matrix.shard }}-${{ github.run_attempt }}
+        if: ${{ !cancelled() }}
+        id: up2
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-native-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
           retention-days: 7
-      # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: Upload test-results-native-${{ matrix.shard }}-${{ github.run_attempt }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up2.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
+          name: test-results-native-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
+      # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
+      - name: Upload over-budget-native-${{ matrix.shard }}
+        id: up3
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: over-budget-native-${{ matrix.shard }}
+          path: ${{ runner.temp }}/over-budget.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload over-budget-native-${{ matrix.shard }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up3.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: over-budget-native-${{ matrix.shard }}
           path: ${{ runner.temp }}/over-budget.json
           if-no-files-found: error
@@ -386,9 +424,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
-      - if: ${{ !cancelled() }}
+      - name: Upload test-results-harness-0-${{ github.run_attempt }}
+        if: ${{ !cancelled() }}
+        id: up4
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: test-results-harness-0-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload test-results-harness-0-${{ github.run_attempt }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up4.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: test-results-harness-0-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
@@ -421,9 +471,21 @@ jobs:
           files=$(grep -lE 'skip: .*(win32|onWindows)' tools/loop/tests/*.test.ts)
           [ -n "$files" ] || { echo "::error::No loop test skips off win32 — the selection pattern is stale."; exit 1; }
           node scripts/nodeTest.mjs --test --test-timeout=120000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tools/ci/results-node-reporter.mjs --test-reporter-destination=stderr $files
-      - if: ${{ !cancelled() }}
+      - name: Upload test-results-harness-windows-0-${{ github.run_attempt }}
+        if: ${{ !cancelled() }}
+        id: up5
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: test-results-harness-windows-0-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload test-results-harness-windows-0-${{ github.run_attempt }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up5.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: test-results-harness-windows-0-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
@@ -448,7 +510,7 @@ jobs:
         run: npm run typecheck:strict
       - run: npm run lint
       - name: Audit
-        run: node tools/ci/audit-gate.mjs
+        run: node tools/ci/audit-gate.mjs ${{ github.event_name == 'pull_request' && format('--base {0}', github.event.pull_request.base.sha) || '' }}
 
   # Nothing else in this workflow compiles the app for a device. `build` makes
   # the web bundle and the server bundle, neither of which touches Gradle or Xcode, so a plugin or dependency that breaks the
@@ -467,7 +529,7 @@ jobs:
   android-build:
     name: Android compiles
     needs: scope
-    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
+    if: ${{ !cancelled() && (github.event.schedule == '17 4 * * 1' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -531,7 +593,7 @@ jobs:
   ios-build:
     name: iOS compiles
     needs: scope
-    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
+    if: ${{ !cancelled() && (github.event.schedule == '17 4 * * 1' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
     timeout-minutes: 45
     env:
@@ -724,16 +786,40 @@ jobs:
         run: npm run test:e2e -- $(node tools/ci/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})
         env:
           MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
-      - if: ${{ !cancelled() }}
+      - name: Upload test-results-browser-${{ matrix.shard }}-${{ github.run_attempt }}
+        if: ${{ !cancelled() }}
+        id: up6
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-browser-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
           retention-days: 7
-      # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: Upload test-results-browser-${{ matrix.shard }}-${{ github.run_attempt }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up6.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
+          name: test-results-browser-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-results/
+          if-no-files-found: error
+          retention-days: 7
+      # Read by the loop's land gate (tools/loop/ciVerdict.ts): a step's warning annotations stop at ten.
+      - name: Upload over-budget-browser-${{ matrix.shard }}
+        id: up7
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: over-budget-browser-${{ matrix.shard }}
+          path: ${{ runner.temp }}/over-budget.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload over-budget-browser-${{ matrix.shard }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up7.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: over-budget-browser-${{ matrix.shard }}
           path: ${{ runner.temp }}/over-budget.json
           if-no-files-found: error
@@ -747,8 +833,19 @@ jobs:
       # from.
       - name: Keep this shard's report
         if: ${{ !cancelled() }}
+        id: up8
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: blob-report-${{ matrix.shard }}
+          path: tests/e2e/blob-report/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload blob-report-${{ matrix.shard }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up8.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: blob-report-${{ matrix.shard }}
           path: tests/e2e/blob-report/
           if-no-files-found: error
@@ -763,8 +860,19 @@ jobs:
       # and the step above is what asserts the suite ran at all.
       - name: Keep the raw Playwright output when the suite goes red
         if: failure()
+        id: up9
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: playwright-test-results-${{ matrix.shard }}
+          path: tests/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload playwright-test-results-${{ matrix.shard }} again after a failed attempt
+        if: ${{ !cancelled() && steps.up9.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: playwright-test-results-${{ matrix.shard }}
           path: tests/e2e/test-results/
           if-no-files-found: ignore
@@ -788,7 +896,7 @@ jobs:
       contents: write
       actions: read
     env:
-      COMMIT_TIMINGS: ${{ github.event_name == 'schedule' && needs.browser.result == 'success' }}
+      COMMIT_TIMINGS: ${{ github.event.schedule == '17 4 * * 1' && needs.browser.result == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -844,8 +952,20 @@ jobs:
       # The report is screenshots, videos and trace zips, which deflate barely shrinks.
       - name: Keep the Playwright report
         if: ${{ !cancelled() }}
+        id: up10
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Upload playwright-report again after a failed attempt
+        if: ${{ !cancelled() && steps.up10.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: playwright-report
           path: playwright-report/
           if-no-files-found: error
@@ -865,8 +985,19 @@ jobs:
       # so balance follows the suite without a commit per merge. A red shard is not a measurement.
       - name: Keep the timings for the next run
         if: ${{ needs.browser.result == 'success' }}
+        id: up11
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: e2e-timings
+          path: tests/e2e/timings.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload e2e-timings again after a failed attempt
+        if: ${{ !cancelled() && steps.up11.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
           name: e2e-timings
           path: tests/e2e/timings.json
           if-no-files-found: error

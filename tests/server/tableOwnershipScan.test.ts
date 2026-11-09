@@ -5,7 +5,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { TAKEOVER } from "../../server/game/tableActions.ts";
 import type { TableActionKind } from "../../server/game/tableActions.ts";
+import ts from "typescript";
 import { blankComments } from "../helpers/sourceScan.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 const SERVER_DIR = path.resolve(import.meta.dirname, "..", "..", "server");
 
@@ -25,20 +27,22 @@ function serverFiles(dir = ""): string[] {
     .map((f) => path.posix.join(dir, f.split(path.sep).join("/")));
 }
 
-const GAME_ROOM_IMPORT = /import\s*\{([^}]*)\}\s*from\s*["'][^"']*\bgameRoom\.ts["']/g;
-const GAME_ROOM_NAMESPACE = /import\s*\*\s*as\s+(\w+)\s+from\s*["'][^"']*\bgameRoom\.ts["']/g;
+const GAME_ROOM = "server/game/gameRoom";
 
 /** Patterns for what a source binds to gameRoom's `activeGames`: imported, renamed, namespaced, or held in a local. */
-function tableMapNames(source: string): string[] {
+function tableMapNames(source: string, file = "server/game/tableLifecycle.ts"): string[] {
   const names: string[] = [];
-  for (const [, body] of source.matchAll(GAME_ROOM_IMPORT)) {
-    for (const part of body.split(",")) {
-      const bound = /^\s*activeGames(?:\s+as\s+(\w+))?\s*$/.exec(part);
-      if (bound) names.push(bound[1] ?? "activeGames");
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier) || !st.importClause) continue;
+    if (localPath(file, st.moduleSpecifier.text)?.replace(/\.ts$/, "") !== GAME_ROOM) continue;
+    const bindings = st.importClause.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const el of bindings.elements) if ((el.propertyName ?? el.name).text === "activeGames") names.push(el.name.text);
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      const namespace = bindings.name.text;
+      if (new RegExp(`\\b${namespace}\\s*\\.\\s*activeGames\\b`).test(source)) names.push(`${namespace}\\s*\\.\\s*activeGames`);
     }
-  }
-  for (const [, namespace] of source.matchAll(GAME_ROOM_NAMESPACE)) {
-    if (new RegExp(`\\b${namespace}\\s*\\.\\s*activeGames\\b`).test(source)) names.push(`${namespace}\\s*\\.\\s*activeGames`);
   }
   for (const name of [...names]) {
     for (const [, local] of source.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*${name}\\s*;`, "g"))) {
@@ -48,9 +52,9 @@ function tableMapNames(source: string): string[] {
   return names;
 }
 
-function tableMapWrites(source: string): string[] {
+function tableMapWrites(source: string, file = "server/game/tableLifecycle.ts"): string[] {
   const code = stripComments(source);
-  return tableMapNames(code).flatMap((name) =>
+  return tableMapNames(code, file).flatMap((name) =>
     [
       ...code.matchAll(
         new RegExp(`(?<![\\w.])${name}\\s*(?:\\.\\s*(set|delete|clear)|\\[\\s*["'](set|delete|clear)["']\\s*\\])\\s*\\(`, "g")
@@ -62,7 +66,7 @@ function tableMapWrites(source: string): string[] {
 function writersOf(kinds: string[]): Record<string, number> {
   const writers: Record<string, number> = {};
   for (const file of serverFiles()) {
-    const count = tableMapWrites(serverSource(file)).filter((kind) => kinds.includes(kind)).length;
+    const count = tableMapWrites(serverSource(file), `server/${file}`).filter((kind) => kinds.includes(kind)).length;
     if (count > 0) writers[file] = count;
   }
   return writers;
@@ -78,6 +82,7 @@ describe("a game enters memory in one place, under a claim", () => {
       ['import {\n  isShuttingDown,\n  activeGames as live,\n} from "../game/gameRoom.ts";\nlive.set(id, game);', "set"],
       [`${fromRoom}const tables = activeGames;\ntables.delete(id);`, "delete"],
       ['import * as room from "./gameRoom.ts";\nroom.activeGames.set(id, game);', "set"],
+      ['import { activeGames } from "@/server/game/gameRoom";\nactiveGames.set(id, game);', "set"],
     ];
     for (const [sample, kind] of writes) assert.deepEqual(tableMapWrites(sample), [kind], sample);
     const notWrites = [
@@ -109,7 +114,7 @@ describe("a game enters memory in one place, under a claim", () => {
     assert.ok(handlers.includes("socket/socketGameplay.ts") && handlers.includes("http/routes/index.ts"));
     const readers = handlers.filter((file) => {
       const source = stripComments(serverSource(file));
-      return tableMapNames(source).length > 0 || /\bactiveGames\b/.test(source);
+      return tableMapNames(source, `server/${file}`).length > 0 || /\bactiveGames\b/.test(source);
     });
     assert.deepEqual(readers, [], "these read activeGames directly instead of asking the game layer");
   });

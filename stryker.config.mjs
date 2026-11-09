@@ -24,6 +24,7 @@ export const SCANS = [
   "tests/server/exchangeVisibilityScan.test.ts",
   "tests/server/historyBound.test.ts",
   "tests/server/inFlightScan.test.ts",
+  "tests/server/shutdownReset.test.ts",
   "tests/server/layering.test.ts",
   "tests/server/shutdownBudget.test.ts",
   "tests/server/logRedactionScan.test.ts",

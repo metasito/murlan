@@ -15,7 +15,6 @@ const mockBaked: { dispose: jest.Mock }[] = [];
 
 jest.mock('@shopify/react-native-skia', () => {
   const R = require('react') as typeof import('react');
-  const { jest: j } = require('@jest/globals') as typeof import('@jest/globals');
   const call: object = new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : call), apply: () => call });
   const element = ({ children }: { children?: React.ReactNode }) => R.createElement(R.Fragment, null, children);
   const surface = () => ({
@@ -25,7 +24,7 @@ jest.mock('@shopify/react-native-skia', () => {
     makeImageSnapshot: () => ({
       dispose: () => {},
       makeNonTextureImage: () => {
-        const image = { dispose: j.fn() };
+        const image = { dispose: jest.fn() };
         mockBaked.push(image);
         return image;
       },
