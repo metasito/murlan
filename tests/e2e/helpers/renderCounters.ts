@@ -9,6 +9,10 @@ export interface RenderCounts {
   /** Frames the counter's own `requestAnimationFrame` loop saw. */
   frames: number;
   readPixels: number;
+  /** `requestAnimationFrame` callbacks that ran, by the caller that requested them; the counter's own and the trace recorder's tick are left out. */
+  loops: Record<string, number>;
+  /** Reanimated frame callbacks active in the window's last frame; each keeps a loop running while it is. */
+  frameCallbacks: number;
   /** Style attribute writes under `game-root`; anything inside a card's own view is `cards`. */
   styles: Record<string, number>;
 }
@@ -19,7 +23,7 @@ const CARD = '[data-testid="card-box"], [id^="card-"]';
 /** Before the first navigation. */
 export async function countRenders(page: Page): Promise<void> {
   await page.addInitScript((card: string) => {
-    const fresh = () => ({ draws: {} as Record<string, number>, drewIn: {} as Record<string, number>, frames: 0, readPixels: 0, styles: {} as Record<string, number> });
+    const fresh = () => ({ draws: {} as Record<string, number>, drewIn: {} as Record<string, number>, frames: 0, readPixels: 0, loops: {} as Record<string, number>, frameCallbacks: 0, styles: {} as Record<string, number> });
     let counts = fresh();
     let frame = 0;
     let lastFrame: Record<string, number> = {};
@@ -53,12 +57,52 @@ export async function countRenders(page: Page): Promise<void> {
     for (const ctx of [globalThis.CanvasRenderingContext2D, globalThis.OffscreenCanvasRenderingContext2D]) {
       for (const name of ["clearRect", "drawImage", "fill"]) patch(ctx?.prototype, name, (self) => draw(self, "2d"));
     }
-    // Started on demand rather than here: a virtual clock installed after this script replaces `requestAnimationFrame`.
     let started = false;
+    // Not counted: the counter's own tick, the trace recorder's, and what a spec hands to `exempt`.
+    const exempt = new WeakSet<object>();
+    let tracerStarting = false;
+    let reached = false;
+    const registry = () => (globalThis as unknown as { _frameCallbackRegistry?: { activeFrameCallbacks: Set<number> } })._frameCallbackRegistry;
+    // The recorder's tick is the one function it asks a frame for while `start` runs, and again each frame.
+    // Wrapping at the assignment keeps this wrapper outside the recorder's own, so it sees the callbacks
+    // callers pass rather than the recorder's closures, and before any spec starts the trace.
+    let tracer: { start(): void } | undefined;
+    Object.defineProperty(window, "murlanTrace", {
+      configurable: true,
+      get: () => tracer,
+      set(value: { start(): void }) {
+        tracer = value;
+        const start = value.start.bind(value);
+        value.start = () => {
+          tracerStarting = true;
+          try {
+            start();
+          } finally {
+            tracerStarting = false;
+          }
+        };
+        const request = window.requestAnimationFrame.bind(window);
+        window.requestAnimationFrame = (callback) => {
+          reached = true;
+          if (tracerStarting) exempt.add(callback);
+          if (!started || exempt.has(callback)) return request(callback);
+          const caller = (new Error().stack ?? "").split("\n")[2]?.trim().replace(/^at /, "").replace(/:\d+\)?$/, "") ?? "(unknown)";
+          return request((t) => {
+            bump(counts.loops, caller);
+            callback(t);
+          });
+        };
+      },
+    });
+    // Started on demand rather than here: a virtual clock installed after this script replaces `requestAnimationFrame`.
     const start = () => {
       if (started) return true;
       const root = document.querySelector('[data-testid="game-root"]');
       if (!root) return false;
+      if (!(registry()?.activeFrameCallbacks instanceof Set)) throw new Error("renderCounters: the page has no Reanimated frame callback registry to count");
+      reached = false;
+      window.cancelAnimationFrame(window.requestAnimationFrame(() => {}));
+      if (!reached) throw new Error("renderCounters: requestAnimationFrame is not wrapped");
       started = true;
       new MutationObserver((records) => {
         for (const r of records) {
@@ -69,8 +113,10 @@ export async function countRenders(page: Page): Promise<void> {
       const tick = () => {
         frame++;
         counts.frames++;
+        counts.frameCallbacks = registry()!.activeFrameCallbacks.size;
         requestAnimationFrame(tick);
       };
+      exempt.add(tick);
       requestAnimationFrame(tick);
       return true;
     };
@@ -80,7 +126,7 @@ export async function countRenders(page: Page): Promise<void> {
       lastFrame = {};
       return out;
     };
-    (window as unknown as { murlanRenderCounts: { start(): boolean; take(): typeof counts } }).murlanRenderCounts = { start, take };
+    (window as unknown as { murlanRenderCounts: { start(): boolean; take(): typeof counts; exempt(callback: object): void } }).murlanRenderCounts = { start, take, exempt: (callback: object) => void exempt.add(callback) };
   }, CARD);
 }
 
