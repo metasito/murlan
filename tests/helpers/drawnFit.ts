@@ -14,6 +14,11 @@ import { TEXT_METRICS } from "../../components/table/textMetrics.generated.ts";
  *   hints lands each advance on a whole pixel: CI's Chrome 156 draws "Scegli una carta da 3 a 10 per
  *   Besnik" 6.4px narrower than linear, under `HINT_PER_GLYPH`. A glyph the bundled faces lack is
  *   priced at its `fallbackEm`, or at runtime at the face's widest, which the drawn one may fall short of.
+ *   A pill laid out beside another, its place and room given by that pill's drawn width, takes the
+ *   `drift` the neighbour was drawn narrower than it was priced: it may sit that far outside its priced
+ *   rect, and be that much wider, and is held to the rect so extended instead of to its alignment.
+ *   A pill held to its room by the table (`capped`) is the room wide, not its words: its plate is held
+ *   to the rect's width, whatever the renderer drew the clipped words at.
  * - `inside`: a knob of its own fixed size, centred in the slot the solver gives it.
  * - `line`: a seat's name. Its words are held as a pill's, and the label reserves a taller line
  *   than the font draws, under which the drawn line sits: the bottoms meet, the top may be lower.
@@ -32,6 +37,8 @@ export interface Box extends Rect {
 export interface Priced {
   align?: Align;
   overcount?: number;
+  drift?: number;
+  capped?: boolean;
 }
 
 /** Layout rounds each edge to a device pixel, and a border's half pixel to one either side. */
@@ -51,20 +58,22 @@ export const unpriced = (text: { words: string; em: number }) =>
 
 const near = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE;
 const placed = (a: Rect, b: Rect, align: Align | undefined) => align !== undefined && near(a.x, aligned(align, b.x, b.w, a.w)) && a.w <= b.w + TOLERANCE;
+const within = (a: Rect, b: Rect, drift: number) => a.x >= b.x - drift - TOLERANCE && a.x + a.w <= b.x + b.w + drift + TOLERANCE;
 const centre = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 
-function linearly(a: Box, b: Rect, overcount: number | undefined): boolean {
+function linearly(a: Box, b: Rect, overcount: number | undefined, drift = 0, capped = false): boolean {
   const text = a.text!;
   if (overcount === undefined) return false;
+  if (capped && Math.abs(a.w - b.w) <= drift + TOLERANCE) return true;
   const hinted = text.drawn - text.linear;
   if (Math.abs(hinted) > HINT_PER_GLYPH * [...text.words].length) return false;
   const [drawn, solved] = [a.w - hinted, b.w - overcount];
-  return drawn <= solved + TOLERANCE && solved - drawn <= unpriced(text) + TOLERANCE;
+  return drawn <= solved + drift + TOLERANCE && solved - drawn <= unpriced(text) + drift + TOLERANCE;
 }
 
 export const fits: Record<Fit, (a: Box, b: Rect, priced: Priced) => boolean> = {
   same: (a, b) => near(a.x, b.x) && near(a.y, b.y) && near(a.w, b.w) && near(a.h, b.h),
   inside: (a, b) => near(centre(a).x, centre(b).x) && near(centre(a).y, centre(b).y) && a.w <= b.w + TOLERANCE && a.h <= b.h + TOLERANCE,
-  words: (a, b, p) => near(a.y, b.y) && near(a.h, b.h) && placed(a, b, p.align) && linearly(a, b, p.overcount),
-  line: (a, b, p) => near(a.y + a.h, b.y + b.h) && a.y >= b.y - TOLERANCE && placed(a, b, p.align) && linearly(a, b, p.overcount),
+  words: (a, b, p) => near(a.y, b.y) && near(a.h, b.h) && (p.drift ? within(a, b, p.drift) : placed(a, b, p.align)) && linearly(a, b, p.overcount, p.drift, p.capped),
+  line: (a, b, p) => near(a.y + a.h, b.y + b.h) && a.y >= b.y - TOLERANCE && placed(a, b, p.align) && linearly(a, b, p.overcount, 0, p.capped),
 };

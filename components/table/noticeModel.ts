@@ -147,8 +147,10 @@ export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox 
   };
 }
 
-export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
-  const box = onTableChip(NOTICES[kind], selectorBox(NOTICES[kind].selector, scale), scale);
+/** `room` is the width the table gives the plate, which it is held to whatever it holds. */
+export function noticeBox(kind: NoticeKind, scale: number, room?: number): NoticeBox {
+  const fitted = onTableChip(NOTICES[kind], selectorBox(NOTICES[kind].selector, scale), scale);
+  const box = room === undefined ? fitted : { ...fitted, maxWidth: Math.min(room, fitted.maxWidth ?? room) };
   const runtime: NoticeBox["runtime"] = {};
   for (const [role, bound] of Object.entries(RUNTIME[kind] ?? {}) as [NoticeRole, RuntimePx][]) {
     if (bound !== "plate") runtime[role] = "chars" in bound ? bound : { maxWidth: bound.runMaxWidth * scale, lines: box.lines, on: "run" };

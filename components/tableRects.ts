@@ -73,6 +73,10 @@ export interface TableRects {
   aligns: Partial<Record<RectName, Align>>;
   /** How much wider than its words' linear advances such a rect is priced: what snapping each glyph to a pixel may add. */
   overcount: Partial<Record<RectName, number>>;
+  /** A rect the table holds to its room, narrower than its words need. */
+  capped: Partial<Record<RectName, boolean>>;
+  /** A rect whose words must stay whole and are drawn cut at its room: a pill of catalogue words alone, which a name or a clock does not bound. */
+  cut: Partial<Record<RectName, boolean>>;
 }
 
 const box = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h });
@@ -107,15 +111,26 @@ export function tableRects(input: {
 }): TableRects {
   const { width, height, insets, locale, state } = input;
   const layout = tableLayout({ width, height, insets });
-  const { scale, frame, anchors, chips, hud, rail, handZone, buttons } = layout;
+  const { scale, frame, anchors, chips, rail, handZone, buttons } = layout;
 
-  const comboW = noticeWidth("hudCombo", locale, chips, state.chips.combo);
-  const turnW = noticeWidth("turn", locale, chips, state.chips.turn);
+  const comboRoom = layout.chipRow({ combo: 0, turn: 0 }).combo.room;
+  const comboW = noticeWidth("hudCombo", locale, chips, state.chips.combo, "snapped", comboRoom);
+  const turnRoom = layout.chipRow({ combo: comboW, turn: 0 }).turn.room;
+  const turnW = noticeWidth("turn", locale, chips, state.chips.turn, "snapped", turnRoom);
+  const hud = layout.chipRow({ combo: comboW, turn: turnW });
   const overcount: TableRects["overcount"] = {
-    hudCombo: comboW - noticeWidth("hudCombo", locale, chips, state.chips.combo, "linear"),
-    hudTurn: turnW - noticeWidth("turn", locale, chips, state.chips.turn, "linear"),
+    hudCombo: comboW - noticeWidth("hudCombo", locale, chips, state.chips.combo, "linear", comboRoom),
+    hudTurn: turnW - noticeWidth("turn", locale, chips, state.chips.turn, "linear", turnRoom),
   };
-  const turnRoom = width - hud.turn.left - hud.turn.right;
+  const turnCentred = layout.pill.centreX - turnW / 2;
+  const turnAlign: Align = Math.abs(hud.turn.left - turnCentred) < EPS ? "center" : hud.turn.left > turnCentred ? "flex-start" : "flex-end";
+  const capped: TableRects["capped"] = {
+    hudCombo: noticeWidth("hudCombo", locale, chips, state.chips.combo) > comboRoom + EPS,
+    hudTurn: noticeWidth("turn", locale, chips, state.chips.turn) > turnRoom + EPS,
+  };
+  const cut: TableRects["cut"] = {
+    hudCombo: state.chips.combo.every((part) => "runs" in part) && capped.hudCombo,
+  };
   const pill = scorePillBox(0, 0, layout.pill);
   const chipH = CHIP_H(chips);
 
@@ -134,6 +149,7 @@ export function tableRects(input: {
     const labelW = seatLabelW(anchor, scale);
     const w = Math.min(priced("snapped"), labelW);
     overcount[as] = w - Math.min(priced("linear"), labelW);
+    capped[as] = priced("snapped") > labelW + EPS;
     const bottom = anchors[dir].y - ring / 2 - seatLabelRows(scale, seatBadgeH(state.seats[dir]!.badge?.kind, scale), seatLabelRise(dir, scale))[row];
     const labelLeft = anchors[dir].x - ring / 2 + seatLabelLeft(anchor, scale, layout.nameInset[dir]);
     return box(aligned(SEAT_LABEL_ALIGN[anchor], labelLeft, labelW, w), bottom - h, w, h);
@@ -188,7 +204,7 @@ export function tableRects(input: {
       railMenu: rail.menu,
       railFoot: rail.foot,
       hudCombo: box(hud.combo.left, hud.combo.top, comboW, chipH),
-      hudTurn: box(aligned(hud.turn.align, hud.turn.left, turnRoom, turnW), hud.turn.top, turnW, chipH),
+      hudTurn: box(hud.turn.left, hud.turn.top, turnW, chipH),
       scorePill: box(pill.x, pill.y, pill.w, pill.h),
       seatTop: state.seats.top && seat("top"),
       seatLeft: state.seats.left && seat("left"),
@@ -211,8 +227,8 @@ export function tableRects(input: {
     cards: { fanTop: fans.top, fanLeft: fans.left, fanRight: fans.right, pile: pileCards },
     bleed: { hand: { bottom: row.crop + row.tiltOverhang } },
     aligns: {
-      hudCombo: hud.combo.align,
-      hudTurn: hud.turn.align,
+      hudCombo: "flex-start",
+      hudTurn: turnAlign,
       nameTop: SEAT_LABEL_ALIGN[seatAnchor("top")],
       nameLeft: SEAT_LABEL_ALIGN[seatAnchor("left")],
       nameRight: SEAT_LABEL_ALIGN[seatAnchor("right")],
@@ -221,6 +237,8 @@ export function tableRects(input: {
       badgeRight: SEAT_LABEL_ALIGN[seatAnchor("right")],
     },
     overcount,
+    capped,
+    cut,
   };
 }
 
@@ -289,8 +307,8 @@ export function cardsTouch(a: Card, b: Card): boolean {
 const asCard = (r: Rect): Card => turned(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, 0);
 
 /** The rules a table breaks, each in words; empty when it keeps them all. */
-export function brokenRules(table: Pick<TableRects, "rects" | "bleed"> & Partial<Pick<TableRects, "cards">>): string[] {
-  const { rects, bleed, cards = {} } = table;
+export function brokenRules(table: Pick<TableRects, "rects" | "bleed"> & Partial<Pick<TableRects, "cards" | "cut">>): string[] {
+  const { rects, bleed, cards = {}, cut = {} } = table;
   const out: string[] = [];
   const win = rects.window!;
   for (const name of TABLE_RULES.inside) {
@@ -302,6 +320,7 @@ export function brokenRules(table: Pick<TableRects, "rects" | "bleed"> & Partial
       out.push(`${name} leaves the window`);
     }
   }
+  for (const name of Object.keys(cut) as RectName[]) if (cut[name]) out.push(`${name} cuts its words`);
   for (const [a, b] of TABLE_RULES.apart) {
     const [ra, rb] = [rects[a], rects[b]];
     if (!ra || !rb || !intersects(ra, rb)) continue;

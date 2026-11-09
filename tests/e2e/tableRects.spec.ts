@@ -15,6 +15,7 @@ import { createDeck } from "../../lib/game/gameEngine";
 import type { OfflineSave } from "../../lib/offlineSave";
 import { LOCALE_KEY } from "../../lib/storageKeys";
 import { catalogs, type Locale } from "../../shared/i18n";
+import { USERNAME_MAX } from "../../shared/username";
 import type { EdgeInsets } from "../../components/tableFrame";
 import { brokenRules, tableRects, type Rect, type RectName, type TableRects } from "../../components/tableRects";
 import { drawnChips, gameTable, TABLETS, type DrawnTable } from "../helpers/tableScenes";
@@ -156,12 +157,14 @@ const at = (r: Rect) => `${r.x.toFixed(1)},${r.y.toFixed(1)} ${r.w.toFixed(1)}x$
 
 function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
   const bad: string[] = [];
+  const combo = [want.rects.hudCombo, got.boxes.hudCombo];
+  const drift = combo[0] && combo[1] ? Math.max(0, combo[0].w - combo[1].w) : 0;
   for (const [name, spec] of Object.entries(rects) as [RectName, { fit: Fit }][]) {
     const solved = want.rects[name];
     const raw = got.boxes[name];
     const box = raw && name === "hand" ? { ...raw, ...clipTo(raw, got.clip) } : raw;
     if (!solved !== !box) bad.push(`${name}: drawn ${box ? at(box) : "nothing"}, solver ${solved ? at(solved) : "nothing"}`);
-    else if (solved && box && !fits[spec.fit](box, solved, { align: want.aligns[name], overcount: want.overcount[name] })) {
+    else if (solved && box && !fits[spec.fit](box, solved, { align: want.aligns[name], overcount: want.overcount[name], capped: want.capped[name], drift: name === "hudTurn" && want.aligns.hudTurn !== "center" ? drift : undefined })) {
       const words = box.text && ` (words ${box.text.drawn.toFixed(1)} drawn, ${box.text.linear.toFixed(1)} linear; overcount ${want.overcount[name]?.toFixed(1)})`;
       bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}${words ?? ""}`);
     }
@@ -192,6 +195,7 @@ for (const [v, vp] of VIEWPORTS.entries())
   });
 
 const SIXTEEN = PHONES.find((p) => p.name === "iPhone 16 Pro")!;
+const SE = PHONES.find((p) => p.name === "iPhone SE")!;
 const ISLAND = INSETS["62/21/62"];
 /** Every seat one name, so the exchange's pills read words `exchangeScenes` says. */
 const EXCHANGE_NAME = "Besnik";
@@ -199,7 +203,7 @@ const EXCHANGE_NAME = "Besnik";
 const STRAIGHT_13 = ["A_hearts", "2_spades", "3_hearts", "4_spades", "5_hearts", "6_spades", "7_hearts", "8_spades", "9_hearts", "10_spades", "J_hearts", "Q_spades", "K_hearts"];
 
 test.describe("the table at its limits is drawn in the solver's rects", () => {
-  for (const vp of [SIXTEEN, TABLETS[1]]) {
+  for (const vp of [SE, SIXTEEN, TABLETS[1]]) {
     const insets = vp === SIXTEEN ? ISLAND : INSETS["0/0"];
     test(`an exchange: ${vp.name}`, async ({ page, baseURL }) => {
       test.setTimeout(120_000);
@@ -217,6 +221,20 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
       const save = offlineSave({ seats: 3, holding: [free.slice(0, 18), free.slice(18, 29), free.slice(29, 40)], pile: { cards: STRAIGHT_13, by: 2 } });
       await open(page, baseURL!, save, "sq", insets);
       await check(page, `${vp.name}, pile 13, hand 18`, vp, insets, "sq", gameTable(save.gameState));
+    });
+  }
+});
+
+test.describe("the chip row bounds the turn chip's name", () => {
+  for (const vp of [SE, SIXTEEN]) {
+    test(`an account's longest name on the move: ${vp.name}`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      const insets = vp === SIXTEEN ? ISLAND : INSETS["0/0"];
+      const name = "W".repeat(USERNAME_MAX);
+      const save = offlineSave({ seats: 3, hand: DEAL_SIZE[3], turn: 1, names: ["Ana", name, name] });
+      await open(page, baseURL!, save, "sq", insets);
+      await check(page, `${vp.name}, longest name on the move`, vp, insets, "sq", gameTable(save.gameState));
     });
   }
 });
