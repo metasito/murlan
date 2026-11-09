@@ -18,11 +18,11 @@ type Plant = {
 
 const STEP_CAP = 50;
 /** The lamp's clock and level as the app's rig makes them: each frame adds its span up to the cap, and the level eases toward `lampTo` at a rate of 1 from the frame the give-up was stamped on, whatever the wall time did. */
-function lamped(frames: TraceFrame[], lampTo = 0.55, rate = 1): TraceFrame[] {
+function lamped(frames: TraceFrame[], lampTo = 0.55, rate = 1, scale = (_t: number) => 1): TraceFrame[] {
   let clock = 0;
   let lostClock: number | null = null;
   return frames.map((f, i) => {
-    clock += i === 0 ? 0 : Math.min(f.t - frames[i - 1].t, STEP_CAP) / 1000;
+    clock += i === 0 ? 0 : (Math.min(f.t - frames[i - 1].t, STEP_CAP) / 1000) * scale(f.t);
     if (lostClock === null && f.onsets.includes("moment:net-bad")) lostClock = clock;
     const level = lostClock === null ? 1 : lampTo + (1 - lampTo) * Math.exp(-(clock - lostClock) * rate);
     return { ...f, lamp: { ...f.lamp!, level, clock } };
@@ -115,14 +115,14 @@ test("a span counts as a stall from one and a half of the app's frames", () => {
   assert.equal(pillFailures(app).length, 1);
 });
 
-test("a stall excuses a pill as late as it took and the jitter, and no later, however long it is", () => {
+test("a stall excuses a pill as late as it took and the allowance, and no later, and none past the ceiling", () => {
   assert.deepEqual(pillLate(500 + 17 * FRAME, 18), []);
-  assert.deepEqual(pillLate(500 + 60 * FRAME, 60), []);
+  assert.equal(pillLate(500 + 60 * FRAME, 60).length, 1);
   assert.equal(pillLate(500 + 25 * FRAME, 18).length, 1);
   assert.equal(pillLate(500 + 70 * FRAME, 60).length, 1);
 });
 
-test("without a stall a pill is late by the jitter at most, however long the ceiling would let it be", () => {
+test("without a stall a pill is late by the timer's allowance at most, however long the ceiling would let it be", () => {
   assert.equal(pillLate(500 + 150, 0).length, 1);
 });
 
@@ -189,9 +189,51 @@ test("the trace has covered the level's span only once the lamp's clock has", ()
   assert.ok(!levelSpanTraced(dropAfter(app, "moment:net-bad", 100, 40).slice(0, 1700 / 16), lost));
 });
 
-test("a grey read inside a stalled span is whatever the frames either side allow, and a grey that is slow in earnest fails", () => {
-  const out = dropAfter(appSide(), "moment:net-ok", 0, 14).filter((f) => f.t > 0);
-  const greyFailures = (app: TraceFrame[]) => diffReconnect({ mockup: mockup16(), app }).filter((f) => f.field === "grey" && f.message.endsWith("after the back"));
+const greyFailures = (app: TraceFrame[]) => diffReconnect({ mockup: mockup16(), app }).filter((f) => f.field === "grey" && f.message.endsWith("after the back"));
+const stalledAfterBack = () => {
+  const base = appSide();
+  const at = base.findIndex((f) => f.onsets.includes("moment:net-ok"));
+  return { base, at, out: lamped(base.filter((_, i) => i < at + 12 || i >= at + 28)) };
+};
+
+test("a grey read inside a stalled span after the anchor is whatever the frames either side allow, and a grey 0.2 high in it fails", () => {
+  const { base, at, out } = stalledAfterBack();
+  assert.deepEqual(anchorsOf(out)!.back, base[at].t);
   assert.deepEqual(greyFailures(out), []);
-  assert.ok(greyFailures(appSide({ greyInMs: 300, clearAt: 1300 }).map((f) => ({ ...f, grey: f.t > 52_345 + 3400 && f.t < 52_345 + 3400 + 400 ? Math.min(0.85, (f.grey ?? 0) + 0.2) : f.grey }))).length > 0);
+  const high = out.map((f) => (f.t > base[at].t && f.t < base[at].t + 400 ? { ...f, grey: Math.min(0.85, (f.grey ?? 0) + 0.2) } : f));
+  assert.ok(greyFailures(high).length > 0);
+});
+
+test("a stall just before the anchor lets the grey be that much further on, and a late anchor without one does not", () => {
+  const base = appSide();
+  const at = base.findIndex((f) => f.onsets.includes("moment:net-ok"));
+  const stamped = (frames: TraceFrame[], late: number) => frames.map((f, i) => ({ ...f, onsets: i === at ? f.onsets.filter((o) => o !== "moment:net-ok" && o !== RECONNECT_SOUND.app) : i === at + late ? [...f.onsets, "moment:net-ok", RECONNECT_SOUND.app] : f.onsets }));
+  assert.deepEqual(greyFailures(lamped(stamped(base, 8).filter((_, i) => i <= at || i > at + 7 || i === at + 8))), []);
+  assert.ok(greyFailures(lamped(stamped(base, 8))).length > 0);
+});
+
+test("the lamp's clock is held to its frames over the level's window, not over the whole trace", () => {
+  const r = appSide();
+  const lost = r.find((f) => f.onsets.includes("moment:net-bad"))!.t;
+  const confined = (k: number) => lamped(r, 0.55, 1, (t) => (t > lost && t <= lost + 1700 ? k : 1));
+  const clockFailures = (app: TraceFrame[]) => diffReconnect({ mockup: mockup16(), app }).filter((f) => f.message.includes("clock advances"));
+  assert.deepEqual(clockFailures(confined(1)), []);
+  assert.ok(clockFailures(confined(0.9)).length > 0);
+  assert.ok(clockFailures(confined(0.97)).length > 0);
+});
+
+test("a stall that ended before the pill was due excuses none of a real delay", () => {
+  const r = side(52_345, RECONNECT_SOUND.app, { pillAt: 800 });
+  const due = r.find((f) => f.onsets.includes("moment:drop"))!.t + 500;
+  const app = r.filter((f) => !(f.t > due - 400 && f.t < due + 5));
+  const land = app.find((f) => f.onsets.includes("moment:net-net"))!.t;
+  const hitch = app.findIndex((f) => f.t >= land - 2 * FRAME);
+  assert.equal(pillFailures(lamped(app.filter((_, i) => i !== hitch))).length, 1);
+});
+
+test("the recovery sound is no timer's: two frames late passes, and a timer's three frames are not its to have", () => {
+  const soundFailures = (soundAt: number) => diffReconnect({ mockup: mockup16(), app: side(52_345, RECONNECT_SOUND.app, { soundAt }) }).filter((f) => f.message.startsWith("the recovery sound"));
+  assert.deepEqual(soundFailures(2 * FRAME), []);
+  assert.equal(soundFailures(3.6 * FRAME + 16).length, 1);
+  assert.equal(soundFailures(4.5 * FRAME).length, 1);
 });

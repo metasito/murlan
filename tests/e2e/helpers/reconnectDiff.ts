@@ -12,9 +12,9 @@ const PIPELINE_FRAMES = 3;
 const STAMP_ROUNDING_MS = 2;
 /** The lamp steps by its frame's span, no more than this: `MAX_DT` in `components/table/lampRig.ts`, and the mockup's own cap. */
 const LAMP_STEP_CAP_MS = 50;
-/** The ceiling the stamping jitter never passes: the ten red CI traces of #1449 were late by 221 ms at most. */
+/** The ceiling no stall lifts, so a frozen thread cannot excuse itself without limit: the ten red CI traces of #1449 were late by 221 ms at most. */
 const JITTER_CEILING_MS = 300;
-/** The lamp's clock is read to half a millisecond a frame, and the level to a hundredth: a share of the span that no tolerance of the level can see. */
+/** What the clock may stray from the capped spans' sum by, as a share of it: the half millisecond it is read to a frame, and a little. */
 const CLOCK_SHARE = 0.01;
 /** The grey moves 0.85 in 300 ms: one frame of jitter, and a little. */
 const GREY_TOLERANCE = 0.06;
@@ -36,15 +36,16 @@ const cadenceOf = (frames: TraceFrame[]) => {
 
 const STALL_FRAMES = 1.5;
 
-/** The spans of `frames` ending in `(from, to]` that a stalled main thread stretched past `STALL_FRAMES` of a frame: the time they took beyond one frame each, and when the last ended. */
+/** What a stalled main thread took from `(from, to]`: each span of `frames` past `STALL_FRAMES` of a frame counts what of it lies inside, beyond one frame; and when the last such span ended. */
 const stallIn = (frames: TraceFrame[], frame: number, from: number, to: number) => {
   let took = 0;
   let end = -Infinity;
   for (let i = 1; i < frames.length; i++) {
-    const span = frames[i].t - frames[i - 1].t;
-    if (frames[i].t > from && frames[i].t <= to && span > STALL_FRAMES * frame) {
-      took += span - frame;
-      end = frames[i].t;
+    const [start, stop] = [frames[i - 1].t, frames[i].t];
+    const inside = Math.min(stop, to) - Math.max(start, from);
+    if (stop - start > STALL_FRAMES * frame && inside > 0) {
+      took += Math.max(0, inside - frame);
+      end = stop;
     }
   }
   return { took, end };
@@ -75,11 +76,16 @@ export const levelSpanTraced = (frames: TraceFrame[], lost: number) => {
   return from !== undefined && from !== null && to !== undefined && to !== null && (to - from) * 1000 >= LEVEL_SPAN_MS;
 };
 
-/** The lamp's clock runs each frame's span, capped, and that makes reading the level on it honest rather than a way to forgive a slow lamp: the clock may stray from the capped spans' sum by the level's tolerance, as a share of it. */
-const clockDrift = (frames: TraceFrame[]) => {
-  const capped = frames.reduce((sum, f, i) => (i === 0 ? 0 : sum + Math.min(f.t - frames[i - 1].t, LAMP_STEP_CAP_MS)), 0);
-  const clock = ((frames.at(-1)?.lamp?.clock ?? 0) - (frames[0]?.lamp?.clock ?? 0)) * 1000;
-  return { capped, drift: clock - capped, allowed: capped * CLOCK_SHARE };
+/** The lamp's clock runs each frame's span, capped, and that makes reading the level on it honest rather than a way to forgive a slow lamp: over the level's own window, from the clock at `lost` to the span's end. */
+const clockDrift = (frames: TraceFrame[], lost: number) => {
+  const from = frames.findIndex((f) => f.t === lost);
+  let capped = 0;
+  let clock = 0;
+  for (let i = from + 1; i < frames.length && clock < LEVEL_SPAN_MS; i++) {
+    capped += Math.min(frames[i].t - frames[i - 1].t, LAMP_STEP_CAP_MS);
+    clock = (frames[i].lamp!.clock! - frames[from].lamp!.clock!) * 1000;
+  }
+  return { drift: clock - capped, allowed: capped * CLOCK_SHARE };
 };
 
 /** What a curve is at `t`: one value, or, inside a span stalled beyond `stallOver`, anything between the frames either side of it, which the app painted but the trace never saw. */
@@ -154,23 +160,24 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
     const t = onsetAt(sides[side], name, anchor);
     return t === null ? null : t - anchor;
   };
-  const onsets: [string, keyof Anchors, Record<Side, string>][] = [
-    ["the pill's Riconnessione…", "drop", { mockup: "moment:net-net", app: "moment:net-net" }],
-    ["the recovery sound", "back", RECONNECT_SOUND],
-    ["the pill's Di nuovo in linea clearing", "back", { mockup: "moment:net-", app: "moment:net-" }],
-    ["the pill's Riconnessione… again", "again", { mockup: "moment:net-net", app: "moment:net-net" }],
+  const onsets: [string, keyof Anchors, Record<Side, string>, boolean][] = [
+    ["the pill's Riconnessione…", "drop", { mockup: "moment:net-net", app: "moment:net-net" }, true],
+    ["the recovery sound", "back", RECONNECT_SOUND, false],
+    ["the pill's Di nuovo in linea clearing", "back", { mockup: "moment:net-", app: "moment:net-" }, true],
+    ["the pill's Riconnessione… again", "again", { mockup: "moment:net-net", app: "moment:net-net" }, true],
   ];
   const frame = cadenceOf(sides.app);
   /** The app stamps an onset and its anchor alike from a passive effect (`useLinkHold`), each read a frame or two after it painted: up to two of its frames each way, and one of the mockup's virtual steps. */
   const jitter = Math.min(JITTER_CEILING_MS, 2 * frame + STEP_MS);
   /** A timer armed with the anchor falls due inside a frame, whose task waits out the frame in progress, renders in the next and is read in the one after it painted: three frames after it was due, and the mockup's step for where its own due fell. */
   const lateBy = Math.min(JITTER_CEILING_MS, PIPELINE_FRAMES * frame + STEP_MS);
-  for (const [what, anchor, names] of onsets) {
+  for (const [what, anchor, names, timer] of onsets) {
+    const limit = timer ? lateBy : jitter;
     const got = { mockup: offset("mockup", m[anchor], names.mockup), app: offset("app", a[anchor], names.app) };
     const late = got.mockup === null || got.app === null ? null : got.app - got.mockup;
     const stalled = late === null ? null : stallIn(sides.app, frame, a[anchor] + got.mockup!, a[anchor] + got.app!);
-    const excused = stalled !== null && late! <= lateBy + stalled.took && a[anchor] + got.app! - stalled.end <= (STAMP_FRAMES - 1) * frame + STAMP_ROUNDING_MS;
-    if (late === null || late < -jitter || (late > lateBy && !excused)) {
+    const excused = stalled !== null && late! <= limit + stalled.took && a[anchor] + got.app! - stalled.end <= (STAMP_FRAMES - 1) * frame + STAMP_ROUNDING_MS;
+    if (late === null || late < -jitter || late > JITTER_CEILING_MS || (late > limit && !excused)) {
       fail("onset", m[anchor] + (got.mockup ?? 0), got.mockup, got.app, `${what}, in ms after the ${anchor}`);
     }
   }
@@ -179,12 +186,16 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
   const clockAnchor = appClock ? appClock[sides.app.findIndex((f) => f.t === a.lost)]?.t : undefined;
   if (!appClock || clockAnchor === undefined) fail("level", m.lost, null, null, "the app's frames carry the lamp's clock");
   else {
-    const { drift, allowed } = clockDrift(sides.app);
-    if (Math.abs(drift) > allowed) fail("level", m.lost, 0, drift, "the lamp's clock advances by each frame's span, capped");
+    const { drift, allowed } = clockDrift(sides.app, a.lost);
+    if (Math.abs(drift) > allowed) fail("level", m.lost, 0, drift, "the lamp's clock advances by each frame's span, capped, from the lost");
   }
 
   /** The anchor is stamped from a passive effect, so a stall just before it moves the stamp past where the curve began: the curve may be that much further on. */
-  const shiftAt = (anchor: number) => stallIn(sides.app, frame, anchor - STAMP_FRAMES * frame, anchor).took;
+  const shiftAt = (anchor: number) =>
+    sides.app.reduce((took, f, i) => {
+      const span = i > 0 ? f.t - sides.app[i - 1].t : 0;
+      return f.t > anchor - STAMP_FRAMES * frame && f.t <= anchor && span > STALL_FRAMES * frame ? took + span - frame : took;
+    }, 0);
   const grey = (f: TraceFrame) => f.grey ?? 0;
   const level = (f: TraceFrame) => f.lamp?.level ?? 1;
   const curves: Curve[] = [
