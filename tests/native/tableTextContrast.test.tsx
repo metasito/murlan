@@ -8,7 +8,7 @@
 // project the test runs in.
 import * as ts from "typescript";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, jest, test } from "@jest/globals";
 import { minimatch } from "minimatch";
@@ -165,23 +165,58 @@ const COMPILER_OPTIONS = ts.getParsedCommandLineOfConfigFile(path.join(repoRoot,
   },
 })!.options;
 
-/** Which files bring `TableText` in, under which local names, following re-exports through `.ts` and `.tsx` files and `@/` or relative paths. */
-function tableTextGraph(sources: Map<string, ts.SourceFile>): Graph {
+const CODE_FILE = /\.(tsx?|[cm]?jsx?)$/;
+const withoutPlatform = (file: string) => file.replace(/(\.(ios|android|web|native))?\.[cm]?[jt]sx?$/, "");
+
+/** The `require("x")` and `import("x")` calls of a source, with their specifiers (undefined where it is not a literal). */
+function dynamicImports(source: ts.SourceFile): { call: ts.CallExpression; spec: string | undefined }[] {
+  const found: { call: ts.CallExpression; spec: string | undefined }[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isCallExpression(n) && (n.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(n.expression) && n.expression.text === "require"))) {
+      const arg = n.arguments[0];
+      found.push({ call: n, spec: arg && (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) ? arg.text : undefined });
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(source);
+  return found;
+}
+
+/**
+ * Which files bring `TableText` in, under which local names, following re-exports, `require` and `import()`
+ * through every tracked source a specifier reaches, with the platform variants beside it.
+ */
+function tableTextGraph(given: Map<string, ts.SourceFile>): Graph {
+  const sources = new Map(given);
   const unresolved: string[] = [];
+  const toRel = (abs: string) => path.relative(repoRoot, abs).split(path.sep).join("/");
   const host: ts.ModuleResolutionHost = {
-    fileExists: (f) => sources.has(path.relative(repoRoot, f).split(path.sep).join("/")) || ts.sys.fileExists(f),
+    fileExists: (f) => sources.has(toRel(f)) || ts.sys.fileExists(f),
     readFile: (f) => ts.sys.readFile(f),
     realpath: (f) => f,
   };
-  /** The tracked source a specifier names, resolved as TypeScript resolves it for this project: its path mappings, relative paths and packages. One that resolves to nothing is reported, never skipped. */
-  const resolveFrom = (from: string, spec: string): string | undefined => {
+  const load = (file: string) => {
+    const at = path.join(repoRoot, file);
+    if (!sources.has(file) && CODE_FILE.test(file) && !file.endsWith(".d.ts") && existsSync(at)) sources.set(file, asSource(file, readFileSync(at, "utf8")));
+  };
+  /**
+   * The files a specifier names, resolved as TypeScript resolves it for this project (path mappings, relative paths, packages),
+   * with every platform variant beside the one it finds. A file outside the sources is read into the graph; a specifier that
+   * resolves to nothing is reported, never skipped.
+   */
+  const resolveAll = (from: string, spec: string): string[] => {
     const found = ts.resolveModuleName(spec, path.join(repoRoot, from), COMPILER_OPTIONS, host).resolvedModule;
     if (!found) {
-      unresolved.push(`${from}: ${spec}`);
-      return undefined;
+      if (!unresolved.includes(`${from}: ${spec}`)) unresolved.push(`${from}: ${spec}`);
+      return [];
     }
-    const rel = path.relative(repoRoot, found.resolvedFileName).split(path.sep).join("/");
-    return sources.has(rel) ? rel : undefined;
+    const base = toRel(found.resolvedFileName);
+    if (found.isExternalLibraryImport || base.startsWith("..") || base.split("/").includes("node_modules")) return [];
+    const dir = path.posix.dirname(base);
+    const beside = new Set([base, ...[...sources.keys()].filter((f) => path.posix.dirname(f) === dir && withoutPlatform(f) === withoutPlatform(base))]);
+    if (existsSync(path.join(repoRoot, dir))) for (const f of readdirSync(path.join(repoRoot, dir))) if (withoutPlatform(`${dir}/${f}`) === withoutPlatform(base)) beside.add(`${dir}/${f}`);
+    beside.forEach(load);
+    return [...beside].filter((f) => sources.has(f));
   };
   const exported = new Map<string, Set<string>>([[TABLE_TEXT_FILE, new Set(["TableText"])]]);
   const uses = new Map<string, Set<string>>();
@@ -192,26 +227,56 @@ function tableTextGraph(sources: Map<string, ts.SourceFile>): Graph {
     m.set(file, names.add(name));
     return true;
   };
+  const dynamic = new Map<string, ReturnType<typeof dynamicImports>>();
   for (let changed = true; changed; ) {
     changed = false;
-    for (const [file, source] of sources) {
+    for (const [file, source] of [...sources]) {
       for (const st of source.statements) {
-        const from = (ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) && st.moduleSpecifier ? resolveFrom(file, (st.moduleSpecifier as ts.StringLiteral).text) : undefined;
-        const names = from ? exported.get(from) : undefined;
-        if (ts.isImportDeclaration(st)) {
-          const bindings = st.importClause?.namedBindings;
-          if (!names || !bindings) continue;
-          if (ts.isNamespaceImport(bindings)) namespace.add(file);
-          else bindings.elements.forEach((e) => names.has((e.propertyName ?? e.name).text) && (changed = add(uses, file, e.name.text) || changed));
-        } else if (ts.isExportDeclaration(st)) {
-          const clause = st.exportClause;
-          if (from && names) {
+        if (!(ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) || !st.moduleSpecifier) {
+          if (ts.isExportDeclaration(st) && !st.moduleSpecifier && st.exportClause && ts.isNamedExports(st.exportClause)) {
+            st.exportClause.elements.forEach((e) => uses.get(file)?.has((e.propertyName ?? e.name).text) && (changed = add(exported, file, e.name.text) || changed));
+          }
+          continue;
+        }
+        for (const target of resolveAll(file, (st.moduleSpecifier as ts.StringLiteral).text)) {
+          const names = exported.get(target);
+          if (!names) continue;
+          if (ts.isImportDeclaration(st)) {
+            const bindings = st.importClause?.namedBindings;
+            if (!bindings) continue;
+            if (ts.isNamespaceImport(bindings)) namespace.add(file);
+            else bindings.elements.forEach((e) => names.has((e.propertyName ?? e.name).text) && (changed = add(uses, file, e.name.text) || changed));
+          } else {
+            const clause = st.exportClause;
             if (!clause) names.forEach((n) => (changed = add(exported, file, n) || changed));
             else if (ts.isNamespaceExport(clause)) namespace.add(file);
             else clause.elements.forEach((e) => names.has((e.propertyName ?? e.name).text) && (changed = add(exported, file, e.name.text) || changed));
-          } else if (!st.moduleSpecifier && clause && ts.isNamedExports(clause)) {
-            clause.elements.forEach((e) => uses.get(file)?.has((e.propertyName ?? e.name).text) && (changed = add(exported, file, e.name.text) || changed));
           }
+        }
+      }
+      if (!dynamic.has(file)) dynamic.set(file, dynamicImports(source));
+      for (const { call, spec } of dynamic.get(file)!) {
+        if (spec === undefined) {
+          const note = `${file}: a ${call.expression.getText()}() whose specifier is not a literal`;
+          if (!unresolved.includes(note)) unresolved.push(note);
+          continue;
+        }
+        if (/\.[a-z0-9]+$/i.test(spec) && !CODE_FILE.test(spec)) continue;
+        for (const target of resolveAll(file, spec)) {
+          const names = exported.get(target);
+          if (!names) continue;
+          let at: ts.Node = call;
+          while (ts.isAwaitExpression(at.parent) || ts.isParenthesizedExpression(at.parent) || ts.isAsExpression(at.parent) || ts.isNonNullExpression(at.parent)) at = at.parent;
+          const parent = at.parent;
+          const declared = (decl: ts.Node | undefined, name: string) => {
+            changed = add(uses, file, name) || changed;
+            const statement = decl?.parent?.parent;
+            if (statement && ts.isVariableStatement(statement) && statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) changed = add(exported, file, name) || changed;
+          };
+          if (ts.isPropertyAccessExpression(parent) && parent.expression === at && names.has(parent.name.text) && ts.isVariableDeclaration(parent.parent) && ts.isIdentifier(parent.parent.name)) declared(parent.parent, parent.parent.name.text);
+          else if (ts.isVariableDeclaration(parent) && parent.initializer === at && ts.isObjectBindingPattern(parent.name)) {
+            parent.name.elements.forEach((e) => ts.isIdentifier(e.name) && names.has((e.propertyName ?? e.name).getText()) && declared(parent, e.name.text));
+          } else namespace.add(file);
         }
       }
     }
@@ -566,6 +631,33 @@ describe("the audit sees what a text scan of `key: {` could not", () => {
     assert.deepEqual(scan(PLANT, 'import { TableText as Kit } from "@/shared/plantKit";\nconst a = <Kit style={styles.viaRoot} />;', kit).keys, ["viaRoot"]);
     const sources = new Map(Object.entries({ ...kit, [PLANT]: 'import { x } from "@nowhere/thing";' }).map(([name, src]) => [name, asSource(name, src)]));
     assert.deepEqual(tableTextGraph(sources).unresolved, [`${PLANT}: @nowhere/thing`]);
+  });
+
+  test("TableText is followed out of the sources, through platform variants, require and import()", () => {
+    const real = "components/table/TableText";
+    const kits = {
+      "docs/plantKit.ts": `export { TableText as Doc } from "../${real}";`,
+      "tests/helpers/plantKit.ts": `export { TableText as Helper } from "../../${real}";`,
+      "components/table/skin.ts": "export const plain = 1;",
+      "components/table/skin.android.ts": `export { TableText as Skin } from "./TableText";`,
+      "components/table/skin.native.tsx": `export { TableText as Native } from "./TableText";`,
+      "components/table/skin.web.ts": `export { TableText as Web } from "./TableText";`,
+      "components/table/skin.ios.ts": `export { TableText as Ios } from "./TableText";`,
+      "components/cjs.ts": `export const { TableText: Cjs } = require("./table/TableText");`,
+    };
+    const via = (code: string) => scan(PLANT, code, kits);
+    assert.deepEqual(via('import { Doc } from "@/docs/plantKit";\nconst a = <Doc style={styles.outsideDocs} />;').keys, ["outsideDocs"]);
+    assert.deepEqual(via('import { Helper } from "@/tests/helpers/plantKit";\nconst a = <Helper style={styles.outsideTests} />;').keys, ["outsideTests"]);
+    for (const [name, key] of [["Skin", "android"], ["Native", "native"], ["Web", "web"], ["Ios", "ios"]]) {
+      assert.deepEqual(via(`import { ${name} } from "./table/skin";\nconst a = <${name} style={styles.${key}Variant} />;`).keys, [`${key}Variant`], name);
+    }
+    assert.deepEqual(via('const { TableText: Req } = require("./table/TableText");\nconst a = <Req style={styles.viaRequire} />;').keys, ["viaRequire"]);
+    assert.deepEqual(via('const Req = require("./table/TableText").TableText;\nconst a = <Req style={styles.viaMember} />;').keys, ["viaMember"]);
+    assert.deepEqual(via('const { TableText: Lazy } = await import("./table/TableText");\nconst a = <Lazy style={styles.viaImport} />;').keys, ["viaImport"]);
+    assert.deepEqual(via('const Lazy = (await import("./table/TableText")).TableText;\nconst a = <Lazy style={styles.viaAwaited} />;').keys, ["viaAwaited"]);
+    assert.deepEqual(via('import { Cjs } from "./cjs";\nconst a = <Cjs style={styles.viaCjsKit} />;').keys, ["viaCjsKit"]);
+    assert.equal(via('const kit = require("./table/TableText");').unread.length, 1);
+    assert.equal(via('import("./table/TableText").then((m) => m.TableText);').unread.length, 1);
   });
 
   test("NOTICE_FACES is the noticeModel import, not a name a file can reuse", () => {
