@@ -179,7 +179,7 @@ describe("a round's outcome on the felt", () => {
     });
   });
 
-  it.each(CASES)('$outcome under reduced motion: no motes and no shake, and the sting still plays', async (c) => {
+  it.each(CASES)('$outcome (teams: $teams) under reduced motion: no motes and no shake, and the sting still plays', async (c) => {
     await setMotion('on');
     const { r, motes, trauma, sent } = await closeRound(c);
     expect(motes.mock.results.every(({ value }) => (value as unknown[]).length === 0)).toBe(true);
