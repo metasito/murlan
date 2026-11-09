@@ -1,3 +1,6 @@
 {
+  "tests/native/authBoot.test.tsx": ["context/AuthContext.tsx"],
+  "tests/native/errorBoundary.test.tsx": ["context/AppProviders.tsx", "app/(online)/_layout.tsx", "app/game.tsx"],
+  "tests/native/handMemo.test.tsx": ["components/table/hand.tsx"],
   "tests/native/tableTextContrast.test.tsx": ["components/**/*.tsx"]
 }

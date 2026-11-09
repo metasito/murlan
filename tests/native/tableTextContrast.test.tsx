@@ -9,18 +9,19 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, jest, test } from "@jest/globals";
+import { minimatch } from "minimatch";
 import { StyleSheet } from "react-native";
 import { Colors, FeltGradients, Gradient } from "../../lib/tokens.ts";
 import { contrastRatio } from "../../lib/contrast.ts";
 import { NOTICE_FACES } from "../../components/table/noticeModel.ts";
-import { BODY_MIN, LARGE_MIN, componentSources, resolve, sourceArrays, withOpacity } from "../helpers/contrastColours.ts";
+import { BODY_MIN, LARGE_MIN, readsOf, resolve, sourceArrays, sourcesRead, withOpacity } from "../helpers/contrastColours.ts";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
-const componentsDir = path.join(repoRoot, "components") + path.sep;
-const sourceArray = sourceArrays(repoRoot);
 const THIS_TEST = "tests/native/tableTextContrast.test.tsx";
-const reads = (JSON.parse(readFileSync(path.join(repoRoot, "tests/native/reads.json"), "utf8")) as Record<string, string[]>)[THIS_TEST]!;
-const COMPONENT_FILES = componentSources(repoRoot, reads);
+const reads = readsOf(repoRoot, THIS_TEST);
+const sourceArray = sourceArrays(repoRoot, reads);
+const COMPONENT_FILES = sourcesRead(repoRoot, reads);
+const READ = new Set(COMPONENT_FILES.map(([file]) => file));
 const parsed = new Map(COMPONENT_FILES.map(([file, src]) => [file, ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)]));
 
 const OSES = ["ios", "android", "web"] as const;
@@ -40,13 +41,13 @@ function sheetsMadeAs(os: OS, files: string[]): Map<string, Sheet[]> {
     const realCreate = rn.StyleSheet.create.bind(rn.StyleSheet);
     jest.spyOn(rn.StyleSheet, "create").mockImplementation(((styles: Sheet) => {
       const sheet = realCreate(styles);
-      const caller = (new Error().stack ?? "").split("\n").flatMap((line) => /\(?(\/[^():]+\.tsx?):\d+:\d+\)?$/.exec(line)?.[1] ?? []).find((f) => f.startsWith(componentsDir));
+      const caller = (new Error().stack ?? "").split("\n").flatMap((line) => /\(?(\/[^():]+\.tsx?):\d+:\d+\)?$/.exec(line)?.[1] ?? []).map((f) => path.relative(repoRoot, f)).find((f) => READ.has(f));
       if (caller) created.set(caller, [...(created.get(caller) ?? []), sheet]);
       return sheet;
     }) as typeof rn.StyleSheet.create);
     jest.spyOn(rn.Platform, "select").mockImplementation(((spec: Record<string, unknown>) => pickFor(os, spec)) as typeof rn.Platform.select);
     Object.defineProperty(rn.Platform, "OS", { value: os, configurable: true });
-    for (const file of files) require(path.join(componentsDir, file));
+    for (const file of files) require(path.join(repoRoot, file));
   });
   return created;
 }
@@ -80,11 +81,30 @@ type Ref = { file: string; sheet: string; key: string };
 type Unread = { kind: "inline colour" | "other"; text: string };
 type Found = { refs: Ref[]; unread: Unread[] };
 const INLINE_COLOUR_KEYS = new Set(["color", "backgroundColor"]);
-const TABLE_NOTICE = "table/TableNotice.tsx";
+const TABLE_NOTICE = "components/table/TableNotice.tsx";
 const INLINE_COLOUR_FROM_ELSEWHERE: Record<string, string> = {
   [TABLE_NOTICE]: "the notice palette's inks, measured over every felt stop by contrast.test.ts",
-  "CardView.tsx": "the suit's ink over the card's own face, which the felt never reaches",
+  "components/CardView.tsx": "the suit's ink over the card's own face, which the felt never reaches",
 };
+
+/** Whether `name` is the import of `NOTICE_FACES` from noticeModel, and no declaration of the file hides it. */
+function isNoticeFaces(source: ts.SourceFile, name: string): boolean {
+  const imported = source.statements.some(
+    (st) =>
+      ts.isImportDeclaration(st) &&
+      /(^|\/)noticeModel(\.ts)?$/.test((st.moduleSpecifier as ts.StringLiteral).text) &&
+      st.importClause?.namedBindings !== undefined &&
+      ts.isNamedImports(st.importClause.namedBindings) &&
+      st.importClause.namedBindings.elements.some((e) => e.name.text === name && (e.propertyName ?? e.name).text === "NOTICE_FACES")
+  );
+  let hidden = false;
+  const find = (n: ts.Node) => {
+    if ((ts.isVariableDeclaration(n) || ts.isParameter(n) || ts.isFunctionDeclaration(n)) && n.name?.getText() === name) hidden = true;
+    ts.forEachChild(n, find);
+  };
+  find(source);
+  return imported && !hidden;
+}
 
 /** Every sheet entry a style expression can resolve to, and every piece of it this audit cannot follow. */
 function styleRefs(file: string, source: ts.SourceFile, expr: ts.Node, out: Found, seen = new Set<string>()): void {
@@ -102,8 +122,7 @@ function styleRefs(file: string, source: ts.SourceFile, expr: ts.Node, out: Foun
     if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) return [expr.left, expr.right].forEach(again);
     return unread("an operator that is not a choice of style");
   }
-  const faces = (e: ts.Expression) => ts.isIdentifier(e) && e.text === "NOTICE_FACES";
-  if ((ts.isElementAccessExpression(expr) || ts.isPropertyAccessExpression(expr)) && faces(expr.expression)) return;
+  if ((ts.isElementAccessExpression(expr) || ts.isPropertyAccessExpression(expr)) && ts.isIdentifier(expr.expression) && isNoticeFaces(source, expr.expression.text)) return;
   if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
     return void out.refs.push({ file, sheet: expr.expression.text, key: expr.name.text });
   }
@@ -131,14 +150,55 @@ function styleRefs(file: string, source: ts.SourceFile, expr: ts.Node, out: Foun
   unread("a style built by an expression this audit cannot follow");
 }
 
-/** The names `TableText` is imported or aliased under, found from the import binding; any other use of one is unread. */
-function tableTextNames(file: string, source: ts.SourceFile, out: Found): Set<string> {
-  const names = new Set<string>();
-  source.statements.forEach((st) => {
-    if (!ts.isImportDeclaration(st) || !/\/TableText$|^\.\/TableText$/.test((st.moduleSpecifier as ts.StringLiteral).text)) return;
-    const bindings = st.importClause?.namedBindings;
-    if (bindings && ts.isNamedImports(bindings)) bindings.elements.forEach((e) => (e.propertyName ?? e.name).text === "TableText" && names.add(e.name.text));
-  });
+type Graph = { uses: Map<string, Set<string>>; namespace: Set<string> };
+const TABLE_TEXT_FILE = "components/table/TableText.tsx";
+
+/** Which files bring `TableText` in, under which local names, following re-exports through `.ts` and `.tsx` files and `@/` or relative paths. */
+function tableTextGraph(sources: Map<string, ts.SourceFile>): Graph {
+  const resolveFrom = (from: string, spec: string): string | undefined => {
+    const base = spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? path.posix.join(path.posix.dirname(from), spec) : undefined;
+    return base === undefined ? undefined : ["", ".tsx", ".ts", "/index.tsx", "/index.ts"].map((e) => base + e).find((f) => sources.has(f));
+  };
+  const exported = new Map<string, Set<string>>([[TABLE_TEXT_FILE, new Set(["TableText"])]]);
+  const uses = new Map<string, Set<string>>();
+  const namespace = new Set<string>();
+  const add = (m: Map<string, Set<string>>, file: string, name: string) => {
+    const names = m.get(file) ?? new Set<string>();
+    if (names.has(name)) return false;
+    m.set(file, names.add(name));
+    return true;
+  };
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const [file, source] of sources) {
+      for (const st of source.statements) {
+        const from = (ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) && st.moduleSpecifier ? resolveFrom(file, (st.moduleSpecifier as ts.StringLiteral).text) : undefined;
+        const names = from ? exported.get(from) : undefined;
+        if (ts.isImportDeclaration(st)) {
+          const bindings = st.importClause?.namedBindings;
+          if (!names || !bindings) continue;
+          if (ts.isNamespaceImport(bindings)) namespace.add(file);
+          else bindings.elements.forEach((e) => names.has((e.propertyName ?? e.name).text) && (changed = add(uses, file, e.name.text) || changed));
+        } else if (ts.isExportDeclaration(st)) {
+          const clause = st.exportClause;
+          if (from && names) {
+            if (!clause) names.forEach((n) => (changed = add(exported, file, n) || changed));
+            else if (ts.isNamespaceExport(clause)) namespace.add(file);
+            else clause.elements.forEach((e) => names.has((e.propertyName ?? e.name).text) && (changed = add(exported, file, e.name.text) || changed));
+          } else if (!st.moduleSpecifier && clause && ts.isNamedExports(clause)) {
+            clause.elements.forEach((e) => uses.get(file)?.has((e.propertyName ?? e.name).text) && (changed = add(exported, file, e.name.text) || changed));
+          }
+        }
+      }
+    }
+  }
+  return { uses, namespace };
+}
+
+/** The names `TableText` is imported or aliased under in one file; any other use of one is unread. */
+function tableTextNames(file: string, source: ts.SourceFile, graph: Graph, out: Found): Set<string> {
+  const names = new Set(graph.uses.get(file) ?? []);
+  if (graph.namespace.has(file)) out.unread.push({ kind: "other", text: `${file}: TableText reached through a namespace import or export` });
   const aliases = (n: ts.Node): void => {
     const init = ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) ? n.initializer : undefined;
     if (init && ts.isIdentifier(init) && names.has(init.text)) names.add((n as ts.VariableDeclaration).name.getText());
@@ -162,10 +222,10 @@ function tableTextNames(file: string, source: ts.SourceFile, out: Found): Set<st
 }
 
 /** The sheet entries every `<TableText>` of one source names, and what could not be followed. */
-function tableTextIn(file: string, source: ts.SourceFile): Found {
+function tableTextIn(file: string, source: ts.SourceFile, graph: Graph): Found {
   const out: Found = { refs: [], unread: [] };
-  if (file === "table/TableText.tsx") return out;
-  const names = tableTextNames(file, source, out);
+  if (file === TABLE_TEXT_FILE) return out;
+  const names = tableTextNames(file, source, graph, out);
   const visit = (node: ts.Node) => {
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName;
@@ -195,9 +255,13 @@ function unreadIn(file: string, found: Found): string[] {
   return found.unread.filter((u) => !(u.kind === "inline colour" && file in INLINE_COLOUR_FROM_ELSEWHERE)).map((u) => u.text);
 }
 
+const asSource = (file: string, src: string) => ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+const EVERY_SOURCE = new Map(sourcesRead(repoRoot, ["**/*.{ts,tsx}"]).map(([file, src]) => [file, parsed.get(file) ?? asSource(file, src)]));
+const GRAPH = tableTextGraph(EVERY_SOURCE);
+
 const FOUND: Found = { refs: [], unread: [] };
 for (const [file] of COMPONENT_FILES) {
-  const here = tableTextIn(file, parsed.get(file)!);
+  const here = tableTextIn(file, parsed.get(file)!, GRAPH);
   FOUND.refs.push(...here.refs);
   FOUND.unread.push(...unreadIn(file, here).map((text) => ({ kind: "other" as const, text })));
 }
@@ -220,7 +284,7 @@ const SHEETS = Object.fromEntries(
     const made = sheetsMadeAs(os, files);
     const sheets = new Map<string, Sheet>();
     for (const file of files) {
-      const unmatched = [...(made.get(path.join(componentsDir, file)) ?? [])];
+      const unmatched = [...(made.get(file) ?? [])];
       for (const { name, keys } of declaredSheets(file)) {
         const at = unmatched.findIndex((sheet) => keys.length === Object.keys(sheet).length && keys.every((k) => k in sheet));
         assert.ok(at !== -1, `${file}: importing it as ${os} did not run StyleSheet.create for ${name} (${keys.length} entries)`);
@@ -283,56 +347,63 @@ const SHEET = sourceArray("SHEET_GRADIENT");
 const SCORE_PILL = { gradient: [Colors.scorePillTop, Colors.scorePillFoot] };
 const SCORE_ROW = { ...SCORE_PILL, plate: "styles.rowMine" };
 const ON_TABLE: Record<string, Backdrop> = {
-  "table/actions.tsx:styles.playBtnLabel": { gradient: GIOCA },
-  "table/actions.tsx:styles.playBtnSub": { gradient: GIOCA },
+  "components/table/actions.tsx:styles.playBtnLabel": { gradient: GIOCA },
+  "components/table/actions.tsx:styles.playBtnSub": { gradient: GIOCA },
   // PASSA's dim fill is a sibling of its label, not an ancestor; both buttons draw the same one.
-  "table/actions.tsx:styles.btnDimLabel": { plate: "styles.btnDimFace" },
-  "table/actions.tsx:styles.passBtnLabel": { gradient: PASSA },
-  "table/scorePill.tsx:styles.you": SCORE_PILL,
-  "table/scorePill.tsx:styles.total": SCORE_PILL,
-  "table/scorePill.tsx:styles.of": SCORE_PILL,
-  "table/scorePill.tsx:styles.badgeText": { gradient: Gradient.playButton },
-  "table/scorePill.tsx:styles.head": SCORE_PILL,
-  "table/scorePill.tsx:styles.sub": SCORE_PILL,
-  "table/scorePill.tsx:styles.place": SCORE_ROW,
-  "table/scorePill.tsx:styles.discText": { gradient: [Colors.seatDisc, Colors.seatDiscDeep] },
-  "table/scorePill.tsx:styles.name": SCORE_ROW,
-  "table/scorePill.tsx:styles.nameMine": SCORE_ROW,
-  "table/scorePill.tsx:styles.gain": SCORE_ROW,
-  "table/scorePill.tsx:styles.gainNone": SCORE_ROW,
-  "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
-  "table/scorePill.tsx:styles.placeWon": SCORE_ROW,
-  "table/matchBoard.tsx:styles.label": SCORE_PILL,
-  "table/matchBoard.tsx:styles.name": SCORE_PILL,
-  "table/matchBoard.tsx:styles.nameMine": SCORE_PILL,
-  "table/matchBoard.tsx:styles.ratingLine": SCORE_PILL,
-  "table/matchBoard.tsx:styles.ratingGain": SCORE_PILL,
-  "table/matchBoard.tsx:styles.ratingLoss": SCORE_PILL,
-  "table/matchBoard.tsx:styles.btnText": { plate: "styles.btn" },
-  "table/matchBoard.tsx:styles.btnTextPrimary": { gradient: Gradient.playButton },
-  "table/rotateOverlay.tsx:portraitOverlayStyles.title": { plate: "portraitOverlayStyles.overlay" },
-  "table/rotateOverlay.tsx:portraitOverlayStyles.sub": { plate: "portraitOverlayStyles.overlay" },
+  "components/table/actions.tsx:styles.btnDimLabel": { plate: "styles.btnDimFace" },
+  "components/table/actions.tsx:styles.passBtnLabel": { gradient: PASSA },
+  "components/table/scorePill.tsx:styles.you": SCORE_PILL,
+  "components/table/scorePill.tsx:styles.total": SCORE_PILL,
+  "components/table/scorePill.tsx:styles.of": SCORE_PILL,
+  "components/table/scorePill.tsx:styles.badgeText": { gradient: Gradient.playButton },
+  "components/table/scorePill.tsx:styles.head": SCORE_PILL,
+  "components/table/scorePill.tsx:styles.sub": SCORE_PILL,
+  "components/table/scorePill.tsx:styles.place": SCORE_ROW,
+  "components/table/scorePill.tsx:styles.discText": { gradient: [Colors.seatDisc, Colors.seatDiscDeep] },
+  "components/table/scorePill.tsx:styles.name": SCORE_ROW,
+  "components/table/scorePill.tsx:styles.nameMine": SCORE_ROW,
+  "components/table/scorePill.tsx:styles.gain": SCORE_ROW,
+  "components/table/scorePill.tsx:styles.gainNone": SCORE_ROW,
+  "components/table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
+  "components/table/scorePill.tsx:styles.placeWon": SCORE_ROW,
+  "components/table/matchBoard.tsx:styles.label": SCORE_PILL,
+  "components/table/matchBoard.tsx:styles.name": SCORE_PILL,
+  "components/table/matchBoard.tsx:styles.nameMine": SCORE_PILL,
+  "components/table/matchBoard.tsx:styles.ratingLine": SCORE_PILL,
+  "components/table/matchBoard.tsx:styles.ratingGain": SCORE_PILL,
+  "components/table/matchBoard.tsx:styles.ratingLoss": SCORE_PILL,
+  "components/table/matchBoard.tsx:styles.btnText": { plate: "styles.btn" },
+  "components/table/matchBoard.tsx:styles.btnTextPrimary": { gradient: Gradient.playButton },
+  "components/table/rotateOverlay.tsx:portraitOverlayStyles.title": { plate: "portraitOverlayStyles.overlay" },
+  "components/table/rotateOverlay.tsx:portraitOverlayStyles.sub": { plate: "portraitOverlayStyles.overlay" },
   // The disc's own gradient is darker than both stand-in stops.
-  "table/seats.tsx:seatStyles.discInitials": { stops: [3, 4] },
-  "table/seats.tsx:seatStyles.countBubbleText": { plate: "seatStyles.countBubble" },
-  "table/seats.tsx:seatStyles.countBubbleTextLast": { plate: "seatStyles.countBubbleLast" },
-  "table/seats.tsx:seatStyles.oppName": MEASURED,
-  "table/seats.tsx:seatStyles.oppNameActive": MEASURED,
-  "table/settingsSheet.tsx:sheetStyles.rowLabel": { gradient: SHEET },
-  "table/settingsSheet.tsx:sheetStyles.rowHint": { gradient: SHEET },
-  "table/settingsSheet.tsx:sheetStyles.header": { gradient: SHEET },
-  "table/settingsSheet.tsx:sheetStyles.foot": { gradient: SHEET },
-  "table/settingsSheet.tsx:sheetStyles.exitLabel": { gradient: Gradient.garnet },
+  "components/table/seats.tsx:seatStyles.discInitials": { stops: [3, 4] },
+  "components/table/seats.tsx:seatStyles.countBubbleText": { plate: "seatStyles.countBubble" },
+  "components/table/seats.tsx:seatStyles.countBubbleTextLast": { plate: "seatStyles.countBubbleLast" },
+  "components/table/seats.tsx:seatStyles.oppName": MEASURED,
+  "components/table/seats.tsx:seatStyles.oppNameActive": MEASURED,
+  "components/table/settingsSheet.tsx:sheetStyles.rowLabel": { gradient: SHEET },
+  "components/table/settingsSheet.tsx:sheetStyles.rowHint": { gradient: SHEET },
+  "components/table/settingsSheet.tsx:sheetStyles.header": { gradient: SHEET },
+  "components/table/settingsSheet.tsx:sheetStyles.foot": { gradient: SHEET },
+  "components/table/settingsSheet.tsx:sheetStyles.exitLabel": { gradient: Gradient.garnet },
 };
 
 /** A disabled control's label is held to the large-text bar, WCAG's floor for inactive UI. */
-const DISABLED = new Set(["table/actions.tsx:styles.btnDimLabel"]);
+const DISABLED = new Set(["components/table/actions.tsx:styles.btnDimLabel"]);
 
 test("every <TableText> style is one this audit can follow to a sheet the modules made", () => {
   assert.deepEqual(FOUND.unread.map((u) => u.text), [], "a style the audit cannot read passes it by not looking: name it through a StyleSheet entry");
   assert.ok(TABLE_TEXT.length > 30, `found only ${TABLE_TEXT.length} <TableText> styles`);
   const read = TABLE_TEXT.filter((ref) => inkedOn(idOf(ref)) || platedOn(idOf(ref)));
   assert.ok(read.length > 30, `read only ${read.length} styles' colours off the modules' sheets`);
+});
+
+test("the manifest names what the audit reads: every glob reads a file, every importer of TableText is inside it, and so is every allowance", () => {
+  for (const glob of reads) assert.ok(COMPONENT_FILES.some(([file]) => minimatch(file, glob)), `${glob} in tests/native/reads.json reads no tracked file`);
+  const outside = [...GRAPH.uses.keys(), ...GRAPH.namespace].filter((file) => file !== TABLE_TEXT_FILE && !READ.has(file));
+  assert.deepEqual(outside, [], "a file brings in TableText from outside the globs of tests/native/reads.json, so its text goes unaudited");
+  assert.deepEqual(Object.keys(INLINE_COLOUR_FROM_ELSEWHERE).filter((file) => !READ.has(file)), [], "an allowance for a file the audit does not read");
 });
 
 test("a notice face sets a family and nothing the contrast audit would need to see", () => {
@@ -350,7 +421,7 @@ test("every inked <TableText> style says what it is painted over", () => {
 
 test("only the seat name's two inks are left to the device to measure", () => {
   const measured = Object.keys(ON_TABLE).filter((id) => ON_TABLE[id]!.measuredBy !== undefined);
-  assert.deepEqual(measured, ["table/seats.tsx:seatStyles.oppName", "table/seats.tsx:seatStyles.oppNameActive"]);
+  assert.deepEqual(measured, ["components/table/seats.tsx:seatStyles.oppName", "components/table/seats.tsx:seatStyles.oppNameActive"]);
 });
 
 test("no <TableText> style paints its own plate: table text sits on the felt or inside a notice", () => {
@@ -358,7 +429,7 @@ test("no <TableText> style paints its own plate: table text sits on the felt or 
 });
 
 test("the pile inks no text of its own: its notices are TableNotice's plate, in the palette loop of contrast.test.ts", () => {
-  assert.deepEqual(TABLE_TEXT.filter((r) => r.file === "table/pile.tsx"), []);
+  assert.deepEqual(TABLE_TEXT.filter((r) => r.file === "components/table/pile.tsx"), []);
   assert.ok(TABLE_TEXT.some((r) => r.file === TABLE_NOTICE), "TableNotice inks no <TableText> style");
 });
 
@@ -375,12 +446,15 @@ function assertClears(id: string, ink: string, fills: string[], backdrop: Backdr
 }
 
 describe("the audit sees what a text scan of `key: {` could not", () => {
-  const scan = (file: string, code: string) => {
-    const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-    const found = tableTextIn(file, source);
+  const scan = (file: string, code: string, others: Record<string, string> = {}) => {
+    const files = { [TABLE_TEXT_FILE]: "export function TableText() {}", ...others, [file]: code };
+    const sources = new Map(Object.entries(files).map(([name, src]) => [name, asSource(name, src)]));
+    const found = tableTextIn(file, sources.get(file)!, tableTextGraph(sources));
     return { keys: found.refs.map((r) => r.key), unread: unreadIn(file, found) };
   };
-  const IMPORT = 'import { TableText } from "./TableText";\n';
+  const PLANT = "components/plant.tsx";
+  const IMPORT = 'import { TableText } from "./table/TableText";\n';
+  const IMPORT_BESIDE = 'import { TableText } from "./TableText";\n';
 
   test("an ink built by a spread or a helper is read off the sheet the module made", () => {
     const FACE = { color: "#444444", opacity: 0.5 };
@@ -392,34 +466,50 @@ describe("the audit sees what a text scan of `key: {` could not", () => {
 
   test("a style it cannot follow to a sheet is reported, not skipped", () => {
     for (const style of ["helper()", "[styles.a, ...more(), { color: c }]", "[styles.a, { ...spread }]", "[styles.a, missing]", "flag ? styles.a : lookup[k]", "{ opacity: 0.2 }"]) {
-      assert.ok(scan("plant.tsx", `${IMPORT}const a = <TableText style={${style}} />;`).unread.length > 0, style);
+      assert.ok(scan(PLANT, `${IMPORT}const a = <TableText style={${style}} />;`).unread.length > 0, style);
     }
   });
 
   test("a style it can follow is not", () => {
-    const seen = scan("plant.tsx", `${IMPORT}const small = { fontSize: 3 };\nconst a = <TableText style={[styles.a, flag && styles.b, cond ? styles.c : undefined, small, { fontSize: 4 }]} />;`);
+    const seen = scan(PLANT, `${IMPORT}const small = { fontSize: 3 };\nconst a = <TableText style={[styles.a, flag && styles.b, cond ? styles.c : undefined, small, { fontSize: 4 }]} />;`);
     assert.deepEqual(seen.unread, []);
     assert.deepEqual(seen.keys, ["a", "b", "c"]);
   });
 
   test("an inline colour is let through only where a reason is stated, and an inline opacity or an unread style never is", () => {
-    const style = (e: string) => `${IMPORT}const a = <TableText style={${e}} />;`;
+    const style = (e: string) => `${IMPORT_BESIDE}import { NOTICE_FACES } from "./noticeModel";\nconst a = <TableText style={${e}} />;`;
     assert.deepEqual(scan(TABLE_NOTICE, style("[NOTICE_FACES[run.face], styles.upper, { color: paint.strong }]")).unread, []);
-    assert.equal(scan("table/seats.tsx", style("{ color: paint.strong }")).unread.length, 1);
+    assert.equal(scan("components/table/seats.tsx", style("{ color: paint.strong }")).unread.length, 1);
     for (const e of ["[washOut()]", "[faint]", "{ opacity: 0.2 }", "[{ color: c, opacity: 0.2 }]", "[...rest]"]) {
       assert.ok(scan(TABLE_NOTICE, style(e)).unread.length > 0, `TableNotice: ${e}`);
-      assert.ok(scan("CardView.tsx", style(e)).unread.length > 0, `CardView: ${e}`);
+      assert.ok(scan("components/CardView.tsx", `${IMPORT}const a = <TableText style={${e}} />;`).unread.length > 0, `CardView: ${e}`);
     }
   });
 
   test("TableText is followed through an alias, a renamed import and a spread", () => {
-    assert.deepEqual(scan("plant.tsx", `${IMPORT}const Label = TableText;\nconst a = <Label style={styles.viaAlias} />;`).keys, ["viaAlias"]);
-    assert.deepEqual(scan("plant.tsx", 'import { TableText as Small } from "./TableText";\nconst a = <Small style={styles.viaRename} />;').keys, ["viaRename"]);
-    assert.deepEqual(scan("plant.tsx", `${IMPORT}const a = <TableText {...a11yHidden()} style={styles.k} />;`).unread, []);
-    assert.equal(scan("plant.tsx", `${IMPORT}const a = <TableText {...{ style: { color: "#2a2a2a" } }} />;`).unread.length, 1);
-    assert.equal(scan("plant.tsx", `${IMPORT}const a = <TableText {...props} />;`).unread.length, 1);
-    assert.equal(scan("plant.tsx", `${IMPORT}const Wrapped = styled(TableText);`).unread.length, 1);
-    assert.equal(scan("plant.tsx", `${IMPORT}const a = <Ui.TableText style={styles.x} />;`).unread.length > 0, true);
+    assert.deepEqual(scan(PLANT, `${IMPORT}const Label = TableText;\nconst a = <Label style={styles.viaAlias} />;`).keys, ["viaAlias"]);
+    assert.deepEqual(scan(PLANT, 'import { TableText as Small } from "./table/TableText";\nconst a = <Small style={styles.viaRename} />;').keys, ["viaRename"]);
+    assert.deepEqual(scan(PLANT, `${IMPORT}const a = <TableText {...a11yHidden()} style={styles.k} />;`).unread, []);
+    assert.equal(scan(PLANT, `${IMPORT}const a = <TableText {...{ style: { color: "#2a2a2a" } }} />;`).unread.length, 1);
+    assert.equal(scan(PLANT, `${IMPORT}const a = <TableText {...props} />;`).unread.length, 1);
+    assert.equal(scan(PLANT, `${IMPORT}const Wrapped = styled(TableText);`).unread.length, 1);
+    assert.equal(scan(PLANT, `${IMPORT}const a = <Ui.TableText style={styles.x} />;`).unread.length > 0, true);
+  });
+
+  test("TableText is followed through a barrel, whatever it renames it to", () => {
+    const barrel = { "components/table/barrel.ts": 'export { TableText as Label } from "./TableText";', "components/deep.ts": 'export * from "./table/barrel";' };
+    assert.deepEqual(scan(PLANT, 'import { Label } from "./table/barrel";\nconst a = <Label style={styles.viaBarrel} />;', barrel).keys, ["viaBarrel"]);
+    assert.deepEqual(scan(PLANT, 'import { Label as Inner } from "./deep";\nconst a = <Inner style={styles.viaTwo} />;', barrel).keys, ["viaTwo"]);
+    assert.equal(scan(PLANT, 'import * as Ui from "./table/barrel";', barrel).unread.length, 1);
+    assert.deepEqual(scan(PLANT, 'import { Other } from "./table/barrel";\nconst a = <Other style={styles.no} />;', barrel).keys, []);
+  });
+
+  test("NOTICE_FACES is the noticeModel import, not a name a file can reuse", () => {
+    const faces = (decl: string) => `${IMPORT_BESIDE}${decl}\nconst a = <TableText style={[NOTICE_FACES.bold]} />;`;
+    assert.deepEqual(scan(TABLE_NOTICE, faces('import { NOTICE_FACES } from "./noticeModel";')).unread, []);
+    assert.ok(scan(TABLE_NOTICE, faces('const NOTICE_FACES = { bold: { color: "#2a2a2a" } };')).keys.includes("bold"));
+    assert.ok(scan(TABLE_NOTICE, faces('import { NOTICE_FACES } from "./noticeModel";\nfunction f() { const NOTICE_FACES = {}; }')).keys.includes("bold"));
+    assert.ok(scan(TABLE_NOTICE, faces('import { NOTICE_FACES } from "./elsewhere";')).keys.includes("bold"));
   });
 
   test("a washed-out ink fails the bar on the felt", () => {

@@ -6,6 +6,7 @@
  * @property {string} id Rule id under the plugin: `murlan/${id}`.
  * @property {string} why Reported at the site: the owner module or doc, and what to do instead.
  * @property {string} selector esquery over the AST, several shapes joined with ", "; never raw text.
+ * @property {(node: any) => boolean} [refine] Narrows what the selector matched: a node it answers false for is not reported.
  * @property {(context: import("eslint").Rule.RuleContext, report: (node: object) => void) => Record<string, (node: any) => void>} [scoped] Visitors for what a selector cannot say: where a name resolves to, or where a value flows. Each reports a node the selector does not, so no site is reported twice.
  * @property {string[]} files Flat-config globs the guard applies to.
  * @property {{ glob: string, reason: string }[]} [ignores] The only exemption form.
@@ -61,15 +62,6 @@ const seamsOf = ({ modules, packages }) => {
   ].join(", ");
 };
 
-// An element passing `attr` by name: one handed in through a spread, or whose value can be undefined in either branch of a choice, is drawn the default.
-const MAYBE_UNDEFINED = [
-  '[value.expression.type="Identifier"][value.expression.name="undefined"]',
-  '[value.expression.type="ConditionalExpression"]:matches([value.expression.consequent.type="Identifier"][value.expression.consequent.name="undefined"], [value.expression.alternate.type="Identifier"][value.expression.alternate.name="undefined"])',
-  '[value.expression.type="LogicalExpression"]:matches([value.expression.operator="&&"], [value.expression.right.type="Identifier"][value.expression.right.name="undefined"])',
-].join(", ");
-const esquery = require("esquery");
-const namesProp = (attr) => `:has(> JSXAttribute[name.name="${attr}"]:not(:matches(${MAYBE_UNDEFINED})))`;
-const NAMES_RESIZE_MODE = esquery.parse(namesProp("resizeMode"));
 const IMAGE_NAMES = /^(Image|ImageBackground)$/;
 const WINDOW_NAMES = /^(useWindowDimensions|Dimensions)$/;
 const RN_MODULE = /^react-native(-web)?$/;
@@ -85,6 +77,23 @@ const EVENT_PATTERN = ':matches(Property:matches([key.name="nativeEvent"], [key.
 const PASS_THROUGH = new Set(["ChainExpression", "TSAsExpression", "TSNonNullExpression", "TSSatisfiesExpression", "TSTypeAssertion"]);
 
 const unwrap = (node) => (node && PASS_THROUGH.has(node.type) ? unwrap(node.expression) : node);
+/** Whether a value can be undefined: undefined, `void 0`, a choice with such a branch, a `&&`, or a `??`/`||` whose right side can be, however it is wrapped. */
+function maybeUndefined(expr) {
+  const node = unwrap(expr);
+  if (!node) return true;
+  if (node.type === "Identifier") return node.name === "undefined";
+  if (node.type === "UnaryExpression") return node.operator === "void";
+  if (node.type === "ConditionalExpression") return maybeUndefined(node.consequent) || maybeUndefined(node.alternate);
+  if (node.type === "LogicalExpression") return node.operator === "&&" || maybeUndefined(node.right);
+  return false;
+}
+
+/** An element passing `attr` by name: one handed in through a spread, or whose value can be undefined, is drawn the default. */
+function namesAttribute(element, attr) {
+  const named = element.attributes.find((a) => a.type === "JSXAttribute" && a.name.name === attr);
+  return Boolean(named) && (named.value?.type !== "JSXExpressionContainer" || !maybeUndefined(named.value.expression));
+}
+
 const memberName = (node) => (node.computed ? node.property.value : node.property.name);
 
 const references = new WeakMap();
@@ -212,7 +221,8 @@ const GUARDS = [
   {
     id: "skia-image-fit",
     why: "A Skia <Image> with no `fit` is drawn `contain`, and an <ImageShader> `none`: an image whose aspect or pixel size differs from its box is letterboxed or cropped, and only on windows shaped unlike the one it was checked on. Pass the fit by name, never through a spread or as undefined; an image laid over a design rect is `fill`, as components/table/feltCanvas.tsx draws its cloth.",
-    selector: `JSXOpeningElement[name.name=/^(Image|ImageShader)$/]:has(> JSXAttribute[name.name="image"]):not(${namesProp("fit")})`,
+    selector: 'JSXOpeningElement[name.name=/^(Image|ImageShader)$/]:has(> JSXAttribute[name.name="image"])',
+    refine: (node) => !namesAttribute(node, "fit"),
     files: DRAWN,
     plant: { file: "components/Plant.tsx", code: [
       "const a = <Image image={cloth} x={0} y={0} width={w} height={h} />;",
@@ -220,7 +230,10 @@ const GUARDS = [
       "const c = <ImageShader image={weave} rect={r} />;",
       "const d = <Image image={cloth} fit={undefined} width={w} height={h} />;",
       'const e = <Image image={cloth} {...{ fit: "fill" }} width={w} height={h} />;',
-    ].join("\n"), hits: 5 },
+      "const f = <Image image={cloth} fit={void 0} width={w} height={h} />;",
+      'const g = <ImageShader image={weave} fit={wide ? undefined : "fill"} rect={r} />;',
+      'const h = <Image image={cloth} fit={(undefined as any)!} width={w} height={h} />;',
+    ].join("\n"), hits: 8 },
     spare: [
       'const a = <Image image={cloth} fit="fill" width={w} height={h} />;',
       'const b = <Image source={art} resizeMode="stretch" />;',
@@ -248,7 +261,7 @@ const GUARDS = [
         const tag = node.name;
         const tagged = tag.type === "JSXMemberExpression" ? IMAGE_NAMES.test(tag.property.name) : IMAGE_NAMES.test(fromReactNative(context, tag)?.named ?? "");
         const carries = node.attributes.some((a) => a.type === "JSXSpreadAttribute" || a.name.name === "source");
-        if (tagged && carries && !esquery.matches(node, NAMES_RESIZE_MODE, [])) report(node);
+        if (tagged && carries && !namesAttribute(node, "resizeMode")) report(node);
       },
     }),
     files: DRAWN,
@@ -271,6 +284,10 @@ const GUARDS = [
       'const i = <Image source={art} resizeMode={tall ? "cover" : undefined} />;',
       'const j = <Image source={art} resizeMode={tall && "cover"} />;',
       'const k = <Image source={art} resizeMode={undefined ?? undefined} />;',
+      'const k2 = <Image source={art} resizeMode={void 0} />;',
+      'const k3 = <Image source={art} resizeMode={undefined as any} />;',
+      'const k4 = <Image source={art} resizeMode={a ? (b ? "cover" : undefined) : "contain"} />;',
+      'const k5 = <Image source={art} resizeMode={(tall ? "cover" : (undefined as unknown))!} />;',
       'const M = RN.Image;\nconst N = RN["ImageBackground"];',
       "const { Image: Pic2 } = RN;",
       'const { ImageBackground: Back } = require("react-native");',
@@ -283,7 +300,7 @@ const GUARDS = [
       'const Late2 = await import("react-native");\nconst P4 = Late2.Image;',
       "({ Image: Pic5 } = RN);",
       "function pick({ Image: Pic6 } = RN) {}",
-    ].join("\n"), hits: 29 },
+    ].join("\n"), hits: 33 },
     spare: [
       'import { Image } from "react-native";\nconst a = <Image source={art} style={ART_FILL} resizeMode="stretch" />;',
       'const b = <Image image={cloth} fit="fill" width={w} height={h} />;',
@@ -307,14 +324,17 @@ const GUARDS = [
   {
     id: "svg-aspect",
     why: "An <Svg> with a `viewBox` and no `preserveAspectRatio` is drawn `xMidYMid meet`: a box whose aspect drifts from the viewBox's letterboxes the drawing inside it. Pass it by name, never through a spread or as undefined, as components/table/scorePill.tsx draws its icons.",
-    selector: `JSXOpeningElement[name.name="Svg"]:has(> JSXAttribute[name.name="viewBox"]):not(${namesProp("preserveAspectRatio")})`,
+    selector: 'JSXOpeningElement[name.name="Svg"]:has(> JSXAttribute[name.name="viewBox"])',
+    refine: (node) => !namesAttribute(node, "preserveAspectRatio"),
     files: DRAWN,
     plant: { file: "components/Plant.tsx", code: [
       'const a = <Svg width={w} height={h} viewBox="0 0 7 5" />;',
       "const b = <Svg\n  viewBox={BOX}\n  width={s}\n  height={s}\n>{x}</Svg>;",
       'const c = <Svg viewBox="0 0 7 5" preserveAspectRatio={undefined} />;',
       'const d = <Svg viewBox="0 0 7 5" {...{ preserveAspectRatio: "none" }} />;',
-    ].join("\n"), hits: 4 },
+      'const e = <Svg viewBox="0 0 7 5" preserveAspectRatio={void 0} />;',
+      'const f = <Svg viewBox="0 0 7 5" preserveAspectRatio={a ? (b ? "none" : undefined) : "meet"} />;',
+    ].join("\n"), hits: 6 },
     spare: [
       'const a = <Svg width={w} height={h} viewBox="0 0 7 5" preserveAspectRatio="xMidYMid meet" />;',
       "const b = <Svg width={w} height={h} style={s} />;",
@@ -1315,7 +1335,7 @@ const plugin = {
         meta: { type: "problem", schema: [] },
         create: (context) => {
           const report = (node) => context.report({ node, message: guard.why });
-          return { [guard.selector]: report, ...guard.scoped?.(context, report) };
+          return { [guard.selector]: (node) => guard.refine?.(node) !== false && report(node), ...guard.scoped?.(context, report) };
         },
       },
     ])

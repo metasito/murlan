@@ -14,9 +14,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { BODY_MIN, LARGE_MIN, resolve, sourceArrays } from "../helpers/contrastColours.ts";
+import { BODY_MIN, LARGE_MIN, readsOf, resolve, sourceArrays } from "../helpers/contrastColours.ts";
 
-const sourceArray = sourceArrays(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".."));
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const sourceArray = sourceArrays(root, readsOf(root, "tests/native/tableTextContrast.test.tsx"));
 
 test("lib/contrast reads hex pairs either way round, from 1:1 to 21:1", () => {
   assert.equal(relativeLuminance([255, 255, 255]), 1);

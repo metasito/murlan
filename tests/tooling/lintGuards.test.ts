@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 type Ignore = { glob: string; reason: string };
 type Sample = { file: string; code: string };
 type Plant = Sample & { hits: number };
-type Guard = { id: string; why: string; selector: string; scoped?: unknown; files: string[]; ignores?: Ignore[]; plant: Plant | Plant[]; spare: Sample[] };
+type Guard = { id: string; why: string; selector: string; refine?: unknown; scoped?: unknown; files: string[]; ignores?: Ignore[]; plant: Plant | Plant[]; spare: Sample[] };
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
 const { GUARDS, CLIENT, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
@@ -213,7 +213,7 @@ describe("the guard registry's floor", () => {
   test("6. the registry's ids are unique, each guard is a selector entry, and its why names a path that exists", () => {
     const ids = GUARDS.map((g) => g.id);
     assert.equal(new Set(ids).size, ids.length, "two guards share an id");
-    const FIELDS = ["id", "why", "selector", "scoped", "files", "ignores", "plant", "spare"];
+    const FIELDS = ["id", "why", "selector", "refine", "scoped", "files", "ignores", "plant", "spare"];
     const dangling: string[] = [];
     for (const guard of GUARDS) {
       assert.deepEqual(Object.keys(guard).filter((k) => !FIELDS.includes(k)), [], `${guard.id} is more than a selector entry`);
@@ -233,12 +233,10 @@ describe("the guard registry's floor", () => {
       try {
         const file = path.join(dir, "guards.cjs");
         mkdirSync(path.join(dir, "lib"));
-        symlinkSync(path.join(ROOT, "node_modules"), path.join(dir, "node_modules"), "junction");
         writeFileSync(path.join(dir, "lib", "harnessChannels.ts"), editChannels(channels));
         writeFileSync(file, edit(source));
         return (require(file) as { plugin: { meta: { version?: string } } }).plugin.meta.version;
       } finally {
-        rmSync(path.join(dir, "node_modules"), { force: true });
         rmSync(dir, { recursive: true, force: true });
       }
     };

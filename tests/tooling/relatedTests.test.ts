@@ -1,9 +1,12 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, nearTests, onLocalProjects } from "../../tools/loop/related-tests.mjs";
+import ts from "typescript";
+import { minimatch } from "minimatch";
+import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, NATIVE_TEST, nearTests, onLocalProjects } from "../../tools/loop/related-tests.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..");
 const T = (n: string) => `tests/native/${n}.test.tsx`;
@@ -41,8 +44,19 @@ describe("a native test that reads source by path", () => {
     assert.deepEqual(nearTests({ changed: ["components/table/seats.tsx"], related: [], source: () => "", reads }), [T("tableTextContrast")]);
     assert.deepEqual(nearTests({ changed: ["lib/theme.ts"], related: [], source: () => "", reads }), []);
   });
-  test("names tests that exist", () => {
-    for (const test of Object.keys(reads)) assert.ok(readFileSync(join(repoRoot, test), "utf8").includes("reads.json"), `${test} does not read its own manifest entry`);
+  const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf8" }).split("\0").filter(Boolean);
+  test("names tests that exist and globs that read tracked files", () => {
+    for (const [file, globs] of Object.entries(reads)) {
+      assert.ok(tracked.includes(file), `${file} is not a tracked test`);
+      if (file === T("tableTextContrast")) assert.match(readFileSync(join(repoRoot, file), "utf8"), /readsOf\(/, `${file} enumerates its files from somewhere else`);
+      for (const glob of globs) assert.ok(tracked.some((f) => minimatch(f, glob)), `${file}: ${glob} reads no tracked file`);
+    }
+  });
+  test("a native test that reads files from disk is in the manifest, so a change to what it reads reaches it", () => {
+    const readers = tracked
+      .filter((f) => NATIVE_TEST.test(f))
+      .filter((f) => ts.preProcessFile(readFileSync(join(repoRoot, f), "utf8")).importedFiles.some(({ fileName }) => /^(node:)?fs(\/promises)?$/.test(fileName)));
+    assert.deepEqual(readers.filter((f) => !(f in reads)), [], "list the files these read in tests/native/reads.json");
   });
 });
 

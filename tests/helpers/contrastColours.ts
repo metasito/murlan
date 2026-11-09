@@ -2,7 +2,8 @@
 // colour arithmetic. Plain .ts so node --test and jest both load it (docs/agents/checks.md,
 // "Node's TypeScript loader").
 import { Colors, Garnet, LastCard, Scrim } from "../../lib/tokens.ts";
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { minimatch } from "minimatch";
 
@@ -42,12 +43,18 @@ export function withOpacity(color: string, opacity: number): string {
   return `rgba(${r},${g},${b},${(m ? Number(m[4]) : 1) * opacity})`;
 }
 
-/** Every source under `root` matching `globs`, as [path under components/, text]. */
-export function componentSources(root: string, globs = ["components/**/*.tsx"]): [string, string][] {
-  return readdirSync(path.join(root, "components"), { recursive: true, encoding: "utf8" })
-    .map((f) => f.split(path.sep).join("/"))
-    .filter((f) => globs.some((g) => minimatch(`components/${f}`, g)))
-    .map((f) => [f, readFileSync(path.join(root, "components", f), "utf8")]);
+/** Every tracked source matching `globs`, as [path under `root`, text]. */
+export function sourcesRead(root: string, globs: string[]): [string, string][] {
+  const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
+  return tracked.filter((f) => globs.some((g) => minimatch(f, g))).map((f) => [f, readFileSync(path.join(root, f), "utf8")]);
+}
+
+/** The globs `tests/native/reads.json` states for one native test: what it reads by path, which jest's graph cannot see. */
+export function readsOf(root: string, test: string): string[] {
+  const manifest = JSON.parse(readFileSync(path.join(root, "tests/native/reads.json"), "utf8")) as Record<string, string[]>;
+  const globs = manifest[test];
+  if (!globs?.length) throw new Error(`${test} states no globs in tests/native/reads.json`);
+  return globs;
 }
 
 /**
@@ -55,8 +62,8 @@ export function componentSources(root: string, globs = ["components/**/*.tsx"]):
  * gradient's own stops — resolved to token values. A stop a component adds is
  * covered by construction; nothing here needs to be told about it.
  */
-export function sourceArrays(root: string): (name: string) => string[] {
-  const components = componentSources(root).map(([, src]) => src).join("\n");
+export function sourceArrays(root: string, globs: string[]): (name: string) => string[] {
+  const components = sourcesRead(root, globs).map(([, src]) => src).join("\n");
   return (name) => {
     const m = new RegExp(String.raw`\b${name}\s*=\s*\[([^\]]*)\]`).exec(components);
     if (!m) throw new Error(`no component declares an array named ${name}`);
