@@ -3,14 +3,14 @@
 import { writeSync } from "node:fs";
 import { workerData } from "node:worker_threads";
 import { alive, endTreeIf, identityOf } from "../../scripts/lib/proc.mjs";
-import { EXIT_TICK_MS, exitGuard } from "./exitGuard.mjs";
+import { EXIT_TICK_MS, exitGuard, haltable } from "./exitGuard.mjs";
 
 const { stop, ...exits } = workerData;
 const stopped = () => Atomics.load(stop, 0) === 1;
 const write = (line) => {
   if (!stopped()) writeSync(2, `\n${line}\n`);
 };
-const tick = exitGuard({ ...exits, platform: process.platform, proc: { identityOf, endTreeIf, alive }, write });
+const tick = exitGuard({ ...exits, platform: process.platform, proc: haltable({ identityOf, endTreeIf, alive }, stopped), write });
 setInterval(() => {
   if (!stopped()) tick();
 }, EXIT_TICK_MS);

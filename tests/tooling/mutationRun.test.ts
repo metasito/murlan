@@ -24,13 +24,19 @@ const reportOf = (slug: string, file: string, mutants: Mutant[]) => ({ slug, rep
 const silent = { debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {}, isDebugEnabled: () => false, isTraceEnabled: () => false };
 const options = { plugins: null, excludedMutations: [], ignorers: [] };
 
-/** How many mutants Stryker itself places in `file`, inside lines `start`–`end` when given, as `--mutate file:start-end` reads them. */
-async function placed(file: string, range?: { start: number; end: number }): Promise<number> {
+type Placed = { location: { start: { line: number }; end: { line: number } } };
+
+/** The mutants Stryker itself places in `file`, inside lines `start`–`end` when given, as `--mutate file:start-end` reads them. */
+async function placed(file: string, range?: { start: number; end: number }): Promise<readonly Placed[]> {
   const mutate = range ? [{ start: { line: range.start - 1, column: 0 }, end: { line: range.end - 1, column: Number.MAX_SAFE_INTEGER } }] : true;
   const content = readFileSync(path.join(repoRoot, file), "utf8");
   const { mutants } = await new Instrumenter(silent as never).instrument([{ name: file, mutate, content }], options as never);
-  return mutants.length;
+  return mutants;
 }
+
+/** What `--mutate file:start-end` keeps of a whole file's mutants: those that lie wholly inside the lines. */
+const within = (mutants: readonly Placed[], start: number, end: number) =>
+  mutants.filter((m) => m.location.start.line >= start - 1 && m.location.end.line <= end - 1).length;
 
 const all = await shards();
 
@@ -64,11 +70,12 @@ test("every file the database-backed tests reach is cut into smaller shards than
   assert.ok(turn.length >= 2, "gameTurn.ts is one shard: the database-backed budget is not applied");
 });
 
-test("every mutant Stryker places lands in exactly one shard, and a shard outgrows the budget only where no cut can split it", { timeout: 660_000 }, async () => {
+test("every mutant Stryker places lands in exactly one shard, and a shard outgrows the budget only where no cut can split it", async () => {
   const files = MUTATE.flatMap((pattern) => globSync(pattern, { cwd: repoRoot })).sort();
   let total = 0;
   for (const file of files) {
-    const whole = await placed(file);
+    const mutants = await placed(file);
+    const whole = mutants.length;
     total += whole;
     const ranges = all.filter((s) => s.file === file);
     if (whole === 0) {
@@ -77,12 +84,13 @@ test("every mutant Stryker places lands in exactly one shard, and a shard outgro
     }
     let inRanges = 0;
     for (const r of ranges) {
-      const n = await placed(file, r);
+      const n = (await placed(file, r)).length;
       assert.equal(n, r.mutants, `${r.mutate} holds ${n} mutants, not the ${r.mutants} it was sized by`);
+      assert.equal(within(mutants, r.start, r.end), n, `${r.mutate}: the line arithmetic below disagrees with Stryker's own range`);
       assert.ok(n > 0, `${r.mutate} holds no mutant`);
       if (n > budgetOf(file)) {
         for (let cut = r.start; cut < r.end; cut++) {
-          const [head, tail] = [await placed(file, { start: r.start, end: cut }), await placed(file, { start: cut + 1, end: r.end })];
+          const [head, tail] = [within(mutants, r.start, cut), within(mutants, cut + 1, r.end)];
           assert.ok(head === 0 || tail === 0 || head + tail < n,`${r.mutate} holds ${n} mutants, over the ${budgetOf(file)} a cold shard can test in its hour, yet cuts after line ${cut}`);
         }
       }
