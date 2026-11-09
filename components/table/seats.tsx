@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, type TextProps, type ViewProps } from "react-native";
+import { Platform, View, StyleSheet, type TextProps, type TextStyle, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
 import { mockupPx, NOTICE_FACES } from "./noticeModel";
@@ -788,6 +788,15 @@ const SEAT_BADGE_FS = 10;
 const LAST_CARD_BADGE = 1.25;
 /** `.badge.last`'s glow in mockup px, before the badge's own growth. */
 const LAST_CARD_GLOW = { blur: 10, opacity: 0.6 } as const;
+// A text shadow does not stack, and the lit name's glyphs are too thin for one to darken the felt
+// between them: the web repeats the layer, native keeps the one.
+const HALO_BLUR = 4;
+const HALO_ALPHA = 0.6;
+const HALO_LAYERS = 8;
+const SEAT_NAME_HALO: TextStyle =
+  Platform.OS === "web"
+    ? ({ textShadow: Array(HALO_LAYERS).fill(`0 0 ${HALO_BLUR}px ${withAlpha(Colors.shadow, HALO_ALPHA)}`).join(", ") } as TextStyle)
+    : { textShadowColor: withAlpha(Colors.shadow, HALO_ALPHA), textShadowOffset: { width: 0, height: 0 }, textShadowRadius: HALO_BLUR };
 /** The disc's seated shadow, and the glow that replaces it on the seat on move. */
 const SEAT_SHADOW = 9;
 const SEAT_SHADOW_Y = 3;
@@ -829,7 +838,7 @@ const seatStyles = StyleSheet.create({
     maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
   },
-  oppNameActive: { color: Colors.goldLit },
+  oppNameActive: { color: Colors.goldLit, ...SEAT_NAME_HALO },
 
   seatBadgeRow: {
     flexDirection: "row",
