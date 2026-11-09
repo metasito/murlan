@@ -6,7 +6,7 @@
  * @property {string} id Rule id under the plugin: `murlan/${id}`.
  * @property {string} why Reported at the site: the owner module or doc, and what to do instead.
  * @property {string} selector esquery over the AST, several shapes joined with ", "; never raw text.
- * @property {(node: any) => boolean} [refine] Narrows what the selector matched: a node it answers false for is not reported.
+ * @property {(node: any, context: import("eslint").Rule.RuleContext) => boolean} [refine] Narrows what the selector matched: a node it answers false for is not reported.
  * @property {(context: import("eslint").Rule.RuleContext, report: (node: object) => void) => Record<string, (node: any) => void>} [scoped] Visitors for what a selector cannot say: where a name resolves to, or where a value flows. Each reports a node the selector does not, so no site is reported twice.
  * @property {string[]} files Flat-config globs the guard applies to.
  * @property {{ glob: string, reason: string }[]} [ignores] The only exemption form.
@@ -1261,17 +1261,34 @@ const GUARDS = [
     why: "A module mock names its module in a literal, so a guard can tell what it replaces (docs/agents/traps.md § Where a forbidden-shape rule goes): write the path out instead of building it.",
     selector: `${JEST_MOCK} > :first-child:not(Literal, TemplateLiteral[expressions.length=0])`,
     files: ["tests/native/**/*.{ts,tsx}"],
-    ignores: [{ glob: "tests/native/harness/platformVariants.ts", reason: "swaps each module that has a platform variant for the variant a platform loads, by the path it found: a module for another file of itself, never for a fake" }],
+    refine: (node, context) => {
+      const [id, factory] = node.parent.arguments;
+      const body = factory?.type === "ArrowFunctionExpression" && factory.params.length === 0 ? factory.body : null;
+      const actual = body?.type === "CallExpression" && context.sourceCode.getText(body.callee) === "jest.requireActual" ? body.arguments[0] : null;
+      const text = (n) => context.sourceCode.getText(n);
+      const swapped = actual?.type === "CallExpression" && actual.callee.name === "platformVariant" && actual.arguments.length === 1 ? actual.arguments[0] : actual;
+      return !(actual && swapped && text(swapped) === text(id));
+    },
     plant: { file: "tests/native/plant.test.tsx", code: [
       "const CONTEXT = '@/context/GameContext';",
       "jest.mock(CONTEXT, () => ({}));",
       "jest.doMock('@/context/' + 'SocketContext', () => ({}));",
       "jest.mock(`@/context/${name}`, () => ({}));",
       "jest.setMock(path.join('context', 'GameContext'), {});",
-    ].join("\n"), hits: 4 },
+      "jest.doMock('@/context/' + 'GameContext', () => ({ useGame: () => null }));",
+      "jest.doMock(target, () => jest.requireActual(other));",
+      "jest.doMock(target, () => jest.requireActual(platformVariant(other)));",
+      "jest.doMock(target, () => jest.requireActual(platformVariant(target, other)));",
+      "jest.doMock(target, () => ({ ...jest.requireActual(target), useGame: () => null }));",
+      "jest.doMock(target, (x) => jest.requireActual(target));",
+      "jest.doMock(target, () => jest.requireMock(target));",
+    ].join("\n"), hits: 11 },
     spare: [
       "jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));",
       "jest.doMock(`expo-asset`, () => ({}));",
+      "jest.doMock(target, () => jest.requireActual(target));",
+      "jest.doMock(path.join(root, file), () => jest.requireActual(path.join(root, file)));",
+      "jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
   {
@@ -1336,7 +1353,7 @@ const plugin = {
         meta: { type: "problem", schema: [] },
         create: (context) => {
           const report = (node) => context.report({ node, message: guard.why });
-          return { [guard.selector]: (node) => guard.refine?.(node) !== false && report(node), ...guard.scoped?.(context, report) };
+          return { [guard.selector]: (node) => guard.refine?.(node, context) !== false && report(node), ...guard.scoped?.(context, report) };
         },
       },
     ])

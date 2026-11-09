@@ -454,9 +454,9 @@ function assertClears(id: string, ink: string, fills: string[], backdrop: Backdr
 
 describe("a module is loaded as the variant its platform takes", () => {
   const FIXTURE = "tests/native/variants/sheet.ts";
-  const inkOn = (os: OS, variants: Variants, watch = new Set([FIXTURE])) => {
+  const inkOn = (os: OS, variants: Variants, entry = "label", watch = new Set([FIXTURE])) => {
     const [sheet] = sheetsMadeAs(os, [FIXTURE], watch, variants).get(FIXTURE)!;
-    return (sheet!.label as { color: string }).color;
+    return (sheet![entry] as { color: string }).color;
   };
   const files = sourcesRead(repoRoot, ["tests/native/variants/*.ts"]).map(([file]) => file);
 
@@ -464,14 +464,23 @@ describe("a module is loaded as the variant its platform takes", () => {
     assert.deepEqual(OSES.map((os) => inkOn(os, variantsOf(files))), ["#d4af37", "#2a2a2a", "#3b3b3b"]);
   });
 
-  test("without the variants the plain module is what every platform gets", () => {
-    assert.deepEqual(OSES.map((os) => inkOn(os, variantsOf(files.filter((f) => f.endsWith("tone.ts") || f.endsWith("sheet.ts"))))), ["#d4af37", "#d4af37", "#d4af37"]);
+  test("a variant with another extension than the plain file is the one Metro takes: .android.ts over .tsx", () => {
+    assert.deepEqual(OSES.map((os) => inkOn(os, variantsOf(files), "mixed")), ["#d4af37", "#2a2a2a", "#3b3b3b"]);
+    assert.deepEqual(OSES.map((os) => loadedAs(repoRoot, os, "tests/native/variants/mixed")), [
+      "tests/native/variants/mixed.tsx",
+      "tests/native/variants/mixed.android.ts",
+      "tests/native/variants/mixed.web.ts",
+    ]);
   });
 
-  test("the variants of the app sources are found", () => {
-    assert.deepEqual([...variantsOf(["a/x.ts", "a/x.web.ts", "a/y.tsx", "a/z.native.tsx", "a/z.tsx"]).keys()], ["a/x.ts", "a/z.tsx"]);
-    const v = variantsOf(["a/z.native.tsx", "a/z.android.tsx", "a/z.tsx"]).get("a/z.tsx")!;
-    assert.deepEqual(OSES.map((os) => loadedAs(os, v)), ["a/z.native.tsx", "a/z.android.tsx", "a/z.tsx"]);
+  test("without the variants the plain module is what every platform gets", () => {
+    const plain = files.filter((f) => /\/(tone|sheet)\.ts$/.test(f) || f.endsWith("mixed.tsx"));
+    assert.deepEqual(OSES.map((os) => inkOn(os, variantsOf(plain))), ["#d4af37", "#d4af37", "#d4af37"]);
+  });
+
+  test("the variants of the app sources are found, whatever their extensions", () => {
+    assert.deepEqual([...variantsOf(["a/x.ts", "a/x.web.ts", "a/y.tsx", "a/z.native.tsx", "a/z.tsx", "a/w.android.ts", "a/w.tsx"]).keys()].sort(), ["a/w", "a/x", "a/z"]);
+    assert.deepEqual(variantsOf(["a/w.android.ts", "a/w.tsx"]).get("a/w")!.sort(), ["a/w.android.ts", "a/w.tsx"]);
   });
 });
 

@@ -1,35 +1,89 @@
 import { jest } from '@jest/globals';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+// Metro's own resolver, with the project's own source extensions: the one resolution order there is.
+import { resolve as metroResolve } from 'metro-resolver';
 
 export const OSES = ['ios', 'android', 'web'] as const;
 export type OS = (typeof OSES)[number];
-export type Variants = Map<string, Partial<Record<'base' | OS | 'native', string>>>;
+/** Every file that answers one import, keyed by the extensionless name the import gives: `dir/name`. */
+export type Variants = Map<string, string[]>;
 
-/** The modules among `files` that have a platform variant, keyed by the name an import gives them. */
+const PLATFORM_FILE = /^(.*?)(?:\.(?:ios|android|web|native))?\.[cm]?[jt]sx?$/;
+
+/** The modules among `files` with a platform variant, each with every file that could answer an import of it, whatever its extension. */
 export function variantsOf(files: Iterable<string>): Variants {
   const found: Variants = new Map();
+  const infixed = new Set<string>();
   for (const file of files) {
-    const m = /^(.*)\.(ios|android|web|native)(\.[cm]?[jt]sx?)$/.exec(file);
-    const key = m ? `${m[1]}${m[3]}` : file;
-    found.set(key, { ...found.get(key), [m ? (m[2] as OS) : 'base']: file });
+    const key = PLATFORM_FILE.exec(file)?.[1];
+    if (key === undefined) continue;
+    found.set(key, [...(found.get(key) ?? []), file]);
+    if (/\.(ios|android|web|native)\.[cm]?[jt]sx?$/.test(file)) infixed.add(key);
   }
-  return new Map([...found].filter(([, v]) => Object.keys(v).some((k) => k !== 'base')));
+  return new Map([...found].filter(([key]) => infixed.has(key)));
 }
 
-type Variant = Variants extends Map<string, infer T> ? T : never;
+function sourceExts(root: string): string[] {
+  const config = require(path.join(root, 'metro.config.js')) as { resolver: { sourceExts: string[] } };
+  return config.resolver.sourceExts;
+}
 
-/** The file of a module that `os` loads: the Metro order, `.web` before the plain file on web, `.native` after `.ios`/`.android`. */
-export const loadedAs = (os: OS, v: Variant) =>
-  os === 'web' ? (v.web ?? v.base) : os === 'android' ? (v.android ?? v.native ?? v.base) : (v.ios ?? v.native ?? v.base);
+/** The file Metro answers an import of `key` with on `os`, found the way Metro finds it. */
+export function loadedAs(root: string, os: OS, key: string): string | undefined {
+  const lookup = (p: string) => {
+    const at = path.resolve(root, p);
+    return existsSync(at) ? { exists: true as const, type: statSync(at).isDirectory() ? ('d' as const) : ('f' as const), realPath: at } : { exists: false as const };
+  };
+  const context = {
+    allowHaste: false,
+    assetExts: new Set<string>(),
+    customResolverOptions: {},
+    disableHierarchicalLookup: true,
+    doesFileExist: (p: string) => lookup(p).exists,
+    extraNodeModules: null,
+    dev: true,
+    getPackage: () => null,
+    getPackageForModule: () => null,
+    fileSystemLookup: lookup,
+    mainFields: [],
+    originModulePath: path.join(root, path.dirname(key), '__origin__.ts'),
+    nodeModulesPaths: [],
+    preferNativePlatform: os !== 'web',
+    resolveAsset: () => null,
+    redirectModulePath: (p: string) => p,
+    resolveHasteModule: () => null,
+    resolveHastePackage: () => null,
+    sourceExts: sourceExts(root),
+    unstable_conditionNames: [],
+    unstable_conditionsByPlatform: {},
+    unstable_enablePackageExports: false,
+    unstable_incrementalResolution: false,
+    unstable_logWarning: () => {},
+  };
+  const found = metroResolve(context as never, `./${path.posix.basename(key)}`, os);
+  return found.type === 'sourceFile' ? path.relative(root, found.filePath).split(path.sep).join('/') : undefined;
+}
 
-/** Makes every import of a module with variants load the one `os` takes, whichever file the project's own resolver found. */
+/** Every file on disk that could answer an import of `key`, whatever its extension. */
+function answers(root: string, key: string): string[] {
+  const dir = path.posix.dirname(key);
+  return readdirSync(path.join(root, dir))
+    .filter((f) => PLATFORM_FILE.exec(f)?.[1] === path.posix.basename(key))
+    .map((f) => path.posix.join(dir, f));
+}
+
+/** Makes every import of a module with variants load the file `os` takes, whichever file the project's own resolver found. */
 export function loadVariantsAs(root: string, os: OS, variants: Variants) {
-  for (const v of variants.values()) {
-    const chosen = loadedAs(os, v);
-    if (chosen) for (const file of Object.values(v)) jest.doMock(path.join(root, file), () => jest.requireActual(path.join(root, chosen)));
+  const taken = new Map<string, string>();
+  for (const key of variants.keys()) {
+    const chosen = loadedAs(root, os, key);
+    if (chosen) for (const file of answers(root, key)) taken.set(path.join(root, file), path.join(root, chosen));
   }
+  const platformVariant = (target: string) => taken.get(target)!;
+  for (const target of taken.keys()) jest.doMock(target, () => jest.requireActual(platformVariant(target)));
 }
 
 export function restoreVariants(root: string, variants: Variants) {
-  for (const v of variants.values()) for (const file of Object.values(v)) jest.dontMock(path.join(root, file));
+  for (const key of variants.keys()) for (const file of answers(root, key)) jest.dontMock(path.join(root, file));
 }
