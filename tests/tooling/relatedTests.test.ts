@@ -129,3 +129,10 @@ describe("what native:related runs and what it leaves to CI", () => {
     assert.deepEqual(listedTests(out, repoRoot), [T("a"), T("b")]);
   });
 });
+
+test("a native test importing a changed module by any path mapping is near it, not only by `@/`", () => {
+  const source = (t: string) => (t === "a.test.tsx" ? "import x from '@shared/http';" : t === "b.test.tsx" ? "import x from '@/lib/theme';" : "");
+  const related = ["a.test.tsx", "b.test.tsx"];
+  assert.deepEqual(nearTests({ changed: ["shared/http.ts"], related, source }), ["a.test.tsx"]);
+  assert.deepEqual(nearTests({ changed: ["lib/theme.ts"], related, source }), ["b.test.tsx"]);
+});

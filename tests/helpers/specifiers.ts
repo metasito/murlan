@@ -1,15 +1,10 @@
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
-import ts from "typescript";
+import { ALIASES } from "../../scripts/lib/pathMappings.mjs";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 
-const paths = ts.readConfigFile(path.join(root, "tsconfig.json"), ts.sys.readFile).config.compilerOptions.paths as Record<string, string[]>;
-
-/** The project's path mappings, as [prefix, repository directory]: `@/*` is ["@/", ""]. */
-export const ALIASES: readonly (readonly [string, string])[] = Object.entries(paths).map(
-  ([key, [target]]) => [key.replace(/\*$/, ""), path.posix.normalize(target!.replace(/\*$/, "")).replace(/^\.\/?$/, "").replace(/^\.\//, "")] as const,
-);
+export { ALIASES };
 
 export type Resolved = { kind: "local"; path: string } | { kind: "package"; name: string };
 
