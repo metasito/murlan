@@ -1,6 +1,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { builtinModules } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,10 +17,25 @@ const WORKFLOW = ".github/workflows/target-freeze.yml";
 const tracked = trackedFiles(root);
 const APP = /^(lib|components|app|context|locales|shared)\//;
 const SOURCE = /\.(ts|tsx|mjs|js)$/;
-const importsOf = (file: string, text: string) =>
-  ts.preProcessFile(text, true, true).importedFiles.map((i) => i.fileName).filter((n) => n.startsWith(".") || n.startsWith("@/"));
+const importsOf = (file: string, text: string) => ts.preProcessFile(text, true, true).importedFiles.map((i) => i.fileName);
+const aliases = Object.entries(ts.readConfigFile(path.join(root, "tsconfig.json"), ts.sys.readFile).config.compilerOptions.paths as Record<string, string[]>).map(
+  ([key, [target]]) => [key.replace(/\*$/, ""), target.replace(/^\.\//, "").replace(/\*$/, "")] as const,
+);
+const isPackage = (spec: string) => {
+  const name = spec.startsWith("node:") ? spec : spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/");
+  return builtinModules.includes(name.replace(/^node:/, "")) || name.startsWith("node:") || fs.existsSync(path.join(root, "node_modules", name));
+};
+/** The repository path a specifier names, before any extension is tried: undefined for a package. */
+const specPath = (from: string, spec: string) => {
+  if (spec.startsWith(".")) return path.posix.join(path.posix.dirname(from), spec);
+  const alias = aliases.find(([prefix]) => spec.startsWith(prefix));
+  if (alias) return alias[1] + spec.slice(alias[0].length);
+  return undefined;
+};
+/** A tracked file, or null when the specifier is a package; undefined when it names nothing. */
 const resolveImport = (from: string, spec: string, all: Set<string>) => {
-  const joined = spec.startsWith("@/") ? spec.slice(2) : path.posix.join(path.posix.dirname(from), spec);
+  const joined = specPath(from, spec);
+  if (joined === undefined) return isPackage(spec) ? null : undefined;
   const base = joined.replace(/\.(m?js|tsx?)$/, "");
   return [joined, ...[".ts", ".tsx", ".mjs", ".js", "/index.ts", "/index.tsx"].map((e) => base + e)].find((c) => all.has(c));
 };
@@ -34,6 +50,7 @@ const reach = (roots: string[], all: string[], read: (f: string) => string) => {
     const from = queue.pop()!;
     for (const spec of importsOf(from, read(from))) {
       const file = resolveImport(from, spec, known);
+      if (file === null) continue;
       if (!file) {
         unresolved.push(`${from} -> ${spec}`);
         continue;
@@ -121,8 +138,8 @@ describe("the list looks at the repository as it is", () => {
     const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
     const into = tracked
       .filter((f) => APP.test(f) && SOURCE.test(f))
-      .flatMap((f) => importsOf(f, read(f)).map((i) => [f, (i.startsWith("@/") ? i.slice(2) : path.posix.join(path.posix.dirname(f), i))] as const))
-      .filter(([, target]) => target.startsWith("tests/"))
+      .flatMap((f) => importsOf(f, read(f)).map((i) => [f, specPath(f, i)] as const))
+      .filter(([, target]) => target?.startsWith("tests/"))
       .map(([f, target]) => `${f} -> ${target}`);
     assert.deepEqual(into, []);
   });
@@ -158,6 +175,17 @@ describe("the list looks at the repository as it is", () => {
     const found = reach(["scratch/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
     assert.deepEqual(found.helpers, ["scratch/floor.json"]);
     assert.deepEqual(found.unresolved, ["scratch/a.nightly.spec.ts -> ./zzUntracked"]);
+  });
+
+  test("an alias from tsconfig is followed, and a specifier that is no package, relative path or alias is unresolved", () => {
+    assert.ok(aliases.some(([prefix, dir]) => prefix === "@shared/" && dir === "shared/"));
+    const files: Record<string, string> = {
+      "scratch/a.nightly.spec.ts": "import { f } from '@shared/zzFloor'; import { g } from '@zzunknown/x'; import fs from 'node:fs'; import { test } from '@playwright/test';",
+      "shared/zzFloor.ts": "export const f = 1;",
+    };
+    const found = reach(["scratch/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
+    assert.deepEqual(found.app, ["shared/zzFloor.ts"]);
+    assert.deepEqual(found.unresolved, ["scratch/a.nightly.spec.ts -> @zzunknown/x"]);
   });
 
   test("the measuring helpers are targets", () => {
