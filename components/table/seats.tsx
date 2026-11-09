@@ -2,16 +2,23 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, View, StyleSheet, type TextProps, type TextStyle, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
-import { mockupPx } from "./noticeModel";
+import { mockupPx, NOTICE_FACES, seatBadgeH, type SeatBadge } from "./noticeModel";
 import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
-  SEAT_LABEL_GAP,
-  SEAT_LABEL_PAD,
   seatGap,
   seatLabelH,
+  seatLabelRows,
+  SEAT_LABEL_ALIGN,
+  seatAnchor,
+  seatLabelLeft,
+  seatLabelW,
+  seatNameSet,
+  OPP_LABEL_MAX_W,
+  type SeatAnchor,
+  type OpponentSide,
 } from "@/components/seatLayout";
-import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
+import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
@@ -39,7 +46,6 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
-import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
@@ -92,14 +98,6 @@ export function usePassedSeats(
 // flipping its own offsets; the container is never rotated for it, because the
 // arc deliberately overflows its box and rotating the box would leave half of
 // it empty and open a phantom gap between the avatar and the cards.
-
-/**
- * How far the fan leans away from the viewer, in its own frame — so a side
- * player leans sideways from the same line of code as the top player leaning
- * back. The perspective is what turns the lean into depth rather than a squash.
- */
-const FAN_LEAN_DEG = -17;
-const FAN_PERSPECTIVE = 560;
 
 function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
   id: string;
@@ -565,25 +563,25 @@ function SeatRing({
 // ─── SeatBadges ───────────────────────────────────────────────────────────────
 
 function SeatBadges({
-  vacated,
+  badge,
   reconnecting,
   name,
   scale,
   maxW,
 }: {
-  vacated: boolean;
+  badge: SeatBadge;
   reconnecting?: { seconds: number; resetKey: string };
   name: string;
   scale: number;
   maxW: number;
 }) {
-  if (!vacated && !reconnecting) return null;
   return (
     <View style={[seatStyles.seatBadgeRow, { maxWidth: maxW }]}>
-      {reconnecting && (
+      {badge === "reconnecting" && reconnecting ? (
         <ReconnectingMark seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} />
+      ) : (
+        <VacatedMark username={name} scale={scale} />
       )}
-      {!reconnecting && vacated && <VacatedMark username={name} scale={scale} />}
     </View>
   );
 }
@@ -654,7 +652,7 @@ export const OpponentSeat = memo(function OpponentSeat({
         reconnecting={reconnecting}
         scale={scale}
         countdown={countdown}
-        anchor={top ? "centre" : place}
+        anchor={seatAnchor(place)}
         nameInset={nameInset}
         focusMode={focusMode}
         mark={mark}
@@ -707,54 +705,47 @@ function SeatWho({
    * whole table to spread into and centres; a side seat sits flush against its
    * own column, so a label centred there hangs off the screen.
    */
-  anchor?: "centre" | "left" | "right";
+  anchor?: SeatAnchor;
   nameInset?: number;
   focusMode?: boolean;
 }) {
   const disc = SEAT_DISC * scale;
   const lit = seatLit(isActive, mark);
-  const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
-  const labelLeft =
-    (anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW) + (anchor === "left" ? nameInset : anchor === "right" ? -nameInset : 0);
+  const labelW = seatLabelW(anchor, scale);
+  const labelLeft = seatLabelLeft(anchor, scale, nameInset);
+  const nameSet = seatNameSet(scale);
+  const badge: SeatBadge | undefined = reconnecting ? "reconnecting" : vacated ? "vacated" : undefined;
+  const rows = seatLabelRows(scale, seatBadgeH(badge, scale));
+  const row = (above: number) => [seatStyles.whoLabel, { width: labelW, left: labelLeft, bottom: disc + above, alignItems: SEAT_LABEL_ALIGN[anchor] }];
   return (
     <View style={seatStyles.who}>
       {!focusMode && (
-        <View
-          style={[
-            seatStyles.whoLabel,
-            {
-              width: labelW,
-              left: labelLeft,
-              bottom: disc,
-              gap: SEAT_LABEL_GAP * scale,
-              paddingBottom: SEAT_LABEL_PAD * scale,
-            },
-            anchor === "left" && seatStyles.whoLabelLeft,
-            anchor === "right" && seatStyles.whoLabelRight,
-          ]}
-          pointerEvents="none"
-        >
+        <View style={row(rows.name)} pointerEvents="none">
           <TableText
             testID="seat-name"
             {...({ dataSet: { lit: String(lit) } } as TextProps)}
             style={[
               seatStyles.oppName,
+              NOTICE_FACES[nameSet.face],
               // The cap rides the scale the glyphs do; fixed, it ellipsises
               // every name above a phone's own scale.
-              { fontSize: tableFontSize(SEAT_NAME_FS, scale), maxWidth: labelW },
+              {
+                fontSize: nameSet.size,
+                letterSpacing: nameSet.tracking,
+                textTransform: nameSet.upper ? "uppercase" : "none",
+                maxWidth: labelW,
+              },
               lit && seatStyles.oppNameActive,
             ]}
             numberOfLines={1}
           >
             {name}
           </TableText>
-          <SeatBadges
-            vacated={vacated}
-            reconnecting={reconnecting}
-            name={name}
-            scale={scale}
-            maxW={labelW}
-          />
+        </View>
+      )}
+      {!focusMode && badge && (
+        <View style={row(rows.badges)} pointerEvents="none">
+          <SeatBadges badge={badge} reconnecting={reconnecting} name={name} scale={scale} maxW={labelW} />
         </View>
       )}
       <SeatRing
@@ -776,23 +767,6 @@ function SeatWho({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-/**
- * Wide enough for a name the length of the longest the lobby deals in, at
- * `SEAT_NAME_FS` with its own tracking and the plate's padding either side.
- * At 70 the plate ellipsised "Besnik" to "BE…", which reads as a bug rather
- * than as a long name being trimmed.
- */
-const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
-/**
- * …and what a side seat gets, in points rather than a multiple of the scale: a
- * label measured in scaled points outgrows its fixed column on a big screen and
- * is drawn off the edge of it, which is what tests/e2e/tableFit.spec.ts caught.
- *
- * Wider than `SIDE_SECTION_W`, and not derived from it. The plate leans inward
- * over the felt the way the fan does (`whoLabelLeft`), so the column is not its
- * bound — while the floor above is real: at 80 this ellipsises "Besnik".
- */
-const SIDE_LABEL_MAX_W = 114;
 /** How far a seat recedes while its player is reconnecting. */
 const SEAT_DIM_OPACITY = 0.62;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */
@@ -801,7 +775,6 @@ const SEAT_BADGE_FS = 10;
 const LAST_CARD_BADGE = 1.25;
 /** `.badge.last`'s glow in mockup px, before the badge's own growth. */
 const LAST_CARD_GLOW = { blur: 10, opacity: 0.6 } as const;
-const SEAT_NAME_FS = 11;
 // A text shadow does not stack, and the lit name's glyphs are too thin for one to darken the felt
 // between them: the web repeats the layer, native keeps the one.
 const HALO_BLUR = 4;
@@ -840,25 +813,13 @@ const seatStyles = StyleSheet.create({
   // caller supplies width and both insets in points, worked out from the disc
   // it hangs over — centring it on a percentage translate instead leaves the
   // label beside the disc on any renderer that does not resolve one.
-  // The gap and the pad ride the table's scale, so they are passed in rather
-  // than set here — `seatLabelH` reserves this column's height from the same
-  // two numbers, and a flat length here is height it would not know about.
-  whoLabel: {
-    position: "absolute",
-    alignItems: "center",
-  },
-  // A side seat's label runs inwards from the disc, into the felt, rather than
-  // outwards past the edge its own column is flush against.
-  whoLabelLeft: { alignItems: "flex-start" },
-  whoLabelRight: { alignItems: "flex-end" },
+  // Each row's bottom comes from `seatLabelRows`, which `tableRects` reads too.
+  whoLabel: { position: "absolute" },
 
   // Bare on the felt, as the mockup's `.nm`: unlit, its ink is held to 4.5:1 over
   // the felt behind it by tests/e2e/seatNameContrast.spec.ts.
   oppName: {
-    fontFamily: "Rajdhani_600SemiBold",
     color: withAlpha(Colors.text, 0.75),
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
     maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
   },

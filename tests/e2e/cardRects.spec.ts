@@ -8,11 +8,10 @@ import { settled } from "./helpers/settle";
 import { tap, tapPoint } from "./helpers/press";
 import { HAND_ZONE } from "./helpers/selectors.ts";
 import { paintedFrames, type EachPaint } from "./helpers/virtualClock";
+import { TABLETS } from "../helpers/tableScenes";
 
-const VIEWPORTS = [
-  { name: "phone", width: 844, height: 390 },
-  { name: "4:3 tablet", width: 1024, height: 768 },
-];
+const [FOUR_THREE] = TABLETS;
+const VIEWPORTS = [{ name: "phone", width: 844, height: 390 }, FOUR_THREE];
 const TOLERANCE = 1;
 
 interface Worst { frames: number; scopes: string[]; centre: number; size: number; rot: number; worstAt: string; badFrames: number; counts: string[]; moved: number }
@@ -214,7 +213,7 @@ for (const vp of VIEWPORTS) {
 
 test("on a 4:3 tablet, Tab onto a card the scrolled hand clips pans the row to it, and its rect follows", async ({ page, baseURL }) => {
   test.setTimeout(90_000);
-  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.setViewportSize({ width: FOUR_THREE.width, height: FOUR_THREE.height });
   await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }), HELD);
   await settled(page, 3_000, '[data-testid="game-table"]');
   // Measured about the centre at the unturned width: a tilted card's bounding box outgrows what the row can show.
@@ -253,7 +252,7 @@ test("on a 4:3 tablet, Tab onto a card the scrolled hand clips pans the row to i
 
 test("on a 4:3 tablet, a mouse press on the scrolled hand's clipped edge card leaves the row where it is", async ({ page, baseURL }) => {
   test.setTimeout(90_000);
-  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.setViewportSize({ width: FOUR_THREE.width, height: FOUR_THREE.height });
   await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }), HELD);
   await settled(page, 3_000, '[data-testid="game-table"]');
   const row = () =>
