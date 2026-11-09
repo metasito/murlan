@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { SELF_BOUNDED } from "../helpers/selfBounded.ts";
 import { openDatabase, pool, QUERY_TIMEOUT_MS } from "../../server/store/db.ts";
 import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS, SHUTDOWN_BUDGET } from "../../server/http/shutdown.ts";
 
@@ -74,16 +75,6 @@ test("the pool is the thing QUERY_TIMEOUT_MS bounds", () => {
     "the shutdown budget is derived from QUERY_TIMEOUT_MS, which is only true if the pool uses it"
   );
 });
-
-/**
- * Callees that bound themselves by the budget they are handed, so awaiting one is bounded.
- * `within` is the general form and is checked apart: it ends the wait at its budget whatever it wraps.
- */
-const SELF_BOUNDED: Record<string, string> = {
-  settleInFlight: "gives up at its argument",
-  closeTableOwners: "settles for at most its argument, then destroys the client",
-  closeDatabase: "drains for at most `drainMs`",
-};
 
 const budgetKey = (e: ts.Node | undefined): string | null =>
   e && ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "SHUTDOWN_BUDGET" ? e.name.text : null;
