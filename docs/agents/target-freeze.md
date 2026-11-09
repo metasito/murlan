@@ -15,9 +15,10 @@ repository through `refs/pull/<n>/head`, which can lag the event, and a lag make
 the check goes red until the ref catches up; a fetch that fails or lands elsewhere is red), and runs
 main's script on `HEAD...<head>` with renames off, so a target moved out of its path still counts
 where it was. The head is read only through `git diff`, `git ls-tree` and `git show`: no checkout,
-install or import of its files, no secret, read-only `contents`, and the pull request's fields reach
-the shell through `env:`. Running the head's code there would be a pwn-request. `edited` is among
-its types, so a stack retargeted onto `main` is judged again on its new base.
+install or run of its files outside the sandbox below, no secret, read-only `contents`, and the pull
+request's fields reach the shell through `env:`. Running the head's code there would be a
+pwn-request. `edited` is among its
+types, so a stack retargeted onto `main` is judged again on its new base.
 
 **The ruleset makes it binding, and what stays spoofable.** The `main` ruleset routes every change
 through a pull request, with no bypass actors. The owner is to require `Target freeze` there once
@@ -52,7 +53,11 @@ and base's refuses; one that merged a newer main; and a SHA it cannot fetch, or 
 guard is floored: a pattern that names no file in the base turns it red, and so does a base or head
 that is missing, cannot be read, shares no merge base or is the same commit. A pattern that names no
 file in the head but is still in the head's copy of the list turns it red too, so a pull request
-cannot delete a target's last file and keep its pattern; retiring one removes both.
+cannot delete a target's last file and keep its pattern; retiring one removes both. The head's
+list is not scanned as text: its copy of the script and the files it imports are written to a
+scratch directory and evaluated in a Node process under `--permission` with read access to that
+directory alone (no write, network, child process or environment), and only the patterns come back.
+A head with no script, or one that does not evaluate, is red.
 
 **What it leaves out, on purpose.** These change with the code by design, and freezing them would
 make every intended change unlandable:
@@ -67,9 +72,16 @@ make every intended change unlandable:
 - `tests/e2e/pileBeaten.spec.ts` and `reconnect.spec.ts`, which mostly assert app behaviour.
 - A threshold written inside app code. The list covers only the files it names.
 
-The measuring helpers (`tableTrace.ts`, `renderCounters.ts`, `virtualClock.ts`) and the measurement conditions
-(`phones.ts`, `settle.ts`, `safeArea.ts`) are targets, and `targetFreeze.test.ts` makes every other
-helper reachable from a target spec through imports be named as plumbing.
+The measuring helpers (`tableTrace.ts`, `renderCounters.ts`, `virtualClock.ts`) and the measurement
+conditions (`phones.ts`, `settle.ts`, `safeArea.ts`, `phoneTable.ts`) are targets, and so is
+`cardOnCardCss.ts`, the mockup's card shadow. `targetFreeze.test.ts` follows every import from a
+target through the test-side files, targets included, with the TypeScript import scanner (side-
+effect, re-export and dynamic imports, `.js` specifiers). Each file it reaches that is not a target
+must be in that test's `PLUMBING`, with the reason it measures nothing, and every entry must still
+be reached. The test is a target, so widening `PLUMBING` is reviewed as the list is. App files it
+reaches stop the walk; each must also be imported by the app, so a threshold written for the specs
+alone cannot hide in `lib/`. `lib/e2eTrace.ts` is app code: `components/` import it for the trace
+they emit.
 
 Some targets take their values from the app, so a code change moves them without touching the
 list:

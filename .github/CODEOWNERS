@@ -21,6 +21,8 @@
 /tests/e2e/helpers/tableTrace.ts        @rotonmeta
 /tests/e2e/helpers/renderCounters.ts    @rotonmeta
 /tests/e2e/helpers/virtualClock.ts      @rotonmeta
+/tests/helpers/phoneTable.ts            @rotonmeta
+/tests/e2e/helpers/cardOnCardCss.ts     @rotonmeta
 /tests/e2e/helpers/phones.ts            @rotonmeta
 /tests/e2e/helpers/settle.ts            @rotonmeta
 /tests/e2e/helpers/safeArea.ts          @rotonmeta

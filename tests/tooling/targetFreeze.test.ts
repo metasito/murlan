@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import ts from "typescript";
 import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
@@ -13,21 +14,47 @@ import { trackedFiles } from "../helpers/trackedFiles.ts";
 const root = path.resolve(import.meta.dirname, "..", "..");
 const WORKFLOW = ".github/workflows/target-freeze.yml";
 const tracked = trackedFiles(root);
-const reachableHelpers = (specs: string[], all: string[], read: (f: string) => string) => {
-  const seen = new Set<string>();
-  const queue = [...specs];
+const APP = /^(lib|components|app|context|locales|shared)\//;
+const SOURCE = /\.(ts|tsx|mjs|js)$/;
+const importsOf = (file: string, text: string) =>
+  ts.preProcessFile(text, true, true).importedFiles.map((i) => i.fileName).filter((n) => n.startsWith(".") || n.startsWith("@/"));
+const resolveImport = (from: string, spec: string, all: Set<string>) => {
+  const base = (spec.startsWith("@/") ? spec.slice(2) : path.posix.join(path.posix.dirname(from), spec)).replace(/\.(m?js|tsx?)$/, "");
+  return [".ts", ".tsx", ".mjs", ".js", "/index.ts", "/index.tsx"].map((e) => base + e).find((c) => all.has(c));
+};
+/** Test-side files reached from the roots through any import, plus the app files they stop at. */
+const reach = (roots: string[], all: string[], read: (f: string) => string) => {
+  const known = new Set(all);
+  const helpers = new Set<string>();
+  const app = new Set<string>();
+  const queue = [...roots];
   while (queue.length) {
     const from = queue.pop()!;
-    for (const [, rel] of read(from).matchAll(/from\s+["'](\.[^"']+)["']/g).map((m) => [m[0], m[1]])) {
-      const base = path.posix.join(path.posix.dirname(from), rel).replace(/\.(ts|mjs)$/, "");
-      const file = all.find((f) => (f === `${base}.ts` || f === `${base}.mjs`) && !/^(lib|components|app|locales)\//.test(f));
-      if (file && !seen.has(file)) {
-        seen.add(file);
-        if (!isTarget(file)) queue.push(file);
+    for (const spec of importsOf(from, read(from))) {
+      const file = resolveImport(from, spec, known);
+      if (!file || roots.includes(file) || helpers.has(file) || app.has(file)) continue;
+      if (APP.test(file)) app.add(file);
+      else {
+        helpers.add(file);
+        queue.push(file);
       }
     }
   }
-  return [...seen];
+  return { helpers: [...helpers], app: [...app] };
+};
+const PLUMBING: Record<string, string> = {
+  "tests/e2e/fixtures.ts": "turns a browser error into a failure; it measures nothing and can only add failures",
+  "tests/e2e/helpers/selectors.ts": "locators for the table and the hand; a locator that misses fails the spec rather than shifting a reading",
+  "tests/e2e/helpers/offlineSeed.ts": "puts the app in a saved state before a spec measures; the reading is taken after it",
+  "tests/e2e/helpers/press.ts": "a press that takes time; it drives the app and reads nothing",
+  "tests/e2e/helpers/navigation.ts": "menu clicks that cross the chrome before a table exists",
+  "tests/e2e/helpers/online.ts": "registers and joins an online room; it reads nothing",
+  "tests/e2e/helpers/bot.ts": "plays a game through the UI; it asserts progress, not geometry or cost",
+  "tests/e2e/helpers/labels.ts": "the Italian copy a spec looks a control up by; a changed label fails the lookup",
+  "tests/support/game.ts": "builds game states for the engine; no time, size or count is read through it",
+};
+const SPEC_ONLY_APP: Record<string, string> = {
+  "lib/game/simulate.ts": "the headless match player behind the state builders in tests/support/game.ts; no spec reads a measurement from it",
 };
 const inScratch = (p: string) => `tests/e2e/${p}`;
 const workflowText = fs.readFileSync(path.join(root, WORKFLOW), "utf8");
@@ -72,22 +99,38 @@ describe("the list looks at the repository as it is", () => {
     assert.equal(freezeVerdict([target, "components/x.tsx"]).ok, false);
   });
 
-  test("every test helper reachable from a target spec is a target or named here as plumbing, so a new measuring helper must be decided", () => {
-    const plumbing = new Set(["tests/e2e/fixtures.ts", "tests/support/game.ts", ...["offlineSeed", "press", "selectors", "bot", "cardOnCardCss", "navigation", "online"].map((n) => `tests/e2e/helpers/${n}.ts`)]);
+  test("everything a target reaches through imports is a target or plumbing with a reason, and every plumbing entry is reached", () => {
     const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
-    const reached = reachableHelpers(tracked.filter((f) => isTarget(f) && /^tests\/e2e\/[^/]+\.ts$/.test(f)), tracked, read);
-    assert.ok(reached.length >= 8, `only ${reached.length} helpers found`);
-    assert.deepEqual(reached.filter((f) => !isTarget(f) && !plumbing.has(f)), []);
+    const roots = tracked.filter((f) => isTarget(f) && SOURCE.test(f) && f.startsWith("tests/") && !f.startsWith("tests/tooling/"));
+    const { helpers } = reach(roots, tracked, read);
+    assert.ok(helpers.length >= 8, `only ${helpers.length} helpers found`);
+    const reached = helpers.filter((f) => !isTarget(f));
+    assert.deepEqual(reached.filter((f) => !(f in PLUMBING)), []);
+    assert.deepEqual(Object.keys(PLUMBING).filter((f) => !reached.includes(f)), []);
+    for (const [f, why] of Object.entries(PLUMBING)) assert.ok(why.length > 20, f);
   });
 
-  test("a measuring helper reached only through a plumbing module is found", () => {
+  test("an app file a target reaches is also imported by the app, so a threshold kept only for the specs is not hidden there", () => {
+    const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
+    const roots = tracked.filter((f) => isTarget(f) && SOURCE.test(f) && f.startsWith("tests/") && !f.startsWith("tests/tooling/"));
+    const known = new Set(tracked);
+    const appFiles = tracked.filter((f) => APP.test(f) && SOURCE.test(f) && !/\.(test|spec)\./.test(f));
+    const importedByApp = new Set(appFiles.flatMap((f) => importsOf(f, read(f)).map((i) => resolveImport(f, i, known))));
+    const specOnly = reach(roots, tracked, read).app.filter((f) => !importedByApp.has(f));
+    assert.deepEqual(specOnly.filter((f) => !(f in SPEC_ONLY_APP)), []);
+    assert.deepEqual(Object.keys(SPEC_ONLY_APP).filter((f) => !specOnly.includes(f)), []);
+  });
+
+  test("a measuring helper reached only through a plumbing module or a target, by any kind of import, is found", () => {
     const files: Record<string, string> = {
-      "scratch/e2e/a.nightly.spec.ts": "import { x } from './helpers/press';",
-      "scratch/e2e/helpers/press.ts": "import { y } from './counter';",
-      "scratch/e2e/helpers/counter.ts": "export const y = 1;",
+      "scratch/a.nightly.spec.ts": "import './plain'; export { COUNT } from './zzMeasure'; const x = import('./lazy.js');",
+      "scratch/plain.ts": "import { y } from './counter';",
+      "scratch/counter.ts": "export const y = 1;",
+      "scratch/zzMeasure.ts": "export const COUNT = 1;",
+      "scratch/lazy.ts": "export const z = 1;",
     };
-    const reached = reachableHelpers(["scratch/e2e/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
-    assert.deepEqual(reached.filter((f) => !isTarget(f)), ["scratch/e2e/helpers/press.ts", "scratch/e2e/helpers/counter.ts"]);
+    const { helpers } = reach(["scratch/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
+    assert.deepEqual(helpers.sort(), ["scratch/counter.ts", "scratch/lazy.ts", "scratch/plain.ts", "scratch/zzMeasure.ts"]);
   });
 
   test("the measuring helpers are targets", () => {
@@ -257,6 +300,15 @@ describe("planted diffs", () => {
     branch("emptied-kept", () => {
       fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
     });
+    branch("emptied-quoted", () => {
+      fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
+      edit(SELF, '{ pattern: "tests/e2e/tiers.mjs"', "{ pattern: `tests/e2e/${'tiers'}.mjs`");
+    });
+    branch("retired-commented", () => {
+      fs.rmSync(path.join(dir, "tests/e2e/tiers.mjs"));
+      edit(SELF, '  { pattern: "tests/e2e/tiers.mjs", what: "which specs are nightly" },\n', '  // { pattern: "tests/e2e/tiers.mjs" },\n');
+    });
+    branch("no-self", () => fs.rmSync(path.join(dir, SELF)));
     branch("spoof", () => {
       write(".github/workflows/ci.yml", "jobs:\n  fake:\n    name: Target freeze\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n");
       write("components/GameTable.tsx", "moved\n");
@@ -365,13 +417,24 @@ describe("planted diffs", () => {
   test("a head that deletes a target's last file but keeps its pattern is red, not left to every later pull request", () => {
     const { code, out } = judge("emptied-kept");
     assert.equal(code, 1);
-    assert.match(out, /^::error::these patterns name no file in emptied-kept but its list still holds them, so the freeze would no longer see them: tests\/e2e\/tiers\.mjs$/);
+    assert.match(out, /^::error::these patterns name no file in emptied-kept but its list still holds them, so every later pull request would be refused: tests\/e2e\/tiers\.mjs$/);
+  });
+
+  test("head's list is the one its module evaluates to: another quoting is read, a commented pattern is not", () => {
+    const quoted = judge("emptied-quoted");
+    assert.equal(quoted.code, 1);
+    assert.match(quoted.out, /but its list still holds them, so every later pull request would be refused: tests\/e2e\/tiers\.mjs$/);
+    assert.equal(judge("retired-commented").code, 0);
+  });
+
+  test("a head that deletes the script is refused with its own message", () => {
+    assert.deepEqual(judge("no-self"), { code: 1, out: `::error::no-self has no ${SELF}, so no list would judge the pull requests after it.` });
   });
 
   test("a head whose other workflow names a job Target freeze is refused", () => {
     assert.deepEqual(judge("spoof"), {
       code: 1,
-      out: "::error::.github/workflows/ci.yml names a job or step Target freeze; a job so named reports a check that would stand in for this one (RULES.md 52).",
+      out: "::error::.github/workflows/ci.yml names a job or step Target freeze: a job so named reports a check that would stand in for this one, and a step so named is refused because the scan cannot tell it from a job (RULES.md 52).",
     });
   });
 
