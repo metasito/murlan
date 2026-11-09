@@ -1,7 +1,8 @@
 /**
- * RULES.md 52, run by .github/workflows/target-freeze.yml from the base branch's checkout. It reads
- * the pull request's head only as git objects, never as files to run, so a head cannot change the
- * list or the verdict that judges it.
+ * RULES.md 52, run by .github/workflows/target-freeze.yml from the base branch's checkout. The pull
+ * request's head is read as git objects. Its copy of this module is evaluated only to read its list,
+ * in a Node process under the permission model with read access to a scratch copy and nothing else
+ * (listAt), so a head cannot change the list or the verdict that judges it.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -55,6 +56,7 @@ export const CODE = Object.freeze(["app/", "components/", "lib/"]);
 export const OWNER = "@rotonmeta";
 
 export const WORKFLOW = ".github/workflows/target-freeze.yml";
+const SANDBOXED_NODE = 25;
 const SELF = "tools/ci/target-freeze.mjs";
 export const CHECK = "Target freeze";
 
@@ -122,6 +124,8 @@ export function unmatched(tracked, list = { targets: TARGETS.map((t) => t.patter
  * @returns {{ targets: string[], code: string[] }}
  */
 export function listAt(head, at) {
+  const major = Number(process.versions.node.split(".")[0]);
+  if (major < SANDBOXED_NODE) throw new Error(`Node ${process.versions.node} does not deny the network under --permission; evaluating head's list needs Node ${SANDBOXED_NODE} or later`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "target-freeze-head-"));
   try {
     const seen = new Set();

@@ -9,16 +9,17 @@ script, empties the list, edits its test or rewrites the workflow is judged by t
 from; its edits take effect only once it has merged. A check inside `ci.yml` cannot do this: on
 `pull_request` the head's `ci.yml` runs, and it decides whether any step of it runs at all.
 
-**Nothing of the head runs.** The job checks out main's tip without persisting its token, fetches
-the event's `head.sha` by SHA as git objects (a fork's commits are reachable from the base
-repository through `refs/pull/<n>/head`, which can lag the event, and a lag makes the fetch fail, so
-the check goes red until the ref catches up; a fetch that fails or lands elsewhere is red), and runs
-main's script on `HEAD...<head>` with renames off, so a target moved out of its path still counts
-where it was. The head is read only through `git diff`, `git ls-tree` and `git show`: no checkout,
-install or run of its files outside the sandbox below, no secret, read-only `contents`, and the pull
-request's fields reach the shell through `env:`. Running the head's code there would be a
-pwn-request. `edited` is among its
-types, so a stack retargeted onto `main` is judged again on its new base.
+**Nothing of the head runs outside a sandbox.** The job checks out main's tip without persisting its
+token, fetches the event's `head.sha` by SHA as git objects (a fork's commits are reachable from the
+base repository through `refs/pull/<n>/head`, which can lag the event, and a lag makes the fetch
+fail, so the check goes red until the ref catches up; a fetch that fails or lands elsewhere is red),
+and runs main's script on `HEAD...<head>` with renames off, so a target moved out of its path still
+counts where it was. The head is read through `git diff`, `git ls-tree` and `git show`: no checkout
+or install of it, no secret, read-only `contents`, and the pull request's fields reach the shell
+through `env:`. The one thing of the head's that runs is its copy of the script, to read its list,
+in a Node process under the sandbox below. Running the head's code outside it would be a
+pwn-request. `edited` is among its types, so a stack retargeted onto `main` is judged again on its
+new base.
 
 **The ruleset makes it binding, and what stays spoofable.** The `main` ruleset routes every change
 through a pull request, with no bypass actors. The owner is to require `Target freeze` there once
@@ -57,7 +58,10 @@ cannot delete a target's last file and keep its pattern; retiring one removes bo
 list is not scanned as text: its copy of the script and the files it imports are written to a
 scratch directory and evaluated in a Node process under `--permission` with read access to that
 directory alone (no write, network, child process or environment), and only the patterns come back.
-A head with no script, or one that does not evaluate, is red.
+A head with no script, or one that does not evaluate, is red. `listAt` throws on Node before 25,
+where the permission model leaves the network open. A head can still detect the sandbox and export
+an empty `TARGETS`; owner review of the script, a target, and the dead-pattern floor turning every
+later pull request red are what answer that.
 
 **What it leaves out, on purpose.** These change with the code by design, and freezing them would
 make every intended change unlandable:

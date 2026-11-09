@@ -1,6 +1,8 @@
 # RULES.md 52. pull_request_target runs main's copy of this file and of the script, so a pull request
-# cannot loosen what judges it. Nothing from the head is checked out, installed or run: it is fetched
-# as git objects and only diffed (tests/tooling/targetFreeze.test.ts holds this shape).
+# cannot loosen what judges it. Nothing from the head is checked out or installed: it is fetched as
+# git objects and diffed, and only its copy of the script is evaluated, to read its list, under
+# Node's permission model with no access but a scratch copy (tests/tooling/targetFreeze.test.ts
+# holds this shape).
 name: Target freeze
 
 on:

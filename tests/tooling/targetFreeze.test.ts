@@ -19,28 +19,34 @@ const SOURCE = /\.(ts|tsx|mjs|js)$/;
 const importsOf = (file: string, text: string) =>
   ts.preProcessFile(text, true, true).importedFiles.map((i) => i.fileName).filter((n) => n.startsWith(".") || n.startsWith("@/"));
 const resolveImport = (from: string, spec: string, all: Set<string>) => {
-  const base = (spec.startsWith("@/") ? spec.slice(2) : path.posix.join(path.posix.dirname(from), spec)).replace(/\.(m?js|tsx?)$/, "");
-  return [".ts", ".tsx", ".mjs", ".js", "/index.ts", "/index.tsx"].map((e) => base + e).find((c) => all.has(c));
+  const joined = spec.startsWith("@/") ? spec.slice(2) : path.posix.join(path.posix.dirname(from), spec);
+  const base = joined.replace(/\.(m?js|tsx?)$/, "");
+  return [joined, ...[".ts", ".tsx", ".mjs", ".js", "/index.ts", "/index.tsx"].map((e) => base + e)].find((c) => all.has(c));
 };
-/** Test-side files reached from the roots through any import, plus the app files they stop at. */
+/** Test-side files reached from the roots through any import, the app files they stop at, and imports that name no tracked file. */
 const reach = (roots: string[], all: string[], read: (f: string) => string) => {
   const known = new Set(all);
   const helpers = new Set<string>();
   const app = new Set<string>();
+  const unresolved: string[] = [];
   const queue = [...roots];
   while (queue.length) {
     const from = queue.pop()!;
     for (const spec of importsOf(from, read(from))) {
       const file = resolveImport(from, spec, known);
-      if (!file || roots.includes(file) || helpers.has(file) || app.has(file)) continue;
+      if (!file) {
+        unresolved.push(`${from} -> ${spec}`);
+        continue;
+      }
+      if (roots.includes(file) || helpers.has(file) || app.has(file)) continue;
       if (APP.test(file)) app.add(file);
       else {
         helpers.add(file);
-        queue.push(file);
+        if (SOURCE.test(file)) queue.push(file);
       }
     }
   }
-  return { helpers: [...helpers], app: [...app] };
+  return { helpers: [...helpers], app: [...app], unresolved };
 };
 const PLUMBING: Record<string, string> = {
   "tests/e2e/fixtures.ts": "turns a browser error into a failure; it measures nothing and can only add failures",
@@ -102,12 +108,23 @@ describe("the list looks at the repository as it is", () => {
   test("everything a target reaches through imports is a target or plumbing with a reason, and every plumbing entry is reached", () => {
     const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
     const roots = tracked.filter((f) => isTarget(f) && SOURCE.test(f) && f.startsWith("tests/") && !f.startsWith("tests/tooling/"));
-    const { helpers } = reach(roots, tracked, read);
+    const { helpers, unresolved } = reach(roots, tracked, read);
+    assert.deepEqual(unresolved, [], "unresolved/untracked import");
     assert.ok(helpers.length >= 8, `only ${helpers.length} helpers found`);
     const reached = helpers.filter((f) => !isTarget(f));
     assert.deepEqual(reached.filter((f) => !(f in PLUMBING)), []);
     assert.deepEqual(Object.keys(PLUMBING).filter((f) => !reached.includes(f)), []);
     for (const [f, why] of Object.entries(PLUMBING)) assert.ok(why.length > 20, f);
+  });
+
+  test("app code imports nothing under tests/, so the walk that stops at app code loses no helper", () => {
+    const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
+    const into = tracked
+      .filter((f) => APP.test(f) && SOURCE.test(f) && !/\.(test|spec)\./.test(f))
+      .flatMap((f) => importsOf(f, read(f)).map((i) => [f, (i.startsWith("@/") ? i.slice(2) : path.posix.join(path.posix.dirname(f), i))] as const))
+      .filter(([, target]) => target.startsWith("tests/"))
+      .map(([f, target]) => `${f} -> ${target}`);
+    assert.deepEqual(into, []);
   });
 
   test("an app file a target reaches is also imported by the app, so a threshold kept only for the specs is not hidden there", () => {
@@ -133,6 +150,16 @@ describe("the list looks at the repository as it is", () => {
     assert.deepEqual(helpers.sort(), ["scratch/counter.ts", "scratch/lazy.ts", "scratch/plain.ts", "scratch/zzMeasure.ts"]);
   });
 
+  test("an import that names no tracked file is reported, and a JSON import is a reached file", () => {
+    const files: Record<string, string> = {
+      "scratch/a.nightly.spec.ts": "import floor from './floor.json' with { type: 'json' }; import './zzUntracked';",
+      "scratch/floor.json": "{}",
+    };
+    const found = reach(["scratch/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
+    assert.deepEqual(found.helpers, ["scratch/floor.json"]);
+    assert.deepEqual(found.unresolved, ["scratch/a.nightly.spec.ts -> ./zzUntracked"]);
+  });
+
   test("the measuring helpers are targets", () => {
     for (const f of ["renderCounters", "virtualClock", "tableTrace", "phones", "settle", "safeArea"]) assert.ok(isTarget(`tests/e2e/helpers/${f}.ts`), f);
     assert.equal(freezeVerdict(["tests/e2e/helpers/renderCounters.ts", "components/table/lampRig.ts"]).ok, false);
@@ -143,7 +170,7 @@ describe("the list looks at the repository as it is", () => {
   });
 });
 
-describe("the workflow runs base's script on the head's objects, and nothing of the head's", () => {
+describe("the workflow runs base's script on the head's objects, and of the head's only its list", () => {
   test("it runs on every pull request into main, again when one is retargeted, and on nothing else", () => {
     assert.deepEqual(workflow.on, { pull_request_target: { branches: ["main"], types: ["opened", "synchronize", "reopened", "edited"] } });
   });
