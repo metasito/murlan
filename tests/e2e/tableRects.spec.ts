@@ -6,7 +6,7 @@ import { test, expect } from "./fixtures";
 import { DEAL_SIZE, exchangeSave, offlineSave, seedSave } from "./helpers/offlineSeed";
 import { openApp } from "./helpers/navigation";
 import { openOnlineTable } from "./helpers/onlineTable";
-import { PHONES, TABLETS } from "./helpers/phones";
+import { PHONES } from "./helpers/phones";
 import { setSafeArea } from "./helpers/safeArea";
 import { INSETS } from "../helpers/phoneTable";
 import { fits, type Box, type Fit } from "../helpers/drawnFit";
@@ -17,7 +17,7 @@ import { LOCALE_KEY } from "../../lib/storageKeys";
 import { catalogs, type Locale } from "../../shared/i18n";
 import type { EdgeInsets } from "../../components/tableFrame";
 import { tableRects, type Rect, type RectName, type TableRects } from "../../components/tableRects";
-import { drawnChips, gameTable, type DrawnTable } from "../helpers/tableScenes";
+import { drawnChips, gameTable, TABLETS, type DrawnTable } from "../helpers/tableScenes";
 
 const VIEWPORTS = [...PHONES, ...TABLETS];
 const PHONE_INSETS = Object.entries(INSETS);

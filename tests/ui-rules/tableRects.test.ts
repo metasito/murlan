@@ -9,9 +9,9 @@ import { USERNAME_MAX } from "../../shared/username.ts";
 import { brokenRules, intersects, RECT_NAMES, TABLE_RULES, tableRects, type TableState } from "../../components/tableRects.ts";
 import type { EdgeInsets } from "../../components/tableFrame.ts";
 import type { NoticeContent } from "../../components/table/noticeWidth.ts";
-import { PHONES, TABLETS } from "../e2e/helpers/phones.ts";
+import { PHONES } from "../e2e/helpers/phones.ts";
 import { INSETS } from "../helpers/phoneTable.ts";
-import { capturedTable, comboScene, exchangeScenes, turnScenes } from "../helpers/tableScenes.ts";
+import { capturedTable, comboScene, exchangeScenes, TABLETS, turnScenes } from "../helpers/tableScenes.ts";
 
 const VIEWPORTS = [...PHONES, ...TABLETS];
 

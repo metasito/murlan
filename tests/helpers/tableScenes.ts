@@ -210,3 +210,9 @@ export function drawnChips(
     .find((c) => wordsOf(c, locale) === read.turn);
   return { combo: combos.find((c) => wordsOf(c, locale) === read.combo) ?? null, turn: turn ?? null };
 }
+
+/** The tablets the table's rects are held to beside the phones: a 4:3 screen and the largest iPad. */
+export const TABLETS = [
+  { name: "4:3 tablet", width: 1024, height: 768 },
+  { name: "iPad Pro", width: 1366, height: 1024 },
+] as const;
