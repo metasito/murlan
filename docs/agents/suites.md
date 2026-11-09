@@ -190,11 +190,14 @@ annotation and the gate's summary line, and reds it beside any file the base's `
 gives no reviewer (the last matching line decides, and a line naming no owner un-owns, as on
 GitHub). The wiring is derived, at the base and at the head, by `wiringOf` in
 `tools/ci/test-verdict.mjs`: `jest.config.js` and `tests/e2e/playwright*.config.ts`, every file they
-name as a `reporter`, `reporters`, `globalSetup` or `globalTeardown`, every file a judged suite's
+name as a `reporter`, `reporters`, `globalSetup`, `globalTeardown`, `testEnvironment`, `setupFiles`,
+`setupFilesAfterEnv`, `moduleNameMapper`, `resolver`, `runner`, `testRunner`, `testSequencer`,
+`transform` or `snapshotResolver`, every file a judged suite's
 `package.json` script names (`--test-reporter`, `--import`, the launcher), and every file those
 import, transitively; plus `package.json` when a script that runs a suite or names a runner differs.
 So a budget reporter that rewrites a result to "passed" before the results reporter reads it is
-wiring, and so is a reporter a config newly names. `tests/tooling/targetFreeze.test.ts` holds every
+wiring, and so is a reporter a config newly names, and so is a native test environment that empties
+a failed test's errors at `test_done`. `tests/tooling/targetFreeze.test.ts` holds every
 derived file owned in `.github/CODEOWNERS`. A reporter change still lands, beside owner-reviewed
 files only. Which jobs a change runs is `JOBS` in `tools/ci/scopeOf.mjs`: `scope.mjs` prints it as the
 scope job's `jobs` output, every job's `if:` reads its own key, and the verdict reds a job the base's
@@ -220,8 +223,8 @@ workflow and main's judge, required by the ruleset.
 The base's judge reads records the head's wiring wrote. A wiring change beside owner-reviewed files
 only is green on the owner's review alone, and that review is all that stands between a forged
 "passed" and a merge. The derivation reads only the hook keys above and static relative imports:
-the head's own test files, jest's `setupFilesAfterEnv` and `testEnvironment`, a module loaded by a
-computed path, and the runner packages and their versions can all make a test report a pass, and
+the head's own test files and the helpers they import, a module loaded by a computed path or a
+package name, and the runner packages and their versions can all make a test report a pass, and
 none of them is wiring. The `workflow_run` check above does not close it
 either, since CI's artifacts are still the head's; only a run with main's configs and reporters would.
 A runner that stops at a test's own early `return` reports a pass. A skip is heard by file and
