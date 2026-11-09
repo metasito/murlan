@@ -118,3 +118,114 @@ entry that no longer differs or now first differs elsewhere, a table that compar
 match that errored, a HEAD with no transitions; at the deepest level both trees offer
 (`onTransition`, else round level), held to the file's `level`. About 25 s a tree for 600 matches;
 about 5 s to bisect one match over ~550 commits.
+
+## A flake is fixed, never retried or quietly skipped
+
+Rule 53 is judged from what the runners report, not from what the source says. Each of `npm test`,
+`loop:test`, `test:native` and `test:e2e` carries a results reporter (`tools/ci/results-*.mjs`,
+through `tools/ci/results-writer.mjs`) that writes one JSON-lines file per runner invocation into
+`$MURLAN_TEST_RESULTS`: a `run` record naming the runner and every name filter it ran under, one
+`test` record per test with its status and its retry attempt, and an `end` record with the
+runner's own verdict. The writer unsets the variable for the runner's children, so a nested run
+inside a test writes nothing. Each test job uploads the directory as
+`test-results-<job>-<shard>-<attempt>`, even when the job fails, and errors if it is empty.
+
+CI gate's step "Every test that ran passed, once, and none was skipped unheard" downloads every
+such artifact of the run and fails on:
+
+- a test that failed, in any run attempt: re-running a failed job is a retry;
+- a test that ran with retries allowed or used (Playwright's `retries` and `retry`, a jest test
+  invoked more than once by `jest.retryTimes`; `node --test` has no retry);
+- a test declared failing (Playwright's `test.fail()`, jest's `test.failing`), recorded as todo,
+  and a title reported twice in one results file (with its project), whose one pass would be heard
+  for the other;
+- a node test that was dequeued and never finished, because its file exited mid-run: node's
+  summary still reads green and names no such test, so the reporter records it failed;
+- a skip or todo whose file and title never passed anywhere else in the run, unless
+  `tools/ci/quarantine.json` holds it (below);
+- a run filtered by name (`--test-name-pattern`, `--test-skip-pattern`, `--test-only`,
+  `--test-shard`, jest's `-t` and changed-file modes, Playwright's `--grep`, `--grep-invert`,
+  `--project`, `--last-failed`, `--only-changed`, `--test-list` and a config or project `grep`):
+  a test filtered out reports nothing at all;
+- a job that ran and uploaded nothing, a results file that ends before its runner did or whose
+  runner called it red, an artifact that did not arrive, a job the gate does not need, an artifact
+  from a job no suite judges, and a job the gate needs that is neither in `SUITES` nor in
+  `NON_TEST_JOBS` (so a new test job cannot pass by uploading nothing);
+- a test file in a suite's listing (from the head's tree) in which no test passed, a listing
+  under the suite's floor in `SUITES`, and a test file renamed out of its suite's listing;
+- a test job skipped although the base's `scopeOf` (`tools/ci/scopeOf.mjs`) over the change runs
+  its suite, so a head's scope job cannot skip what the base would run.
+
+A skip that is fine passes elsewhere: the win32-only loop tests skip in `harness` and pass in
+`harness-windows`. A skip nothing else runs — an integration suite without Postgres, a test that
+needs `gh` without a token — is red, which is what replaced verify's grep of the log. A test is
+keyed by its spec file, not by where `test()` was called, so a test a shared helper registers in
+two specs is two tests; and a node test file that registered no test is not counted as a pass for
+the wrapper node reports in its place.
+
+A flake that cannot be fixed the day it is seen may wait in the quarantine, bounded by base code:
+an entry the base does not hold verbatim is an addition, and an addition is red unless the pull
+request changes `tools/ci/quarantine.json` and nothing else. Every entry is red once its day has
+passed, unless its `issue` is open and labelled `ci-flake`, and when its `expires` is more than
+`QUARANTINE_DAYS` (14) after that issue's `created_at` (both read from the API); an issue holds one
+test, and a test the base holds under one issue cannot move to another. A ledger over
+`QUARANTINE_CAP` (5) holds nothing. So an expiry renews only up to its issue's fourteenth day, and
+past that only through a new issue for a test the base no longer holds. Loosening any bound is a
+change to `tools/ci/test-verdict.mjs`, which is a `JUDGES` file and takes effect only once it is
+the base.
+
+The gate runs the base's copy of `tools/ci/test-verdict.mjs`, extracted with `git archive`: `HEAD^1`
+of the merge commit on a pull request, `HEAD` on a push to main, and `origin/main`'s tip on a
+dispatch or a schedule; the judge reds when `BASE` is `HEAD` on anything but a push to main. A base
+without the judge is red, unless the head adds both `tools/ci/results-writer.mjs` and
+`tools/ci/test-verdict.mjs` to a main whose history never held the judge (the commits API, since the
+gate's checkout is two commits deep; an unreadable answer is red): only then the head judges its own
+run, with a warning, and that is this mechanism's own pull request, so once it lands the branch can
+never be taken again. A pull request into any other branch is red, and so is a base that deleted or
+renamed either.
+
+The records are the head's: every test job runs the head's reporters through the head's configs.
+So the base's judge names a change to that wiring on every run, in a `Runners' wiring changed` error
+annotation and the gate's summary line, and reds it beside any file the base's `.github/CODEOWNERS`
+gives no reviewer (the last matching line decides, and a line naming no owner un-owns, as on
+GitHub). The wiring is derived, at the base and at the head, by `wiringOf` in
+`tools/ci/test-verdict.mjs`: `jest.config.js` and `tests/e2e/playwright*.config.ts`, every file they
+name as a `reporter`, `reporters`, `globalSetup` or `globalTeardown`, every file a judged suite's
+`package.json` script names (`--test-reporter`, `--import`, the launcher), and every file those
+import, transitively; plus `package.json` when a script that runs a suite or names a runner differs.
+So a budget reporter that rewrites a result to "passed" before the results reporter reads it is
+wiring, and so is a reporter a config newly names. `tests/tooling/targetFreeze.test.ts` holds every
+derived file owned in `.github/CODEOWNERS`. A reporter change still lands, beside owner-reviewed
+files only. Which jobs a change runs is `JOBS` in `tools/ci/scopeOf.mjs`: `scope.mjs` prints it as the
+scope job's `jobs` output, every job's `if:` reads its own key, and the verdict reds a job the base's
+scope runs that was skipped. On a push to main the scope is not bound, since the scope job skips a
+tree its pull request already passed. The verdict, the ledger, the reporters, `gate.mjs`,
+`scope.mjs`, `scopeOf.mjs`, `ci.yml`, `package.json` and every derived wiring file are `JUDGES` in
+`tools/ci/target-freeze.mjs`, rendered into `.github/CODEOWNERS` beside
+rule 52's targets but frozen with nothing. Text from the head is escaped before it reaches a
+`::error::` line. `tests/tooling/testVerdict.test.ts` plants every bypass in a scratch project, runs
+the real runner over it with its real reporter, and asserts the verdict over that output is red.
+
+What still runs early, before any test: `murlan/no-focused-test` in `eslint.guards.cjs` and
+Playwright's `forbidOnly` on CI. Both are cheap signals; the gate is the guarantee.
+
+**Limits.** The judge is the base's, but on a pull request `ci.yml` is the head's, so the base's
+judge guards only a head that leaves the workflow alone: a change to `ci.yml` can drop a reporter,
+an upload, or the gate step itself, or run a judge of its own, and so can a test that forges or
+deletes its own results file. `JUDGES` routes such a change to the owner, but CODEOWNERS binds
+nothing until the ruleset requires code-owner review (`docs/agents/target-freeze.md`), so today
+review is the only thing in the way. The durable fix is a follow-up: a "Test verdict" check run
+from the default branch by a `workflow_run` trigger on CI, judging CI's artifacts with main's
+workflow and main's judge, required by the ruleset.
+The base's judge reads records the head's wiring wrote. A wiring change beside owner-reviewed files
+only is green on the owner's review alone, and that review is all that stands between a forged
+"passed" and a merge. The derivation reads only the hook keys above and static relative imports:
+the head's own test files, jest's `setupFilesAfterEnv` and `testEnvironment`, a module loaded by a
+computed path, and the runner packages and their versions can all make a test report a pass, and
+none of them is wiring. The `workflow_run` check above does not close it
+either, since CI's artifacts are still the head's; only a run with main's configs and reporters would.
+A runner that stops at a test's own early `return` reports a pass. A skip is heard by file and
+title, not by project or platform: an android-only skip passes on the ios run of the same test
+(`tableRelocksAfterEntry.test.tsx`). Every workflow but `ci.yml` (`maestro.yml`, `ios.yml`, the
+nightly and soak runs) runs outside CI gate, and its results are not judged; `maestro.yml`'s retry
+re-runs a flow that never started because the emulator did not boot.

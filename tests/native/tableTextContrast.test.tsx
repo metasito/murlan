@@ -571,12 +571,12 @@ for (const ref of TABLE_TEXT) {
   const min = DISABLED.has(id) ? LARGE_MIN : BODY_MIN;
   const spec = backdrop.measuredBy;
   if (spec) {
-    test(`the table's ${ref.sheet}.${ref.key} is measured over the real felt by ${spec}`, () => {
+    test(`the table's ${id} is measured over the real felt by ${spec}`, () => {
       assert.match(readFileSync(path.join(repoRoot, spec), "utf8"), /seat-name[\s\S]*toBeGreaterThanOrEqual\(BODY_MIN\)/);
     });
     continue;
   }
-  test(`the table's ${ref.sheet}.${ref.key} clears ${min}:1 on every felt stop, on every platform`, () => {
+  test(`the table's ${id} clears ${min}:1 on every felt stop, on every platform`, () => {
     for (const os of OSES) {
       const ink = styleInk(id, os);
       assert.ok(ink, `${id} has no color on ${os}`);

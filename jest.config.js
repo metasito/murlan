@@ -72,7 +72,7 @@ const compiled = {
 
 module.exports = {
   projects: [project('ios'), project('android'), compiled],
-  reporters: process.env.CI ? ['default', `${rootDir}/tools/ci/native-budget.mjs`] : ['default'],
+  reporters: process.env.CI ? ['default', `${rootDir}/tools/ci/native-budget.mjs`, `${rootDir}/tools/ci/results-jest-reporter.mjs`] : ['default'],
   globalSetup: `${rootDir}/tools/ci/preflightMemory.mjs`,
   // Eight times the slowest test and hook measured on the default (tests/helpers/timeoutHeadroom.mjs):
   // 4.3 s on CI's cold transform cache, 8.6 s in ten local runs at CI's two workers. A test that needs

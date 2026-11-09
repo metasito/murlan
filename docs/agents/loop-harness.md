@@ -5,11 +5,12 @@ Read before a change under `tools/loop/`, `.claude/` hooks, or the loop's eviden
 
 `tools/loop/` — supervisor, gate, picker, workspace tools — has its own suite
 (`tools/loop/tests/`, which `ci.yml`'s `harness` job runs) that shares nothing with the game's `npm
-test` but the repository. `ci.yml`'s `scope` job sets `app`/`harness` outputs from `tools/ci/scope.mjs`'s `scopeOf`: a diff confined to
-`tools/loop/` (plus a short list of shared scripts) sets `harness=true, app=false`; anything else
-sets `app=true`; the protocol files (`docs/agents/`, `.claude/`, `CLAUDE.md`) set **both**, since
+test` but the repository. `ci.yml`'s `scope` job sets one `jobs` output, `JOBS` in
+`tools/ci/scopeOf.mjs` applied to `scopeOf`'s scope, and each job's `if:` reads its own key. A diff
+confined to `tools/loop/` (plus a short list of shared scripts) is `harness` and not `app`; anything
+else is `app`; the protocol files (`docs/agents/`, `.claude/`, `CLAUDE.md`) are **both**, since
 both `tests/tooling/rulesAreSingleSourced.test.ts` and
-`tools/loop/tests/loopDocsAreExecutable.test.ts` read them. A third output, `scans`, is true for
+`tools/loop/tests/loopDocsAreExecutable.test.ts` read them. A third part, `scans`, is true for
 any change at all and runs `verify` (`npm test`) even when `app` is false: `docReferences` and the
 other scans that list the repository from its root reach every tracked path, prose included, so a
 doc-only change skips the browser, build and lint jobs but never the Node suite
