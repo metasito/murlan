@@ -226,7 +226,7 @@ const STRAIGHT_12 = STRAIGHT_13.slice(0, 12);
 
 test.describe("the side seats and the hand are drawn in the solver's rects, and keep its rules", () => {
   for (const vp of [PHONES[0], PHONES[1], PHONES[3], TABLETS[0]]) {
-    for (const [turn, hand] of [[1, "at rest"], [0, "raised"]] as const)
+    for (const [turn, hand] of [[1, "off its turn"], [0, "on its turn"]] as const)
       test(`full seats, hand ${hand}: ${vp.name}`, async ({ page, baseURL }) => {
         test.setTimeout(120_000);
         const insets = INSETS["0/0"];
@@ -254,7 +254,7 @@ test("the rail's knobs are drawn in the solver's rects: online", async ({ browse
   const table = await openOnlineTable(browser, baseURL!, { playerCount: 2, gameMode: "free_for_all", viewport: { width: SIXTEEN.width, height: SIXTEEN.height } });
   try {
     const got = await settled(table.page, RAIL);
-    const solved = tableRects({ width: SIXTEEN.width, height: SIXTEEN.height, insets: INSETS["0/0"], locale: "it", state: { seats: { top: null, left: null, right: null }, hand: { cards: 0, onTurn: false, faceDown: false, raised: false }, pile: 0, chips: { combo: [], turn: [] } } });
+    const solved = tableRects({ width: SIXTEEN.width, height: SIXTEEN.height, insets: INSETS["0/0"], locale: "it", state: { seats: { top: null, left: null, right: null }, hand: { cards: 0, onTurn: false, faceDown: false }, pile: 0, chips: { combo: [], turn: [] } } });
     expect(misfits(got, solved, RAIL), "iPhone 16 Pro, online").toEqual([]);
   } finally {
     await table.close();

@@ -238,7 +238,7 @@ export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: 
 /** The registry apart from the place: a mapper reading it would re-run on its own every write. */
 interface HandRects {
   table: CardTable;
-  place: HandPlace & { felt: Felt; pan: SharedValue<number>; panLimit: number; lift: SharedValue<number>; motion: SharedValue<TableMotion> };
+  place: HandPlace & { felt: Felt; pan: SharedValue<number>; panLimit: number; motion: SharedValue<TableMotion> };
 }
 
 function CardItemBase({
@@ -408,11 +408,11 @@ function CardItemBase({
     };
   });
   const registryPlace = rects?.place;
-  const rectOf = (p: ReturnType<typeof poseOf>, liftNow: number, glowNow: number, panNow: number, handLift: number, motionNow: TableMotion) => {
+  const rectOf = (p: ReturnType<typeof poseOf>, liftNow: number, glowNow: number, panNow: number, motionNow: TableMotion) => {
     "worklet";
     if (!registryPlace) return null;
     const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: p.scale, back: faceDown, lift: liftNow / selectLift, glow: glowNow };
-    return designRect(handCard(registryPlace, card, panShown(panNow, registryPlace.panLimit), handLift), registryPlace.felt, motionNow);
+    return designRect(handCard(registryPlace, card, panShown(panNow, registryPlace.panLimit)), registryPlace.felt, motionNow);
   };
   const ownRects = useCardRect(
     rects?.table ?? null,
@@ -424,7 +424,7 @@ function CardItemBase({
       const posed = poseOf(arrival, { descent: dealing.value, arc: arcTilt.value, tilt: tilt.value, press: press.value, shift: shift.value, lift: liftY.value, gone: !!hidden?.value.includes(cardId) }, dealClock ? dealClock.value : 0);
       const p = resized(posed, resizeFrom.value, resizing.value);
       if (!registryPlace || p.opacity <= 0) return null;
-      return rectOf(p, liftY.value, glow.value, registryPlace.pan.value, registryPlace.lift.value, registryPlace.motion.value);
+      return rectOf(p, liftY.value, glow.value, registryPlace.pan.value, registryPlace.motion.value);
     }
   );
   useAnimatedReaction(
@@ -433,7 +433,7 @@ function CardItemBase({
       const landAt = arrival.leaveMs + DEAL_FLIGHT_MS;
       if (!onDealt || !registryPlace || prev === null || prev >= landAt || now < landAt) return;
       const p = poseOf(arrival, { descent: dealing.value, arc: arcTilt.value, tilt: tilt.value, press: press.value, shift: shift.value, lift: liftY.value, gone: false }, now);
-      const r = rectOf(p, liftY.value, glow.value, registryPlace.pan.value, registryPlace.lift.value, registryPlace.motion.value);
+      const r = rectOf(p, liftY.value, glow.value, registryPlace.pan.value, registryPlace.motion.value);
       if (r) scheduleOnRN(onDealt, r.x, r.y);
     }
   );
@@ -858,9 +858,9 @@ export const StraightHand = React.memo(function StraightHand({
   const rowBase = row.base;
   const handRow = useMemo(() => {
     if (!cardTable) return undefined;
-    const { felt, hand, handLift, motion } = cardTable;
+    const { felt, hand, motion } = cardTable;
     const clipHalf = scrollable ? availW / 2 : 0;
-    return { table: cardTable, place: { felt, x: hand.x - rowMid, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, lift: handLift, motion } };
+    return { table: cardTable, place: { felt, x: hand.x - rowMid, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, motion } };
   }, [cardTable, rowMid, rowBase, scrollable, availW, pan, panLimit]);
   useEffect(() => {
     cardTable?.handOrder.set(handPaintOrder(rest.map((c) => c.id), (id) => giveableSet?.has(id), heldCard?.id ?? null));
@@ -876,7 +876,7 @@ export const StraightHand = React.memo(function StraightHand({
       if (!heldPlace || heldId === null) return null;
       const h = heldAt.value;
       const card = { left: 0, bottom: 0, w: cardW, h: cardH, tx: h.tx, ty: h.ty, rot: h.rot, scale: h.scale, back: faceDown, lift: 1 - h.p, glow: heldSelected ? 1 : 0 };
-      return designRect(handCard(heldPlace, card, panShown(heldPlace.pan.value, panLimit), heldPlace.lift.value), heldPlace.felt, heldPlace.motion.value);
+      return designRect(handCard(heldPlace, card, panShown(heldPlace.pan.value, panLimit)), heldPlace.felt, heldPlace.motion.value);
     }
   );
   useEffect(() => {

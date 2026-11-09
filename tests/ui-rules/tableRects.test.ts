@@ -22,11 +22,11 @@ const LONGEST_BOT = longest(captured().flatMap((s) => s.game.players.map((p) => 
 const FULL = { top: { name: LONGEST_BOT, cards: 13 }, left: { name: LONGEST_BOT, cards: 13 }, right: { name: LONGEST_BOT, cards: 13 } };
 const EXTREMES: Omit<TableState, "chips">[] = [];
 for (const hand of [0, 1, 13, 18])
-  for (const pile of [0, 1, 5, 12, 13]) EXTREMES.push({ seats: FULL, hand: { cards: hand, onTurn: true, faceDown: false, raised: true }, pile });
+  for (const pile of [0, 1, 5, 12, 13]) EXTREMES.push({ seats: FULL, hand: { cards: hand, onTurn: true, faceDown: false }, pile });
 /** The widest name an account may take, on the move. */
 const LONGEST_USERNAME = "W".repeat(USERNAME_MAX);
 /** The exchange is announced over a fresh deal: every seat full, the pile empty. */
-const DEALT: Omit<TableState, "chips"> = { seats: FULL, hand: { cards: 13, onTurn: true, faceDown: false, raised: true }, pile: 0 };
+const DEALT: Omit<TableState, "chips"> = { seats: FULL, hand: { cards: 13, onTurn: true, faceDown: false }, pile: 0 };
 /** Every online seat's badge, the countdown at its widest: the server's default grace is 60 seconds. */
 const BADGES: readonly SeatBadgeState[] = [{ kind: "vacated" }, { kind: "reconnecting", seconds: 60 }];
 const badgedSeats = (badge: SeatBadgeState): TableState["seats"] => ({ top: { ...FULL.top, badge }, left: { ...FULL.left, badge }, right: { ...FULL.right, badge } });
@@ -49,7 +49,7 @@ function* cases(): Generator<Case> {
     for (const [inset, insets] of Object.entries(INSETS))
       for (const locale of SUPPORTED_LOCALES) {
         const at = (scene: string, state: TableState): Case => ({
-          label: `${vp.name} (${vp.width}x${vp.height}), ${inset}, ${locale}, ${scene}, seats ${seatsOf(state.seats)}, hand ${state.hand.cards} ${state.hand.raised ? "raised" : "at rest"}, pile ${state.pile}, combo ${tagOf(state.chips.combo)}, turn ${tagOf(state.chips.turn)}`,
+          label: `${vp.name} (${vp.width}x${vp.height}), ${inset}, ${locale}, ${scene}, seats ${seatsOf(state.seats)}, hand ${state.hand.cards}, pile ${state.pile}, combo ${tagOf(state.chips.combo)}, turn ${tagOf(state.chips.turn)}`,
           ...vp,
           insets,
           locale,
@@ -183,7 +183,7 @@ describe("the rules see what they are for", () => {
   const tablet = { width: TABLETS[0].width, height: TABLETS[0].height, insets: INSETS["0/0"], locale: "it" as const };
   const state: TableState = {
     seats: FULL,
-    hand: { cards: 13, onTurn: true, faceDown: false, raised: true },
+    hand: { cards: 13, onTurn: true, faceDown: false },
     pile: 5,
     chips: { combo: [], turn: [] },
   };

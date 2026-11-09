@@ -38,7 +38,7 @@ const owned = (id: string) => makeMutable<CardRects>({ [id]: rect }) as unknown 
 
 function Table({ light, level, children }: { light: SharedValue<GlossLight>; level?: SharedValue<number>; children: React.ReactNode }) {
   const own = useSharedValue(light.value.level);
-  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light, light, level ?? own);
+  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), light, light, level ?? own);
   return <CardTableProvider value={value}>{children}</CardTableProvider>;
 }
 

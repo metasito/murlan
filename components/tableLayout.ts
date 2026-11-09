@@ -42,7 +42,7 @@ export interface TableLayout {
   hud: { combo: { left: number; top: number; align: Align }; turn: { left: number; right: number; top: number; align: Align } };
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
-  /** The hand zone at its designed place, and the padding its row and buttons stand on. Raised, it sits `handLiftY` higher. */
+  /** The hand zone at its designed place, and the padding its row and buttons stand on. */
   handZone: Rect & { padBottom: number };
   /** PASSA and GIOCA, in the hand zone at its designed place. */
   buttons: { passa: Rect; gioca: Rect };

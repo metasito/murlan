@@ -27,9 +27,9 @@ import {
 } from "@/lib/game/gameEngine";
 import { isOneWay, type ExchangeAnnounceData, type ExchangeHold } from "@/lib/game/sharedGameFlow";
 import {
+  handRaised,
   handVisibleH,
   HAND_ZONE_GAP,
-  handRaised,
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
@@ -71,7 +71,6 @@ import { useDeviceOffline, useTableClaim } from "@/components/OfflineBanner";
 import {
   ControlRail,
   useFocusFade,
-  useHandLift,
   RailKnob,
   sharedTableStyles,
   harnessState,
@@ -632,7 +631,6 @@ export function GameTable({
   });
 
   const handUp = handRaised({ turnShown, isFinished, exchangeOpen: exchange.open, exchangeIsMine });
-  const { style: handLiftStyle, lift: handLift } = useHandLift(handUp, scale);
 
   // Merged, never replaced: by the throw's commit the hand has already redrawn without the thrown cards.
   const handOrigins = useRef(new Map<string, CardFrom>());
@@ -758,7 +756,6 @@ export function GameTable({
       },
     },
     tableMotion,
-    handLift,
     rig.glossLight,
     rig.stillLight,
     rig.shadeLevel
@@ -1219,11 +1216,7 @@ export function GameTable({
               </View>
             </View>
 
-            {/* The hand rises off the bottom edge on the viewer's own turn. A
-                lift rather than a lit band: a wash behind the hand draws a gold
-                hairline the full width of the table, which reads as chrome over
-                the felt instead of as the hand coming up. */}
-            <Animated.View
+            <View
               testID="hand-zone"
               style={[
                 sharedTableStyles.handSection,
@@ -1241,7 +1234,6 @@ export function GameTable({
                 // which stays put at the physical cutout: only GIOCA changes
                 // which thumb it falls under.
                 playOnLeft && styles.handSectionReversed,
-                handLiftStyle,
               ]}
             >
               {!spectating && (
@@ -1294,7 +1286,7 @@ export function GameTable({
                   scale={scale}
                 />
               )}
-            </Animated.View>
+            </View>
           </Animated.View>
           </A11yVeil>
         </Animated.View>

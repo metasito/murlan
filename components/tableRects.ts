@@ -8,7 +8,7 @@ import { BACK_SCALE, CARD_H, CARD_W, FIELD_SCALE, handCardSize } from "./cardFac
 import { pileSlots } from "./flightPose.ts";
 import { fanCorners, fanPoint, seatLabelRise } from "./fanGeometry.ts";
 import { layoutHandRow } from "./handLayout.ts";
-import { CHIP_H, handLiftY, SEAT_DISC, SEAT_LABEL_ALIGN, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatLabelRows, seatLabelW, seatNameSet } from "./seatLayout.ts";
+import { CHIP_H, SEAT_DISC, SEAT_LABEL_ALIGN, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatLabelRows, seatLabelW, seatNameSet } from "./seatLayout.ts";
 import type { OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
 import { faceWordsWidth, noticeWidth, type NoticeContent, type NoticeLocale, type Pricing } from "./table/noticeWidth.ts";
@@ -50,8 +50,7 @@ export type RectName = (typeof RECT_NAMES)[number];
 export interface TableState {
   /** Who sits each side and the cards they hold, 0 once they have gone out; null for a side no one sits. */
   seats: Record<OpponentSide, { name: string; cards: number; badge?: SeatBadgeState } | null>;
-  /** `raised` is the hand zone lifted to its designed place, which it holds while the viewer has something to play. */
-  hand: { cards: number; onTurn: boolean; faceDown: boolean; raised: boolean };
+  hand: { cards: number; onTurn: boolean; faceDown: boolean };
   /** Cards in the combination on top of the pile; 0 on an empty table. */
   pile: number;
   chips: { combo: NoticeContent; turn: NoticeContent };
@@ -159,8 +158,6 @@ export function tableRects(input: {
   const fieldH = CARD_H(scale * FIELD_SCALE);
   const pileCards = pileSlots(state.pile, fieldW, frame.fieldRoomW, fieldH).map((at) => turned(anchors.pile.x + at.x, anchors.pile.y + at.y, fieldW, fieldH, at.rot));
 
-  const lift = handLiftY(state.hand.raised, scale);
-  const lifted = (r: Rect): Rect => box(r.x, r.y + lift, r.w, r.h);
   const size = handCardSize(scale, state.hand.onTurn, state.hand.faceDown);
   const row = layoutHandRow({
     ids: Array.from({ length: state.hand.cards }, (_, i) => String(i)),
@@ -170,7 +167,7 @@ export function tableRects(input: {
     bottomPad: frame.bottomPad,
   });
   const rowLeft = anchors.bottom.x - row.width / 2;
-  const rowTop = anchors.bottom.y + row.base - row.visibleH + lift;
+  const rowTop = anchors.bottom.y + row.base - row.visibleH;
   let hand: Rect | null = null;
   if (row.cards.length > 0) {
     const drawn = span(row.cards.map((c) => cover(turned(rowLeft + c.left + c.shift + size.w / 2, rowTop + row.visibleH - c.bottom - size.h / 2, size.w, size.h, c.rot))))!;
@@ -206,9 +203,9 @@ export function tableRects(input: {
       fanLeft: span(fans.left.map(cover)),
       fanRight: span(fans.right.map(cover)),
       pile: span(pileCards.map(cover)),
-      handZone: lifted(handZone),
-      passa: lifted(buttons.passa),
-      gioca: lifted(buttons.gioca),
+      handZone: handZone,
+      passa: buttons.passa,
+      gioca: buttons.gioca,
       hand,
     },
     cards: { fanTop: fans.top, fanLeft: fans.left, fanRight: fans.right, pile: pileCards },

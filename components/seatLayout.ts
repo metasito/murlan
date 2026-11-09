@@ -29,17 +29,9 @@ const ACTION_BTN = 56;
 export const ACTION_BTN_FLOOR = 48;
 /** Hand to button, and button to the edge of the play area. */
 export const HAND_ZONE_GAP = 26;
-/** How far the hand zone rises from its designed place when the turn comes to the viewer, at scale 1. */
-const HAND_LIFT = 4;
-
-/** The hand zone is lifted while the viewer has something to do with it: a turn to play, or a giveback to choose. */
+/** The hand zone is lit while the viewer has something to do with it: a turn to play, or a giveback to choose. */
 export function handRaised(i: { turnShown: boolean; isFinished: boolean; exchangeOpen: boolean; exchangeIsMine: boolean }): boolean {
   return (i.turnShown && !i.isFinished && !i.exchangeOpen) || i.exchangeIsMine;
-}
-
-/** The hand zone's vertical offset from its designed place, which is where the mockup holds it whoever's turn it is. */
-export function handLiftY(raised: boolean, scale: number): number {
-  return raised ? -HAND_LIFT * scale : 0;
 }
 
 /**

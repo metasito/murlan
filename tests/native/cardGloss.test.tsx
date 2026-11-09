@@ -82,7 +82,7 @@ const rectAt = (x: number, y: number): CardRect => ({ x, y, w: 58, h: 84, rot: 0
 const lightAt = (lx: number, ly: number, level = 1): GlossLight => ({ lx, ly, level, r: 1, t: 0 });
 
 function Table({ light, still, children }: { light: SharedValue<GlossLight>; still?: SharedValue<GlossLight>; children: React.ReactNode }) {
-  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light, still ?? light, useSharedValue(1));
+  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), light, still ?? light, useSharedValue(1));
   return <CardTableProvider value={value}>{children}</CardTableProvider>;
 }
 
