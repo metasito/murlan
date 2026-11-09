@@ -26,7 +26,7 @@ uniform float uK,uLampH,uFlare,uPoolR,uVigR,uPitch,uType,uDepth,uCover,uFuzz,uSh
 uniform vec3 uS0,uS1,uS2,uS3,uS4;`;
 
 /**
- * The mockup's `V.K` cap (2026-11-07), on the weave's visibility only: the felt draws at device pixels,
+ * The mockup's `V.K` cap, on the weave's visibility only: the felt draws at device pixels,
  * as a canvas capped and scaled up to the window lays a plaid of its resampling over the weave.
  */
 export const FELT_K_CAP = 2.5;
