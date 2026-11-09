@@ -120,7 +120,7 @@ import { useSameCards } from "@/components/useSameCards";
 import { PileLayer, usePileFlight } from "@/components/table/pile";
 import { topPlay } from "@/components/table/trick";
 import { warmCardArt } from "@/components/CardView";
-import { BombBurst, BombFlash, FeltScrim, Sweep } from "@/components/table/moments";
+import { BombBurst, BombFlash, FeltScrim } from "@/components/table/moments";
 import { OpponentSeat, usePassedSeats } from "@/components/table/seats";
 import { seatView, type SeatTable } from "@/components/table/seatView";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
@@ -622,7 +622,6 @@ export function GameTable({
     kickStyle,
     giocaRejectX,
     rejectPlay,
-    goingOutTrigger,
     celebrateGoingOut,
     shakeStyle,
     tableMotion,
@@ -932,7 +931,6 @@ export function GameTable({
           moving edge, so the strip the kick uncovers is the cloth behind it
           rather than whatever the window is drawn on. */}
       <Animated.View testID="game-layer" style={[styles.kick, clipOverflow, TABLE_Z, kickStyle]}>
-        <Sweep trigger={goingOutTrigger} width={W} height={H} />
         <View testID="card-shade" style={[StyleSheet.absoluteFill, CARD_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
           <HandShade lamp={rig.lamp} cards={cardTable} ready={cardCast === "felt"} />
         </View>

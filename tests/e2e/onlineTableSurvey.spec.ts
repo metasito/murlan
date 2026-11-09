@@ -69,7 +69,7 @@ function recorded(): Map<string, string> {
     return new Map();
   }
 }
-/** Past `SWEEP_MS` (components/table/moments.tsx), the longest of the moment overlays. */
+/** Past `FLARE_BRIEF_MS` (components/table/moments.tsx), the longest moment a bot's play raises; the match flare's 3 s needs a finished match. */
 const MOMENT_CEILING_MS = 1_600;
 
 /** How far the two tables' seat-to-hand gaps may differ, as a fraction of a hand card. */
@@ -122,10 +122,9 @@ interface Measurement {
 /**
  * A table's numbers, with `wide` narrowed to what overflows *steadily*.
  *
- * The moment overlays a played hand raises — the going-out light pass is
- * 2.2x the table's width by construction (`Sweep`, components/table/moments.tsx)
- * — are drawn wider than the screen on purpose and are gone again inside two
- * seconds. Reading twice and keeping only what both readings hold measures the
+ * The moment overlays a played hand raises — a bomb's flare grows to 7x its
+ * 150 px (`BombBurst`, components/table/moments.tsx) — are drawn wider than the
+ * screen on purpose and are gone again inside two seconds. Reading twice and keeping only what both readings hold measures the
  * laid-out table rather than whatever a bot happened to play, which is what the
  * audit's own `wide` column means. It caught one on two runs in about
  * twenty-five before this.
