@@ -53,7 +53,7 @@ const CODEOWNERS = ".github/CODEOWNERS";
 const SELF = "tools/ci/test-verdict.mjs";
 const configs = CONFIGS.map(matcher);
 const runsTests = (/** @type {string} */ name, /** @type {string} */ command) => /^(loop:)?test(:|$)/.test(name) || /reporter|jest|playwright|nodeTest/.test(command);
-const HOOK = /\b(reporters?|globalSetup|globalTeardown)\s*:/g;
+const HOOK = /\b(reporters?|globalSetup|globalTeardown|testEnvironment|setupFiles(AfterEnv)?|moduleNameMapper|resolver|(test)?[rR]unner|testSequencer|transform|snapshotResolver)\s*:/g;
 const SOURCE = /\.(m?js|cjs|tsx?)$/;
 
 /** The expression after `at` up to the `,` or closing bracket that ends it. */

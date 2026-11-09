@@ -38,7 +38,7 @@ describe("the list looks at the repository as it is", () => {
 
   test("every file of the runners' wiring is owned, so a reporter added to a config is a judge before it lands", () => {
     const wiring = wiringOf(tracked, (f) => fs.readFileSync(path.join(root, f), "utf8"), JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts);
-    for (const f of ["tools/ci/e2e-budget.mjs", "tools/ci/native-budget.mjs", "tools/ci/preflightMemory.mjs", "tools/ci/results-writer.mjs", "scripts/nodeTest.mjs", "jest.config.js"]) assert.ok(wiring.includes(f), `${f} is not derived as wiring`);
+    for (const f of ["tools/ci/e2e-budget.mjs", "tools/ci/native-budget.mjs", "tools/ci/preflightMemory.mjs", "tools/ci/results-writer.mjs", "scripts/nodeTest.mjs", "jest.config.js", "tests/native/harness/timeoutHeadroomEnvironment.mjs", "tests/native/setup.ts", "tests/native/mocks/http.ts"]) assert.ok(wiring.includes(f), `${f} is not derived as wiring`);
     const owned = ownedBy(codeowners());
     assert.deepEqual(wiring.filter((f) => !owned(f)), []);
   });
