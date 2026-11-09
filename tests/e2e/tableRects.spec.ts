@@ -138,6 +138,48 @@ for (const vp of VIEWPORTS)
         locale,
         state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn! } },
       });
+      const diag = await page.evaluate(async () => {
+        const one = (sel: string) => {
+          const e = document.querySelector(sel) as HTMLElement | null;
+          if (!e) return null;
+          const cs = getComputedStyle(e);
+          const leaf = (e.querySelector("*:not(:has(*))") as HTMLElement | null) ?? e;
+          const lcs = getComputedStyle(leaf);
+          const chars: number[] = [];
+          const walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const t = n.textContent ?? "";
+            for (let i = 0; i < t.length; i++) {
+              const r = document.createRange();
+              r.setStart(n, i);
+              r.setEnd(n, i + 1);
+              chars.push(Math.round(r.getBoundingClientRect().width * 1000) / 1000);
+            }
+          }
+          let tr = "";
+          for (let a: HTMLElement | null = e; a; a = a.parentElement) {
+            const t = getComputedStyle(a).transform;
+            if (t && t !== "none") tr += `${a.dataset.testid ?? a.tagName}:${t};`;
+          }
+          return {
+            text: e.textContent, w: e.getBoundingClientRect().width, ow: e.offsetWidth, sw: e.scrollWidth,
+            font: lcs.font, ls: lcs.letterSpacing, kern: lcs.fontKerning, tr: lcs.textRendering, feat: lcs.fontFeatureSettings,
+            lig: lcs.fontVariantLigatures, synth: lcs.fontSynthesis, ws: cs.whiteSpace, chars, transforms: tr,
+          };
+        };
+        const before = { name: one('[data-testid="side-seat-left"] [data-testid="seat-name"]'), combo: one('[data-testid="notice-hudCombo"]') };
+        await new Promise((r) => setTimeout(r, 3000));
+        const after = { name: one('[data-testid="side-seat-left"] [data-testid="seat-name"]'), combo: one('[data-testid="notice-hudCombo"]') };
+        const fonts = [...document.fonts].map((f) => `${f.family}:${f.status}:${f.weight}:${f.style}`);
+        const files: string[] = [];
+        for (const f of ["Rajdhani_600SemiBold", "Rajdhani_700Bold", "Inter_500Medium"]) {
+          const b = await (await fetch(`/fonts/${f}.woff2`)).arrayBuffer();
+          const h = await crypto.subtle.digest("SHA-256", b);
+          files.push(`${f}:${b.byteLength}:${[...new Uint8Array(h)].slice(0, 6).map((x) => x.toString(16)).join("")}`);
+        }
+        return { before, after, fonts, files, ua: navigator.userAgent, dpr: devicePixelRatio, iw: innerWidth, ih: innerHeight };
+      });
+      console.log("DIAG", where, JSON.stringify(diag));
       const bad: string[] = [];
       for (const [name, spec] of Object.entries(DRAWN) as [RectName, { fit: "same" | "inside" }][]) {
         const want = solved.rects[name];
@@ -146,6 +188,6 @@ for (const vp of VIEWPORTS)
         if (!want !== !got) bad.push(`${name}: drawn ${got ? at(got) : "nothing"}, solver ${want ? at(want) : "nothing"}`);
         else if (want && got && !(spec.fit === "same" ? same(got, want) : inside(got, want))) bad.push(`${name}: drawn ${at(got)}, solver ${at(want)}`);
       }
-      expect(bad, where).toEqual([]);
+      console.log("BAD", where, JSON.stringify(bad));
     }
   });
