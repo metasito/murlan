@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 import { openDatabase, pool, QUERY_TIMEOUT_MS } from "../../server/store/db.ts";
 import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS, SHUTDOWN_BUDGET } from "../../server/http/shutdown.ts";
 
@@ -72,4 +73,37 @@ test("the pool is the thing QUERY_TIMEOUT_MS bounds", () => {
     { statement_timeout: QUERY_TIMEOUT_MS, query_timeout: QUERY_TIMEOUT_MS },
     "the shutdown budget is derived from QUERY_TIMEOUT_MS, which is only true if the pool uses it"
   );
+});
+
+/** The awaits at the top of `shutdown`'s try block that name no `SHUTDOWN_BUDGET` entry. */
+function unbudgetedAwaits(source: string): string[] {
+  const file = ts.createSourceFile("shutdown.ts", source, ts.ScriptTarget.Latest, true);
+  const found: string[] = [];
+  const hasAwait = (n: ts.Node): boolean => ts.isAwaitExpression(n) || ts.forEachChild(n, (c) => (hasAwait(c) ? true : undefined)) === true;
+  const visit = (n: ts.Node) => {
+    if (ts.isFunctionDeclaration(n) && n.name?.text === "shutdown") {
+      const tried = n.body?.statements.find(ts.isTryStatement);
+      for (const statement of tried?.tryBlock.statements ?? []) {
+        if (hasAwait(statement) && !/SHUTDOWN_BUDGET\.\w+/.test(statement.getText())) found.push(statement.getText().replace(/\s+/g, " "));
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(file);
+  return found;
+}
+
+const shutdownSource = readFileSync(path.resolve(import.meta.dirname, "..", "..", "server", "http", "shutdown.ts"), "utf8");
+
+test("every step shutdown awaits is bounded by an entry of SHUTDOWN_BUDGET, and every entry is used", () => {
+  assert.deepEqual(unbudgetedAwaits(shutdownSource), []);
+  for (const key of Object.keys(SHUTDOWN_BUDGET)) {
+    assert.match(shutdownSource, new RegExp(`SHUTDOWN_BUDGET\\.${key}\\b`), `${key} is budgeted but no step uses it`);
+  }
+});
+
+test("the check sees a close step that names no budget", () => {
+  const planted = shutdownSource.replace("await closeTableOwners(SHUTDOWN_BUDGET.tableOwners);", "await closeTableOwners();");
+  assert.notEqual(planted, shutdownSource, "the planted step is not in shutdown.ts");
+  assert.deepEqual(unbudgetedAwaits(planted), ["await closeTableOwners();"]);
 });

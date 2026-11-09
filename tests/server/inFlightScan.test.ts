@@ -16,9 +16,9 @@ const repoRoot = path.resolve(import.meta.dirname, "..", "..");
  * there are and why each may outlive `stop()`. Exact, so a removed one lowers its entry and a new
  * one is a red test.
  *
- * Seen: `void x`, a bare thenable statement (optional calls included), an assignment of a promise
+ * Seen: `void x`, a bare thenable statement (optional calls and `cond && work()` included), an assignment of a promise
  * to anything but a local that is later awaited or returned, and a function that returns a promise
- * passed to a timer, `arm`, `safeTimer` or a member `.on`/`.once`. Not seen: a promise-returning
+ * passed to a timer, `arm`, `safeTimer`, `forEach` or a member `.on`/`.once`. Not seen: a promise-returning
  * callback handed to any other void-typed parameter (an express route handler is one), which would
  * need a per-parameter allowlist of the same size as the routes.
  */
@@ -69,14 +69,16 @@ const DETACHED: Record<string, { n: number; why: string }> = {
 
 const head = (node: ts.Node) => node.getText().replace(/\s+/g, " ").replace(/;$/, "").slice(0, 48);
 
+const thenableType = (type: ts.Type): boolean => (type.isUnion() ? type.types.some(thenableType) : type.getProperty("then") !== undefined);
+
 function isThenable(checker: ts.TypeChecker, node: ts.Expression): boolean {
-  return checker.getNonNullableType(checker.getTypeAtLocation(node)).getProperty("then") !== undefined;
+  return thenableType(checker.getTypeAtLocation(node));
 }
 
 const isTrack = (e: ts.Expression) => ts.isCallExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "track";
 
 /** Callees whose function argument runs later with nobody reading what it returns. */
-const DEFERS = new Set(["setTimeout", "setInterval", "setImmediate", "queueMicrotask", "arm", "safeTimer", "on", "once"]);
+const DEFERS = new Set(["setTimeout", "setInterval", "setImmediate", "queueMicrotask", "arm", "safeTimer", "on", "once", "forEach"]);
 
 function calleeName(call: ts.CallExpression): string {
   const c = call.expression;
@@ -115,7 +117,7 @@ export function untracked(files: string[], override: Record<string, string> = {}
       node.parent.arguments.includes(node)
     ) {
       const returns = checker.getSignaturesOfType(checker.getTypeAtLocation(node), ts.SignatureKind.Call).map((s) => checker.getReturnTypeOfSignature(s));
-      if (returns.some((t) => checker.getNonNullableType(t).getProperty("then") !== undefined)) found.push(`${file}: callback ${head(node)}`);
+      if (returns.some(thenableType)) found.push(`${file}: callback ${head(node)}`);
     }
     ts.forEachChild(node, visit(file, source));
   };
@@ -148,6 +150,7 @@ test("the scan sees a bare void, .then, call, optional call, property assignment
     "async function work(): Promise<void> {}",
     "declare function track<T>(p: Promise<T>): Promise<T>;",
     "declare const maybe: { w(): Promise<void> } | undefined;",
+    "declare const cond: boolean;",
     "declare const box: { p?: Promise<void> };",
     "export async function planted() {",
     "  void work();",
@@ -157,6 +160,8 @@ test("the scan sees a bare void, .then, call, optional call, property assignment
     "  box.p = work();",
     "  setTimeout(async () => { await work(); }, 1);",
     "  setTimeout(() => work(), 1);",
+    "  cond && work();",
+    "  [1].forEach(async () => { await work(); });",
     "  void track(work());",
     "  box.p = track(work());",
     "  await work();",
@@ -171,6 +176,8 @@ test("the scan sees a bare void, .then, call, optional call, property assignment
     "box.p = work()",
     "callback () => work()",
     "callback async () => { await work(); }",
+    "callback async () => { await work(); }",
+    "cond && work()",
     "void maybe?.w()",
     "void work()",
     "work()",

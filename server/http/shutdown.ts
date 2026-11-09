@@ -48,6 +48,7 @@ export const SHUTDOWN_BUDGET = {
   stopTables: 250,
   flushTelemetry: 200,
   ownerRecords: 250,
+  tableOwners: 250,
   drain: DRAIN_TIMEOUT_MS,
   poolEnd: 200,
   closeOwnership: 250,
@@ -137,7 +138,7 @@ export async function shutdown(
     cancelRevocationRetries();
     stopHealth();
     await within(SHUTDOWN_BUDGET.ownerRecords, Promise.all([stopInbox(), forgetOwnerRecords()]));
-    await closeTableOwners();
+    await closeTableOwners(SHUTDOWN_BUDGET.tableOwners);
     closePresence();
     closeRedis();
     // Disconnecting the sockets above starts writes — updateLastSeen, the

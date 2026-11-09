@@ -241,7 +241,7 @@ export async function startTestServer(
           cancelRevocationRetries();
           stopHealth();
           await stopInbox();
-          await closeTableOwners();
+          await closeTableOwners(SETTLE_IN_FLIGHT_MS);
           closePresence();
           closeRedis();
           // The room-ownership client is a second connection, held open for
@@ -273,7 +273,7 @@ export async function startTestServer(
     cancelRevocationRetries();
     stopHealth();
     await stopInbox();
-    await closeTableOwners();
+    await closeTableOwners(SETTLE_IN_FLIGHT_MS);
     closePresence();
     closeRedis();
     restoreClock();

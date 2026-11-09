@@ -25,6 +25,7 @@ export const SCANS = [
   "tests/server/historyBound.test.ts",
   "tests/server/inFlightScan.test.ts",
   "tests/server/layering.test.ts",
+  "tests/server/shutdownBudget.test.ts",
   "tests/server/logRedactionScan.test.ts",
   "tests/server/noEnvReadAtImport.test.ts",
   "tests/server/pgConnections.test.ts",

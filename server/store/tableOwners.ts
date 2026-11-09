@@ -28,11 +28,9 @@ export function openTableOwners(url?: string): void {
   client = openRedis("owners", { url, offlineQueue: false });
 }
 
-const CLOSE_SETTLE_MS = 1_000;
-
-/** Waits for the records and clears already started, which `destroy()` would cut off. */
-export async function closeTableOwners(): Promise<void> {
-  await settleInFlight(CLOSE_SETTLE_MS);
+/** Waits at most `ms` for the records and clears already started, which `destroy()` would cut off. */
+export async function closeTableOwners(ms: number): Promise<void> {
+  await settleInFlight(ms);
   client?.destroy();
   client = null;
 }
