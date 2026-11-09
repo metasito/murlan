@@ -1433,4 +1433,4 @@ function guardBlocks() {
   ];
 }
 
-module.exports = { GUARDS, CLIENT, plugin, guardBlocks };
+module.exports = { GUARDS, CLIENT, SCREENS, plugin, guardBlocks };

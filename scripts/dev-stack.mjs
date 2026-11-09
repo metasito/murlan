@@ -34,6 +34,9 @@ const RETIRED_NAMES = ["murlan-dev-redis"];
 // The same mirror, for the same reasons; every workflow's Valkey service repeats this
 // (tests/tooling/redisImage.test.ts).
 const VALKEY_IMAGE = "mirror.gcr.io/valkey/valkey:9.1.3-alpine@sha256:bf09d58e96d6b4524a15396b65b242bbe18beebbcc15a04d8ee75ddac62fae0b";
+// What cacheName (dockerEngine.mjs) makes of the two above; tests/tooling/devStackImages.test.ts holds them equal.
+const CACHED_IMAGE = "localhost/murlan-cache/721873c34ceb:postgres-16-alpine";
+const CACHED_VALKEY_IMAGE = "localhost/murlan-cache/bf09d58e96d6:valkey-9.1.3-alpine";
 const REDIS_BASE_PORT = 46379;
 const redisUrlFor = (port) => `redis://127.0.0.1:${port}/0`;
 // Below 49152: Windows carves its dynamic port reservations (Hyper-V, WSL) out of 49152-65535 only.
@@ -56,6 +59,12 @@ function docker(args) {
     throw new Error(`could not run docker (${r.error.code ?? r.error.message}) — is it installed?`);
   }
   return r;
+}
+
+/** The image `cached` (cacheName of `ref`), from the cache or pulled by `ref`'s pinned digest; every container runs the cached name. */
+function ensureImage(ref, cached, pull) {
+  pullImage({ present: () => docker(["image", "inspect", cached]).status === 0 || docker(["image", "inspect", ref]).status === 0, pull, sleep: sleepSync });
+  if (docker(["image", "inspect", cached]).status !== 0) docker(["tag", ref, cached]);
 }
 
 function isRunning(name = NAME) {
@@ -184,18 +193,14 @@ function startRedis() {
     return running;
   }
   docker(["rm", "-f", VALKEY_NAME]);
-  pullImage({
-    present: () => docker(["image", "inspect", VALKEY_IMAGE]).status === 0,
-    pull: () => docker(["pull", "-q", VALKEY_IMAGE]),
-    sleep: sleepSync,
-  });
+  ensureImage(VALKEY_IMAGE, CACHED_VALKEY_IMAGE, () => docker(["pull", "-q", VALKEY_IMAGE]));
   return startOnFreePort({
     start: REDIS_BASE_PORT,
     canBind,
     discard: () => docker(["rm", "-f", VALKEY_NAME]),
     verify: redisReachableOn,
     run: (p) => {
-      const r = docker(["run", "-d", "--name", VALKEY_NAME, "-p", `127.0.0.1:${p}:6379`, VALKEY_IMAGE]);
+      const r = docker(["run", "-d", "--name", VALKEY_NAME, "-p", `127.0.0.1:${p}:6379`, CACHED_VALKEY_IMAGE]);
       if (r.status !== 0) docker(["rm", "-f", VALKEY_NAME]);
       return { status: r.status, stderr: r.stderr };
     },
@@ -225,6 +230,11 @@ try {
     process.exit(0);
   }
 
+  if (cmd === "cached") {
+    console.log([CACHED_IMAGE, CACHED_VALKEY_IMAGE].join("\n"));
+    process.exit(0);
+  }
+
   if (cmd === "down") {
     docker(["rm", "-f", NAME]);
     for (const name of [VALKEY_NAME, ...RETIRED_NAMES]) docker(["rm", "-f", name]);
@@ -241,8 +251,14 @@ try {
   });
 
   if (cmd === "pull") {
-    pullImage({ present: () => docker(["image", "inspect", IMAGE]).status === 0, pull: () => docker(["pull", "-q", IMAGE]), sleep: sleepSync });
-    pullImage({ present: () => docker(["image", "inspect", VALKEY_IMAGE]).status === 0, pull: () => docker(["pull", "-q", VALKEY_IMAGE]), sleep: sleepSync });
+    ensureImage(IMAGE, CACHED_IMAGE, () => docker(["pull", "-q", IMAGE]));
+    ensureImage(VALKEY_IMAGE, CACHED_VALKEY_IMAGE, () => docker(["pull", "-q", VALKEY_IMAGE]));
+    process.exit(0);
+  }
+
+  if (cmd === "held") {
+    const missing = [CACHED_IMAGE, CACHED_VALKEY_IMAGE].filter((name) => docker(["image", "inspect", name]).status !== 0);
+    if (missing.length) throw new Error(`not held: ${missing.join(", ")}`);
     process.exit(0);
   }
 
@@ -256,11 +272,7 @@ try {
 
   if (port === null) {
     docker(["rm", "-f", NAME]);
-    pullImage({
-      present: () => docker(["image", "inspect", IMAGE]).status === 0,
-      pull: () => docker(["pull", "-q", IMAGE]),
-      sleep: sleepSync,
-    });
+    ensureImage(IMAGE, CACHED_IMAGE, () => docker(["pull", "-q", IMAGE]));
     port = startOnFreePort({
       start: BASE_PORT,
       explicit: requested !== undefined,
@@ -274,7 +286,7 @@ try {
           "-e", "POSTGRES_PASSWORD=postgres",
           "-e", "POSTGRES_DB=murlan_dev",
           "-p", `127.0.0.1:${p}:5432`,
-          IMAGE,
+          CACHED_IMAGE,
         ]);
         // A run that got far enough to claim the name and then failed leaves
         // the container behind, and the next attempt cannot reuse it.

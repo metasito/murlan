@@ -30,11 +30,11 @@ test("the import-equals form is an edge", () => {
 
 const DISCOVERED = ["tests", "tools", "scripts"];
 /** Each site that spells a specifier by hand on purpose, named with the line's text and why. */
-const ALLOWED: { file: string; text: string; why: string }[] = [
-  { file: "tests/helpers/specifiers.ts", text: 'startsWith(".")', why: "the shared resolver itself" },
-  { file: "tests/helpers/timeoutHeadroomReporter.mjs", text: 'startsWith(".")', why: "relative-only by design: it lifts a snippet's relative imports into a one-off node script, where a mapped path would not resolve" },
-  { file: "tools/ci/target-freeze.mjs", text: "the pattern /(?:from|import)\\s*[\"'](\\.[^\"']+)[\"']/g", why: "relative-only by design: it copies the head's own relative imports into a sandbox, and node in the sandbox maps no alias" },
-  { file: "tests/tooling/libGameBoundary.test.ts", text: 'startsWith(".")', why: "relative-only by design: the server runs under node's type stripping, which maps no alias, so a mapped import is an offender" },
+const ALLOWED: { file: string; text: string; sites: number; why: string }[] = [
+  { file: "tests/helpers/specifiers.ts", text: 'startsWith(".")', sites: 1, why: "the shared resolver itself" },
+  { file: "tests/helpers/timeoutHeadroomReporter.mjs", text: 'startsWith(".")', sites: 1, why: "relative-only by design: it lifts a snippet's relative imports into a one-off node script, where a mapped path would not resolve" },
+  { file: "tools/ci/target-freeze.mjs", text: "the pattern /(?:from|import)\\s*[\"'](\\.[^\"']+)[\"']/g", sites: 1, why: "relative-only by design: it copies the head's own relative imports into a sandbox, and node in the sandbox maps no alias" },
+  { file: "tests/tooling/libGameBoundary.test.ts", text: 'startsWith(".")', sites: 1, why: "relative-only by design: the server runs under node's type stripping, which maps no alias, so a mapped import is an offender" },
 ];
 const PREFIXES: string[] = ALIASES.map(([prefix]) => prefix);
 const QUOTE = String.raw`(?:\[["']+\]|["'])`;
@@ -73,17 +73,19 @@ test("a file that reads import specifiers by hand is red wherever it is, unless 
     .split("\0")
     .filter((f) => /\.([cm]?js|tsx?)$/.test(f) && existsSync(path.join(root, f)));
   assert.ok(files.length > 300, "the scan finds the files it guards");
-  const named = new Set<string>();
+  const seen = new Map<string, number>();
   const bypasses = files.flatMap((f) => {
+    const left = new Map<string, number>(ALLOWED.filter((a) => a.file === f).map((a) => [a.text, a.sites]));
     const spelled = handSpelled(f, readFileSync(path.join(root, f), "utf8")).filter((site) => {
-      const allowed = ALLOWED.find((a) => a.file === f && a.text === site);
-      if (allowed) named.add(`${f} ${site}`);
-      return !allowed;
+      seen.set(`${f} ${site}`, (seen.get(`${f} ${site}`) ?? 0) + 1);
+      const n = left.get(site) ?? 0;
+      left.set(site, n - 1);
+      return n <= 0;
     });
     return spelled.length ? [`${f}: ${spelled.join(", ")}`] : [];
   });
   assert.deepEqual(bypasses, []);
-  assert.deepEqual(ALLOWED.filter((a) => !named.has(`${a.file} ${a.text}`)).map((a) => `${a.file} ${a.text}`), [], "an allowance names a site that is gone");
+  assert.deepEqual(ALLOWED.filter((a) => seen.get(`${a.file} ${a.text}`) !== a.sites).map((a) => `${a.file} ${a.text}: ${seen.get(`${a.file} ${a.text}`) ?? 0} sites, allowed ${a.sites}`), [], "an allowance names more sites than the file has");
   assert.ok(ALLOWED.every((a) => a.why.trim()), "an allowance with no reason");
 });
 

@@ -1,3 +1,14 @@
+/**
+ * The name `ref` runs under: `docker save` of a `name:tag@sha256:…` ref writes no tag (containerd
+ * store), so the image cache restores nothing a ref can find. A plain tag survives the round trip;
+ * the digest in it keeps a repointed ref from running a stale copy.
+ */
+export function cacheName(/** @type {string} */ ref) {
+  const [, name, tag, digest] = /([^/@:]+):([^@]+)@sha256:([0-9a-f]{12})/.exec(ref) ?? [];
+  if (!name) throw new Error(`${ref} is no name:tag@sha256:digest ref`);
+  return `localhost/murlan-cache/${digest}:${name}-${tag}`;
+}
+
 /** @param {NodeJS.ProcessEnv} [env] @returns {string[]} */
 export function dockerDesktopPaths(env = process.env) {
   return [
