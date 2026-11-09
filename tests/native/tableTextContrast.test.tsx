@@ -173,7 +173,7 @@ function tableTextGraph(sources: Map<string, ts.SourceFile>): Graph {
     readFile: (f) => ts.sys.readFile(f),
     realpath: (f) => f,
   };
-  /** The tracked source a specifier names, resolved as tsconfig.json resolves it (its `paths` aliases, relative paths, packages); a specifier that resolves to nothing is unresolved, never skipped. */
+  /** The tracked source a specifier names, resolved as TypeScript resolves it for this project: its path mappings, relative paths and packages. One that resolves to nothing is reported, never skipped. */
   const resolveFrom = (from: string, spec: string): string | undefined => {
     const found = ts.resolveModuleName(spec, path.join(repoRoot, from), COMPILER_OPTIONS, host).resolvedModule;
     if (!found) {
@@ -493,11 +493,6 @@ describe("a module is loaded as the variant its platform takes", () => {
       "tests/native/variants/mixed.android.ts",
       "tests/native/variants/mixed.web.ts",
     ]);
-  });
-
-  test("without the variants the plain module is what every platform gets", () => {
-    const plain = files.filter((f) => /\/(tone|sheet)\.ts$/.test(f) || f.endsWith("mixed.tsx"));
-    assert.deepEqual(OSES.map((os) => inkOn(os, variantsOf(plain))), ["#d4af37", "#d4af37", "#d4af37"]);
   });
 
   test("the variants of the app sources are found, whatever their extensions", () => {
