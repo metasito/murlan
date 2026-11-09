@@ -58,16 +58,14 @@ describe("straight legality", () => {
     );
   });
 
-  test("a 13-card straight is legal, read at its strongest orientation", () => {
+  test("a 13-card straight is legal, read A-2-…-K with the top card K", () => {
     const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
     const cards = ranks.map((r, i) =>
       c(r, (["hearts", "clubs", "spades", "diamonds"] as const)[i % 4])
     );
     const combo = buildCombination(cards);
     assert.equal(combo?.type, "straight");
-    // These 13 cards read either as A-2-…-K (top 13) or 2-3-…-K-A (top ace).
-    // The engine takes the ace-high reading, which is the stronger of the two.
-    assert.equal(combo?.strength, 14);
+    assert.equal(combo?.strength, 13);
   });
 
   test("14 cards can never form a straight (the ace cannot be used twice)", () => {

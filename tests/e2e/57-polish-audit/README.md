@@ -27,7 +27,7 @@ npx playwright test -c tests/e2e/playwright.config.ts onlineTableSurvey
 It registers, creates a room, fills it with bots and photographs the dealt table at the four
 viewports above — and measures the *offline* table beside it each time, because both screens
 render one `<GameTable>`. Its columns are `table.txt`'s plus `emptyBand`, the number finding 3
-is about, and `wide`, read twice a second and a half apart so the light pass a going-out play
+is about, and `wide`, read twice a second and a half apart so the flare a bomb
 throws across the felt is not mistaken for content hanging off the screen.
 
 ## The captures
@@ -111,8 +111,8 @@ beside it leaves uncovered. It is not `table.txt`'s `card`, which is a card on t
   and its bands all grow with the window (309 → 806, 90 → 233). The void on a tablet table is
   the empty band, which is finding 3, and not the stretch class wearing its clothes.
 - **Nothing on the online table renders past the screen's own width** at any of the four.
-  What does, briefly, is the going-out light pass, which is 2.2× the table by construction
-  (`Sweep`, `components/table/moments.tsx`).
+  What does, briefly, is a bomb's flare, which grows to 7× its 150 px
+  (`BombBurst`, `components/table/moments.tsx`).
 
 ## What was measured and dismissed
 
