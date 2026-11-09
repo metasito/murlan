@@ -4,12 +4,12 @@
 import type { CatalogueRun, NoticeContent, NoticePart } from "../../components/table/noticeWidth.ts";
 import { CHIP_KEYS, turnPresentation } from "../../components/turnTimerUi.ts";
 import { comboLabel } from "../../components/table/noticeModel.ts";
-import { exchangeNotes, readExchange, type ExchangeView } from "../../components/table/exchangeModel.ts";
+import { exchangeNotes, type ExchangeView } from "../../components/table/exchangeModel.ts";
 import type { ExchangeAnnounceData } from "../../lib/game/sharedGameFlow.ts";
 import { createDeck, type Card, type Combination, type GameState } from "../../lib/game/gameEngine.ts";
 import type { TFn, TranslationKey } from "../../lib/i18n.ts";
 import { CAPTURE_VIEWER_SEAT, captureGameState, type CaptureState } from "../../lib/captureStates.ts";
-import { handRaised, seatDirection, type OpponentSide } from "../../components/seatLayout.ts";
+import { seatDirection, type OpponentSide } from "../../components/seatLayout.ts";
 import type { TableState } from "../../components/tableRects.ts";
 import { catalogs, templateParts, type Locale } from "../../shared/i18n.ts";
 
@@ -155,21 +155,10 @@ export function gameTable(game: GameState): DrawnTable {
     lastBy: combo ? (game.players[game.lastPlayedBy]?.name ?? null) : null,
     base: {
       seats,
-      hand: { cards: viewer.hand.length, onTurn: game.currentTurnIndex === CAPTURE_VIEWER_SEAT, faceDown: false, raised: raisedFor(game) },
+      hand: { cards: viewer.hand.length, onTurn: game.currentTurnIndex === CAPTURE_VIEWER_SEAT, faceDown: false },
       pile: combo?.cards.length ?? 0,
     },
   };
-}
-
-/** A settled table: no deal running and an open exchange's legs landed, so its giveback is the viewer's to choose. */
-function raisedFor(game: GameState): boolean {
-  const exchange = readExchange(game, CAPTURE_VIEWER_SEAT, false);
-  return handRaised({
-    turnShown: game.currentTurnIndex === CAPTURE_VIEWER_SEAT,
-    isFinished: game.players[CAPTURE_VIEWER_SEAT].finishPosition !== undefined,
-    exchangeOpen: exchange.open,
-    exchangeIsMine: exchange.open && exchange.viewerIsWinner,
-  });
 }
 
 /** The words a pill's content reads in `locale`, as its plate's text would. */

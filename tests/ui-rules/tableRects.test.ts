@@ -22,11 +22,11 @@ const LONGEST_BOT = longest(captured().flatMap((s) => s.game.players.map((p) => 
 const FULL = { top: { name: LONGEST_BOT, cards: 13 }, left: { name: LONGEST_BOT, cards: 13 }, right: { name: LONGEST_BOT, cards: 13 } };
 const EXTREMES: Omit<TableState, "chips">[] = [];
 for (const hand of [0, 1, 13, 18])
-  for (const pile of [0, 1, 5, 12, 13]) EXTREMES.push({ seats: FULL, hand: { cards: hand, onTurn: true, faceDown: false, raised: true }, pile });
+  for (const pile of [0, 1, 5, 12, 13]) EXTREMES.push({ seats: FULL, hand: { cards: hand, onTurn: true, faceDown: false }, pile });
 /** The widest name an account may take, on the move. */
 const LONGEST_USERNAME = "W".repeat(USERNAME_MAX);
 /** The exchange is announced over a fresh deal: every seat full, the pile empty. */
-const DEALT: Omit<TableState, "chips"> = { seats: FULL, hand: { cards: 13, onTurn: true, faceDown: false, raised: true }, pile: 0 };
+const DEALT: Omit<TableState, "chips"> = { seats: FULL, hand: { cards: 13, onTurn: true, faceDown: false }, pile: 0 };
 /** Every online seat's badge, the countdown at its widest: the server's default grace is 60 seconds. */
 const BADGES: readonly SeatBadgeState[] = [{ kind: "vacated" }, { kind: "reconnecting", seconds: 60 }];
 const badgedSeats = (badge: SeatBadgeState): TableState["seats"] => ({ top: { ...FULL.top, badge }, left: { ...FULL.left, badge }, right: { ...FULL.right, badge } });
@@ -49,7 +49,7 @@ function* cases(): Generator<Case> {
     for (const [inset, insets] of Object.entries(INSETS))
       for (const locale of SUPPORTED_LOCALES) {
         const at = (scene: string, state: TableState): Case => ({
-          label: `${vp.name} (${vp.width}x${vp.height}), ${inset}, ${locale}, ${scene}, seats ${seatsOf(state.seats)}, hand ${state.hand.cards} ${state.hand.raised ? "raised" : "at rest"}, pile ${state.pile}, combo ${tagOf(state.chips.combo)}, turn ${tagOf(state.chips.turn)}`,
+          label: `${vp.name} (${vp.width}x${vp.height}), ${inset}, ${locale}, ${scene}, seats ${seatsOf(state.seats)}, hand ${state.hand.cards}, pile ${state.pile}, combo ${tagOf(state.chips.combo)}, turn ${tagOf(state.chips.turn)}`,
           ...vp,
           insets,
           locale,
@@ -92,30 +92,9 @@ const on = (viewport: string, locale: string, inset: string, rest: string) =>
  */
 const KNOWN: readonly Known[] = [
   {
-    defect: "a side name's line runs onto the top back of its own fan once sideNameInset slides it inboard",
-    ticket: "#1988 item 103",
-    breaks: { "nameLeft overlaps fanLeft": 1899, "nameRight overlaps fanRight": 1899 },
-    where: [
-      on("iPhone 12|iPhone 16 Pro|iPhone 17 Pro Max", ANY, "0/0", "(?!badged ).*, seats 1\\d "),
-      on("iPhone [^(]+", ANY, ANY, "(?!badged ).*, seats 13 Besnik / 13 Besnik / 13 Besnik,"),
-    ],
-  },
-  {
-    defect: "a straight of twelve or more on a tablet is laid across the side fans: fieldRoomW does not leave them room",
-    ticket: "#1988 item 104",
-    breaks: { "fanLeft overlaps pile": 144, "fanRight overlaps pile": 144 },
-    where: [on("4:3 tablet|iPad Pro", ANY, ANY, ".*, pile 1[23], ")],
-  },
-  {
-    defect: "at rest the hand zone and its buttons sit a hand's lift below their lifted place, past the bottom of the screen",
-    ticket: "#1988 item 108",
-    breaks: { "handZone leaves the window": 1575, "passa leaves the window": 1050, "gioca leaves the window": 1050, "hand leaves the window": 210 },
-    where: [on("(?!iPad Pro)[^(]+", ANY, ANY, ".*, hand \\d+ at rest,")],
-  },
-  {
-    defect: "a badge lifts its seat's name a badge row higher, the top seat's into the turn chip, and a side seat's badge row lands on its own fan",
+    defect: "a badge lifts its seat's name a badge row higher, the top seat's into the turn chip",
     ticket: "#1988 item 109",
-    breaks: { "hudTurn overlaps nameTop": 108, "badgeLeft overlaps fanLeft": 108, "badgeRight overlaps fanRight": 108 },
+    breaks: { "hudTurn overlaps nameTop": 108 },
     where: [on("[^(]+", ANY, ANY, "badged ")],
   },
 ];
@@ -162,7 +141,7 @@ describe("the rules see what they are for", () => {
   const tablet = { width: TABLETS[0].width, height: TABLETS[0].height, insets: INSETS["0/0"], locale: "it" as const };
   const state: TableState = {
     seats: FULL,
-    hand: { cards: 13, onTurn: true, faceDown: false, raised: true },
+    hand: { cards: 13, onTurn: true, faceDown: false },
     pile: 5,
     chips: { combo: [], turn: [] },
   };

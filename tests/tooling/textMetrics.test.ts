@@ -298,7 +298,7 @@ test("a file that hands a notice its words as a prop is scanned, .tsx included",
   const real = noticeSources();
   for (const file of [seats, "components/GameTable.tsx", "components/table/hand.tsx", "components/table/pile.tsx"]) assert.ok(file in real, `${file} imports a notice and is not scanned`);
   const mark = 'scale={scale} />}';
-  assert.ok(read(seats).includes(`<PassedMark side={anchor === "centre" ? "top" : "side"} disc={disc} ${mark}`), "the plant found no PassedMark");
+  assert.ok(read(seats).includes(`<PassedMark side={place === "top" ? "top" : "side"} disc={disc} ${mark}`), "the plant found no PassedMark");
   const planted = noticeSources({ [seats]: read(seats).replace(`disc={disc} ${mark}`, `disc={disc} label={t("game.passedShort")} ${mark}`) });
   assert.deepEqual(unmeasured(planted), [`${seats}: t("game.passedShort") is not measured`]);
 });

@@ -41,13 +41,24 @@ export function seatFanArc(count: number, backScale: number) {
   return { cards, box, bounds: arcBounds(cards, box, backW, backH) };
 }
 
-/** The top fan's height and a side fan's vertical extent, each at its drawn cap. */
-export function drawnFanBounds(scale: number): { topH: number; sideH: number } {
+/**
+ * The top fan's height, a side fan's vertical extent, and how far a side fan reaches inboard of its
+ * ring's centre, each at its drawn cap.
+ */
+export function drawnFanBounds(scale: number): { topH: number; sideH: number; sideReach: number } {
   const backScale = scale * BACK_SCALE;
+  const count = FAN_DRAWN_CARDS.left;
+  const at = fanPoint({ dx: 0, dy: 0 }, "left", scale, count);
   return {
     topH: seatFanArc(FAN_DRAWN_CARDS.top, backScale).bounds.h,
     sideH: seatFanArc(Math.max(FAN_DRAWN_CARDS.left, FAN_DRAWN_CARDS.right), backScale).bounds.w,
+    sideReach: Math.max(...fanCorners(at, "left", count, backScale).flat().map(([x]) => x)),
   };
+}
+
+/** How far a side seat's fan stands above its ring's top, which its name and badges must clear; the top seat's fan hangs below. */
+export function seatLabelRise(side: OpponentSide, scale: number): number {
+  return side === "top" ? 0 : Math.max(0, (drawnFanBounds(scale).sideH - SEAT_DISC * scale) / 2);
 }
 
 /** The fan's centre, from the pile, given its ring's (`seatPoint`), and the angle it is drawn at. */

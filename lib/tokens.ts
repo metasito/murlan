@@ -602,8 +602,6 @@ export const Motion = {
   handResize: 120,
   /** The hand closing the gap a played card leaves. Off the ladder, a beat longer than travel so the eye follows it; at once under reduced motion. */
   refan: 320,
-  /** The hand rising off the bottom edge on the viewer's turn. Off the ladder, between travel and reveal; at once under reduced motion. */
-  handLift: 500,
 } as const;
 
 /** The viewer's own drop: the lantern mockup's `reconnect` chapter, `grayTo` and `net()` (#1268). */

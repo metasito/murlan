@@ -259,7 +259,7 @@ export default function OnlineGameScreen() {
         data: exchangeAnnounceData,
         onDismiss: acknowledgeExchange,
       }}
-      railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
+      railExtra={(size) => <ReactionTrigger onPress={toggleReactionPanel} size={size} />}
       error={error}
       ownLink={ownLink}
       catchUp={catchUp}

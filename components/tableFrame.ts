@@ -2,13 +2,13 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
+import { Spacing } from "../lib/tokens.ts";
 import { drawnShortEdge } from "./cardFaceModel.ts";
 import {
   FIELD_WIDTH_SHARE,
   HAND_WIDTH_SHARE,
   HAND_ZONE_GAP,
   SEAT_DISC,
-  SIDE_SECTION_W,
   actionBtnSize,
   seatGap,
   seatLabelH,
@@ -108,6 +108,14 @@ export interface TableFrame extends ScreenPads {
   fieldRoomW: number;
 }
 
+/** Air between a side seat's ring and its table edge. */
+export const SIDE_SEAT_GAP = Spacing.sm;
+
+/** What a side seat takes from its table edge: its ring and the fan leaning in from it. */
+function sideColumnW(scale: number): number {
+  return SIDE_SEAT_GAP + (SEAT_DISC * scale) / 2 + drawnFanBounds(scale).sideReach;
+}
+
 /**
  * The box the table's contents lay out in. Not the felt — the felt is the
  * whole screen — but everything drawn over it: the rail eats the left edge,
@@ -160,7 +168,7 @@ export function computeTableFrame(opts: {
     surplus,
     handAvailW,
     handRoomW: Math.min(handAvailW, opts.width * HAND_WIDTH_SHARE),
-    fieldRoomW: Math.min(tableW - SIDE_SECTION_W * 2, opts.width * FIELD_WIDTH_SHARE),
+    fieldRoomW: Math.min(tableW - sideColumnW(opts.scale) * 2, opts.width * FIELD_WIDTH_SHARE),
   };
 }
 

@@ -6,6 +6,7 @@ import { render, screen } from '@testing-library/react-native';
 import { OpponentSeat } from '@/components/table/seats';
 import { NOTICE_FACES, seatBadgeH } from '@/components/table/noticeModel';
 import { SEAT_DISC, SEAT_LABEL_ALIGN, seatAnchor, seatLabelLeft, seatLabelRows, seatLabelW, seatNameSet } from '@/components/seatLayout';
+import { seatLabelRise } from '@/components/fanGeometry';
 import type { Player } from '@/lib/game/gameEngine';
 
 const PLAYER: Player = { id: 'player_1', name: 'Besnik', hand: [], type: 'human' };
@@ -30,7 +31,7 @@ describe("a seat's name sits where tableRects places it", () => {
       expect(label.alignItems).toBe(SEAT_LABEL_ALIGN[anchor]);
       expect(label.left).toBe(seatLabelLeft(anchor, SCALE, INSET));
       expect(label.width).toBe(seatLabelW(anchor, SCALE));
-      expect(label.bottom).toBe(SEAT_DISC * SCALE + seatLabelRows(SCALE, 0).name);
+      expect(label.bottom).toBe(SEAT_DISC * SCALE + seatLabelRows(SCALE, 0, seatLabelRise(place, SCALE)).name);
       expect(name.fontFamily).toBe(NOTICE_FACES[set.face].fontFamily);
       expect(name.fontSize).toBe(set.size);
       expect(name.letterSpacing).toBe(set.tracking);
@@ -40,11 +41,11 @@ describe("a seat's name sits where tableRects places it", () => {
 
     it(`on the ${place} seat, vacated: the name and the badge row stand on the rows the solver reads`, async () => {
       const r = await render(<OpponentSeat place={place} player={PLAYER} isActive={false} cardCount={13} scale={SCALE} nameInset={INSET} vacated />);
-      const rows = seatLabelRows(SCALE, seatBadgeH('vacated', SCALE));
+      const rows = seatLabelRows(SCALE, seatBadgeH('vacated', SCALE), seatLabelRise(place, SCALE));
       const anchor = seatAnchor(place);
       const name = placedAt(screen.getByTestId('seat-name'));
       const badges = placedAt(screen.getByTestId('seat-vacated-chip'));
-      expect(rows.name).toBeGreaterThan(seatLabelRows(SCALE, 0).name);
+      expect(rows.name).toBeGreaterThan(seatLabelRows(SCALE, 0, seatLabelRise(place, SCALE)).name);
       expect(name.bottom).toBe(SEAT_DISC * SCALE + rows.name);
       expect(badges.bottom).toBe(SEAT_DISC * SCALE + rows.badges);
       for (const row of [name, badges]) {

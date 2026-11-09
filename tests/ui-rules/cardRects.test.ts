@@ -48,11 +48,11 @@ test("the kick scales about its own point and moves; the shake turns about the t
   close(r.rot, 90, "the shake's turn is the card's");
 });
 
-test("a hand card sits at its box in the row, moved by its transform, the pan and the zone's lift", () => {
+test("a hand card sits at its box in the row, moved by its transform and the pan", () => {
   const c = { left: 10, bottom: -5, w: 40, h: 60, tx: 3, ty: -4, rot: 2, scale: 1, back: false, lift: 1.2, glow: 0.5 };
-  const d = handCard({ x: 100, y: 300, clipX: 0, clipHalf: 0 }, c, 2, -6);
+  const d = handCard({ x: 100, y: 300, clipX: 0, clipHalf: 0 }, c, 2);
   close(d.cx, 100 + 10 + 20 + 3 - 2, "x");
-  close(d.cy, 300 - 6 + 5 - 30 - 4, "y");
+  close(d.cy, 300 + 5 - 30 - 4, "y");
   const r = designRect(d, FELT, TABLE_AT_REST);
   assert.equal(r.lift, 1, "lift is clamped to 1");
   assert.equal(r.seen, 1);
@@ -63,9 +63,9 @@ test("a hand card sits at its box in the row, moved by its transform, the pan an
 test("a scrolled hand's card says how much of it the window shows", () => {
   const c = { left: 0, bottom: 0, w: 40, h: 60, tx: 0, ty: 0, rot: 0, scale: 1, back: false, lift: 0, glow: 0 };
   const row = { x: 100, y: 300, clipX: 200, clipHalf: 90 };
-  close(handCard(row, c, 0, 0).seen!, 30 / 40, "three quarters past the window's left edge");
-  close(handCard(row, c, -30, 0).seen!, 1, "panned fully in");
-  assert.equal(designRect(handCard(row, c, 60, 0), FELT, TABLE_AT_REST).seen, 0);
+  close(handCard(row, c, 0).seen!, 30 / 40, "three quarters past the window's left edge");
+  close(handCard(row, c, -30).seen!, 1, "panned fully in");
+  assert.equal(designRect(handCard(row, c, 60), FELT, TABLE_AT_REST).seen, 0);
 });
 
 test("a played card turns with its group about the pile's centre, never about its own", () => {
