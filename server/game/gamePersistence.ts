@@ -26,6 +26,7 @@ import { toEnvelope } from "./tableState.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import { turnOf } from "../../lib/game/moves.ts";
 import type { ViewerGameState } from "../../shared/protocol.ts";
+import { track } from "../shared/inFlight.ts";
 
 export function sanitizeStateForPlayer(
   state: GameState,
@@ -75,7 +76,7 @@ export function disposeGame(rt: TableRuntime, roomId: string, deleteRow = true) 
   clearRoomLobbyGraces(roomId);
   activeGames.delete(roomId);
   const discarded = deleteRow ? rt.writers.discardGame(roomId) : undefined;
-  void releaseRoomAfter(roomId, Promise.all([discarded, roomWritesLanded(roomId)]));
+  void track(releaseRoomAfter(roomId, Promise.all([discarded, roomWritesLanded(roomId)])));
 }
 
 /**
@@ -255,9 +256,9 @@ export type CloseNotice = "GAME_INTERRUPTED_SERVER_ERROR" | "GAME_INTERRUPTED_EM
  */
 export function closeTable(rt: TableRuntime, roomId: string, notice: CloseNotice | null): void {
   if (notice) rt.out.room(roomId).emit("game:notification", { type: "abandoned", ...payload(notice) });
-  void rt.writers
+  void track(rt.writers
     .updateRoomStatus(roomId, "finished")
-    .catch((err: unknown) => logger.warn({ err, roomId, notice }, "Failed to set rooms.status = finished closing a table"));
+    .catch((err: unknown) => logger.warn({ err, roomId, notice }, "Failed to set rooms.status = finished closing a table")));
   disposeGame(rt, roomId);
 }
 
@@ -301,9 +302,9 @@ export async function sweepFinishedTables(rt: TableRuntime): Promise<void> {
       if (!Object.values(game.playerMap).some((uid) => connected.has(uid))) {
         // Queued ahead of the discard, which keeps the row while a round is still pending in it.
         if (game.pendingResults.length > 0) {
-          void rt.writers.applyPendingResults(roomId, game).then(({ failure }) => {
+          void track(rt.writers.applyPendingResults(roomId, game).then(({ failure }) => {
             if (failure !== undefined) logger.error({ err: failure, roomId }, "A swept table's results failed to commit — the row keeps them");
-          });
+          }));
         }
         disposeGame(rt, roomId);
       }
@@ -331,13 +332,13 @@ export function startSweeper(rt: TableRuntime, resumeOrphans: (rt: TableRuntime)
 
       if (sweeping) return;
       sweeping = true;
-      void Promise.allSettled([
+      void track(Promise.allSettled([
         resumeOrphans(rt).catch((err: unknown) => logger.error({ err }, "Resuming ownerless tables failed")),
         sweepFinishedTables(rt).catch((err: unknown) => logger.error({ err }, "Sweeping finished tables failed")),
         sweepRetention(),
       ]).finally(() => {
         sweeping = false;
-      });
+      }));
     } catch (err) {
       sweeping = false;
       logger.error({ err }, "Sweeper failed");

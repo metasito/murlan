@@ -27,6 +27,7 @@ import { turnSchedule, type TurnSlot } from "../../lib/game/turnSchedule.ts";
 import { gateMs } from "../../lib/timeline/turnGates.ts";
 import { handCountOf } from "../../shared/protocol.ts";
 import { CLOCK_CEILING_MS } from "../../shared/clock.ts";
+import { track } from "../shared/inFlight.ts";
 
 /**
  * Tells the table how long the acting seat has left. Sent on its own as well
@@ -251,7 +252,7 @@ export async function vacateSeat(rt: TableRuntime, roomId: string, userId: strin
     // a round there is none of, but `releasedSeats` and `vacatedSeats` were both
     // written, and a seat vacated between rounds is as reclaimable as one vacated
     // during one (docs/GAME-RULES.md § Decisions).
-    void rt.writers.persistGameState(roomId, game);
+    void track(rt.writers.persistGameState(roomId, game));
     return;
   }
 
@@ -301,5 +302,5 @@ export async function vacateSeat(rt: TableRuntime, roomId: string, userId: strin
   });
 
   armTurn(rt, roomId, false);
-  void publishState(rt, game);
+  void track(publishState(rt, game));
 }

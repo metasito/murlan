@@ -52,7 +52,7 @@ async function rejoinAction(
     // the returning player's hand — still theirs; `vacateSeat` never touched
     // it — has to reach them. A normal reconnect skips this: the seat was
     // never vacated on the wire in the first place.
-    void publishState(rt, game);
+    void track(publishState(rt, game));
     // reclaim clears the (now-stale) end-match tally; every seat still
     // holding a vote for it has to be told, or its banner keeps counting a
     // vote the server no longer has.

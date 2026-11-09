@@ -182,8 +182,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
             );
 
           const lastSeen = new Date(now()).toISOString();
-          // A drain moves this account to another instance within seconds; telling its friends it left would show them a flicker, and nothing here outlives the process to correct it.
-          if (!isShuttingDown()) offlineNotice = emitFriendStatusOffline(userId, lastSeen);
+          offlineNotice = emitFriendStatusOffline(userId, lastSeen);
 
           const currentRoomId = unseatSocket(socket.id);
           // Three paths reach a return without announcing the drop, and from

@@ -28,6 +28,7 @@ import { ownerArg } from "../tools/ci/e2eOwner.mjs";
 import { PLAY_PORT } from "../tools/ci/e2ePortRange.mjs";
 import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 import { assertMark } from "./e2eBuildMark.mjs";
+import { exitWithParent } from "./lib/parentWatch.mjs";
 import { startBin, stopTree } from "./lib/proc.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -42,6 +43,13 @@ const STOP_GRACE_MS = 5_000;
 async function stopTheRest(err) {
   await Promise.allSettled([...children].map((c) => stopTree(c.pid, { graceMs: STOP_GRACE_MS })));
   throw err;
+}
+
+if (!PLAY) {
+  exitWithParent(async () => {
+    await Promise.allSettled([...children].map((c) => stopTree(c.pid, { graceMs: STOP_GRACE_MS })));
+    process.exit(1);
+  });
 }
 
 function run(cmd, args) {

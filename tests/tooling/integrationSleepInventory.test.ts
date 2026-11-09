@@ -97,10 +97,6 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
 
 /** Exact: a call site that widens `nothingArrives` past its default window is real time the sweep above cannot see. */
 const WINDOWS: Record<string, { n: number; why: string }> = {
-  "tests/integration/drainPresence.test.ts": {
-    n: 1,
-    why: "the offline notice is sent after a real 400ms debounce, so its absence is watched past it",
-  },
   "tests/integration/stateRedelivered.test.ts": {
     n: 1,
     why: "a third re-send would follow the second by one more ack timeout, a real timer, so the absence is watched for three of them",

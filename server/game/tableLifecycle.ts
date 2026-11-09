@@ -17,6 +17,7 @@ import { castRematchVote, clearRematchVotes } from "./matchLedger.ts";
 import { armSeatGrace } from "./tableHandlers.ts";
 import { claimRoom, enterTable, ownsRoom, releaseRoom } from "./gameOwnership.ts";
 import { inFlight } from "./tableRouter.ts";
+import { track } from "../shared/inFlight.ts";
 
 /**
  * Puts a persisted game back in memory, for an instance that has just claimed
@@ -189,9 +190,9 @@ export async function startMatchAction(
   // under the rooms row lock, which every claim and release also takes: nobody
   // can be seated or unseated between the roster and this deal.
   // Not awaited: nothing below reads the rows, and the deal must not wait on it.
-  void retireRoomInvites(rt, roomId, room.code).catch((err: unknown) =>
+  void track(retireRoomInvites(rt, roomId, room.code).catch((err: unknown) =>
     logger.warn({ err, roomId }, "Failed to retire the invites of a room that started")
-  );
+  ));
   activeGames.set(roomId, newGame);
   // Awaited: until a dealt-in player has left `spectators` on every instance,
   // the table they watched keeps sending its state to their user room.
