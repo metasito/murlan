@@ -126,6 +126,7 @@ const NEITHER_FLOOR_READS = [
   "tests/tooling/pickSimulator.test.ts",
   "tests/ui-rules/resultActionLabels.test.ts",
   "tools/ci/pick-simulator.mjs",
+  "tools/ci/scopeOf.mjs",
 ];
 
 /**

@@ -27,7 +27,7 @@ const ciYml = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml")
 const ciJobs = Object.entries(loadWorkflow("ci.yml").jobs);
 // Left out: the device compiles, which start only on a native change or the weekly schedule — runs
 // their own 9–29 min already put far past the target (#1408), where two queued jobs cost nothing.
-const deviceCompile = (job: Job) => /\bnative\b/.test(job.if ?? "");
+const deviceCompile = (job: Job) => /\boutputs\.native\b/.test(job.if ?? "");
 // A job that needs the shards' own job starts only once every shard has finished.
 const afterShards = (job: Job) => needsOf(job).includes("browser");
 const besideShards = ciJobs
