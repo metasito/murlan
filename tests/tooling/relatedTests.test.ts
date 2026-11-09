@@ -35,6 +35,17 @@ describe("the native tests a change reaches first", () => {
   });
 });
 
+describe("a native test that reads source by path", () => {
+  const reads = JSON.parse(readFileSync(join(repoRoot, "tests/native/reads.json"), "utf8")) as Record<string, string[]>;
+  test("is reached by a change to any file it reads, though jest's graph never imports one", () => {
+    assert.deepEqual(nearTests({ changed: ["components/table/seats.tsx"], related: [], source: () => "", reads }), [T("tableTextContrast")]);
+    assert.deepEqual(nearTests({ changed: ["lib/theme.ts"], related: [], source: () => "", reads }), []);
+  });
+  test("names tests that exist", () => {
+    for (const test of Object.keys(reads)) assert.ok(readFileSync(join(repoRoot, test), "utf8").includes("reads.json"), `${test} does not read its own manifest entry`);
+  });
+});
+
 describe("what native:related runs and what it leaves to CI", () => {
   test("a widely imported module runs ten files, highest priority first, and names the rest", () => {
     const importers = Array.from({ length: 12 }, (_, i) => T(`imp${String(i).padStart(2, "0")}`));

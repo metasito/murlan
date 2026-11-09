@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -18,12 +18,14 @@ type Sample = { file: string; code: string };
 type Plant = Sample & { hits: number };
 type Guard = { id: string; why: string; selector: string; scoped?: unknown; files: string[]; ignores?: Ignore[]; plant: Plant | Plant[]; spare: Sample[] };
 type Block = { files?: string[]; ignores?: string[]; plugins?: Record<string, unknown>; rules?: Record<string, unknown> };
-const { GUARDS, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
+const { GUARDS, CLIENT, plugin, guardBlocks } = require("../../eslint.guards.cjs") as {
   GUARDS: Guard[];
+  CLIENT: string[];
   plugin: { meta: { name: string; version?: string }; rules: Record<string, unknown> };
   guardBlocks: () => Block[];
 };
 const config = require("../../eslint.config.js") as Block[];
+const { CHANNELS } = require("../../lib/harnessChannels.ts") as { CHANNELS: Record<string, string> };
 const { minimatch } = require("minimatch") as { minimatch: (file: string, glob: string, opts: { dot: boolean }) => boolean };
 const tsParser = require("@typescript-eslint/parser") as Linter.Parser;
 
@@ -107,13 +109,14 @@ describe("the guard registry's floor", () => {
     assert.deepEqual(loose, [], "an exemption with no reason, or one naming no file the guard reads, exempts nothing it can defend");
   });
 
-  test("2, narrowed: one-table-scale has a plant in every client root and every tests directory, so a glob cut back goes red", async () => {
+  test("2, narrowed: one-table-scale reads every client file and every test, and has a plant in each root and tests directory", () => {
     const guard = GUARDS.find((g) => g.id === "one-table-scale")!;
+    const code = tracked.filter((f) => /\.tsx?$/.test(f) && (f.startsWith("tests/") || matches(f, CLIENT)));
+    const unread = code.filter((f) => !matches(f, guard.files) && !matches(f, globsOf(guard)));
+    assert.deepEqual(unread, [], "a client or test file the short-edge guard no longer reads: its glob was cut back");
     const groups = (f: string) => f.split("/").slice(0, f.startsWith("tests/") ? 2 : 1).join("/");
-    const code = tracked.filter((f) => /\.tsx?$/.test(f));
-    const roots = new Set([...code.filter((f) => f.startsWith("tests/")), ...code.filter((f) => /^(app|components|context|lib|locales|modules|shared)\//.test(f))].map(groups));
     const planted = new Set([guard.plant].flat().map((p) => groups(p.file)));
-    assert.deepEqual([...roots].filter((r) => !planted.has(r)), [], "a directory the short-edge guard must read has no plant, so a glob cut back to the rest stays green");
+    assert.deepEqual([...new Set(code.map(groups))].filter((r) => !planted.has(r)), [], "a directory the short-edge guard must read has no plant");
   });
 
   test("3, stale: every file an exemption covers is one the guard would report, so a widened glob goes red", async () => {
@@ -224,15 +227,18 @@ describe("the guard registry's floor", () => {
 
   test("the plugin's version moves with every guard, so eslint's content cache cannot serve a stale result", () => {
     const source = readFileSync(path.join(ROOT, "eslint.guards.cjs"), "utf8");
-    const versionAfter = (edit: (src: string) => string) => {
+    const channels = readFileSync(path.join(ROOT, "lib", "harnessChannels.ts"), "utf8");
+    const versionAfter = (edit: (src: string) => string, editChannels: (src: string) => string = (src) => src) => {
       const dir = mkdtempSync(path.join(tmpdir(), "murlan-guards-"));
       try {
         const file = path.join(dir, "guards.cjs");
-        symlinkSync(path.join(ROOT, "lib"), path.join(dir, "lib"), "junction");
+        mkdirSync(path.join(dir, "lib"));
+        symlinkSync(path.join(ROOT, "node_modules"), path.join(dir, "node_modules"), "junction");
+        writeFileSync(path.join(dir, "lib", "harnessChannels.ts"), editChannels(channels));
         writeFileSync(file, edit(source));
         return (require(file) as { plugin: { meta: { version?: string } } }).plugin.meta.version;
       } finally {
-        rmSync(path.join(dir, "lib"), { force: true });
+        rmSync(path.join(dir, "node_modules"), { force: true });
         rmSync(dir, { recursive: true, force: true });
       }
     };
@@ -241,6 +247,8 @@ describe("the guard registry's floor", () => {
     assert.equal(versionAfter((src) => src), version);
     assert.notEqual(versionAfter((src) => src.replace("CallExpression[callee.name=/^f(it|describe)$/]", "CallExpression[callee.name=/^f(it)$/]")), version);
     assert.notEqual(versionAfter((src) => src.replace("drop the `.only`", "drop it")), version);
+    const key = Object.keys(CHANNELS)[0]!;
+    assert.notEqual(versionAfter((src) => src, (src) => src.replace(key, `${key}Renamed`)), version, "a selector built from another file moved without moving the version");
     assert.notEqual(versionAfter((src) => src.replace('reason: "the sign-out, which empties the query cache"', 'reason: "x"')), version);
   });
 

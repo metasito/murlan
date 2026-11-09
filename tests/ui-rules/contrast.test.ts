@@ -18,8 +18,6 @@ import { BODY_MIN, LARGE_MIN, resolve, sourceArrays } from "../helpers/contrastC
 
 const sourceArray = sourceArrays(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".."));
 
-// --- WCAG 2.x contrast math -------------------------------------------------
-
 test("lib/contrast reads hex pairs either way round, from 1:1 to 21:1", () => {
   assert.equal(relativeLuminance([255, 255, 255]), 1);
   assert.equal(relativeLuminance([0, 0, 0]), 0);

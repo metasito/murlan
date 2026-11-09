@@ -4,6 +4,7 @@
 import { Colors, Garnet, LastCard, Scrim } from "../../lib/tokens.ts";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { minimatch } from "minimatch";
 
 export const BODY_MIN = 4.5;
 export const LARGE_MIN = 3.0;
@@ -41,11 +42,12 @@ export function withOpacity(color: string, opacity: number): string {
   return `rgba(${r},${g},${b},${(m ? Number(m[4]) : 1) * opacity})`;
 }
 
-/** Every component source under `root`, as [path under components/, text]. */
-export function componentSources(root: string): [string, string][] {
+/** Every source under `root` matching `globs`, as [path under components/, text]. */
+export function componentSources(root: string, globs = ["components/**/*.tsx"]): [string, string][] {
   return readdirSync(path.join(root, "components"), { recursive: true, encoding: "utf8" })
-    .filter((f) => f.endsWith(".tsx"))
-    .map((f) => [f.split(path.sep).join("/"), readFileSync(path.join(root, "components", f), "utf8")]);
+    .map((f) => f.split(path.sep).join("/"))
+    .filter((f) => globs.some((g) => minimatch(`components/${f}`, g)))
+    .map((f) => [f, readFileSync(path.join(root, "components", f), "utf8")]);
 }
 
 /**

@@ -1,0 +1,3 @@
+{
+  "tests/native/tableTextContrast.test.tsx": ["components/**/*.tsx"]
+}

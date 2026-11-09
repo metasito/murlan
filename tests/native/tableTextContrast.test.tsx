@@ -1,9 +1,9 @@
 // Every style a <TableText> names is measured against every stop of every felt, which is the only
 // place the gradient's 2x luminance range can be seen. The styles are the ones the modules
-// build: each component is imported, StyleSheet.create is watched as it runs, and a style is read
-// off the sheet it made, so a style built by a spread, a helper or another module is read like any
-// other. The source is parsed only to learn which sheet entries each <TableText> is given, and a
-// style it cannot follow is a failure, never a skip.
+// build: each component is imported under each platform, StyleSheet.create is watched as it runs,
+// and a style is read off the sheet it made, so a style built by a spread, a helper or another
+// module is read like any other. The source is parsed only to learn which sheet entries each
+// <TableText> is given, and a style it cannot follow is a failure, never a skip.
 import * as ts from "typescript";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,24 +12,44 @@ import { describe, jest, test } from "@jest/globals";
 import { StyleSheet } from "react-native";
 import { Colors, FeltGradients, Gradient } from "../../lib/tokens.ts";
 import { contrastRatio } from "../../lib/contrast.ts";
+import { NOTICE_FACES } from "../../components/table/noticeModel.ts";
 import { BODY_MIN, LARGE_MIN, componentSources, resolve, sourceArrays, withOpacity } from "../helpers/contrastColours.ts";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const componentsDir = path.join(repoRoot, "components") + path.sep;
 const sourceArray = sourceArrays(repoRoot);
+const THIS_TEST = "tests/native/tableTextContrast.test.tsx";
+const reads = (JSON.parse(readFileSync(path.join(repoRoot, "tests/native/reads.json"), "utf8")) as Record<string, string[]>)[THIS_TEST]!;
+const COMPONENT_FILES = componentSources(repoRoot, reads);
+const parsed = new Map(COMPONENT_FILES.map(([file, src]) => [file, ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)]));
+
+const OSES = ["ios", "android", "web"] as const;
+type OS = (typeof OSES)[number];
+
+/** What `Platform.select` answers on `os`: the branch a phone or the browser would take. */
+const pickFor = (os: OS, spec: Record<string, unknown>) =>
+  os === "web" ? (spec.web ?? spec.default) : os === "android" ? (spec.android ?? spec.native ?? spec.default) : (spec.ios ?? spec.native ?? spec.default);
 
 type Sheet = Record<string, object>;
-const created = new Map<string, Sheet[]>();
-const realCreate = StyleSheet.create.bind(StyleSheet);
-jest.spyOn(StyleSheet, "create").mockImplementation(((styles: Sheet) => {
-  const sheet = realCreate(styles);
-  const caller = (new Error().stack ?? "").split("\n").flatMap((line) => /\(?(\/[^():]+\.tsx?):\d+:\d+\)?$/.exec(line)?.[1] ?? []).find((f) => f.startsWith(componentsDir));
-  if (caller) created.set(caller, [...(created.get(caller) ?? []), sheet]);
-  return sheet;
-}) as typeof StyleSheet.create);
 
-const COMPONENT_FILES = componentSources(repoRoot);
-const parsed = new Map(COMPONENT_FILES.map(([file, src]) => [file, ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)]));
+/** Every sheet each of `files` makes when it is imported as `os`, in the order a file made them. */
+function sheetsMadeAs(os: OS, files: string[]): Map<string, Sheet[]> {
+  const created = new Map<string, Sheet[]>();
+  jest.isolateModules(() => {
+    const rn = require("react-native") as typeof import("react-native");
+    const realCreate = rn.StyleSheet.create.bind(rn.StyleSheet);
+    jest.spyOn(rn.StyleSheet, "create").mockImplementation(((styles: Sheet) => {
+      const sheet = realCreate(styles);
+      const caller = (new Error().stack ?? "").split("\n").flatMap((line) => /\(?(\/[^():]+\.tsx?):\d+:\d+\)?$/.exec(line)?.[1] ?? []).find((f) => f.startsWith(componentsDir));
+      if (caller) created.set(caller, [...(created.get(caller) ?? []), sheet]);
+      return sheet;
+    }) as typeof rn.StyleSheet.create);
+    jest.spyOn(rn.Platform, "select").mockImplementation(((spec: Record<string, unknown>) => pickFor(os, spec)) as typeof rn.Platform.select);
+    Object.defineProperty(rn.Platform, "OS", { value: os, configurable: true });
+    for (const file of files) require(path.join(componentsDir, file));
+  });
+  return created;
+}
 
 const nameOf = (n: ts.PropertyName): string | undefined => (ts.isIdentifier(n) || ts.isStringLiteral(n) || ts.isNumericLiteral(n) ? n.text : undefined);
 
@@ -56,43 +76,34 @@ function declaredSheets(file: string): { name: string; keys: string[] }[] {
   return out;
 }
 
-/** The sheets each component file declares, with the real object its module made for each. */
-const SHEETS = new Map<string, { file: string; sheet: Sheet }>();
-const sheetKey = (file: string, name: string) => (name === "styles" ? `${file}:styles` : name);
-function loadSheets(file: string) {
-  const unmatched = [...(created.get(path.join(componentsDir, file)) ?? [])];
-  for (const { name, keys } of declaredSheets(file)) {
-    const at = unmatched.findIndex((s) => keys.length === Object.keys(s).length && keys.every((k) => k in s));
-    assert.ok(at !== -1, `${file}: importing it did not run StyleSheet.create for ${name} (${keys.length} entries)`);
-    const key = sheetKey(file, name);
-    assert.ok(!SHEETS.has(key), `${key} is declared twice`);
-    SHEETS.set(key, { file, sheet: unmatched.splice(at, 1)[0] });
-  }
-}
-
 type Ref = { file: string; sheet: string; key: string };
-const INK = new Set(["color", "backgroundColor", "opacity"]);
+type Unread = { kind: "inline colour" | "other"; text: string };
+type Found = { refs: Ref[]; unread: Unread[] };
+const INLINE_COLOUR_KEYS = new Set(["color", "backgroundColor"]);
 const TABLE_NOTICE = "table/TableNotice.tsx";
-const INKED_ELSEWHERE: Record<string, string> = {
+const INLINE_COLOUR_FROM_ELSEWHERE: Record<string, string> = {
   [TABLE_NOTICE]: "the notice palette's inks, measured over every felt stop by contrast.test.ts",
   "CardView.tsx": "the suit's ink over the card's own face, which the felt never reaches",
 };
 
 /** Every sheet entry a style expression can resolve to, and every piece of it this audit cannot follow. */
-function styleRefs(file: string, expr: ts.Node, out: { refs: Ref[]; unread: string[] }, seen = new Set<string>()): void {
-  const unread = (why: string): void => {
-    out.unread.push(`${file}: ${why}: ${expr.getText().slice(0, 60)}`);
+function styleRefs(file: string, source: ts.SourceFile, expr: ts.Node, out: Found, seen = new Set<string>()): void {
+  const unread = (why: string, kind: Unread["kind"] = "other"): void => {
+    out.unread.push({ kind, text: `${file}: ${why}: ${expr.getText().slice(0, 60)}` });
   };
-  if (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isNonNullExpression(expr) || ts.isSatisfiesExpression(expr)) return styleRefs(file, expr.expression, out, seen);
-  if (ts.isArrayLiteralExpression(expr)) return expr.elements.forEach((e) => styleRefs(file, e, out, seen));
-  if (ts.isSpreadElement(expr)) return styleRefs(file, expr.expression, out, seen);
-  if (ts.isConditionalExpression(expr)) return [expr.whenTrue, expr.whenFalse].forEach((e) => styleRefs(file, e, out, seen));
+  const again = (e: ts.Node) => styleRefs(file, source, e, out, seen);
+  if (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isNonNullExpression(expr) || ts.isSatisfiesExpression(expr)) return again(expr.expression);
+  if (ts.isArrayLiteralExpression(expr)) return expr.elements.forEach(again);
+  if (ts.isSpreadElement(expr)) return again(expr.expression);
+  if (ts.isConditionalExpression(expr)) return [expr.whenTrue, expr.whenFalse].forEach(again);
   if (ts.isBinaryExpression(expr)) {
     const op = expr.operatorToken.kind;
-    if (op === ts.SyntaxKind.AmpersandAmpersandToken) return styleRefs(file, expr.right, out, seen);
-    if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) return [expr.left, expr.right].forEach((e) => styleRefs(file, e, out, seen));
+    if (op === ts.SyntaxKind.AmpersandAmpersandToken) return again(expr.right);
+    if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) return [expr.left, expr.right].forEach(again);
     return unread("an operator that is not a choice of style");
   }
+  const faces = (e: ts.Expression) => ts.isIdentifier(e) && e.text === "NOTICE_FACES";
+  if ((ts.isElementAccessExpression(expr) || ts.isPropertyAccessExpression(expr)) && faces(expr.expression)) return;
   if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
     return void out.refs.push({ file, sheet: expr.expression.text, key: expr.name.text });
   }
@@ -100,48 +111,96 @@ function styleRefs(file: string, expr: ts.Node, out: { refs: Ref[]; unread: stri
     for (const p of expr.properties) {
       const key = ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p) ? nameOf(p.name) : undefined;
       if (key === undefined) unread("an object entry this audit cannot name");
-      else if (INK.has(key)) unread(`an inline ${key}`);
+      else if (INLINE_COLOUR_KEYS.has(key)) unread(`an inline ${key}`, "inline colour");
+      else if (key === "opacity") unread("an inline opacity");
     }
     return;
   }
   if (ts.isIdentifier(expr)) {
-    if (expr.text === "undefined") return;
-    if (seen.has(expr.text)) return;
+    if (expr.text === "undefined" || seen.has(expr.text)) return;
     const declared: ts.Expression[] = [];
     const find = (n: ts.Node) => {
       if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === expr.text && n.initializer) declared.push(n.initializer);
       ts.forEachChild(n, find);
     };
-    find(parsed.get(file)!);
+    find(source);
     if (declared.length === 0) return unread("a name with no declaration in this file");
-    return declared.forEach((d) => styleRefs(file, d, out, new Set([...seen, expr.text])));
+    return declared.forEach((d) => styleRefs(file, source, d, out, new Set([...seen, expr.text])));
   }
   if (expr.kind === ts.SyntaxKind.FalseKeyword || expr.kind === ts.SyntaxKind.NullKeyword) return;
   unread("a style built by an expression this audit cannot follow");
 }
 
-function tableTextStyles(): { refs: Ref[]; unread: string[] } {
-  const out = { refs: [] as Ref[], unread: [] as string[] };
-  for (const [file] of COMPONENT_FILES) {
-    const visit = (node: ts.Node) => {
-      if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText() === "TableText") {
+/** The names `TableText` is imported or aliased under, found from the import binding; any other use of one is unread. */
+function tableTextNames(file: string, source: ts.SourceFile, out: Found): Set<string> {
+  const names = new Set<string>();
+  source.statements.forEach((st) => {
+    if (!ts.isImportDeclaration(st) || !/\/TableText$|^\.\/TableText$/.test((st.moduleSpecifier as ts.StringLiteral).text)) return;
+    const bindings = st.importClause?.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) bindings.elements.forEach((e) => (e.propertyName ?? e.name).text === "TableText" && names.add(e.name.text));
+  });
+  const aliases = (n: ts.Node): void => {
+    const init = ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) ? n.initializer : undefined;
+    if (init && ts.isIdentifier(init) && names.has(init.text)) names.add((n as ts.VariableDeclaration).name.getText());
+    ts.forEachChild(n, aliases);
+  };
+  for (let size = -1; size !== names.size; ) {
+    size = names.size;
+    aliases(source);
+  }
+  const misuse = (n: ts.Node): void => {
+    if (ts.isIdentifier(n) && names.has(n.text)) {
+      const p = n.parent;
+      const asTag = (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) && p.tagName === n;
+      const declares = asTag || ts.isImportSpecifier(p) || (ts.isVariableDeclaration(p) && (p.name === n || (p.initializer === n && ts.isIdentifier(p.name))));
+      if (!declares) out.unread.push({ kind: "other", text: `${file}: TableText used other than as a tag: ${p.getText().slice(0, 60)}` });
+    }
+    ts.forEachChild(n, misuse);
+  };
+  misuse(source);
+  return names;
+}
+
+/** The sheet entries every `<TableText>` of one source names, and what could not be followed. */
+function tableTextIn(file: string, source: ts.SourceFile): Found {
+  const out: Found = { refs: [], unread: [] };
+  if (file === "table/TableText.tsx") return out;
+  const names = tableTextNames(file, source, out);
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const tag = node.tagName;
+      if (ts.isPropertyAccessExpression(tag) && tag.name.text === "TableText") out.unread.push({ kind: "other", text: `${file}: <${tag.getText()}> is not followed to TableText` });
+      if (ts.isIdentifier(tag) && names.has(tag.text)) {
         for (const attr of node.attributes.properties) {
-          if (ts.isJsxSpreadAttribute(attr)) continue;
+          if (ts.isJsxSpreadAttribute(attr)) {
+            let e: ts.Expression = attr.expression;
+            while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e)) e = e.expression;
+            const plain = ts.isObjectLiteralExpression(e) && e.properties.every((p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && nameOf(p.name) !== undefined && nameOf(p.name) !== "style");
+            if (!plain && !(ts.isCallExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "a11yHidden")) out.unread.push({ kind: "other", text: `${file}: a spread that can carry a style: ${attr.getText().slice(0, 60)}` });
+            continue;
+          }
           if (attr.name.getText() !== "style" || !attr.initializer || !ts.isJsxExpression(attr.initializer) || !attr.initializer.expression) continue;
-          const here = { refs: [] as Ref[], unread: [] as string[] };
-          styleRefs(file, attr.initializer.expression, here);
-          out.refs.push(...here.refs);
-          if (!(file in INKED_ELSEWHERE)) out.unread.push(...here.unread);
+          styleRefs(file, source, attr.initializer.expression, out);
         }
       }
-      ts.forEachChild(node, visit);
-    };
-    visit(parsed.get(file)!);
-  }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   return out;
 }
 
-const FOUND = tableTextStyles();
+/** What a scan of one source reports once the files with a stated reason for an inline colour are let through. */
+function unreadIn(file: string, found: Found): string[] {
+  return found.unread.filter((u) => !(u.kind === "inline colour" && file in INLINE_COLOUR_FROM_ELSEWHERE)).map((u) => u.text);
+}
+
+const FOUND: Found = { refs: [], unread: [] };
+for (const [file] of COMPONENT_FILES) {
+  const here = tableTextIn(file, parsed.get(file)!);
+  FOUND.refs.push(...here.refs);
+  FOUND.unread.push(...unreadIn(file, here).map((text) => ({ kind: "other" as const, text })));
+}
 const TABLE_TEXT = [...new Map(FOUND.refs.map((r) => [`${r.file}:${r.sheet}.${r.key}`, r])).values()];
 
 // A sheet is named by the file that declares it, which is the call site's own for `styles` and the one
@@ -150,23 +209,38 @@ const declaring = (ref: Ref): string => {
   if (ref.sheet === "styles") return ref.file;
   const owners = COMPONENT_FILES.map(([file]) => file).filter((file) => declaredSheets(file).some((s) => s.name === ref.sheet));
   assert.equal(owners.length, 1, `${ref.file}: ${ref.sheet} is declared in ${owners.length} files`);
-  return owners[0];
+  return owners[0]!;
 };
 const owners = new Map(TABLE_TEXT.map((ref) => [`${ref.file}:${ref.sheet}`, declaring(ref)]));
-for (const file of new Set(owners.values())) {
-  jest.requireActual(path.join(componentsDir, file));
-  loadSheets(file);
-}
+const sheetKey = (file: string, name: string) => (name === "styles" ? `${file}:styles` : name);
 
-function sheetEntry(ref: Ref): Record<string, unknown> {
-  const { sheet } = SHEETS.get(sheetKey(owners.get(`${ref.file}:${ref.sheet}`)!, ref.sheet))!;
+const SHEETS = Object.fromEntries(
+  OSES.map((os) => {
+    const files = [...new Set(owners.values())];
+    const made = sheetsMadeAs(os, files);
+    const sheets = new Map<string, Sheet>();
+    for (const file of files) {
+      const unmatched = [...(made.get(path.join(componentsDir, file)) ?? [])];
+      for (const { name, keys } of declaredSheets(file)) {
+        const at = unmatched.findIndex((sheet) => keys.length === Object.keys(sheet).length && keys.every((k) => k in sheet));
+        assert.ok(at !== -1, `${file}: importing it as ${os} did not run StyleSheet.create for ${name} (${keys.length} entries)`);
+        assert.ok(!sheets.has(sheetKey(file, name)), `${name} is declared twice`);
+        sheets.set(sheetKey(file, name), unmatched.splice(at, 1)[0]!);
+      }
+    }
+    return [os, sheets];
+  })
+) as Record<OS, Map<string, Sheet>>;
+
+function sheetEntry(ref: Ref, os: OS): Record<string, unknown> {
+  const sheet = SHEETS[os].get(sheetKey(owners.get(`${ref.file}:${ref.sheet}`)!, ref.sheet))!;
   assert.ok(ref.key in sheet, `${ref.file}: ${ref.sheet}.${ref.key} is not an entry of the sheet the module made`);
   return (StyleSheet.flatten(sheet[ref.key] as object) ?? {}) as Record<string, unknown>;
 }
 
 const refOf = (id: string): Ref => {
-  const [file, entry] = id.split(":");
-  const [sheet, key] = entry.split(".");
+  const [file, entry] = id.split(":") as [string, string];
+  const [sheet, key] = entry.split(".") as [string, string];
   return { file, sheet, key };
 };
 const asColour = (id: string, what: string, value: unknown): string => {
@@ -174,14 +248,13 @@ const asColour = (id: string, what: string, value: unknown): string => {
   return value;
 };
 
-/** A style's `backgroundColor`, as the module's own sheet holds it. */
-function styleFill(id: string): string | null {
-  const fill = sheetEntry(refOf(id)).backgroundColor;
+/** A style's `backgroundColor`, as the module's own sheet holds it on `os`. */
+function styleFill(id: string, os: OS): string | null {
+  const fill = sheetEntry(refOf(id), os).backgroundColor;
   return fill === undefined ? null : asColour(id, "backgroundColor", fill);
 }
 
 /** A style's ink with its own `opacity` folded in, or null for a style that sets neither. */
-const styleInk = (id: string): string | null => inkOf(id, sheetEntry(refOf(id)));
 function inkOf(id: string, entry: Record<string, unknown>): string | null {
   if (entry.color === undefined) {
     assert.ok(entry.opacity === undefined, `${id} sets an opacity but no colour`);
@@ -190,6 +263,9 @@ function inkOf(id: string, entry: Record<string, unknown>): string | null {
   const ink = asColour(id, "color", entry.color);
   return entry.opacity === undefined ? ink : withOpacity(ink, Number(entry.opacity));
 }
+const styleInk = (id: string, os: OS): string | null => inkOf(id, sheetEntry(refOf(id), os));
+const inkedOn = (id: string) => OSES.some((os) => styleInk(id, os) !== null);
+const platedOn = (id: string) => OSES.some((os) => styleFill(id, os) !== null);
 
 const idOf = (r: Ref) => `${r.file}:${r.sheet}.${r.key}`;
 const ANY_STOP = [0, 1, 2, 3, 4];
@@ -253,26 +329,32 @@ const ON_TABLE: Record<string, Backdrop> = {
 const DISABLED = new Set(["table/actions.tsx:styles.btnDimLabel"]);
 
 test("every <TableText> style is one this audit can follow to a sheet the modules made", () => {
-  assert.deepEqual(FOUND.unread, [], "a style the audit cannot read passes it by not looking: name it through a StyleSheet entry");
+  assert.deepEqual(FOUND.unread.map((u) => u.text), [], "a style the audit cannot read passes it by not looking: name it through a StyleSheet entry");
   assert.ok(TABLE_TEXT.length > 30, `found only ${TABLE_TEXT.length} <TableText> styles`);
-  const read = TABLE_TEXT.filter((ref) => styleInk(idOf(ref)) !== null || styleFill(idOf(ref)) !== null);
+  const read = TABLE_TEXT.filter((ref) => inkedOn(idOf(ref)) || platedOn(idOf(ref)));
   assert.ok(read.length > 30, `read only ${read.length} styles' colours off the modules' sheets`);
 });
 
+test("a notice face sets a family and nothing the contrast audit would need to see", () => {
+  for (const [face, style] of Object.entries(NOTICE_FACES)) {
+    assert.deepEqual(Object.keys(style).filter((k) => k === "color" || k === "opacity" || k === "backgroundColor"), [], `NOTICE_FACES.${face}`);
+  }
+});
+
 test("every inked <TableText> style says what it is painted over", () => {
-  const unclassified = TABLE_TEXT.filter((ref) => styleInk(idOf(ref)) !== null && !(idOf(ref) in ON_TABLE)).map(idOf);
+  const unclassified = TABLE_TEXT.filter((ref) => inkedOn(idOf(ref)) && !(idOf(ref) in ON_TABLE)).map(idOf);
   assert.deepEqual(unclassified, [], "add these to ON_TABLE");
   const stale = Object.keys(ON_TABLE).filter((id) => !TABLE_TEXT.some((ref) => idOf(ref) === id));
   assert.deepEqual(stale, [], "no <TableText> names these any more");
 });
 
 test("only the seat name's two inks are left to the device to measure", () => {
-  const measured = Object.keys(ON_TABLE).filter((id) => ON_TABLE[id].measuredBy !== undefined);
+  const measured = Object.keys(ON_TABLE).filter((id) => ON_TABLE[id]!.measuredBy !== undefined);
   assert.deepEqual(measured, ["table/seats.tsx:seatStyles.oppName", "table/seats.tsx:seatStyles.oppNameActive"]);
 });
 
 test("no <TableText> style paints its own plate: table text sits on the felt or inside a notice", () => {
-  assert.deepEqual(TABLE_TEXT.map(idOf).filter((id) => styleFill(id) !== null), []);
+  assert.deepEqual(TABLE_TEXT.map(idOf).filter(platedOn), []);
 });
 
 test("the pile inks no text of its own: its notices are TableNotice's plate, in the palette loop of contrast.test.ts", () => {
@@ -280,54 +362,76 @@ test("the pile inks no text of its own: its notices are TableNotice's plate, in 
   assert.ok(TABLE_TEXT.some((r) => r.file === TABLE_NOTICE), "TableNotice inks no <TableText> style");
 });
 
-function assertClears(id: string, ink: string, fills: string[], backdrop: Backdrop, min: number) {
+function assertClears(id: string, ink: string, fills: string[], backdrop: Backdrop, min: number, os: OS) {
   for (const [felt, gradient] of Object.entries(FeltGradients)) {
     for (const stop of backdrop.stops ?? ANY_STOP) {
-      for (const over of backdrop.gradient ?? [gradient[stop]]) {
-        const surface = fills.reduce((under, fill) => resolve(fill, under), resolve(over, gradient[stop]));
+      for (const over of backdrop.gradient ?? [gradient[stop]!]) {
+        const surface = fills.reduce((under, fill) => resolve(fill, under), resolve(over, gradient[stop]!));
         const ratio = contrastRatio(resolve(ink, surface), surface);
-        assert.ok(ratio >= min, `${id} over ${felt} stop ${stop} (${over}) is only ${ratio.toFixed(2)}:1, needs >=${min}:1`);
+        assert.ok(ratio >= min, `${id} on ${os} over ${felt} stop ${stop} (${over}) is only ${ratio.toFixed(2)}:1, needs >=${min}:1`);
       }
     }
   }
 }
 
 describe("the audit sees what a text scan of `key: {` could not", () => {
-  const unreadIn = (code: string) => {
-    const out = { refs: [] as Ref[], unread: [] as string[] };
-    const file = ts.createSourceFile("plant.tsx", `${code}`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-    parsed.set("plant.tsx", file);
-    const stmt = file.statements[file.statements.length - 1] as ts.ExpressionStatement;
-    styleRefs("plant.tsx", stmt.expression, out);
-    return out;
+  const scan = (file: string, code: string) => {
+    const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const found = tableTextIn(file, source);
+    return { keys: found.refs.map((r) => r.key), unread: unreadIn(file, found) };
   };
+  const IMPORT = 'import { TableText } from "./TableText";\n';
 
   test("an ink built by a spread or a helper is read off the sheet the module made", () => {
     const FACE = { color: "#444444", opacity: 0.5 };
-    const sheet = StyleSheet.create({ spread: { ...FACE }, helper: faintInk() });
-    function faintInk() {
-      return { color: "#555555" };
-    }
+    const faint = () => ({ color: "#555555" });
+    const sheet = StyleSheet.create({ spread: { ...FACE }, helper: faint() });
     assert.equal(inkOf("spread", sheet.spread as Record<string, unknown>), "rgba(68,68,68,0.5)");
     assert.equal(inkOf("helper", sheet.helper as Record<string, unknown>), "#555555");
   });
 
   test("a style it cannot follow to a sheet is reported, not skipped", () => {
-    for (const code of ["f(a);\nstyle(helper())", "x;\n[styles.a, ...more(), { color: c }]", "x;\n[styles.a, { ...spread }]", "x;\n[styles.a, missing]", "x;\nflag ? styles.a : lookup[k]"]) {
-      assert.ok(unreadIn(code).unread.length > 0, code);
+    for (const style of ["helper()", "[styles.a, ...more(), { color: c }]", "[styles.a, { ...spread }]", "[styles.a, missing]", "flag ? styles.a : lookup[k]", "{ opacity: 0.2 }"]) {
+      assert.ok(scan("plant.tsx", `${IMPORT}const a = <TableText style={${style}} />;`).unread.length > 0, style);
     }
   });
 
   test("a style it can follow is not", () => {
-    const seen = unreadIn("const small = { fontSize: 3 };\n[styles.a, flag && styles.b, cond ? styles.c : undefined, small, { fontSize: 4 }]");
+    const seen = scan("plant.tsx", `${IMPORT}const small = { fontSize: 3 };\nconst a = <TableText style={[styles.a, flag && styles.b, cond ? styles.c : undefined, small, { fontSize: 4 }]} />;`);
     assert.deepEqual(seen.unread, []);
-    assert.deepEqual(seen.refs.map((r) => r.key), ["a", "b", "c"]);
+    assert.deepEqual(seen.keys, ["a", "b", "c"]);
+  });
+
+  test("an inline colour is let through only where a reason is stated, and an inline opacity or an unread style never is", () => {
+    const style = (e: string) => `${IMPORT}const a = <TableText style={${e}} />;`;
+    assert.deepEqual(scan(TABLE_NOTICE, style("[NOTICE_FACES[run.face], styles.upper, { color: paint.strong }]")).unread, []);
+    assert.equal(scan("table/seats.tsx", style("{ color: paint.strong }")).unread.length, 1);
+    for (const e of ["[washOut()]", "[faint]", "{ opacity: 0.2 }", "[{ color: c, opacity: 0.2 }]", "[...rest]"]) {
+      assert.ok(scan(TABLE_NOTICE, style(e)).unread.length > 0, `TableNotice: ${e}`);
+      assert.ok(scan("CardView.tsx", style(e)).unread.length > 0, `CardView: ${e}`);
+    }
+  });
+
+  test("TableText is followed through an alias, a renamed import and a spread", () => {
+    assert.deepEqual(scan("plant.tsx", `${IMPORT}const Label = TableText;\nconst a = <Label style={styles.viaAlias} />;`).keys, ["viaAlias"]);
+    assert.deepEqual(scan("plant.tsx", 'import { TableText as Small } from "./TableText";\nconst a = <Small style={styles.viaRename} />;').keys, ["viaRename"]);
+    assert.deepEqual(scan("plant.tsx", `${IMPORT}const a = <TableText {...a11yHidden()} style={styles.k} />;`).unread, []);
+    assert.equal(scan("plant.tsx", `${IMPORT}const a = <TableText {...{ style: { color: "#2a2a2a" } }} />;`).unread.length, 1);
+    assert.equal(scan("plant.tsx", `${IMPORT}const a = <TableText {...props} />;`).unread.length, 1);
+    assert.equal(scan("plant.tsx", `${IMPORT}const Wrapped = styled(TableText);`).unread.length, 1);
+    assert.equal(scan("plant.tsx", `${IMPORT}const a = <Ui.TableText style={styles.x} />;`).unread.length > 0, true);
   });
 
   test("a washed-out ink fails the bar on the felt", () => {
     const black = { gradient: ["#000000"] };
-    assert.throws(() => assertClears("plant", "#444444", [], black, BODY_MIN), /only .*:1/);
-    assert.doesNotThrow(() => assertClears("plant", "#ffffff", [], black, BODY_MIN));
+    assert.throws(() => assertClears("plant", "#444444", [], black, BODY_MIN, "ios"), /only .*:1/);
+    assert.doesNotThrow(() => assertClears("plant", "#ffffff", [], black, BODY_MIN, "ios"));
+  });
+
+  test("a platform's branch is the one it takes", () => {
+    const spec = { ios: "i", web: "w", default: "d" };
+    assert.deepEqual(OSES.map((os) => pickFor(os, spec)), ["i", "d", "w"]);
+    assert.equal(pickFor("android", { native: "n", default: "d" }), "n");
   });
 });
 
@@ -343,15 +447,16 @@ for (const ref of TABLE_TEXT) {
     });
     continue;
   }
-  test(`the table's ${ref.sheet}.${ref.key} clears ${min}:1 on every felt stop`, () => {
-    const ink = styleInk(id);
-    assert.ok(ink, `${id} has no color`);
-    const fills = [backdrop.plate ?? []].flat().map((plate) => {
-      const fill = styleFill(`${ref.file}:${plate}`);
-      assert.ok(fill, `${plate} no longer paints a background`);
-      return fill;
-    });
-
-    assertClears(id, ink, fills, backdrop, min);
+  test(`the table's ${ref.sheet}.${ref.key} clears ${min}:1 on every felt stop, on every platform`, () => {
+    for (const os of OSES) {
+      const ink = styleInk(id, os);
+      assert.ok(ink, `${id} has no color on ${os}`);
+      const fills = [backdrop.plate ?? []].flat().map((plate) => {
+        const fill = styleFill(`${ref.file}:${plate}`, os);
+        assert.ok(fill, `${plate} no longer paints a background on ${os}`);
+        return fill;
+      });
+      assertClears(id, ink, fills, backdrop, min, os);
+    }
   });
 }

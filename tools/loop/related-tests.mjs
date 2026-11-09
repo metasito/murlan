@@ -3,12 +3,16 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { minimatch } from "minimatch";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { changedFiles, git } from "./cli.mjs";
 import { budgetLines } from "../ci/native-budget.mjs";
 
 /** Untracked files are included: a test file not yet added is one the change adds (RULES.md 3). */
 export const RELATED_CHANGES = Object.freeze({ base: "origin/main", range: "...", worktree: true, untracked: true });
+
+/** Native tests that read source files by path rather than import them, with the globs they read: jest's graph cannot see these. */
+export const READS_MANIFEST = "tests/native/reads.json";
 
 export const NATIVE_TEST = /^tests\/native\/.+\.test\.tsx$/;
 export const CODE = /\.(tsx?|m?js)$/;
@@ -31,15 +35,16 @@ const stem = (f) =>
  * Changed test files first, then tests named after a changed module, then importers: `capNear`
  * keeps the head of this order.
  *
- * @param {{changed: string[], related: string[], source: (file: string) => string}} io
+ * @param {{changed: string[], related: string[], source: (file: string) => string, reads?: Record<string, string[]>}} io
  */
-export function nearTests({ changed, related, source }) {
+export function nearTests({ changed, related, source, reads = {} }) {
   const modules = changed.filter((f) => CODE.test(f) && !NATIVE_TEST.test(f));
   const specs = modules.map((m) => `@/${m.replace(CODE, "")}`);
   const stems = new Set(modules.map(stem));
   const named = related.filter((t) => stems.has(stem(t)));
   const importers = related.filter((t) => specs.some((s) => source(t).includes(`'${s}'`) || source(t).includes(`"${s}"`)));
-  return [...new Set([...changed.filter((f) => NATIVE_TEST.test(f)).sort(), ...named.sort(), ...importers.sort()])];
+  const readers = Object.keys(reads).filter((t) => modules.some((m) => reads[t].some((glob) => minimatch(m, glob))));
+  return [...new Set([...changed.filter((f) => NATIVE_TEST.test(f)).sort(), ...named.sort(), ...importers.sort(), ...readers.sort()])];
 }
 
 export const NEAR_CAP = 10;
@@ -66,7 +71,8 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     ? execFileSync(process.execPath, [jest, ...onLocalProjects(["--listTests", "--findRelatedTests", ...code])], { encoding: "utf8" })
     : "";
   const related = listedTests(listed, process.cwd());
-  const near = nearTests({ changed, related, source: (f) => readFileSync(f, "utf8") });
+  const reads = JSON.parse(readFileSync(READS_MANIFEST, "utf8"));
+  const near = nearTests({ changed, related, source: (f) => readFileSync(f, "utf8"), reads });
   const { run, left } = capNear(near);
   console.log(`native:related — ${run.length} near of ${related.length} reached; ci.yml's native job runs the rest`);
   if (left) console.log(left);
