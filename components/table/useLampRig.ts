@@ -5,7 +5,7 @@ import { RoundMoment, Motion } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { flareKindFor } from "@/components/impact";
 import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
-import { glossLightOf, nextGlossLight, nextStillLight, type GlossLight } from "./cardGloss";
+import { glossLightOf, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
@@ -21,6 +21,8 @@ export interface LampRig {
   glossLight: SharedValue<GlossLight>;
   /** The same light without the sway: where the lamp points, written when its target or level moves (`nextStillLight`). */
   stillLight: SharedValue<GlossLight>;
+  /** The lamp's level alone, in the steps the card shades follow: written when the level moves, never for the sway (`nextShadeLevel`). */
+  shadeLevel: SharedValue<number>;
   /** Design points to the felt box's own. */
   sx: number;
   sy: number;
@@ -29,7 +31,7 @@ export interface LampRig {
   freeze(amount: number): void;
 }
 
-function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, reduced: SharedValue<boolean>) {
+function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, reduced: SharedValue<boolean>) {
   return (frame: FrameInfo) => {
     "worklet";
     const s = lamp.value;
@@ -39,6 +41,8 @@ function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight
     if (gloss) glossLight.value = gloss;
     const still = nextStillLight(stillLight.value, s);
     if (still) stillLight.value = still;
+    const level = nextShadeLevel(shadeLevel.value, s);
+    if (level !== null) shadeLevel.value = level;
   };
 }
 
@@ -66,6 +70,7 @@ export function useLampRig({
   const lamp = useSharedValue<Lamp>(resting);
   const glossLight = useSharedValue<GlossLight>(glossLightOf(resting));
   const stillLight = useSharedValue<GlossLight>(glossLightOf(resting));
+  const shadeLevel = useSharedValue(resting.level);
   const [px, py, reach] = pool;
 
   useEffect(() => {
@@ -74,7 +79,7 @@ export function useLampRig({
 
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.
-  const [step] = useState(() => lampStepper(lamp, glossLight, stillLight, reduced));
+  const [step] = useState(() => lampStepper(lamp, glossLight, stillLight, shadeLevel, reduced));
   useFrameCallback(step);
 
   useEffect(() => {
@@ -175,5 +180,5 @@ export function useLampRig({
     };
   }, [lamp]);
 
-  return useMemo(() => ({ lamp, glossLight, stillLight, sx, sy, ...controls }), [lamp, glossLight, stillLight, sx, sy, controls]);
+  return useMemo(() => ({ lamp, glossLight, stillLight, shadeLevel, sx, sy, ...controls }), [lamp, glossLight, stillLight, shadeLevel, sx, sy, controls]);
 }
