@@ -487,7 +487,7 @@ const MOMENTS: Moment[] = [
     regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
     // No pool: it is placed off your hand, empty here. The pile under the flare's first 400 ms, as in bomb (#1438); the right band as
     // the table's score panel opens over it (#1267).
-    regionAt: { pile: [1440, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
+    regionAt: { pile: [1440, 1920, 2400, 2880], rightBand: [1040, 1200, 1440, 1920, 2400, 2880] },
     onsets: ["sound:matchWon"],
     // The chapter's `at(500)` runs on the frame at 512.
     actions: [{ atMs: 512, app: botMove }],
@@ -537,7 +537,7 @@ const MOMENTS: Moment[] = [
     // `mwin` never does.
     // The fallback's light is baked once at besnik, so by 2880 the mockup's sway has carried its own off the right band (58.2 against 52.1).
     fallbackRegionsAt: [1040, 1200, 1440, 1920, 2400],
-    regionAt: { pile: [1040, 1200, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
+    regionAt: { pile: [1040, 1200, 1920, 2400, 2880], rightBand: [1040, 1200, 1440, 1920, 2400, 2880] },
     onsets: ["sound:roundWon"],
     actions: [{ atMs: 512, app: botMove }],
   },
@@ -563,7 +563,7 @@ const MOMENTS: Moment[] = [
     regionAt: {
       pile: [1040, 1200, 1920, 2400, 2880],
       pool: [1040, 1200, 1920, 2400, 2880],
-      rightBand: [1040, 1200, 1920, 2400, 2880],
+      rightBand: [1040, 1200, 1440, 1920, 2400, 2880],
     },
     fallbackRegionAt: { pool: [] },
     onsets: ["sound:roundLost"],
