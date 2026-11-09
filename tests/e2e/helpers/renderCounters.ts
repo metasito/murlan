@@ -61,6 +61,7 @@ export async function countRenders(page: Page): Promise<void> {
     // Not counted: the counter's own tick, the trace recorder's, and what a spec hands to `exempt`.
     const exempt = new WeakSet<object>();
     let tracerStarting = false;
+    let reached = false;
     const registry = () => (globalThis as unknown as { _frameCallbackRegistry?: { activeFrameCallbacks: Set<number> } })._frameCallbackRegistry;
     // The recorder's tick is the one function it asks a frame for while `start` runs, and again each frame.
     // Wrapping at the assignment keeps this wrapper outside the recorder's own, so it sees the callbacks
@@ -82,6 +83,7 @@ export async function countRenders(page: Page): Promise<void> {
         };
         const request = window.requestAnimationFrame.bind(window);
         window.requestAnimationFrame = (callback) => {
+          reached = true;
           if (tracerStarting) exempt.add(callback);
           if (!started || exempt.has(callback)) return request(callback);
           const caller = (new Error().stack ?? "").split("\n")[2]?.trim().replace(/^at /, "").replace(/:\d+\)?$/, "") ?? "(unknown)";
@@ -97,6 +99,10 @@ export async function countRenders(page: Page): Promise<void> {
       if (started) return true;
       const root = document.querySelector('[data-testid="game-root"]');
       if (!root) return false;
+      if (!(registry()?.activeFrameCallbacks instanceof Set)) throw new Error("renderCounters: the page has no Reanimated frame callback registry to count");
+      reached = false;
+      window.cancelAnimationFrame(window.requestAnimationFrame(() => {}));
+      if (!reached) throw new Error("renderCounters: requestAnimationFrame is not wrapped");
       started = true;
       new MutationObserver((records) => {
         for (const r of records) {
@@ -107,7 +113,7 @@ export async function countRenders(page: Page): Promise<void> {
       const tick = () => {
         frame++;
         counts.frames++;
-        counts.frameCallbacks = registry()?.activeFrameCallbacks.size ?? 0;
+        counts.frameCallbacks = registry()!.activeFrameCallbacks.size;
         requestAnimationFrame(tick);
       };
       exempt.add(tick);
