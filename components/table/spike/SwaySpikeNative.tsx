@@ -2,16 +2,17 @@ import { Component, useEffect, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { Canvas, Fill, Shader, Skia } from "@shopify/react-native-skia";
 import Animated, { useDerivedValue, useFrameCallback, useSharedValue } from "react-native-reanimated";
-import { css } from "react-native-reanimated";
+import { css, cubicBezier } from "react-native-reanimated";
 import { diag } from "@/lib/diagnostics";
 import { keyframes, keyframesVariant, LOOP_SECONDS } from "./swayTable";
 
 const W = 874;
 const H = 402;
-const FRAMES = keyframes();
+const EASE = cubicBezier(0.445, 0.05, 0.55, 0.95);
+const FRAMES = keyframes(EASE);
 const MEMO = css.keyframes(FRAMES as never);
-const NO_EASE = keyframesVariant("noEase");
-const SHORT = keyframesVariant("short");
+const NO_EASE = keyframesVariant("noEase", EASE);
+const SHORT = keyframesVariant("short", EASE);
 const ANIM = {
   full: { name: FRAMES, seconds: LOOP_SECONDS },
   memo: { name: MEMO, seconds: LOOP_SECONDS },

@@ -47,21 +47,21 @@ export const lxAt = (t: number) => SWAY_AMPLITUDE * (2 * opacityAt(t) - 1);
 
 export const lxOfOpacity = (o: number) => SWAY_AMPLITUDE * (2 * o - 1);
 
-export function keyframes(): Record<string, { opacity: number; animationTimingFunction?: string }> {
-  const out: Record<string, { opacity: number; animationTimingFunction?: string }> = {};
+export function keyframes(ease: unknown = SWAY_EASING): Record<string, { opacity: number; animationTimingFunction?: never }> {
+  const out: Record<string, { opacity: number; animationTimingFunction?: never }> = {};
   for (let k = 0; k <= HALF_SWINGS; k++) {
     const pct = (100 * STOPS[k]) / LOOP_SECONDS;
-    out[k === HALF_SWINGS ? "100%" : `${pct}%`] = { opacity: k % 2 === 0 ? 0 : 1, ...(k < HALF_SWINGS ? { animationTimingFunction: SWAY_EASING } : {}) };
+    out[k === HALF_SWINGS ? "100%" : `${pct}%`] = { opacity: k % 2 === 0 ? 0 : 1, ...(k < HALF_SWINGS ? { animationTimingFunction: ease as never } : {}) };
   }
   return out;
 }
 
-export function keyframesVariant(kind: "noEase" | "short") {
-  const out: Record<string, { opacity: number; animationTimingFunction?: string }> = {};
+export function keyframesVariant(kind: "noEase" | "short", ease: unknown = SWAY_EASING) {
+  const out: Record<string, { opacity: number; animationTimingFunction?: unknown }> = {};
   const n = kind === "short" ? 4 : HALF_SWINGS;
   for (let k = 0; k <= n; k++) {
     const pct = (100 * STOPS[k]) / STOPS[n];
-    out[k === n ? "100%" : `${pct}%`] = { opacity: k % 2 === 0 ? 0 : 1, ...(kind === "short" && k < n ? { animationTimingFunction: SWAY_EASING } : {}) };
+    out[k === n ? "100%" : `${pct}%`] = { opacity: k % 2 === 0 ? 0 : 1, ...(kind === "short" && k < n ? { animationTimingFunction: ease } : {}) };
   }
   return { frames: out, seconds: STOPS[n] };
 }
