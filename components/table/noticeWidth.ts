@@ -55,15 +55,10 @@ export const SNAP_PER_GLYPH = 1;
 
 /**
  * `snapped` prices what a snapping renderer may draw; `linear` the same words at their linear
- * advances, which is what a renderer positioning by subpixel draws. A fallback glyph is `FALLBACK_EM` in both.
+ * advances, which is what a renderer positioning by subpixel draws. A fallback glyph is its `TEXT_METRICS.fallbackEm` in both.
  */
 export type Pricing = "snapped" | "linear";
 
-/**
- * A glyph the served faces lack, drawn by whatever face the platform falls back to, in ems. Not an
- * em: Noto Color Emoji, Linux Chrome's emoji face, advances 💣 1.245em.
- */
-export const FALLBACK_EM = 1.25;
 const advance = (pricing: Pricing) => (pricing === "snapped" ? snapped : (px: number) => px);
 
 /** Words shaped glyph by glyph, without kerning; a glyph the subset lacks is priced at the face's widest. */
@@ -103,7 +98,7 @@ function runWidth(kind: NoticeKind, locale: NoticeLocale, box: NoticeBox, id: st
   const g = glyphs(box, role, scale);
   const text =
     (measured.units / g.upem) * g.size +
-    measured.fallback.length * FALLBACK_EM * g.size +
+    measured.fallback.reduce((sum, cp) => sum + (TEXT_METRICS.fallbackEm as Readonly<Record<string, number>>)[cp]! * g.size, 0) +
     measured.chars * (g.tracking + (pricing === "snapped" ? SNAP_PER_GLYPH : 0)) +
     slots.reduce((sum, words) => sum + wordsWidth(g, locale, words, pricing), 0);
   return role === "key" ? text + 2 * mockupPx(NOTICE_KEY.padX, scale) : text;

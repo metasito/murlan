@@ -2,7 +2,6 @@
 // applies these to the page, tests/ui-rules/drawnFit.test.ts holds them to the evidence.
 import { aligned, type Align } from "../../components/flexAlign.ts";
 import type { Rect } from "../../components/tableRects.ts";
-import { FALLBACK_EM } from "../../components/table/noticeWidth.ts";
 import { TEXT_METRICS } from "../../components/table/textMetrics.generated.ts";
 
 /**
@@ -14,7 +13,7 @@ import { TEXT_METRICS } from "../../components/table/textMetrics.generated.ts";
  *   the renderer drew its words away from their linear width, measured in the page. A renderer that
  *   hints lands each advance on a whole pixel: CI's Chrome 156 draws "Scegli una carta da 3 a 10 per
  *   Besnik" 6.4px narrower than linear, under `HINT_PER_GLYPH`. A glyph the bundled faces lack is
- *   priced at `FALLBACK_EM`, which the drawn one may fall short of.
+ *   priced at its `fallbackEm`, or at runtime at the face's widest, which the drawn one may fall short of.
  * - `inside`: a knob of its own fixed size, centred in the slot the solver gives it.
  * - `line`: a seat's name. Its words are held as a pill's, and the label reserves a taller line
  *   than the font draws, under which the drawn line sits: the bottoms meet, the top may be lower.
@@ -42,9 +41,13 @@ export const TOLERANCE = 1;
 export const HINT_PER_GLYPH = 0.5;
 
 const PRICED = new Set(Object.values(TEXT_METRICS.faces).flatMap((f) => Object.keys(f.advances)));
+const FALLBACK: Readonly<Record<string, number>> = TEXT_METRICS.fallbackEm;
+const WIDEST_EM = Math.max(...Object.values(TEXT_METRICS.faces).map((f) => f.widestGlyph / f.upem));
+const codepoint = (ch: string) => `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`;
 
-/** How far short of the linear price the drawn words may fall: the fallback price of each glyph no face holds. */
-export const unpriced = (text: { words: string; em: number }) => [...text.words].reduce((sum, ch) => sum + (PRICED.has(ch) ? 0 : FALLBACK_EM * text.em), 0);
+/** How far short of the linear price the drawn words may fall: the price of each glyph no face holds. */
+export const unpriced = (text: { words: string; em: number }) =>
+  [...text.words].reduce((sum, ch) => sum + (PRICED.has(ch) ? 0 : (FALLBACK[codepoint(ch)] ?? WIDEST_EM) * text.em), 0);
 
 const near = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE;
 const placed = (a: Rect, b: Rect, align: Align | undefined) => align !== undefined && near(a.x, aligned(align, b.x, b.w, a.w)) && a.w <= b.w + TOLERANCE;

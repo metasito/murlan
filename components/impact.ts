@@ -225,3 +225,12 @@ export function flareKindFor(tier: ImpactTier): FlareKind {
   if (tier === "matchWon") return "settle";
   return "none";
 }
+
+/**
+ * Whether a landing bursts at the pile: only a bomb. The match lights the lamp alone, as the Lantern
+ * Table mockup's pwin does: only its bomb calls `bombFx` (`tests/e2e/fixtures/lantern-table/index.html`).
+ */
+export function pileBursts(tier: ImpactTier): boolean {
+  "worklet";
+  return tier === "bomb";
+}

@@ -16,6 +16,7 @@ import {
   shakeOffset,
   shakeAmplitudeFor,
   flareKindFor,
+  pileBursts,
   type ImpactTier,
   type FlareKind,
 } from "../../components/impact.ts";
@@ -467,6 +468,12 @@ describe("the lamp's flare (#765)", () => {
     // The rung this ticket's own tier table names "Ordinary win, straight /
     // flush" — the row `comboImpactTier` calls "straight", never a bomb.
     assert.equal(flareKindFor("straight"), "none");
+  });
+
+  test("the match lights the lamp but bursts nothing at the pile, as the mockup's pwin; the bomb keeps its burst", () => {
+    const expected: Record<ImpactTier, boolean> = { ordinary: false, straight: false, bomb: true, roundWon: false, matchWon: false };
+    for (const tier of ALL_TIERS) assert.equal(pileBursts(tier), expected[tier], `${tier} pile burst`);
+    assert.equal(flareKindFor("matchWon"), "settle");
   });
 
 });

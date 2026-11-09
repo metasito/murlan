@@ -49,6 +49,8 @@ export function subsetCharacters(root) {
       for (const ch of readFileSync(path.join(base, name), "utf8")) set.add(ch);
     }
   }
+  // textTransform and toLocaleUpperCase draw a letter in a case no source file spells.
+  for (const ch of [...set]) for (const cased of [ch.toUpperCase(), ch.toLowerCase()]) for (const c of cased) set.add(c);
   // Whitespace a font has no glyph for.
   for (const ws of ["\n", "\r", "\t"]) set.delete(ws);
   return [...set].sort().join("");

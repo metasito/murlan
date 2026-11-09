@@ -31,7 +31,7 @@ function mockupBody(): string {
 }
 
 describe("the felt is the mockup's cloth", () => {
-  test("the shader body is FS, line for line, less the jacquard, the canvas mapping, and the light's two lines", () => {
+  test("the shader body is FS, line for line, less the jacquard, the canvas mapping, and the departures", () => {
     const want = mockupBody().split("\n");
     const got = CLOTH_BODY.split("\n");
     want.forEach((line, i) => assert.equal(got[i], line, `line ${i + 1} of the cloth differs from FS`));

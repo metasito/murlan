@@ -13,7 +13,8 @@ import path from "node:path";
 import { describe, jest, test } from "@jest/globals";
 import { minimatch } from "minimatch";
 import { Platform, StyleSheet } from "react-native";
-import { Colors, FeltGradients, Gradient } from "../../lib/tokens.ts";
+import { CardFaceGradient, Colors, FeltGradients, Gradient } from "../../lib/tokens.ts";
+import { SUIT_COLORS } from "../../components/CardView";
 import { contrastRatio } from "../../lib/contrast.ts";
 import { NOTICE_FACES } from "../../components/table/noticeModel.ts";
 import { loadedAs, OSES, platformVariant, restoreVariants, variantsOf, variantTargets, type OS, type Variants } from "./harness/platformVariants";
@@ -34,6 +35,7 @@ const pickFor = (os: OS, spec: Record<string, unknown>) =>
   os === "web" ? (spec.web ?? spec.default) : os === "android" ? (spec.android ?? spec.native ?? spec.default) : (spec.ios ?? spec.native ?? spec.default);
 
 type Sheet = Record<string, object>;
+const madeAtLine = new WeakMap<object, number>();
 /** Every sheet each of `files` makes when it is imported as `os`, in the order a file made them. */
 function sheetsMadeAs(os: OS, files: string[], watch: ReadonlySet<string>, variants: Variants): Map<string, Sheet[]> {
   const created = new Map<string, Sheet[]>();
@@ -42,8 +44,14 @@ function sheetsMadeAs(os: OS, files: string[], watch: ReadonlySet<string>, varia
     const realCreate = rn.StyleSheet.create.bind(rn.StyleSheet);
     jest.spyOn(rn.StyleSheet, "create").mockImplementation(((styles: Sheet) => {
       const sheet = realCreate(styles);
-      const caller = (new Error().stack ?? "").split("\n").flatMap((line) => /\(?(\/[^():]+\.tsx?):\d+:\d+\)?$/.exec(line)?.[1] ?? []).map((f) => path.relative(repoRoot, f)).find((f) => watch.has(f));
-      if (caller) created.set(caller, [...(created.get(caller) ?? []), sheet]);
+      const frame = (new Error().stack ?? "").split("\n").flatMap((text) => {
+        const m = /\(?(\/[^():]+\.tsx?):(\d+):\d+\)?$/.exec(text);
+        return m ? [{ file: path.relative(repoRoot, m[1]!), line: Number(m[2]) }] : [];
+      }).find((f) => watch.has(f.file));
+      if (frame) {
+        madeAtLine.set(sheet, frame.line);
+        created.set(frame.file, [...(created.get(frame.file) ?? []), sheet]);
+      }
       return sheet;
     }) as typeof rn.StyleSheet.create);
     jest.spyOn(rn.Platform, "select").mockImplementation(((spec: Record<string, unknown>) => pickFor(os, spec)) as typeof rn.Platform.select);
@@ -61,8 +69,8 @@ function sheetsMadeAs(os: OS, files: string[], watch: ReadonlySet<string>, varia
 const nameOf = (n: ts.PropertyName): string | undefined => (ts.isIdentifier(n) || ts.isStringLiteral(n) || ts.isNumericLiteral(n) ? n.text : undefined);
 
 /** `const NAME = StyleSheet.create({ ... })` as written: the name, and the keys the literal declares. */
-function declaredSheets(file: string): { name: string; keys: string[] }[] {
-  const out: { name: string; keys: string[] }[] = [];
+function declaredSheets(file: string, source: ts.SourceFile = parsed.get(file)!): { name: string; keys: string[]; line: number }[] {
+  const out: { name: string; keys: string[]; line: number }[] = [];
   const visit = (node: ts.Node) => {
     if (
       ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isCallExpression(node.initializer) &&
@@ -75,11 +83,12 @@ function declaredSheets(file: string): { name: string; keys: string[] }[] {
         assert.ok(key, `${file}: ${node.name.getText()} has an entry this audit cannot name (${p.getText().slice(0, 40)})`);
         return key;
       });
-      out.push({ name: node.name.text, keys });
+      const call = node.initializer.expression;
+      out.push({ name: node.name.text, keys, line: source.getLineAndCharacterOfPosition((ts.isPropertyAccessExpression(call) ? call.name : call).getStart()).line + 1 });
     }
     ts.forEachChild(node, visit);
   };
-  visit(parsed.get(file)!);
+  visit(source);
   return out;
 }
 
@@ -88,9 +97,9 @@ type Unread = { kind: "inline colour" | "other"; text: string };
 type Found = { refs: Ref[]; unread: Unread[] };
 const INLINE_COLOUR_KEYS = new Set(["color", "backgroundColor"]);
 const TABLE_NOTICE = "components/table/TableNotice.tsx";
+const CARD_VIEW = "components/CardView.tsx";
 const INLINE_COLOUR_FROM_ELSEWHERE: Record<string, string> = {
   [TABLE_NOTICE]: "the notice palette's inks, measured over every felt stop by contrast.test.ts",
-  "components/CardView.tsx": "the suit's ink over the card's own face, which the felt never reaches",
 };
 
 /** Whether `name` is the import of `NOTICE_FACES` from noticeModel, and no declaration of the file hides it. */
@@ -110,6 +119,49 @@ function isNoticeFaces(source: ts.SourceFile, name: string): boolean {
   };
   find(source);
   return imported && !hidden;
+}
+
+/** The initialiser of the `const color` CardView computes after `rankText`: the one ink its rank text is given. */
+function cardColorInit(source: ts.SourceFile): ts.Expression | undefined {
+  let found: ts.Expression | undefined;
+  const visit = (n: ts.Node): void => {
+    if (ts.isVariableDeclaration(n) && n.name.getText() === "color" && n.initializer && source.text.slice(0, n.pos).includes("const rankText")) found = n.initializer;
+    ts.forEachChild(n, visit);
+  };
+  visit(source);
+  return found;
+}
+
+/** Whether `prop` is `{ color }` or `color: color` with that `color` bound to the declaration `cardInks` reads. */
+function namesCardInk(prop: ts.ObjectLiteralElementLike): boolean {
+  const value = ts.isShorthandPropertyAssignment(prop) ? prop.name : ts.isPropertyAssignment(prop) ? prop.initializer : undefined;
+  if (!value || !ts.isIdentifier(value) || value.text !== "color") return false;
+  const declared = declarationsInScope(value);
+  const init = cardColorInit(prop.getSourceFile());
+  return declared !== "bound" && init !== undefined && declared.length === 1 && declared[0] === init;
+}
+
+/** What the nearest scope declaring `id`'s name initialises it with, or "bound" where a parameter or a pattern binds it. */
+function declarationsInScope(id: ts.Identifier): ts.Expression[] | "bound" {
+  const binds = (name: ts.BindingName): boolean => (ts.isIdentifier(name) ? name.text === id.text : name.elements.some((e) => !ts.isOmittedExpression(e) && binds(e.name)));
+  for (let scope: ts.Node | undefined = id.parent; scope; scope = scope.parent) {
+    if (ts.isFunctionLike(scope) && scope.parameters.some((p) => binds(p.name))) return "bound";
+    if ((ts.isForStatement(scope) || ts.isForInStatement(scope) || ts.isForOfStatement(scope)) && scope.initializer && ts.isVariableDeclarationList(scope.initializer) && scope.initializer.declarations.some((d) => binds(d.name))) return "bound";
+    if (ts.isCatchClause(scope) && scope.variableDeclaration && binds(scope.variableDeclaration.name)) return "bound";
+    if (ts.isCaseOrDefaultClause(scope) && scope.statements.some((st) => ts.isVariableStatement(st) && st.declarationList.declarations.some((d) => binds(d.name)))) return "bound";
+    if (!(ts.isBlock(scope) || ts.isSourceFile(scope) || ts.isModuleBlock(scope))) continue;
+    const found: ts.Expression[] = [];
+    for (const st of scope.statements) {
+      if (!ts.isVariableStatement(st)) continue;
+      for (const d of st.declarationList.declarations) {
+        if (!binds(d.name)) continue;
+        if (!ts.isIdentifier(d.name) || !d.initializer) return "bound";
+        found.push(d.initializer);
+      }
+    }
+    if (found.length) return found;
+  }
+  return [];
 }
 
 /** Every sheet entry a style expression can resolve to, and every piece of it this audit cannot follow. */
@@ -136,6 +188,7 @@ function styleRefs(file: string, source: ts.SourceFile, expr: ts.Node, out: Foun
     for (const p of expr.properties) {
       const key = ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p) ? nameOf(p.name) : undefined;
       if (key === undefined) unread("an object entry this audit cannot name");
+      else if (file === CARD_VIEW && key === "color" && namesCardInk(p)) continue;
       else if (INLINE_COLOUR_KEYS.has(key)) unread(`an inline ${key}`, "inline colour");
       else if (key === "opacity") unread("an inline opacity");
     }
@@ -143,12 +196,8 @@ function styleRefs(file: string, source: ts.SourceFile, expr: ts.Node, out: Foun
   }
   if (ts.isIdentifier(expr)) {
     if (expr.text === "undefined" || seen.has(expr.text)) return;
-    const declared: ts.Expression[] = [];
-    const find = (n: ts.Node) => {
-      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === expr.text && n.initializer) declared.push(n.initializer);
-      ts.forEachChild(n, find);
-    };
-    find(source);
+    const declared = declarationsInScope(expr);
+    if (declared === "bound") return unread("a name a parameter or pattern binds");
     if (declared.length === 0) return unread("a name with no declaration in this file");
     return declared.forEach((d) => styleRefs(file, source, d, out, new Set([...seen, expr.text])));
   }
@@ -368,21 +417,24 @@ const declaring = (ref: Ref): string => {
 const owners = new Map(TABLE_TEXT.map((ref) => [`${ref.file}:${ref.sheet}`, declaring(ref)]));
 const sheetKey = (file: string, name: string) => (name === "styles" ? `${file}:styles` : name);
 
+/** Each sheet `file` declares with the sheet its module made at that call, found by the line of the call and held to the keys declared. */
+function pairSheets(file: string, os: OS, made: readonly Sheet[], source?: ts.SourceFile): Map<string, Sheet> {
+  const sheets = new Map<string, Sheet>();
+  for (const { name, keys, line } of declaredSheets(file, source)) {
+    const sheet = made.find((m) => madeAtLine.get(m) === line);
+    assert.ok(sheet, `${file}: importing it as ${os} did not run the StyleSheet.create of ${name} at line ${line}`);
+    assert.ok(keys.length === Object.keys(sheet).length && keys.every((k) => k in sheet), `${file}: the sheet made at line ${line} is not the ${keys.length} entries ${name} declares`);
+    assert.ok(!sheets.has(sheetKey(file, name)), `${name} is declared twice`);
+    sheets.set(sheetKey(file, name), sheet);
+  }
+  return sheets;
+}
+
 const SHEETS = Object.fromEntries(
   OSES.map((os) => {
     const files = [...new Set(owners.values())];
     const made = sheetsMadeAs(os, files, READ, VARIANTS);
-    const sheets = new Map<string, Sheet>();
-    for (const file of files) {
-      const unmatched = [...(made.get(file) ?? [])];
-      for (const { name, keys } of declaredSheets(file)) {
-        const at = unmatched.findIndex((sheet) => keys.length === Object.keys(sheet).length && keys.every((k) => k in sheet));
-        assert.ok(at !== -1, `${file}: importing it as ${os} did not run StyleSheet.create for ${name} (${keys.length} entries)`);
-        assert.ok(!sheets.has(sheetKey(file, name)), `${name} is declared twice`);
-        sheets.set(sheetKey(file, name), unmatched.splice(at, 1)[0]!);
-      }
-    }
-    return [os, sheets];
+    return [os, new Map(files.flatMap((file) => [...pairSheets(file, os, made.get(file) ?? [])]))];
   })
 ) as Record<OS, Map<string, Sheet>>;
 
@@ -527,6 +579,47 @@ test("the pile inks no text of its own: its notices are TableNotice's plate, in 
   assert.ok(TABLE_TEXT.some((r) => r.file === TABLE_NOTICE), "TableNotice inks no <TableText> style");
 });
 
+/** Every ink the card's rank text is given: the leaves of the `color` it computes, each a token or the suit table. */
+function cardInks(source: ts.SourceFile): Set<string> {
+  const inks = new Set<string>();
+  const leaf = (e: ts.Expression): void => {
+    if (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e)) return leaf(e.expression);
+    if (ts.isConditionalExpression(e)) return [e.whenTrue, e.whenFalse].forEach(leaf);
+    if (ts.isElementAccessExpression(e) && e.expression.getText() === "SUIT_COLORS") return void Object.values(SUIT_COLORS).forEach((c) => inks.add(c));
+    if (ts.isPropertyAccessExpression(e) && e.expression.getText() === "Colors" && typeof (Colors as Record<string, unknown>)[e.name.text] === "string") {
+      return void inks.add((Colors as Record<string, string>)[e.name.text]!);
+    }
+    throw new Error(`${CARD_VIEW}: a card ink this audit cannot read: ${e.getText().slice(0, 60)}`);
+  };
+  const init = cardColorInit(source);
+  assert.ok(init, `${CARD_VIEW}: no \`const color\` after \`rankText\`: the card's ink is computed elsewhere now`);
+  leaf(init);
+  return inks;
+}
+
+function assertOnCardFace(inks: Iterable<string>) {
+  for (const ink of inks) for (const face of CardFaceGradient) {
+    const ratio = contrastRatio(ink, face);
+    assert.ok(ratio >= BODY_MIN, `${ink} on the card face ${face} is only ${ratio.toFixed(2)}:1, needs >=${BODY_MIN}:1`);
+  }
+}
+
+describe("the card's rank and suit ink on its face", () => {
+  test("every ink CardView draws clears the body bar on every stop of the card face", () => {
+    const inks = cardInks(parsed.get(CARD_VIEW)!);
+    assert.ok(inks.size >= 3, `only ${inks.size} card inks found`);
+    assertOnCardFace(inks);
+  });
+
+  test("an ink the face washes out, or one this audit cannot read, fails", () => {
+    const plant = (expr: string) => cardInks(asSource(CARD_VIEW, `const rankText = 1;\nconst color = ${expr};`));
+    assert.deepEqual([...plant("a ? Colors.heart : Colors.cardInk")].sort(), [Colors.cardInk, Colors.heart].sort());
+    assert.throws(() => assertOnCardFace(plant("a ? Colors.heart : Colors.cardPaperEdge")), /is only .*:1/);
+    assert.throws(() => plant("a ? Colors.heart : pick()"), /card ink this audit cannot read/);
+    assert.throws(() => cardInks(asSource(CARD_VIEW, "const other = 1;")), /no `const color`/);
+  });
+});
+
 function assertClears(id: string, ink: string, fills: string[], backdrop: Backdrop, min: number, os: OS) {
   for (const [felt, gradient] of Object.entries(FeltGradients)) {
     for (const stop of backdrop.stops ?? ANY_STOP) {
@@ -571,6 +664,23 @@ describe("a module is loaded as the variant its platform takes", () => {
   });
 });
 
+describe("a sheet is paired with its declaration by the call that made it", () => {
+  const TWINS = "tests/native/variants/twins.ts";
+  const source = asSource(TWINS, readFileSync(path.join(repoRoot, TWINS), "utf8"));
+
+  test("two sheets with the same keys are told apart, whatever else the module creates", () => {
+    const made = sheetsMadeAs("ios", [TWINS], new Set([TWINS]), new Map()).get(TWINS)!;
+    assert.equal(made.length, 3, "the fixture creates three sheets, one of them undeclared");
+    const paired = pairSheets(TWINS, "ios", made, source);
+    const ink = (name: string) => (StyleSheet.flatten(paired.get(sheetKey(TWINS, name))!.label as object) as { color: string }).color;
+    assert.deepEqual([ink("first"), ink("second")], ["#bbbbbb", "#dddddd"]);
+  });
+
+  test("a sheet no call made is reported", () => {
+    assert.throws(() => pairSheets(TWINS, "ios", [], source), /did not run the StyleSheet.create of first/);
+  });
+});
+
 describe("the audit sees what a text scan of `key: {` could not", () => {
   const scan = (file: string, code: string, others: Record<string, string> = {}) => {
     const files = { [TABLE_TEXT_FILE]: "export function TableText() {}", ...others, [file]: code };
@@ -602,6 +712,29 @@ describe("the audit sees what a text scan of `key: {` could not", () => {
     assert.deepEqual(seen.keys, ["a", "b", "c"]);
   });
 
+  test("a name is the declaration of the scope that holds it, not any of the file's with that name", () => {
+    const shadow = scan(PLANT, `${IMPORT}const tone = styles.outer;\nfunction A(tone) { return <TableText style={tone} />; }`);
+    assert.equal(shadow.unread.length, 1, "a parameter hides the module's tone, which is not what A is given");
+    assert.deepEqual(shadow.keys, []);
+    const near = scan(PLANT, `${IMPORT}const tone = styles.outer;\nfunction A() { const tone = styles.inner; return <TableText style={tone} />; }`);
+    assert.deepEqual(near.keys, ["inner"]);
+    const apart = scan(PLANT, `${IMPORT}function A() { const tone = { color: "#fff" }; return tone; }\nfunction B() { const tone = styles.b; return <TableText style={tone} />; }`);
+    assert.deepEqual([apart.keys, apart.unread], [["b"], []]);
+    const pattern = scan(PLANT, `${IMPORT}const tone = styles.outer;\nfunction A({ tone }) { return <TableText style={tone} />; }`);
+    assert.equal(pattern.unread.length, 1);
+    for (const [what, body] of [
+      ["a for initialiser", "for (const tone of list) { out.push(<TableText style={tone} />); }"],
+      ["a for-in initialiser", "for (const tone in list) { out.push(<TableText style={tone} />); }"],
+      ["a for loop's let", "for (let tone = 0; tone < 2; tone++) { out.push(<TableText style={tone} />); }"],
+      ["a catch binding", "try { run(); } catch (tone) { out.push(<TableText style={tone} />); }"],
+      ["a case clause", "switch (k) { case 1: const tone = pick(); out.push(<TableText style={tone} />); }"],
+    ] as const) {
+      const found = scan(PLANT, `${IMPORT}const tone = styles.outer;\nfunction A() { ${body} }`);
+      assert.equal(found.unread.length, 1, what);
+      assert.deepEqual(found.keys, [], what);
+    }
+  });
+
   test("an inline colour is let through only where a reason is stated, and an inline opacity or an unread style never is", () => {
     const style = (e: string) => `${IMPORT_BESIDE}import { NOTICE_FACES } from "./noticeModel";\nconst a = <TableText style={${e}} />;`;
     assert.deepEqual(scan(TABLE_NOTICE, style("[NOTICE_FACES[run.face], styles.upper, { color: paint.strong }]")).unread, []);
@@ -610,6 +743,22 @@ describe("the audit sees what a text scan of `key: {` could not", () => {
       assert.ok(scan(TABLE_NOTICE, style(e)).unread.length > 0, `TableNotice: ${e}`);
       assert.ok(scan("components/CardView.tsx", `${IMPORT}const a = <TableText style={${e}} />;`).unread.length > 0, `CardView: ${e}`);
     }
+  });
+
+  test("CardView's inline colour is its computed ink and no other", () => {
+    const real = readFileSync(path.join(repoRoot, CARD_VIEW), "utf8");
+    const inCard = (text: string) => {
+      const sources = new Map([[CARD_VIEW, asSource(CARD_VIEW, text)], [TABLE_TEXT_FILE, asSource(TABLE_TEXT_FILE, "export function TableText() {}")]]);
+      return unreadIn(CARD_VIEW, tableTextIn(CARD_VIEW, sources.get(CARD_VIEW)!, tableTextGraph(sources)));
+    };
+    const withBottom = (ink: string) => real.replace("{ top: undefined, bottom: inset, color },", `{ top: undefined, bottom: inset, ${ink} },`);
+    assert.ok(withBottom("color: Colors.cardPaperEdge") !== real, "the plant found nothing to replace");
+    assert.deepEqual(inCard(real), []);
+    assert.deepEqual(inCard(withBottom("color: color")), []);
+    assert.equal(inCard(withBottom("color: Colors.cardPaperEdge")).length, 1);
+    assert.equal(inCard(withBottom("color: Colors.spade")).length, 1);
+    assert.equal(inCard(withBottom("backgroundColor: color")).length, 1);
+    assert.equal(inCard(real.replace("const color = card.isJoker", "const other = 1;\n  const color2 = card.isJoker")).length, 2, "a `color` bound to nothing the audit reads is not the card's ink");
   });
 
   test("TableText is followed through an alias, a renamed import and a spread", () => {

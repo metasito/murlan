@@ -449,7 +449,7 @@ test.describe("the online table, at the audit's viewports", () => {
               row,
               `the table no longer lays out the way tests/e2e/57-polish-audit/ records it ` +
                 `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
-                `it and regenerate the record with AUDIT_UPDATE=1 (a whole run, not a shard), ` +
+                `it and regenerate the record with AUDIT_UPDATE=1 (any subset of viewports; each row replaces its own), ` +
                 `correcting the numbers README.md quotes.`
             ).toBe(was);
           }
@@ -461,10 +461,7 @@ test.describe("the online table, at the audit's viewports", () => {
   }
 
   test.afterAll(() => {
-    // Only a whole survey is written down. A `--shard`ed or `-g`-filtered run
-    // measures some of the four, and a partial file replacing the record reads
-    // as the rest having stopped being true.
-    if (!UPDATING || rows.length !== VIEWPORTS.length * 2) return;
+    if (!UPDATING || rows.length === 0) return;
     mkdirSync(AUDIT_DIR, { recursive: true });
     // Merged into the existing file by key, never replacing it outright: this
     // run's rows hold whichever `cards` count each viewport's real deal

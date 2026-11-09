@@ -4,7 +4,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fits, HINT_PER_GLYPH, TOLERANCE, unpriced, type Box } from "../helpers/drawnFit.ts";
 import { noticeBox } from "../../components/table/noticeModel.ts";
-import { FALLBACK_EM } from "../../components/table/noticeWidth.ts";
+import { TEXT_METRICS } from "../../components/table/textMetrics.generated.ts";
 
 const EM = 14;
 const LINEAR = 60;
@@ -21,8 +21,9 @@ describe("the drawn fits stay as tight as the evidence", () => {
   test("a renderer may draw half a pixel a glyph off linear; only a glyph no face holds may fall short of its price", () => {
     assert.equal(HINT_PER_GLYPH, 0.5);
     assert.equal(unpriced(word("TURNO")!), 0);
-    assert.equal(FALLBACK_EM, 1.25);
-    assert.equal(unpriced(word("你")!), FALLBACK_EM * EM);
+    assert.equal(unpriced(word("💣")!), TEXT_METRICS.fallbackEm["U+1F4A3"] * EM);
+    assert.equal(unpriced(word("★")!), TEXT_METRICS.fallbackEm["U+2605"] * EM);
+    assert.equal(unpriced(word("你")!), (TEXT_METRICS.faces.bold.widestGlyph / TEXT_METRICS.faces.bold.upem) * EM);
   });
 });
 

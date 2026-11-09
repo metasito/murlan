@@ -120,8 +120,12 @@ export const TEXT_METRICS = {
         "À": 547,
         "Ç": 540,
         "È": 480,
+        "É": 480,
         "Ë": 480,
+        "Ì": 253,
+        "Ò": 552,
         "×": 510,
+        "Ù": 557,
         "à": 512,
         "ç": 405,
         "è": 493,
@@ -257,8 +261,12 @@ export const TEXT_METRICS = {
         "À": 556,
         "Ç": 538,
         "È": 479,
+        "É": 479,
         "Ë": 479,
+        "Ì": 267,
+        "Ò": 552,
         "×": 521,
+        "Ù": 560,
         "à": 518,
         "ç": 411,
         "è": 494,
@@ -275,6 +283,13 @@ export const TEXT_METRICS = {
         "−": 565
       }
     }
+  },
+  "fallbackEm": {
+    "U+1F0CF": 1.25,
+    "U+1F4A3": 1.25,
+    "U+2605": 1.05,
+    "U+2660": 1.05,
+    "U+26A0": 1.25
   },
   "runs": {
     "it": {
@@ -496,11 +511,9 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 8040,
+          "units": 8592,
           "chars": 19,
-          "fallback": [
-            "U+00D2"
-          ],
+          "fallback": [],
           "slots": [
             "name"
           ]
