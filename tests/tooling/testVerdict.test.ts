@@ -446,19 +446,25 @@ describe("the gate step", () => {
     const pkg = (test: string, more = {}) => JSON.stringify({ scripts: { test, lint: "eslint ." }, ...more });
     const BUDGET = "tools/ci/e2e-budget.mjs";
     const CONFIG = "tests/e2e/playwright.config.ts";
+    const ENVIRONMENT = "tests/native/harness/timeoutHeadroomEnvironment.mjs";
+    const SETUP = "tests/native/setup.ts";
     const configNaming = (...reporters: string[]) =>
       `import { resolve } from "node:path";\nexport default {\n  globalSetup: resolve(__dirname, "../../tools/ci/preflightMemory.mjs"),\n  reporter: process.env.CI\n    ? [["list"], ${reporters.map((r) => `[resolve(__dirname, "../../${r}")]`).join(", ")}]\n    : [["list"]],\n  retries: 0,\n};\n`;
     const baseTree = {
       "tools/ci/test-verdict.mjs": "",
-      ".github/CODEOWNERS": "/tools/ci/ @o\n/tools/ci/test-verdict.mjs\n/tools/ci/results-*.mjs @o\npackage.json @o\n/tests/e2e/playwright*.config.ts @o\n",
+      ".github/CODEOWNERS": "/tools/ci/ @o\n/tools/ci/test-verdict.mjs\n/tools/ci/results-*.mjs @o\npackage.json @o\n/tests/e2e/playwright*.config.ts @o\njest.config.js @o\n/tests/native/ @o\n",
       [REPORTER]: "report",
       [BUDGET]: "export default class { onTestEnd() {} }\n",
       "tools/ci/preflightMemory.mjs": "export default () => {};\n",
       [CONFIG]: configNaming(BUDGET, "tools/ci/results-playwright-reporter.mjs"),
       "package.json": pkg("node --test --test-reporter=./tools/ci/results-node-reporter.mjs"),
       "app.ts": "1",
+      "jest.config.js": `const rootDir = __dirname;\nmodule.exports = { projects: [{ setupFilesAfterEnv: [\`\${rootDir}/${SETUP}\`], testEnvironment: \`\${rootDir}/${ENVIRONMENT}\` }] };\n`,
+      [ENVIRONMENT]: "export default class { async handleTestEvent() {} }\n",
+      [SETUP]: 'require("./mocks/http");\n',
+      "tests/native/mocks/http.ts": "export {};\n",
     };
-    const FORGED = "export default class { onTestEnd(_test, result) { result.status = \"passed\"; } }\n";
+    const FORGED ="export default class { onTestEnd(_test, result) { result.status = \"passed\"; } }\n";
     /** Commits the base, then the head over it in a scratch repository, and runs the verdict with real git. */
     function judgeHead(head: Record<string, string>, base: Record<string, string | null> = {}) {
       const dir = mkdtempSync(path.join(work, "wiring-"));
@@ -515,6 +521,14 @@ describe("the gate step", () => {
       annotated(judgeHead({ "tools/ci/preflightMemory.mjs": FORGED }), "tools/ci/preflightMemory\\.mjs");
     });
 
+    test("the native run's environment and setup run in every test, so they are wiring: a failure recorded as passed is red beside a file no owner reviews", () => {
+      const forged = 'export default class { async handleTestEvent(event) { if (event.name === "test_done") event.test.errors.length = 0; } }\n';
+      annotated(judgeHead({ [ENVIRONMENT]: forged }), ENVIRONMENT.replace(/\./g, "\\."));
+      has(judgeHead({ [ENVIRONMENT]: forged, "app.ts": "2" }), /::error::the runners' wiring changes \(tests\/native\/harness\/timeoutHeadroomEnvironment\.mjs\) beside app\.ts/);
+      has(judgeHead({ [SETUP]: 'afterEach(() => { expect.hasAssertions = () => {}; });\n', "app.ts": "2" }), /::error::the runners' wiring changes \(tests\/native\/setup\.ts\) beside app\.ts/);
+      has(judgeHead({ "tests/native/mocks/http.ts": "globalThis.forged = true;\n", "app.ts": "2" }), /::error::the runners' wiring changes \(tests\/native\/mocks\/http\.ts\) beside app\.ts/);
+    });
+
     test("a reporter the head's config newly names is wiring, and the base's ownerless line un-owns its judge", () => {
       const NEW = "tools/ci/forged.mjs";
       const said = judgeHead({ [NEW]: FORGED, [CONFIG]: configNaming(NEW, "tools/ci/results-playwright-reporter.mjs"), "tools/ci/test-verdict.mjs": "x" });
@@ -553,6 +567,7 @@ describe("the gate step", () => {
       "scripts/lib/proc.mjs",
       "scripts/nodeTest.mjs",
       "t/down.mjs",
+      "t/setup.ts",
       "tools/ci/e2e-budget.mjs",
       "tools/ci/native-budget.mjs",
       "tools/ci/results-node-reporter.mjs",
@@ -586,7 +601,6 @@ describe("which commit's judge the gate step runs, the step itself run over scra
   const judgeBy = (who: string) => `console.log("judged by the ${who}");\n`;
   const always = { "scripts/lib/entry.mjs": "", "tests/e2e/tiers.mjs": "", "app.ts": "1" };
 
-  /** Commits each tree over the last (null deletes a file), the last as HEAD, and runs the step as GitHub's bash does. */
   /** A `gh` answering the commits API from the scratch repository's own history, as GitHub would; `down` fails every call. */
   function fakeGh(hub: "history" | "down") {
     const bin = mkdtempSync(path.join(work, "gh-"));
@@ -599,6 +613,7 @@ describe("which commit's judge the gate step runs, the step itself run over scra
   }
   let hub: "history" | "down" = "history";
   const gate = (...commits: Record<string, string | null>[]) => gateInto("main", ...commits);
+  /** Commits each tree over the last (null deletes a file), the last as HEAD, and runs the step as GitHub's bash does. */
   function gateInto(baseRef: string, ...commits: Record<string, string | null>[]) {
     const dir = mkdtempSync(path.join(work, "gate-"));
     const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
@@ -647,10 +662,15 @@ describe("which commit's judge the gate step runs, the step itself run over scra
   });
 
   test("a head that adds both back to a main that once held the judge is red, and so is one whose history cannot be read", () => {
-    red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }, { [WRITER]: "", [JUDGE]: judgeBy("head") }));
+    const once = gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }, { [WRITER]: "", [JUDGE]: judgeBy("head") });
+    red(once);
+    assert.match(once.out, /main once held one/);
     hub = "down";
     try {
-      red(gate({ [WRITER]: "", [JUDGE]: judgeBy("head") }));
+      const down = gate({ [WRITER]: "", [JUDGE]: judgeBy("head") });
+      assert.equal(down.code, 1, down.out);
+      assert.match(down.out, /::error::the GitHub API call reading whether main ever held tools\/ci\/test-verdict\.mjs failed/);
+      assert.doesNotMatch(down.out, /never held|judged by/);
     } finally {
       hub = "history";
     }
