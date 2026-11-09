@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { STEPS } from "../../tools/loop/check-steps.mjs";
+import ts from "typescript";
 import { parse } from "yaml";
 import { JOBS, outputs, scopeOf } from "../../tools/ci/scope.mjs";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
@@ -152,8 +153,9 @@ describe("scopeOf, change by change", () => {
     ["prose alone skips the app suites and still runs the scans", ["docs/research/a-note.md"], { app: false, harness: false, scans: true }],
     ["a nested README is prose", ["tests/e2e/57-polish-audit/README.md"], { app: false, harness: false, scans: true }],
     ["the root README is asserted on, by licence.test.ts", ["README.md"], { app: true, harness: false, scans: true }],
-    ["docs TypeScript is in tsconfig.json", ["docs/research/a-note.ts"], { app: true, harness: false, scans: true }],
-    ["docs TSX too", ["docs/research/a-note.tsx"], { app: true, harness: false, scans: true }],
+    ["docs TypeScript is in tsconfig.json", ["docs/specs/a-note.ts"], { app: true, harness: false, scans: true }],
+    ["docs TSX too", ["docs/specs/a-note.tsx"], { app: true, harness: false, scans: true }],
+    ["research TypeScript is excluded from tsconfig.json", ["docs/research/a-note.ts"], { app: false, harness: false, scans: true }],
     ["a doc the suite asserts on is not prose", ["docs/GAME-RULES.md"], { app: true, harness: false, scans: true }],
     ["the agent docs run both suites", ["docs/agents/RULES.md"], { app: true, harness: true, scans: true }],
     ["the root CLAUDE.md runs both suites", ["CLAUDE.md"], { app: true, harness: true, scans: true }],
@@ -209,4 +211,10 @@ describe("every job the scope gates reads its own key of JOBS", () => {
       assert.ok(conditionsOffJobs(planted).some((p) => want.test(p)), conditionsOffJobs(planted).join("\n"));
     });
   }
+});
+
+test("docs/research is outside the typecheck and the lint, as the scope decision assumes", () => {
+  const tsconfig = ts.readConfigFile(path.join(repoRoot, "tsconfig.json"), ts.sys.readFile).config;
+  assert.ok(tsconfig.exclude.includes("docs" + "/research"));
+  assert.match(readFileSync(path.join(repoRoot, "eslint.config.js"), "utf8"), /"docs\/research\/\*\*"/);
 });

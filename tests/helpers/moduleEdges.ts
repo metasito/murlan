@@ -1,19 +1,16 @@
-import path from "node:path";
 import ts from "typescript";
+import { localPath } from "./specifiers.ts";
 
 export interface Edge {
   from: string;
   to: string;
+  spec: string;
   via: "import" | "require" | "mock";
   gated: boolean;
 }
 
 function resolveSpec(file: string, spec: string): string {
-  const bare = spec.startsWith("@/")
-    ? spec.slice(2)
-    : spec.startsWith(".")
-      ? path.posix.join(path.posix.dirname(file), spec)
-      : spec;
+  const bare = localPath(file, spec, false) ?? spec;
   return bare.replace(/\.(tsx?|mjs|js)$/, "").replace(/\/index$/, "");
 }
 
@@ -41,10 +38,13 @@ export function moduleEdges(file: string, text: string): Edge[] {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
   const out: Edge[] = [];
   const add = (spec: string, via: Edge["via"], gated: boolean) =>
-    out.push({ from: file, to: resolveSpec(file, spec), via, gated });
+    out.push({ from: file, to: resolveSpec(file, spec), spec, via, gated });
   const visit = (node: ts.Node, gated: boolean): void => {
     if (ts.isImportDeclaration(node) && !typeOnly(node.importClause) && ts.isStringLiteral(node.moduleSpecifier)) {
       add(node.moduleSpecifier.text, "import", false);
+    }
+    if (ts.isImportEqualsDeclaration(node) && !node.isTypeOnly && ts.isExternalModuleReference(node.moduleReference) && ts.isStringLiteral(node.moduleReference.expression)) {
+      add(node.moduleReference.expression.text, "require", false);
     }
     if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
       add(node.moduleSpecifier.text, "import", false);

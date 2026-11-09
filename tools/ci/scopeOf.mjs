@@ -8,11 +8,11 @@
 
 /**
  * Prose the suite asserts *on* is not prose to this decision: `rulesAreSingleSourced.test.ts`
- * reads RULES.md, CLAUDE.md, the command files and docs/agents/, and `docs/**` TypeScript is in
- * tsconfig.json. Derived by `tests/tooling/ciScope.test.ts`, which reds on a path it misses.
+ * reads RULES.md, CLAUDE.md, the command files and docs/agents/, and `docs/**` TypeScript outside
+ * `docs/research/` is in tsconfig.json. Derived by `tests/tooling/ciScope.test.ts`, which reds on a path it misses.
  */
 export const ASSERTED_PROSE =
-  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/adr\/README\.md$|docs\/.*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$|CONTEXT\.md$|README\.md$)/;
+  /^(docs\/agents\/|docs\/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF|BETA-PLAYTEST|DISCONNECT-POLICY)\.md$|docs\/adr\/README\.md$|docs\/(?!research\/).*\.tsx?$|\.claude\/commands\/|CLAUDE\.md$|CONTEXT\.md$|README\.md$)/;
 
 export const PROSE = /^(docs\/|\.claude\/)|\.md$/;
 

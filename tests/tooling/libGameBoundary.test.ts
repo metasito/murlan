@@ -4,6 +4,7 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const GAME = path.join(root, "lib", "game");
@@ -54,9 +55,8 @@ function scan(file: string, source: string): Scan {
 }
 
 function target(file: string, spec: string): string | null {
-  if (spec.startsWith(".")) return path.resolve(path.dirname(file), spec);
-  if (spec.startsWith("@/")) return path.join(root, spec.slice(2));
-  return null;
+  const local = localPath(path.relative(root, file).split(path.sep).join("/"), spec);
+  return local === null ? null : path.join(root, local);
 }
 
 const inside = (dir: string) => (i: Import): boolean => {

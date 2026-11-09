@@ -15,7 +15,6 @@ const mock = { clothBakes: 0, liveCloth: 0, images: [] as { dispose: jest.Mock; 
 
 jest.mock('@shopify/react-native-skia', () => {
   const R = require('react') as typeof import('react');
-  const { jest: j } = require('@jest/globals') as typeof import('@jest/globals');
   const call: object = new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : call), apply: () => call });
   const element = ({ children }: { children?: React.ReactNode }) => R.createElement(R.Fragment, null, children);
   const surface = (gpu: boolean) => {
@@ -24,7 +23,7 @@ jest.mock('@shopify/react-native-skia', () => {
       const image = {
         texture,
         dead: false,
-        dispose: j.fn(),
+        dispose: jest.fn(),
         makeNonTextureImage: () => make(false),
         width: () => 874,
         height: () => 402,

@@ -1300,6 +1300,30 @@ const GUARDS = [
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
   {
+    id: "jest-is-called-by-name",
+    why: "The guards built on JEST_MOCK (tests/tooling/lintGuards.test.ts holds them) recognise the callee by the name `jest` and a dotted property, so an alias, a computed property or a stored method reaches a module unseen: call `jest.mock(…)` and the rest directly, never through another name.",
+    selector: [
+      'Identifier[name="jest"]:not(CallExpression > MemberExpression[computed=false].callee > .object, ImportSpecifier[imported.name="jest"][local.name="jest"] > Identifier, TSQualifiedName > .left, TSTypeQuery > Identifier, MemberExpression[computed=false] > .object)',
+      'MemberExpression[object.name="jest"]:not(CallExpression > .callee)',
+    ].join(", "),
+    files: ["tests/native/**/*.{ts,tsx}"],
+    plant: { file: "tests/native/plant.test.tsx", code: [
+      "import { jest as j } from '@jest/globals';",
+      "const m = jest.doMock;",
+      "jest['doMock']('@/context/GameContext', () => ({}));",
+      "const j2 = jest;",
+      "const { doMock } = jest;",
+      "register(jest);",
+    ].join("\n"), hits: 6 },
+    spare: [
+      "jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));",
+      "import { jest } from '@jest/globals';",
+      "const spy: jest.Mock = jest.fn();",
+      "type T = typeof jest;",
+      "jest.useFakeTimers();",
+    ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
+  },
+  {
     id: "table-renders-through-the-app",
     why: "The socket, the game contexts and the query client are the app's own (tests/native/harness/renderApp.tsx): online state arrives through socket().deliver('game:state', …), an offline table through renderApp's `offline` save. A typed slice fixture is only for a single-slice components/table leaf (D16).",
     selector: seamsOf({

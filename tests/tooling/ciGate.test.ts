@@ -82,3 +82,13 @@ test("the gate's entry point fails closed on what it cannot read", () => {
   assert.equal(run({}, quiet), 1);
   assert.equal(run({ NEEDS: "not json" }, quiet), 1);
 });
+
+test("a daily schedule runs the whole suite on main, and only the weekly one compiles devices and commits timings", () => {
+  const raw = readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
+  const crons = ((parse(raw).on.schedule ?? []) as { cron: string }[]).map((s) => s.cron);
+  assert.equal(crons.length, 2, "one weekly cron, one daily");
+  const [weekly, daily] = [crons.find((c) => /\* 1$/.test(c)), crons.find((c) => /\* \*$/.test(c))];
+  assert.ok(weekly && daily, "a weekly and a daily cron");
+  assert.doesNotMatch(raw, /github\.event_name == 'schedule'/, "a daily run would compile devices and commit timings");
+  assert.equal(raw.match(new RegExp(`github\\.event\\.schedule == '${weekly.replace(/\*/g, "\\*")}'`, "g"))?.length, 3);
+});

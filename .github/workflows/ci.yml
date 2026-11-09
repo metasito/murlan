@@ -15,10 +15,13 @@ on:
         description: Also compile for Android and iOS
         type: boolean
         default: false
-  # Runs the two device compiles (`android-build`, `ios-build`) weekly; a change
-  # to native dependencies and `-f native=true` above run them too.
+  # Weekly runs the two device compiles (`android-build`, `ios-build`) and commits the
+  # timings; a change to native dependencies and `-f native=true` above run the compiles
+  # too. Daily runs the whole suite on main, which a merge skips when its pull request
+  # already passed that tree.
   schedule:
     - cron: "17 4 * * 1"
+    - cron: "17 2 * * *"
 
 permissions:
   contents: read
@@ -448,7 +451,7 @@ jobs:
         run: npm run typecheck:strict
       - run: npm run lint
       - name: Audit
-        run: node tools/ci/audit-gate.mjs
+        run: node tools/ci/audit-gate.mjs ${{ github.event_name == 'pull_request' && format('--base {0}', github.event.pull_request.base.sha) || '' }}
 
   # Nothing else in this workflow compiles the app for a device. `build` makes
   # the web bundle and the server bundle, neither of which touches Gradle or Xcode, so a plugin or dependency that breaks the
@@ -467,7 +470,7 @@ jobs:
   android-build:
     name: Android compiles
     needs: scope
-    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
+    if: ${{ !cancelled() && (github.event.schedule == '17 4 * * 1' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -531,7 +534,7 @@ jobs:
   ios-build:
     name: iOS compiles
     needs: scope
-    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
+    if: ${{ !cancelled() && (github.event.schedule == '17 4 * * 1' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
     timeout-minutes: 45
     env:
@@ -788,7 +791,7 @@ jobs:
       contents: write
       actions: read
     env:
-      COMMIT_TIMINGS: ${{ github.event_name == 'schedule' && needs.browser.result == 'success' }}
+      COMMIT_TIMINGS: ${{ github.event.schedule == '17 4 * * 1' && needs.browser.result == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

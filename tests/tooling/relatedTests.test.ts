@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { join, posix, resolve } from "node:path";
 import ts from "typescript";
 import { minimatch } from "minimatch";
+import { localPath } from "../helpers/specifiers.ts";
 import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, NATIVE_TEST, nearTests, onLocalProjects } from "../../tools/loop/related-tests.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..");
@@ -56,7 +57,7 @@ describe("a native test that reads source by path", () => {
   function fsReaders(sources: Map<string, string>): string[] {
     const imports = (f: string) => ts.preProcessFile(sources.get(f)!, true, true).importedFiles.map(({ fileName }) => fileName);
     const resolve = (from: string, spec: string) => {
-      const base = spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? posix.join(posix.dirname(from), spec) : undefined;
+      const base = localPath(from, spec) ?? undefined;
       return base === undefined ? undefined : ["", ".tsx", ".ts", ".js", "/index.tsx", "/index.ts"].map((e) => base + e).find((f) => sources.has(f));
     };
     const reaches = (start: string) => {
