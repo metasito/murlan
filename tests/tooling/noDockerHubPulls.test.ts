@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { cacheName } from "../../scripts/dockerEngine.mjs";
 import { blankComments } from "../helpers/sourceScan.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
@@ -118,6 +119,19 @@ function declared(code: string, name: string): Arg[] | undefined {
   if (!at || [...code.matchAll(write)].length > 1) return undefined;
   const from = at.index + at[0].length;
   if (code[from] === "[") return arrayElements(code, from + 1);
+  // The real cacheName, run on the ref read here: what it returns is checked like any other ref.
+  const cached = /cacheName\(\s*(\w+)\s*\)/y;
+  cached.lastIndex = from;
+  const of = cached.exec(code)?.[1];
+  if (of) {
+    const ref = declared(code, of);
+    if (ref?.length !== 1 || !ref[0]!.read) return undefined;
+    try {
+      return [{ text: cacheName(ref[0]!.text), read: true }];
+    } catch {
+      return undefined;
+    }
+  }
   const literal = new RegExp(STRING, "y");
   literal.lastIndex = from;
   const value = literal.exec(code)?.[0];
@@ -335,6 +349,10 @@ describe("no CI job pulls an image from Docker Hub", () => {
     ]) {
       assert.deepEqual(imageRefs("s.mjs", source), [UNREAD], source);
     }
+    const pinned = `mirror.gcr.io/library/postgres:16-alpine@sha256:${"a".repeat(64)}`;
+    assert.deepEqual(imageRefs("s.mjs", `const A = "${pinned}";\nconst B = cacheName(A);\ndocker(["run", B]);\n`), [cacheName(pinned)]);
+    assert.deepEqual(imageRefs("s.mjs", 'const A = "a:1";\nconst B = cacheName(A);\ndocker(["run", B]);\n'), ["B"]);
+    assert.deepEqual(imageRefs("s.mjs", 'const B = cacheName(A);\ndocker(["run", B]);\n'), ["B"]);
     assert.deepEqual(imageRefs("s.mjs", 'function docker(args) {\n  return run("docker", args);\n}\ndocker(["pull", "a:1"]);\n'), [
       "a:1",
     ]);
@@ -355,6 +373,14 @@ describe("no CI job pulls an image from Docker Hub", () => {
     assert.ok(count(".github/workflows/ci.yml") >= 3, "ci.yml: the two Postgres services and the gitleaks image");
     assert.ok(count(".github/workflows/soak.yml") >= 1, "soak.yml: its Postgres service");
     assert.ok(count("scripts/dev-stack.mjs") >= 1, "dev-stack.mjs: the Postgres it runs");
+  });
+
+  test("cacheName names a registry host and keeps the digest, so the name it makes is neither Docker Hub nor another image's", () => {
+    const digest = "0123456789ab";
+    const name = cacheName(`mirror.gcr.io/library/postgres:16-alpine@sha256:${digest}${"c".repeat(52)}`);
+    assert.match(name, /^localhost\//);
+    assert.equal(isDockerHub(name), false);
+    assert.ok(name.includes(digest), name);
   });
 
   test("an image variable counts only where a workflow sets it", () => {

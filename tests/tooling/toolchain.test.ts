@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toolchainFindings } from "../../scripts/toolchain.mjs";
+import { readStore, toolchainFindings } from "../../scripts/toolchain.mjs";
 
 const wantedBrowsers = [{ name: "chromium", revision: "1248" }, { name: "chromium-headless-shell", revision: "1248" }, { name: "ffmpeg", revision: "1013" }];
 const asPinned = { node: "26.1.0", wantNodeMajor: 26, wantedBrowsers, browserState: () => "present" as const, dockerUp: true };
@@ -42,6 +42,24 @@ test("a browsers list with a build missing from it is an error, not a pass", () 
   const findings = toolchainFindings({ ...asPinned, wantedBrowsers: [] });
   assert.deepEqual(findings.map((f) => f.level), ["error", "error", "error"]);
   assert.match(findings[0]!.text, /lists no chromium build/);
+});
+
+test("a broken symlink among the sibling builds is a finding of its own, and the rest of the store is still compared", () => {
+  const store = mkdtempSync(path.join(tmpdir(), "browser-store-"));
+  try {
+    for (const dir of ["chromium-1248", "chromium-1243"]) {
+      mkdirSync(path.join(store, dir));
+      writeFileSync(path.join(store, dir, "chrome"), "same bytes");
+    }
+    symlinkSync(path.join(store, "gone"), path.join(store, "chromium-1100"));
+    const { browserState, unreadable } = readStore(store);
+    const findings = toolchainFindings({ ...asPinned, browserState, unreadable });
+    assert.ok(findings.some((f) => /chromium-1248 is a copy of chromium-1243/.test(f.text)), "the comparison stopped at the broken entry");
+    assert.ok(findings.some((f) => f.level === "warn" && /chromium-1100 in the browser store cannot be read \(ENOENT\)/.test(f.text)), JSON.stringify(findings));
+    assert.ok(!findings.some((f) => /check itself failed/.test(f.text)));
+  } finally {
+    rmSync(store, { recursive: true, force: true });
+  }
 });
 
 test("the startup hook prints the toolchain beside the loop's status, and never fails the session", () => {

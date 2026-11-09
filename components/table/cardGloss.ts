@@ -33,14 +33,14 @@ export function glossLightOf(lamp: GlossLight): GlossLight {
   return { lx: lamp.lx, ly: lamp.ly, level: lamp.level, r: lamp.r, t: lamp.t };
 }
 
+const withinLightStep = (a: number, b: number) => {
+  "worklet";
+  return Math.abs(a - b) < GLOSS_LIGHT_STEP;
+};
+
 const withinStep = (shown: GlossLight, lx: number, ly: number, level: number, r: number) => {
   "worklet";
-  return (
-    Math.abs(lx - shown.lx) < GLOSS_POINT_STEP &&
-    Math.abs(ly - shown.ly) < GLOSS_POINT_STEP &&
-    Math.abs(level - shown.level) < GLOSS_LIGHT_STEP &&
-    Math.abs(r - shown.r) < GLOSS_LIGHT_STEP
-  );
+  return Math.abs(lx - shown.lx) < GLOSS_POINT_STEP && Math.abs(ly - shown.ly) < GLOSS_POINT_STEP && withinLightStep(level, shown.level) && withinLightStep(r, shown.r);
 };
 
 /** The light every gloss should now read, or null while `lamp` is within a step or a frame of `shown`. */
@@ -55,6 +55,15 @@ export function nextStillLight(shown: GlossLight, lamp: Pick<Lamp, "x" | "ly" | 
   "worklet";
   if (lamp.t - shown.t < GLOSS_FRAME_S) return null;
   return withinStep(shown, lamp.x, lamp.ly, lamp.level, lamp.r) ? null : glossLightOf({ ...lamp, lx: lamp.x });
+}
+
+/** The level the cards' shade should now read, or null while `lamp` is within a step of `shown`: a shade needs the level alone, so it hears nothing of the sway. The glide never reaches `lvlT`, so within a step of it the shade lands on it exactly, where the mockup's shade rests. */
+export function nextShadeLevel(shown: number, lamp: Pick<Lamp, "level" | "lvlT">): number | null {
+  "worklet";
+  const settled = withinLightStep(lamp.level, lamp.lvlT);
+  const want = settled ? lamp.lvlT : lamp.level;
+  if (want === shown) return null;
+  return !settled && withinLightStep(want, shown) ? null : want;
 }
 
 const clamp01 = (v: number) => {

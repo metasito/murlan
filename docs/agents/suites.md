@@ -177,12 +177,7 @@ the base.
 The gate runs the base's copy of `tools/ci/test-verdict.mjs`, extracted with `git archive`: `HEAD^1`
 of the merge commit on a pull request, `HEAD` on a push to main, and `origin/main`'s tip on a
 dispatch or a schedule; the judge reds when `BASE` is `HEAD` on anything but a push to main. A base
-without the judge is red, unless the head adds both `tools/ci/results-writer.mjs` and
-`tools/ci/test-verdict.mjs` to a main whose history never held the judge (the commits API, since the
-gate's checkout is two commits deep; an unreadable answer is red): only then the head judges its own
-run, with a warning, and that is this mechanism's own pull request, so once it lands the branch can
-never be taken again. A pull request into any other branch is red, and so is a base that deleted or
-renamed either.
+without the judge is red, and so is a base that deleted or renamed it: a head never judges itself.
 
 The records are the head's: every test job runs the head's reporters through the head's configs.
 So the base's judge names a change to that wiring on every run, in a `Runners' wiring changed` error

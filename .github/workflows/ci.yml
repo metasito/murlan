@@ -773,6 +773,30 @@ jobs:
       - name: Install Playwright's browser
         run: npx playwright install --only-shell chromium
 
+      # Postgres and Valkey for scripts/e2e-server.mjs, from the cache GitHub holds rather than from
+      # the registry mirror once per shard. On a cold key every shard of the run pulls them, as
+      # before, and each tries to save the entry; a key already written is kept. `docker save` of a
+      # `name:tag@sha256:…` ref keeps no tag, so the images are saved and run under the plain tags
+      # dev-stack.mjs's cacheName gives them, and a restore that does not leave them is pulled.
+      - name: Docker images the e2e stack runs
+        id: stack
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/dev-stack-images.tar
+          key: dev-stack-images-${{ hashFiles('scripts/dev-stack.mjs', 'scripts/dockerEngine.mjs') }}
+      - name: Load the cached Docker images, or pull them when the load does not leave them
+        if: steps.stack.outputs.cache-hit == 'true'
+        run: |
+          if docker load -i "$RUNNER_TEMP/dev-stack-images.tar" && node scripts/dev-stack.mjs held; then exit 0; fi
+          echo "::warning::the cached Docker images did not restore; pulling them"
+          node scripts/dev-stack.mjs pull
+      - name: Pull the Docker images and keep them
+        if: steps.stack.outputs.cache-hit != 'true'
+        run: |
+          node scripts/dev-stack.mjs pull
+          node scripts/dev-stack.mjs held
+          node scripts/dev-stack.mjs cached | xargs docker save -o "$RUNNER_TEMP/dev-stack-images.tar"
+
       # The only layer that exercises react-native-web's side of every
       # Platform.OS branch, and the only one that measures a laid-out box —
       # tap targets, and whether the table renders off the side of the screen.
@@ -1217,9 +1241,7 @@ jobs:
         run: node tools/ci/gate.mjs
       # The base branch's judge, so a pull request that leaves this workflow alone cannot loosen the
       # verdict on itself; one that edits this step can (docs/agents/suites.md § A flake is fixed,
-      # Limits). Only a head that itself adds the results writer and the judge to a main whose history
-      # never held the judge judges itself; a base that lost its judge is red, and the history is read
-      # through the API because this checkout is two commits deep (tests/tooling/testVerdict.test.ts).
+      # Limits). A base without the judge is red (tests/tooling/testVerdict.test.ts).
       - name: Every test that ran passed, once, and none was skipped unheard
         if: ${{ !cancelled() }}
         env:
@@ -1227,31 +1249,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
-          BASE_REF: ${{ github.base_ref }}
         run: |
           case "$EVENT $REF" in
-            "pull_request "*) base=HEAD^1 into=$BASE_REF ;;
-            "push refs/heads/main") base=HEAD into=main ;;
-            *) git fetch --no-tags --depth=1 origin main && base=$(git rev-parse FETCH_HEAD) into=main ;;
+            "pull_request "*) base=HEAD^1 ;;
+            "push refs/heads/main") base=HEAD ;;
+            *) git fetch --no-tags --depth=1 origin main && base=$(git rev-parse FETCH_HEAD) ;;
           esac
           mkdir -p "$RUNNER_TEMP/judge"
-          adds=$(git diff --no-renames --name-status "$base" HEAD -- tools/ci/results-writer.mjs tools/ci/test-verdict.mjs)
-          if git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null; then
-            from=$base
-          elif [ "$into" = main ] && [ "$adds" = "$(printf 'A\ttools/ci/results-writer.mjs\nA\ttools/ci/test-verdict.mjs')" ]; then
-            held=$(gh api "repos/$GITHUB_REPOSITORY/commits?sha=$(git rev-parse "$base")&path=tools/ci/test-verdict.mjs&per_page=1" --jq length) || {
-              echo "::error::the GitHub API call reading whether main ever held tools/ci/test-verdict.mjs failed, so nothing may judge this run"
-              exit 1
-            }
-            if [ "$held" != 0 ]; then
-              echo "::error::the base has no tools/ci/test-verdict.mjs, but main once held one, so the head may not judge itself and nothing may judge this run"
-              exit 1
-            fi
-            echo "::warning::the head adds the runners' results and their judge to a main that never held one, so it judges its own run"
-            from=HEAD
-          else
-            echo "::error::the base has no tools/ci/test-verdict.mjs, and only a change into a main that never held one, adding it with tools/ci/results-writer.mjs, may judge itself, so nothing may judge this run"
+          if ! git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null; then
+            echo "::error::the base has no tools/ci/test-verdict.mjs, so nothing may judge this run"
             exit 1
           fi
-          git archive "$from" tools/ci scripts/lib tests/e2e/tiers.mjs | tar -x -C "$RUNNER_TEMP/judge"
+          git archive "$base" tools/ci scripts/lib tests/e2e/tiers.mjs | tar -x -C "$RUNNER_TEMP/judge"
           BASE=$base node "$RUNNER_TEMP/judge/tools/ci/test-verdict.mjs"

@@ -48,7 +48,10 @@ function scan(file: string, source: string): Import[] {
   return imports;
 }
 
-const insideModel = (file: string, spec: string) => spec.startsWith(".") && path.resolve(path.dirname(file), spec).startsWith(MODEL + path.sep);
+const insideModel = (file: string, spec: string) => {
+  const at = localPath(path.relative(root, file).split(path.sep).join("/"), spec, false);
+  return at !== null && path.join(root, at).startsWith(MODEL + path.sep);
+};
 
 function offenders(file: string, imports: Import[]): string[] {
   const at = (i: Import, why: string) => `${path.relative(root, file)} -> ${i.spec ?? `<non-literal ${i.text}>`} (${why})`;
