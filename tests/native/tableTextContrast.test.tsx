@@ -3,7 +3,9 @@
 // build: each component is imported under each platform, StyleSheet.create is watched as it runs,
 // and a style is read off the sheet it made, so a style built by a spread, a helper or another
 // module is read like any other. The source is parsed only to learn which sheet entries each
-// <TableText> is given, and a style it cannot follow is a failure, never a skip.
+// <TableText> is given, and a style it cannot follow is a failure, never a skip. A module with a
+// .ios, .android, .web or .native variant is loaded as the variant its platform takes, whatever
+// project the test runs in.
 import * as ts from "typescript";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -14,40 +16,44 @@ import { StyleSheet } from "react-native";
 import { Colors, FeltGradients, Gradient } from "../../lib/tokens.ts";
 import { contrastRatio } from "../../lib/contrast.ts";
 import { NOTICE_FACES } from "../../components/table/noticeModel.ts";
+import { loadedAs, loadVariantsAs, OSES, restoreVariants, variantsOf, type OS, type Variants } from "./harness/platformVariants";
 import { BODY_MIN, LARGE_MIN, readsOf, resolve, sourceArrays, sourcesRead, withOpacity } from "../helpers/contrastColours.ts";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const THIS_TEST = "tests/native/tableTextContrast.test.tsx";
 const reads = readsOf(repoRoot, THIS_TEST);
+const { CLIENT } = require("../../eslint.guards.cjs") as { CLIENT: string[] };
 const sourceArray = sourceArrays(repoRoot, reads);
 const COMPONENT_FILES = sourcesRead(repoRoot, reads);
 const READ = new Set(COMPONENT_FILES.map(([file]) => file));
 const parsed = new Map(COMPONENT_FILES.map(([file, src]) => [file, ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)]));
 
-const OSES = ["ios", "android", "web"] as const;
-type OS = (typeof OSES)[number];
 
 /** What `Platform.select` answers on `os`: the branch a phone or the browser would take. */
 const pickFor = (os: OS, spec: Record<string, unknown>) =>
   os === "web" ? (spec.web ?? spec.default) : os === "android" ? (spec.android ?? spec.native ?? spec.default) : (spec.ios ?? spec.native ?? spec.default);
 
 type Sheet = Record<string, object>;
-
 /** Every sheet each of `files` makes when it is imported as `os`, in the order a file made them. */
-function sheetsMadeAs(os: OS, files: string[]): Map<string, Sheet[]> {
+function sheetsMadeAs(os: OS, files: string[], watch: ReadonlySet<string>, variants: Variants): Map<string, Sheet[]> {
   const created = new Map<string, Sheet[]>();
   jest.isolateModules(() => {
     const rn = require("react-native") as typeof import("react-native");
     const realCreate = rn.StyleSheet.create.bind(rn.StyleSheet);
     jest.spyOn(rn.StyleSheet, "create").mockImplementation(((styles: Sheet) => {
       const sheet = realCreate(styles);
-      const caller = (new Error().stack ?? "").split("\n").flatMap((line) => /\(?(\/[^():]+\.tsx?):\d+:\d+\)?$/.exec(line)?.[1] ?? []).map((f) => path.relative(repoRoot, f)).find((f) => READ.has(f));
+      const caller = (new Error().stack ?? "").split("\n").flatMap((line) => /\(?(\/[^():]+\.tsx?):\d+:\d+\)?$/.exec(line)?.[1] ?? []).map((f) => path.relative(repoRoot, f)).find((f) => watch.has(f));
       if (caller) created.set(caller, [...(created.get(caller) ?? []), sheet]);
       return sheet;
     }) as typeof rn.StyleSheet.create);
     jest.spyOn(rn.Platform, "select").mockImplementation(((spec: Record<string, unknown>) => pickFor(os, spec)) as typeof rn.Platform.select);
     Object.defineProperty(rn.Platform, "OS", { value: os, configurable: true });
-    for (const file of files) require(path.join(repoRoot, file));
+    loadVariantsAs(repoRoot, os, variants);
+    try {
+      for (const file of files) jest.requireActual(path.join(repoRoot, file));
+    } finally {
+      restoreVariants(repoRoot, variants);
+    }
   });
   return created;
 }
@@ -256,8 +262,9 @@ function unreadIn(file: string, found: Found): string[] {
 }
 
 const asSource = (file: string, src: string) => ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-const EVERY_SOURCE = new Map(sourcesRead(repoRoot, ["**/*.{ts,tsx}"]).map(([file, src]) => [file, parsed.get(file) ?? asSource(file, src)]));
+const EVERY_SOURCE = new Map(sourcesRead(repoRoot, CLIENT).map(([file, src]) => [file, parsed.get(file) ?? asSource(file, src)]));
 const GRAPH = tableTextGraph(EVERY_SOURCE);
+const VARIANTS = variantsOf(EVERY_SOURCE.keys());
 
 const FOUND: Found = { refs: [], unread: [] };
 for (const [file] of COMPONENT_FILES) {
@@ -281,7 +288,7 @@ const sheetKey = (file: string, name: string) => (name === "styles" ? `${file}:s
 const SHEETS = Object.fromEntries(
   OSES.map((os) => {
     const files = [...new Set(owners.values())];
-    const made = sheetsMadeAs(os, files);
+    const made = sheetsMadeAs(os, files, READ, VARIANTS);
     const sheets = new Map<string, Sheet>();
     for (const file of files) {
       const unmatched = [...(made.get(file) ?? [])];
@@ -444,6 +451,29 @@ function assertClears(id: string, ink: string, fills: string[], backdrop: Backdr
     }
   }
 }
+
+describe("a module is loaded as the variant its platform takes", () => {
+  const FIXTURE = "tests/native/variants/sheet.ts";
+  const inkOn = (os: OS, variants: Variants, watch = new Set([FIXTURE])) => {
+    const [sheet] = sheetsMadeAs(os, [FIXTURE], watch, variants).get(FIXTURE)!;
+    return (sheet!.label as { color: string }).color;
+  };
+  const files = sourcesRead(repoRoot, ["tests/native/variants/*.ts"]).map(([file]) => file);
+
+  test("a .android and a .web variant change the ink the sheet is built from, in any project", () => {
+    assert.deepEqual(OSES.map((os) => inkOn(os, variantsOf(files))), ["#d4af37", "#2a2a2a", "#3b3b3b"]);
+  });
+
+  test("without the variants the plain module is what every platform gets", () => {
+    assert.deepEqual(OSES.map((os) => inkOn(os, variantsOf(files.filter((f) => f.endsWith("tone.ts") || f.endsWith("sheet.ts"))))), ["#d4af37", "#d4af37", "#d4af37"]);
+  });
+
+  test("the variants of the app sources are found", () => {
+    assert.deepEqual([...variantsOf(["a/x.ts", "a/x.web.ts", "a/y.tsx", "a/z.native.tsx", "a/z.tsx"]).keys()], ["a/x.ts", "a/z.tsx"]);
+    const v = variantsOf(["a/z.native.tsx", "a/z.android.tsx", "a/z.tsx"]).get("a/z.tsx")!;
+    assert.deepEqual(OSES.map((os) => loadedAs(os, v)), ["a/z.native.tsx", "a/z.android.tsx", "a/z.tsx"]);
+  });
+});
 
 describe("the audit sees what a text scan of `key: {` could not", () => {
   const scan = (file: string, code: string, others: Record<string, string> = {}) => {

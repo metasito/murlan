@@ -2,8 +2,7 @@
 // colour arithmetic. Plain .ts so node --test and jest both load it (docs/agents/checks.md,
 // "Node's TypeScript loader").
 import { Colors, Garnet, LastCard, Scrim } from "../../lib/tokens.ts";
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { minimatch } from "minimatch";
 
@@ -43,10 +42,33 @@ export function withOpacity(color: string, opacity: number): string {
   return `rgba(${r},${g},${b},${(m ? Number(m[4]) : 1) * opacity})`;
 }
 
-/** Every tracked source matching `globs`, as [path under `root`, text]. */
+const MAGIC = /[*?[\]{}]/;
+
+/** The directory (or file) a glob starts from: its leading segments that name no pattern. */
+export function staticRoot(glob: string): string {
+  const segments = glob.split("/");
+  const at = segments.findIndex((s) => MAGIC.test(s));
+  return (at === -1 ? segments : segments.slice(0, at)).join("/");
+}
+
+function filesUnder(root: string, rel: string): string[] {
+  const at = path.join(root, rel);
+  if (!existsSync(at)) return [];
+  if (statSync(at).isFile()) return [rel];
+  return readdirSync(at, { recursive: true, encoding: "utf8" })
+    .map((f) => `${rel}/${f.split(path.sep).join("/")}`)
+    .filter((f) => !f.split("/").includes("node_modules") && statSync(path.join(root, f)).isFile());
+}
+
+/** Every source matching `globs`, found by walking the directory each glob starts from, as [path under `root`, text]. A glob that starts from the root itself is refused: a test that reads the whole tree is a different test. */
 export function sourcesRead(root: string, globs: string[]): [string, string][] {
-  const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
-  return tracked.filter((f) => globs.some((g) => minimatch(f, g))).map((f) => [f, readFileSync(path.join(root, f), "utf8")]);
+  const found = new Set<string>();
+  for (const glob of globs.flatMap((g) => minimatch.braceExpand(g))) {
+    const from = staticRoot(glob);
+    if (from === "") throw new Error(`${glob} starts from the repository root`);
+    for (const f of filesUnder(root, from)) if (minimatch(f, glob)) found.add(f);
+  }
+  return [...found].sort().map((f) => [f, readFileSync(path.join(root, f), "utf8")]);
 }
 
 /** The globs `tests/native/reads.json` states for one native test: what it reads by path, which jest's graph cannot see. */

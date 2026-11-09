@@ -1261,6 +1261,7 @@ const GUARDS = [
     why: "A module mock names its module in a literal, so a guard can tell what it replaces (docs/agents/traps.md § Where a forbidden-shape rule goes): write the path out instead of building it.",
     selector: `${JEST_MOCK} > :first-child:not(Literal, TemplateLiteral[expressions.length=0])`,
     files: ["tests/native/**/*.{ts,tsx}"],
+    ignores: [{ glob: "tests/native/harness/platformVariants.ts", reason: "swaps each module that has a platform variant for the variant a platform loads, by the path it found: a module for another file of itself, never for a fake" }],
     plant: { file: "tests/native/plant.test.tsx", code: [
       "const CONTEXT = '@/context/GameContext';",
       "jest.mock(CONTEXT, () => ({}));",
