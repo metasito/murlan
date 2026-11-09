@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { killTree } from "../../scripts/lib/proc.mjs";
-import { BASE_PORT, PORT_SPAN } from "../ci/e2ePortRange.mjs";
+import { PLAY_PORT } from "../ci/e2ePortRange.mjs";
 import { checkoutRoot } from "./cli.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
@@ -227,27 +227,43 @@ function killPid(pid, dryRun, say = console.log, readTable = processTable) {
   return null;
 }
 
-export function netstatListeners(text, port) {
-  return [
-    ...new Set(
-      text
-        .split("\n")
-        .filter((l) => /LISTENING/.test(l) && (port === undefined || new RegExp(`:${port}\\s`).test(l)))
-        .map((l) => Number(l.trim().split(/\s+/).pop()))
-        .filter(Boolean)
-    ),
-  ];
+export function netstatListeners(text) {
+  return [...new Set(netstatSockets(text).map((s) => s.pid))];
 }
 
 function pidLines(text) {
   return [...new Set(text.split("\n").map((l) => Number(l.trim())).filter(Boolean))];
 }
 
-/** Whatever is listening on `port`, so the next run binds instead of adopting or failing. */
-export function portListeners(port) {
+/** Every listening socket as `{ pid, port }`: an e2e server binds `PORT=0`, so the port is read off the socket, never assumed. */
+export function netstatSockets(text) {
+  return text
+    .split("\n")
+    .filter((l) => /LISTENING/.test(l))
+    .map((l) => {
+      const cols = l.trim().split(/\s+/);
+      return { pid: Number(cols.at(-1)), port: Number(cols[1]?.match(/:(\d+)$/)?.[1]) };
+    })
+    .filter((s) => s.pid && s.port);
+}
+
+export function lsofSockets(text) {
+  const sockets = [];
+  let pid = 0;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("p")) pid = Number(line.slice(1));
+    else if (line.startsWith("n")) {
+      const port = Number(line.match(/:(\d+)$/)?.[1]);
+      if (pid && port) sockets.push({ pid, port });
+    }
+  }
+  return sockets;
+}
+
+export function listenSockets() {
   return process.platform === "win32"
-    ? netstatListeners(sh("netstat", ["-ano"]), port)
-    : pidLines(sh("lsof", ["-ti", `tcp:${port}`]));
+    ? netstatSockets(sh("netstat", ["-ano"]))
+    : lsofSockets(sh("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]));
 }
 
 /**
@@ -285,11 +301,28 @@ export function stalePortHolders(pids, table) {
 }
 
 /**
+ * The e2e servers a dead run left listening. The server's port is the OS's pick, so the sweep
+ * cannot name it; it is the tooling's own `server/index.ts` holding a socket with no live parent.
+ * `npm run play` runs the same entry on `PLAY_PORT` and is somebody's session, not a leftover.
+ */
+export function staleE2eServers(sockets, table, ours) {
+  const byPid = new Map(table.map((p) => [p.pid, p]));
+  const candidates = sockets.filter(
+    (s) =>
+      s.port !== PLAY_PORT &&
+      ours.includes(byPid.get(s.pid)) &&
+      /server[\\/]index\.ts/.test(byPid.get(s.pid).commandLine)
+  );
+  const stale = new Set(stalePortHolders(candidates.map((s) => s.pid), table));
+  return candidates.filter((s) => stale.has(s.pid));
+}
+
+/**
  * One sweep, said a line at a time through `say`. `took` is how many it named to take; a port left
  * to a live run is somebody else working, not a leftover, so it is not counted. `blind` is why it
  * could not see the processes, or null.
  */
-export async function reap({ dryRun = false, stale: takeStale = false, say = console.log, readTable = processTable, listeners = portListeners } = {}) {
+export async function reap({ dryRun = false, stale: takeStale = false, say = console.log, readTable = processTable, sockets = listenSockets } = {}) {
   const verb = dryRun ? "would clear" : "cleared";
   const now = Date.now();
   const { rows: table, blind } = readTable();
@@ -305,29 +338,14 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   const hoursOf = (p) => ((now - p.startedAt) / 3_600_000).toFixed(1);
   const labelOf = (p) => `${p.name || "process"} pid ${p.pid}`;
 
-  // The command line is printed because "held by pid 33196" tells whoever lost a run nothing
-  // about whose it was.
   const byPid = new Map(table.map((p) => [p.pid, p]));
-  const staleHolders = [];
-  let anyHeld = false;
-  for (let port = BASE_PORT; port < BASE_PORT + PORT_SPAN; port++) {
-    const holders = listeners(port).filter((pid) => pid !== process.pid);
-    if (holders.length) anyHeld = true;
-    const stale = stalePortHolders(holders, table).filter((pid) => ours.includes(byPid.get(pid)));
-    for (const pid of stale) {
-      say(`reap: ${verb} the e2e port ${port}, held by ${labelOf(byPid.get(pid))}`);
-      kill(pid);
-    }
-    staleHolders.push(...stale);
-    for (const pid of holders.filter((p) => !stale.includes(p))) {
-      const held = byPid.get(pid);
-      say(
-        `reap: left the e2e port ${port} to a live run — ${labelOf(held ?? { pid })}, ` +
-          `launched by ${held?.ppid ?? "?"}: ${(held?.commandLine || "command line unreadable").slice(0, 120)}`
-      );
-    }
+  const listening = sockets().filter((s) => s.pid !== process.pid);
+  const staleServers = staleE2eServers(listening, table, ours);
+  for (const { pid, port } of staleServers) {
+    say(`reap: ${verb} the e2e server on port ${port}, ${labelOf(byPid.get(pid))}`);
+    kill(pid);
   }
-  if (!anyHeld) say(`reap: e2e ports ${BASE_PORT}..${BASE_PORT + PORT_SPAN - 1} are free`);
+  if (!staleServers.length) say("reap: no e2e server left listening without its run");
 
   const parentless = orphans(ours, {
     livePids: new Set(table.map((p) => p.pid)),
@@ -353,7 +371,7 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   }
   if (!stale.length) say(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
 
-  return { took: staleHolders.length + parentless.length + stale.length, blind: blind ?? refused };
+  return { took: staleServers.length + parentless.length + stale.length, blind: blind ?? refused };
 }
 
 const isNode = (name) => /^node(\.exe)?$/i.test(path.basename(String(name)));

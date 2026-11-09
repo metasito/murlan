@@ -1,8 +1,9 @@
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer.ts";
 import { connectAs, eventually, waitFor } from "../helpers/client.ts";
+import { logger } from "../../server/shared/logger.ts";
 import { pendingKeys, TIMER_KINDS } from "../../server/game/gameTimers.ts";
 
 /**
@@ -88,4 +89,19 @@ test("stop() leaves no timer armed for the process to wait on", { skip: hasDatab
   }
   const armed = TIMER_KINDS.flatMap((kind) => pendingKeys(kind).map((key) => `${kind}:${key}`));
   assert.deepEqual(armed, []);
+});
+
+test("stop() with a socket still connected logs nothing at warn or above", { skip: hasDatabase() ? false : skipMessage(), timeout: 60_000 }, async () => {
+  const server = await startTestServer();
+  try {
+    const { socket } = await connectAs(server, `tsq_${Date.now() % 1e6}`);
+    const warned = mock.method(logger, "warn");
+    const errored = mock.method(logger, "error");
+    await server.stop();
+    socket.close();
+    const logged = [...warned.mock.calls, ...errored.mock.calls].map((c) => JSON.stringify(c.arguments[1] ?? c.arguments[0]));
+    assert.deepEqual(logged, []);
+  } finally {
+    mock.restoreAll();
+  }
 });

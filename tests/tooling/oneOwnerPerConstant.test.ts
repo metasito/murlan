@@ -8,8 +8,6 @@ const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
 const OWNERS: Record<string, string> = {
   HARD_FACTOR: "tools/ci/e2e-budget.mjs",
-  BASE_PORT: "tools/ci/e2ePortRange.mjs",
-  PORT_SPAN: "tools/ci/e2ePortRange.mjs",
   PLAY_PORT: "tools/ci/e2ePortRange.mjs",
   COLLECTOR_PORT: "scripts/diagnostics-collector.mjs",
 };

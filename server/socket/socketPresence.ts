@@ -174,6 +174,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
     socket.on("disconnect", (reason: DisconnectReason) => {
       trackEvent("socket.closed", userId, { reason });
       const handled = (async () => {
+        let offlineNotice: Promise<void> | undefined;
         try {
           // A spectator holds no seat, so none of the grace/AFK machinery below
           // applies to them; they are simply dropped.
@@ -192,7 +193,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
             );
 
           const lastSeen = new Date(now()).toISOString();
-          void emitFriendStatusOffline(userId, lastSeen);
+          offlineNotice = emitFriendStatusOffline(userId, lastSeen);
 
           const currentRoomId = unseatSocket(socket.id);
           // Three paths reach a return without announcing the drop, and from
@@ -246,6 +247,8 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
           await armLobbyGrace(rt, currentRoomId, userId);
         } catch (err) {
           logger.error({ err, userId }, "disconnect handler failed");
+        } finally {
+          await offlineNotice;
         }
       })();
       pendingDisconnects.add(handled);

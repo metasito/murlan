@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { BASE_PORT, PORT_SPAN } from "../../ci/e2ePortRange.mjs";
+import { PLAY_PORT } from "../../ci/e2ePortRange.mjs";
 import {
   orphans,
   staleByAge,
+  lsofSockets,
   netstatListeners,
+  netstatSockets,
   toolingRoots,
   checkoutRoot,
   ownedByTooling,
@@ -82,19 +84,22 @@ describe("netstatListeners", () => {
     "  TCP    127.0.0.1:61001        127.0.0.1:5199         ESTABLISHED     9999",
   ].join("\n");
 
-  test("takes only what is listening on the port asked for", () => {
-    assert.deepEqual(netstatListeners(netstat, 5199), [4242]);
+  test("reads the port off each listening socket and ignores connections", () => {
+    assert.deepEqual(netstatSockets(netstat), [
+      { pid: 4242, port: 5199 },
+      { pid: 777, port: 8081 },
+    ]);
   });
 
-  /**
-   * A client connected *to* the port holds a socket naming it. Killing that is killing whoever
-   * was talking to the server rather than the server.
-   */
-  test("never takes a connection merely involving the port", () => {
-    assert.equal(netstatListeners(netstat, 5199).includes(9999), false);
+  test("lsof -Fpn output reads the same way", () => {
+    assert.deepEqual(lsofSockets("p4242\nn*:41233\nn[::]:41233\np777\nn127.0.0.1:8081\n"), [
+      { pid: 4242, port: 41233 },
+      { pid: 4242, port: 41233 },
+      { pid: 777, port: 8081 },
+    ]);
   });
 
-  test("with no port, every listener — this is the spare-list, so it must not miss one", () => {
+  test("every listener — this is the spare-list, so it must not miss one", () => {
     assert.deepEqual(
       netstatListeners(netstat).sort((a: number, b: number) => a - b),
       [777, 4242]
@@ -558,50 +563,50 @@ describe("the sweep, called in-process as housekeeping calls it", () => {
       say: (l: string) => said.push(l),
       readTable: () => ({ rows: [self], blind: null }),
     });
-    assert.ok(said.some((l) => /e2e port/.test(l)), said.join("\n"));
+    assert.ok(said.some((l) => /e2e server/.test(l)), said.join("\n"));
     assert.equal(took, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
   });
 
-  async function sweepSpan(commandLine: string, heldPort: number, chosen?: string) {
-    const said: string[] = [];
-    const orphan = { pid: 777, ppid: 999999, name: "node", commandLine, startedAt: Date.now() };
-    const swept: number[] = [];
-    const pinned = process.env.E2E_PORT;
-    if (chosen === undefined) delete process.env.E2E_PORT;
-    else process.env.E2E_PORT = chosen;
-    try {
-      const { took } = await reap({
-        dryRun: true,
-        say: (l: string) => said.push(l),
-        readTable: () => ({ rows: [orphan], blind: null }),
-        listeners: (port: number) => (swept.push(port), port === heldPort ? [777] : []),
-      });
-      return { said: said.join("\n"), swept, took };
-    } finally {
-      if (pinned === undefined) delete process.env.E2E_PORT;
-      else process.env.E2E_PORT = pinned;
-    }
-  }
-  const OURS = () => `node ${checkoutRoot()}/serve.js`;
-  const WHOLE_SPAN = Array.from({ length: PORT_SPAN }, (_, i) => BASE_PORT + i);
+  const OURS = () => `node ${checkoutRoot()}/server/index.ts`;
+  const orphan = (commandLine: string, ppid = 999999) => ({ pid: 777, ppid, name: "node", commandLine, startedAt: Date.now() });
 
-  test("sweeps every port of the e2e span, not only the base", async () => {
-    const far = BASE_PORT + PORT_SPAN - 1;
-    const { said, swept, took } = await sweepSpan(OURS(), far);
-    assert.deepEqual(swept, WHOLE_SPAN);
-    assert.match(said, new RegExp(`would clear the e2e port ${far}, held by node pid 777`));
+  async function sweep(proc: ReturnType<typeof orphan>, port: number, others: ReturnType<typeof orphan>[] = []) {
+    const said: string[] = [];
+    const { took } = await reap({
+      dryRun: true,
+      say: (l: string) => said.push(l),
+      readTable: () => ({ rows: [proc, ...others], blind: null }),
+      sockets: () => [{ pid: 777, port }],
+    });
+    return { said: said.join("\n"), took };
+  }
+
+  test("finds an e2e server on whatever port the OS gave it", async () => {
+    const { said, took } = await sweep(orphan(OURS()), 41233);
+    assert.match(said, /would clear the e2e server on port 41233, node pid 777/);
     assert.equal(took, 1);
   });
 
-  test("sweeps the same span when E2E_PORT names the port a run chose mid-span", async () => {
-    const { swept } = await sweepSpan(OURS(), BASE_PORT, String(BASE_PORT + 6));
-    assert.deepEqual(swept, WHOLE_SPAN);
+  test("a server whose run is alive is left alone", async () => {
+    const run = { pid: 888, ppid: 1, name: "node", commandLine: "playwright", startedAt: Date.now() };
+    const { said, took } = await sweep(orphan(OURS(), 888), 41233, [run]);
+    assert.equal(took, 0, said);
   });
 
-  test("an orphan on a span port that is not ours is left alone", async () => {
-    const { said, took } = await sweepSpan("node some-other-dev-server.js", BASE_PORT + 5);
+  test("the play server on its own port is not a leftover", async () => {
+    const { took } = await sweep(orphan(OURS()), PLAY_PORT);
+    assert.equal(took, 0);
+  });
+
+  test("an orphan that is not ours is left alone", async () => {
+    const { said, took } = await sweep(orphan("node some-other-dev-server.js"), 41233);
     assert.equal(took, 0, said);
     assert.doesNotMatch(said, /would clear/);
+  });
+
+  test("a listener of ours that is not the server is left alone", async () => {
+    const { took } = await sweep(orphan(`node ${checkoutRoot()}/serve.js`), 41233);
+    assert.equal(took, 0);
   });
 
   test("a blind table comes back blind and is said, never read as a clean machine", async () => {
