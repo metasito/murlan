@@ -18,9 +18,9 @@ const reachableHelpers = (specs: string[], all: string[], read: (f: string) => s
   const queue = [...specs];
   while (queue.length) {
     const from = queue.pop()!;
-    for (const [, rel] of read(from).matchAll(/from\s+"(\.[^"]+)"|import\s+"(\.[^"]+)"/g).map((m) => [m[0], m[1] ?? m[2]])) {
+    for (const [, rel] of read(from).matchAll(/from\s+["'](\.[^"']+)["']/g).map((m) => [m[0], m[1]])) {
       const base = path.posix.join(path.posix.dirname(from), rel).replace(/\.(ts|mjs)$/, "");
-      const file = all.find((f) => (f === `${base}.ts` || f === `${base}.mjs`) && /^tests\//.test(f));
+      const file = all.find((f) => (f === `${base}.ts` || f === `${base}.mjs`) && !/^(lib|components|app|locales)\//.test(f));
       if (file && !seen.has(file)) {
         seen.add(file);
         if (!isTarget(file)) queue.push(file);
@@ -82,12 +82,12 @@ describe("the list looks at the repository as it is", () => {
 
   test("a measuring helper reached only through a plumbing module is found", () => {
     const files: Record<string, string> = {
-      "tests/e2e/a.nightly.spec.ts": 'import { x } from "./helpers/press";',
-      "tests/e2e/helpers/press.ts": 'import { y } from "./counter";',
-      "tests/e2e/helpers/counter.ts": "export const y = 1;",
+      "scratch/e2e/a.nightly.spec.ts": "import { x } from './helpers/press';",
+      "scratch/e2e/helpers/press.ts": "import { y } from './counter';",
+      "scratch/e2e/helpers/counter.ts": "export const y = 1;",
     };
-    const reached = reachableHelpers(["tests/e2e/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
-    assert.deepEqual(reached.filter((f) => !isTarget(f)), ["tests/e2e/helpers/press.ts", "tests/e2e/helpers/counter.ts"]);
+    const reached = reachableHelpers(["scratch/e2e/a.nightly.spec.ts"], Object.keys(files), (f) => files[f]);
+    assert.deepEqual(reached.filter((f) => !isTarget(f)), ["scratch/e2e/helpers/press.ts", "scratch/e2e/helpers/counter.ts"]);
   });
 
   test("the measuring helpers are targets", () => {
