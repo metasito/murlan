@@ -140,6 +140,7 @@ describe("the guard registry's floor", () => {
     "modal-keeps-landscape": ["app", "components"],
     "web-drops-a11y-prop": ["app", "components"],
     "animate-compositor-props": ["app", "components"],
+    "one-animation-owner": CLIENT_ROOTS,
     "seat-identity": ["app", "components"],
     "screens-unconditional": ["app"],
     "table-text": ["components/table"],
