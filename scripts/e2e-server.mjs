@@ -24,6 +24,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ownerArg } from "../tools/ci/e2eOwner.mjs";
 import { PLAY_PORT } from "../tools/ci/e2ePortRange.mjs";
 import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 import { assertMark } from "./e2eBuildMark.mjs";
@@ -100,4 +101,4 @@ process.env.SESSION_SECRET = PLAY ? randomBytes(32).toString("hex") : "e2e-test-
 process.env.PORT = PORT;
 process.env.MURLAN_WEB_DIST = DIST;
 
-await run(process.execPath, [path.join(ROOT, "server", "index.ts")]);
+await run(process.execPath, [path.join(ROOT, "server", "index.ts"), ...(PLAY ? [] : [ownerArg(process.pid)])]);

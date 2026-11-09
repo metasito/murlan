@@ -17,6 +17,7 @@ import { emitEndMatchVoteState } from "./tableBroadcasts.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, type Outcome } from "../shared/refusal.ts";
 import { logger } from "../shared/logger.ts";
+import { track } from "../shared/inFlight.ts";
 import { trackEvent } from "../shared/events.ts";
 import { activeGames, isShuttingDown, seatName } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -144,7 +145,7 @@ export function armSeatGrace(
   armTurnIfIdle(rt, roomId);
 
   arm("disconnect", userId, disconnectGraceMs(), () => {
-    void (async () => {
+    void track((async () => {
       try {
         // Asked of the cluster, not of this process: the instance that owns a
         // table need not be the one holding the player's socket, and reading
@@ -167,7 +168,7 @@ export function armSeatGrace(
       } catch (err) {
         logger.error({ err, userId, roomId }, "Disconnect timeout handler failed");
       }
-    })();
+    })());
   });
 }
 

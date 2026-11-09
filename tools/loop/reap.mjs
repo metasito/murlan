@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { killTree } from "../../scripts/lib/proc.mjs";
-import { PLAY_PORT } from "../ci/e2ePortRange.mjs";
+import { ownerOf } from "../ci/e2eOwner.mjs";
 import { checkoutRoot } from "./cli.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
@@ -79,11 +79,12 @@ export function staleByAge(processes, { maxAgeMs, now, keep }) {
   );
 }
 
+/** The output, or null when the tool could not run at all. A tool that ran and exited non-zero (lsof does, for "nothing found") still answered. */
 function sh(cmd, args) {
   try {
     return execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  } catch {
-    return "";
+  } catch (err) {
+    return typeof err.status === "number" ? String(err.stdout ?? "") : null;
   }
 }
 
@@ -134,10 +135,10 @@ export function processTable() {
         "@{n='Started';e={[int64][datetimeoffset]::new($_.CreationDate).ToUnixTimeMilliseconds()}} " +
         "| ConvertTo-Json -Compress",
     ]);
-    return readProcessTable(json, POWERSHELL);
+    return readProcessTable(json ?? "", POWERSHELL);
   }
   const now = Date.now();
-  const rows = sh("ps", ["-eo", "pid=,ppid=,etimes=,args="])
+  const rows = (sh("ps", ["-eo", "pid=,ppid=,etimes=,args="]) ?? "")
     .split("\n")
     .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
     .filter(Boolean)
@@ -227,14 +228,6 @@ function killPid(pid, dryRun, say = console.log, readTable = processTable) {
   return null;
 }
 
-export function netstatListeners(text) {
-  return [...new Set(netstatSockets(text).map((s) => s.pid))];
-}
-
-function pidLines(text) {
-  return [...new Set(text.split("\n").map((l) => Number(l.trim())).filter(Boolean))];
-}
-
 /** Every listening socket as `{ pid, port }`: an e2e server binds `PORT=0`, so the port is read off the socket, never assumed. */
 export function netstatSockets(text) {
   return text
@@ -260,73 +253,65 @@ export function lsofSockets(text) {
   return sockets;
 }
 
-export function listenSockets() {
-  return process.platform === "win32"
-    ? netstatSockets(sh("netstat", ["-ano"]))
-    : lsofSockets(sh("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]));
+/**
+ * What is listening, read once for every class below. A tool that could not run is `blind`, not
+ * an empty machine: an empty answer would let the sweep take a dev server it could not see
+ * holding a port, and report it clean.
+ */
+export function readListeners({ platform = process.platform } = {}) {
+  const win = platform === "win32";
+  const tool = win ? "netstat" : "lsof";
+  const out = win ? sh("netstat", ["-ano"]) : sh("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]);
+  if (out === null) return { sockets: [], blind: `${tool} could not run (missing, or it failed), so this sweep cannot see what is listening and takes nothing` };
+  return { sockets: win ? netstatSockets(out) : lsofSockets(out), blind: null };
 }
 
 /**
- * Anything serving a port is doing work, whatever its parent or its age says. A dev server left
- * running detached is the case this protects: its launcher is long gone and it is hours old, so
- * both classes below would otherwise read it as a corpse.
+ * Whether the run that started `server` is still there. A pid the table does not hold is gone; one
+ * it holds under another program, or that started after the server did, is a different process
+ * that was handed the number since. A run whose command line or start could not be read is not
+ * shown to be dead.
  */
-function listeningPids() {
-  return new Set(
-    process.platform === "win32"
-      ? netstatListeners(sh("netstat", ["-ano"]))
-      : pidLines(sh("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-t"]))
-  );
+function runIsAlive(owner, server) {
+  if (!owner) return false;
+  if (owner.commandLine && !/e2e-server\.mjs/.test(owner.commandLine)) return false;
+  return !(owner.startedAt > server.startedAt + 1000);
 }
 
 /**
- * Which of `pids` hold the port as a leftover rather than as a running suite.
- *
- * A sweep must not be able to end a suite mid-run — and not only because it costs the run. A
- * webServer pulled out from under Playwright surfaces as a connection error or a 0ms failure,
- * which reads exactly like a defect, so a sweep that takes a live port *manufactures a test
- * result* in another process. Anything trusting a suite's verdict then acts on it.
- *
- * Parentage is the signal, not age: Playwright outlives the whole run and the webServer is its
- * child, so a live holder has a live parent. A pid the table cannot describe is left alone —
- * this is the one class that kills something no ownership rule vouched for, so it fails closed.
+ * The e2e servers a dead run left listening. `scripts/e2e-server.mjs` starts its server with its
+ * own pid as an argument (`tools/ci/e2eOwner.mjs`), so a server is a leftover only when it names a
+ * run and that run is gone. Parentage cannot say so: an orphan is reparented to pid 1, which is
+ * alive. A listener without the argument, a dev server or `npm run play`, is nobody's leftover.
  */
-export function stalePortHolders(pids, table) {
-  const live = new Set(table.map((p) => p.pid));
+export function staleE2eServers(sockets, table, ours) {
   const byPid = new Map(table.map((p) => [p.pid, p]));
-  return pids.filter((pid) => {
-    const held = byPid.get(pid);
-    return held !== undefined && !live.has(held.ppid);
+  const seen = new Set();
+  return sockets.filter(({ pid }) => {
+    const server = byPid.get(pid);
+    if (!server || seen.has(pid) || !ours.includes(server)) return false;
+    const owner = ownerOf(server.commandLine);
+    if (owner === null || runIsAlive(byPid.get(owner), server)) return false;
+    seen.add(pid);
+    return true;
   });
 }
 
 /**
- * The e2e servers a dead run left listening. The server's port is the OS's pick, so the sweep
- * cannot name it; it is the tooling's own `server/index.ts` holding a socket with no live parent.
- * `npm run play` runs the same entry on `PLAY_PORT` and is somebody's session, not a leftover.
+ * One sweep, said a line at a time through `say`. `took` is how many it named to take; a server
+ * whose run is alive is somebody else working, not a leftover, so it is not counted. `blind` is why
+ * it could not see the processes or the listeners, or null.
  */
-export function staleE2eServers(sockets, table, ours) {
-  const byPid = new Map(table.map((p) => [p.pid, p]));
-  const candidates = sockets.filter(
-    (s) =>
-      s.port !== PLAY_PORT &&
-      ours.includes(byPid.get(s.pid)) &&
-      /server[\\/]index\.ts/.test(byPid.get(s.pid).commandLine)
-  );
-  const stale = new Set(stalePortHolders(candidates.map((s) => s.pid), table));
-  return candidates.filter((s) => stale.has(s.pid));
-}
-
-/**
- * One sweep, said a line at a time through `say`. `took` is how many it named to take; a port left
- * to a live run is somebody else working, not a leftover, so it is not counted. `blind` is why it
- * could not see the processes, or null.
- */
-export async function reap({ dryRun = false, stale: takeStale = false, say = console.log, readTable = processTable, sockets = listenSockets } = {}) {
+export async function reap({ dryRun = false, stale: takeStale = false, say = console.log, readTable = processTable, listeners = readListeners } = {}) {
   const verb = dryRun ? "would clear" : "cleared";
   const now = Date.now();
   const { rows: table, blind } = readTable();
   if (blind) say(`reap: ${blind}`);
+  const { sockets, blind: listenBlind } = listeners();
+  if (listenBlind) {
+    say(`reap: ${listenBlind}`);
+    return { took: 0, blind: blind ?? listenBlind };
+  }
   let refused = null;
   const kill = (pid) => {
     refused = killPid(pid, dryRun, say, readTable) ?? refused;
@@ -334,13 +319,12 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   const roots = toolingRoots({ repoRoot: checkoutRoot(), home: os.homedir() });
   const ours = table.filter((p) => ownedByTooling(p.commandLine, roots));
   const keep = ancestry(table, process.pid);
-  for (const pid of listeningPids()) keep.add(pid);
+  for (const { pid } of sockets) keep.add(pid);
   const hoursOf = (p) => ((now - p.startedAt) / 3_600_000).toFixed(1);
   const labelOf = (p) => `${p.name || "process"} pid ${p.pid}`;
 
   const byPid = new Map(table.map((p) => [p.pid, p]));
-  const listening = sockets().filter((s) => s.pid !== process.pid);
-  const staleServers = staleE2eServers(listening, table, ours);
+  const staleServers = staleE2eServers(sockets.filter((s) => s.pid !== process.pid), table, ours);
   for (const { pid, port } of staleServers) {
     say(`reap: ${verb} the e2e server on port ${port}, ${labelOf(byPid.get(pid))}`);
     kill(pid);
@@ -396,10 +380,15 @@ export function worktreeOrphans(table, { worktree, checkout = checkoutRoot(), se
 }
 
 /** `worktreeOrphans`, killed: the agent:check preflight's sweep of its own tree. */
-export function reapWorktree(worktree, { dryRun = false, say = console.log, readTable = processTable, listening = listeningPids } = {}) {
+export function reapWorktree(worktree, { dryRun = false, say = console.log, readTable = processTable, listeners = readListeners } = {}) {
   const { rows: table, blind } = readTable();
   if (blind) say(`reap: ${blind}`);
-  const found = worktreeOrphans(table, { worktree, selfPid: process.pid, keep: listening() });
+  const { sockets, blind: listenBlind } = listeners();
+  if (listenBlind) {
+    say(`reap: ${listenBlind}`);
+    return [];
+  }
+  const found = worktreeOrphans(table, { worktree, selfPid: process.pid, keep: new Set(sockets.map((s) => s.pid)) });
   for (const p of found) {
     say(`reap: ${dryRun ? "would kill" : "killed"} ${p.name} pid ${p.pid}, left running in ${worktree}`);
     killPid(p.pid, dryRun, say, readTable);

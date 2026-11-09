@@ -4,6 +4,8 @@ import pg from "pg";
 import { hasDatabase, skipMessage, startTestServer } from "../helpers/testServer.ts";
 import { connectAs, eventually, waitFor } from "../helpers/client.ts";
 import { logger } from "../../server/shared/logger.ts";
+import { inFlightCount } from "../../server/shared/inFlight.ts";
+import { friendStore } from "../../server/store/friendStore.ts";
 import { pendingKeys, TIMER_KINDS } from "../../server/game/gameTimers.ts";
 
 /**
@@ -91,17 +93,35 @@ test("stop() leaves no timer armed for the process to wait on", { skip: hasDatab
   assert.deepEqual(armed, []);
 });
 
-test("stop() with a socket still connected logs nothing at warn or above", { skip: hasDatabase() ? false : skipMessage(), timeout: 60_000 }, async () => {
-  const server = await startTestServer();
-  try {
-    const { socket } = await connectAs(server, `tsq_${Date.now() % 1e6}`);
-    const warned = mock.method(logger, "warn");
-    const errored = mock.method(logger, "error");
-    await server.stop();
-    socket.close();
-    const logged = [...warned.mock.calls, ...errored.mock.calls].map((c) => JSON.stringify(c.arguments[1] ?? c.arguments[0]));
-    assert.deepEqual(logged, []);
-  } finally {
-    mock.restoreAll();
-  }
-});
+/**
+ * The connect notice reads the friend list before it tells anyone, and stop() closes the stores it
+ * reads. A read still pending when they close is a warning that fires after the test has ended, so
+ * silence alone proves nothing: what must hold is that stop() left no work behind.
+ */
+for (const delayMs of [0, 150, 520, 900]) {
+  test(`stop() waits for a connect notice whose friend read takes ${delayMs} ms`, { skip: hasDatabase() ? false : skipMessage(), timeout: 60_000 }, async () => {
+    const server = await startTestServer();
+    try {
+      const original = friendStore.getFriends.bind(friendStore);
+      let first = true;
+      const read = mock.method(friendStore, "getFriends", async (...args: Parameters<typeof original>) => {
+        if (first) {
+          first = false;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+        return original(...args);
+      });
+      const { socket } = await connectAs(server, `tsq_${delayMs}_${Date.now() % 1e6}`);
+      const warned = mock.method(logger, "warn");
+      const errored = mock.method(logger, "error");
+      await eventually(() => read.mock.callCount() > 0, "the connect notice to start its friend read");
+      await server.stop();
+      assert.equal(inFlightCount(), 0, "work started by a connect or a disconnect outlived stop()");
+      socket.close();
+      const logged = [...warned.mock.calls, ...errored.mock.calls].map((c) => JSON.stringify(c.arguments[1] ?? c.arguments[0]));
+      assert.deepEqual(logged, []);
+    } finally {
+      mock.restoreAll();
+    }
+  });
+}

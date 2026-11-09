@@ -16,7 +16,7 @@ import { closeOwnership } from "../../server/game/gameOwnership.ts";
 import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
 import { installClock, type Clock } from "../../server/http/clock.ts";
 import { clear as clearTimer, pendingKeys, TIMER_KINDS } from "../../server/game/gameTimers.ts";
-import { settleDisconnects } from "../../server/socket/socketPresence.ts";
+import { settleInFlight } from "../../server/shared/inFlight.ts";
 
 /**
  * `node --test` runs as many test files at once as there are cores, and every
@@ -93,7 +93,7 @@ process.env.MURLAN_BOT_MOVE_DELAY_MS ??= "20";
  * Production keeps the default, which is what a TLS-terminating proxy expects.
  */
 export const KEEP_ALIVE_MS = 120_000;
-const SETTLE_DISCONNECTS_MS = 5_000;
+const SETTLE_IN_FLIGHT_MS = 5_000;
 /** Node requires `headersTimeout` to outlast `keepAliveTimeout`. */
 const HEADERS_TIMEOUT_MS = 130_000;
 
@@ -231,14 +231,14 @@ export async function startTestServer(
           await closed;
           await ioClosed;
           // Handlers io.close() started still read presence and the pool; both close below.
-          await settleDisconnects(SETTLE_DISCONNECTS_MS);
+          await settleInFlight(SETTLE_IN_FLIGHT_MS);
           // After the http server: closeDatabase drains the fire-and-forget
           // writes still landing from the requests and disconnects above.
           await flushTelemetry();
           await (await closeDatabase()).ended;
           cancelRevocationRetries();
           stopHealth();
-          void stopInbox();
+          await stopInbox();
           closeTableOwners();
           closePresence();
           closeRedis();
@@ -270,7 +270,7 @@ export async function startTestServer(
     await (await closeDatabase()).ended;
     cancelRevocationRetries();
     stopHealth();
-    void stopInbox();
+    await stopInbox();
     closeTableOwners();
     closePresence();
     closeRedis();

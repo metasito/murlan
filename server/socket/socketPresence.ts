@@ -17,6 +17,7 @@ import { userStore } from "../store/userStore.ts";
 import { logger } from "../shared/logger.ts";
 import { friendships, type InviteRefusal } from "./friendships.ts";
 import { trackEvent } from "../shared/events.ts";
+import { track } from "../shared/inFlight.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
   isShuttingDown,
@@ -131,12 +132,14 @@ export function registerLostPresence(): void {
   onPresenceLost((userIds) => {
     const lastSeen = new Date(now()).toISOString();
     for (const userId of userIds) {
-      void userStore
-        .updateLastSeen(userId)
-        .catch((err: unknown) => logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account"))
-        .then(() => friendStore.getFriends(userId))
-        .then((friends) => friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen }))
-        .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline"));
+      void track(
+        userStore
+          .updateLastSeen(userId)
+          .catch((err: unknown) => logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account"))
+          .then(() => friendStore.getFriends(userId))
+          .then((friends) => friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen }))
+          .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline"))
+      );
     }
   });
 }
@@ -145,35 +148,21 @@ export function registerLostPresence(): void {
 export function registerRestoredPresence(): void {
   onPresenceRestored((userIds) => {
     for (const userId of userIds) {
-      void friendStore
-        .getFriends(userId)
-        .then((friends) => announceOnlineToFriends(userId, friends))
-        .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a restored account's friends it is online"));
+      void track(
+        friendStore
+          .getFriends(userId)
+          .then((friends) => announceOnlineToFriends(userId, friends))
+          .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a restored account's friends it is online"))
+      );
     }
   });
-}
-
-const pendingDisconnects = new Set<Promise<void>>();
-
-/**
- * Resolves once every disconnect handler already started has finished, or at
- * `timeoutMs`. `io.close()` starts them and waits for none, and a seat lost at a
- * table another instance owns is forwarded to that instance's inbox.
- */
-export async function settleDisconnects(timeoutMs: number): Promise<void> {
-  let timer: NodeJS.Timeout | undefined;
-  await Promise.race([
-    Promise.allSettled([...pendingDisconnects]),
-    new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
-  ]);
-  clearTimeout(timer);
 }
 
 export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
 
     socket.on("disconnect", (reason: DisconnectReason) => {
       trackEvent("socket.closed", userId, { reason });
-      const handled = (async () => {
+      void track((async () => {
         let offlineNotice: Promise<void> | undefined;
         try {
           // A spectator holds no seat, so none of the grace/AFK machinery below
@@ -193,7 +182,8 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
             );
 
           const lastSeen = new Date(now()).toISOString();
-          offlineNotice = emitFriendStatusOffline(userId, lastSeen);
+          // A drain moves this account to another instance within seconds; telling its friends it left would show them a flicker, and nothing here outlives the process to correct it.
+          if (!isShuttingDown()) offlineNotice = emitFriendStatusOffline(userId, lastSeen);
 
           const currentRoomId = unseatSocket(socket.id);
           // Three paths reach a return without announcing the drop, and from
@@ -250,9 +240,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
         } finally {
           await offlineNotice;
         }
-      })();
-      pendingDisconnects.add(handled);
-      void handled.finally(() => pendingDisconnects.delete(handled));
+      })());
     });
 }
 
@@ -328,7 +316,7 @@ export function evictReplacedSession(
   if (!replaced) return;
 
   const roomId = unseatSocket(replacedSocketId);
-  if (roomId) void seatSocket(rt, replacement, userId, roomId);
+  if (roomId) void track(seatSocket(rt, replacement, userId, roomId));
 
   replaced.emit("socket:error", payload("SESSION_REPLACED"));
   logger.info(

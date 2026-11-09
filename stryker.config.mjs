@@ -23,6 +23,7 @@ export const SCANS = [
   "tests/server/deployRuntime.test.ts",
   "tests/server/exchangeVisibilityScan.test.ts",
   "tests/server/historyBound.test.ts",
+  "tests/server/inFlightScan.test.ts",
   "tests/server/layering.test.ts",
   "tests/server/logRedactionScan.test.ts",
   "tests/server/noEnvReadAtImport.test.ts",
