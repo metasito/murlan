@@ -46,7 +46,7 @@ describe('the web particle layer under reduced motion', () => {
     const scene = createScene(Math.random);
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const cv = fakeCanvas();
-    const stop = animate(cv, scene, lamp, true, 1, 1)!;
+    const { stop } = animate(cv, scene, lamp, true, 1, 1)!;
     let asleep = false;
     for (let i = 0; i < 2000 && !asleep; i++) {
       const before = clears;
@@ -63,10 +63,45 @@ describe('the web particle layer under reduced motion', () => {
   });
 });
 
+describe('the web particle layer asleep under reduced motion', () => {
+  const sleep = (scene: ReturnType<typeof createScene>) => {
+    const loop = animate(fakeCanvas(), scene, makeMutable(restingLamp(TABLE_CENTRE)), true, 1, 1)!;
+    for (let i = 0; i < 2000 && frames.length; i++) runFrame();
+    return loop;
+  };
+
+  it('asks for no further frame once asleep', () => {
+    const loop = sleep(createScene(Math.random));
+    expect(frames).toHaveLength(0);
+    loop.stop();
+  });
+
+  it('draws again, from one frame, when a spawn wakes it', () => {
+    const scene = createScene(Math.random);
+    const loop = sleep(scene);
+    const before = clears;
+    spawn(scene.s, { x: 100, y: 100, life: 5, size: 4 });
+    loop.wake();
+    loop.wake();
+    expect(frames).toHaveLength(1);
+    runFrame();
+    expect(clears).toBe(before + 1);
+    expect(frames).toHaveLength(1);
+    loop.stop();
+  });
+
+  it('is not woken while it runs', () => {
+    const loop = animate(fakeCanvas(), createScene(Math.random), makeMutable(restingLamp(TABLE_CENTRE)), true, 1, 1)!;
+    loop.wake();
+    expect(frames).toHaveLength(1);
+    loop.stop();
+  });
+});
+
 describe('the web particle layer at full motion', () => {
   const drawn = (scene: ReturnType<typeof createScene>, frameCount: number) => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const stop = animate(fakeCanvas(), scene, lamp, false, 1, 1)!;
+    const { stop } = animate(fakeCanvas(), scene, lamp, false, 1, 1)!;
     runFrame();
     const before = clears;
     for (let i = 0; i < frameCount; i++) runFrame();
@@ -88,7 +123,7 @@ describe('the web particle layer at full motion', () => {
     const dpr = Object.getOwnPropertyDescriptor(g, 'devicePixelRatio');
     Object.defineProperty(g, 'devicePixelRatio', { value: 3, configurable: true });
     const cv = fakeCanvas();
-    animate(cv, createScene(Math.random), makeMutable(restingLamp(TABLE_CENTRE)), false, 1, 1)!();
+    animate(cv, createScene(Math.random), makeMutable(restingLamp(TABLE_CENTRE)), false, 1, 1)!.stop();
     if (dpr) Object.defineProperty(g, 'devicePixelRatio', dpr);
     else delete g.devicePixelRatio;
     expect(cv.width).toBe(DESIGN.width);

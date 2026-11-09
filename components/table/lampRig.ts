@@ -180,6 +180,22 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
   s.flare *= Math.exp(-dt * FLARE_DECAY);
 }
 
+const SETTLED = 1e-4;
+
+/** Whether a further step would move nothing: under reduced motion, converged on its targets, and the flare and kick spent. */
+export function lampSettled(s: Lamp, reduced: boolean): boolean {
+  "worklet";
+  return (
+    reduced &&
+    Math.abs(s.tx - s.x) < SETTLED &&
+    Math.abs(s.ty - s.y) < SETTLED &&
+    Math.abs(s.tr - s.r) < SETTLED &&
+    Math.abs(s.lvlT - s.lvl) < SETTLED &&
+    s.flare < SETTLED &&
+    s.kick < SETTLED
+  );
+}
+
 /** A moment's hold on the lamp: each call is what the mockup's chapters write into `lamp`. */
 export const lampControls = {
   setTarget(s: Lamp, pool: Pool, reduced: boolean): void {

@@ -18,9 +18,10 @@ import {
   useRSXformBuffer,
   type SkImage,
 } from "@shopify/react-native-skia";
-import { useDerivedValue, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { useAnimatedReaction, useDerivedValue, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
+import { useDuring } from "@/lib/motion";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RestAir } from "@/lib/tokens";
 import { MOTES, type MothPose } from "./air";
@@ -73,14 +74,14 @@ function bakeSheet(): SkImage | null {
 
 // `moth` is written only while one flies: `field` changes every frame, and shapes derived from it would rebuild with it.
 function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: SharedValue<boolean>, moth: SharedValue<MothPose | null>) {
-  return (frame: FrameInfo) => {
+  return (frame: FrameInfo): boolean => {
     "worklet";
     const v = field.value;
     const l = lamp.value;
     const frameS = (frame.timeSincePreviousFrame ?? 0) / 1000;
     v.due += frameS;
-    if (!stepDue(v, v.due, frameS, still.value)) return;
-    if (sceneAsleep(v, l, still.value)) return;
+    if (!stepDue(v, v.due, frameS, still.value)) return true;
+    if (sceneAsleep(v, l, still.value)) return false;
     // Held still, the time owed spans the sleep: stepping it all at once would jump the light.
     const dt = Math.min(0.05, still.value ? frameS : v.due);
     v.due = 0;
@@ -88,6 +89,7 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     const p = v.moth;
     if (p || moth.value) moth.value = p;
     field.modify(undefined, true);
+    return true;
   };
 }
 
@@ -116,9 +118,19 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
   const moth = useSharedValue<MothPose | null>(null);
   const reduced = usePrefersReducedMotion();
   const still = useSharedValue(reduced);
+  // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
+  const [onFrame] = useState(() => stepper(field, lamp, still, moth));
+  const wake = useDuring(onFrame, true);
   useEffect(() => {
-    still.value = reduced;
-  }, [reduced, still]);
+    still.set(reduced);
+    wake();
+  }, [reduced, still, wake]);
+  useAnimatedReaction(
+    () => lamp.value.t,
+    () => {
+      wake();
+    }
+  );
   useLandingReaction(landing, (l) => {
     "worklet";
     const dust = landingDust(l, reduced, sx, sy, Math.random);
@@ -127,6 +139,7 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
       for (const p of dust) spawn(v.s, p);
       return v;
     }, true);
+    wake();
   });
   useBombBeat(landing, reduced, (l) => {
     "worklet";
@@ -136,12 +149,10 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
       for (const p of fx) spawn(v.s, p);
       return v;
     }, true);
+    wake();
     scheduleOnRN(traceOnset, "moment", "bombFx");
   });
 
-  // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
-  const [onFrame] = useState(() => stepper(field, lamp, still, moth));
-  useFrameCallback(onFrame);
   useTraceSource("live", useCallback(() => field.value.s.live + MOTES, [field]));
   useTraceSource("dropped", useCallback(() => field.value.s.dropped, [field]));
   useTraceSource("motes", useCallback(() => field.value.lit, [field]));
@@ -160,6 +171,7 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         for (const p of spawns) spawn(v.s, p);
         return v;
       }, true);
+      wake();
     },
     ember(from, to) {
       if (reduced) return;
@@ -168,6 +180,7 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         startEmber(v.ember, from, to);
         return v;
       }, true);
+      wake();
     },
     rain() {
       if (reduced) return;
@@ -176,8 +189,9 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         startRain(v.rain);
         return v;
       }, true);
+      wake();
     },
-  }), [field, reduced]);
+  }), [field, reduced, wake]);
 
   const sprites = useRectBuffer(PARTICLE_BUDGET, (r, i) => {
     "worklet";
