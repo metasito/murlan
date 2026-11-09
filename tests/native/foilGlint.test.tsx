@@ -43,7 +43,7 @@ const lightAt = (lx: number, ly: number, level = 1): GlossLight => ({ lx, ly, le
 const owned = (id: string, r: CardRect) => makeMutable<CardRects>({ [id]: r }) as unknown as OwnedRects;
 
 function Table({ light, still, children }: { light: SharedValue<GlossLight>; still?: SharedValue<GlossLight>; children: React.ReactNode }) {
-  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light, still ?? light);
+  const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light, still ?? light, useSharedValue(1));
   return <CardTableProvider value={value}>{children}</CardTableProvider>;
 }
 
