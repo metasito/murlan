@@ -23,7 +23,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
-import { flareKindFor, type FlareKind } from "@/components/impact";
+import { pileBursts } from "@/components/impact";
 import { BombFx, Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
 import { useBombBeat } from "@/components/table/useBombBeat";
@@ -120,23 +120,16 @@ const FLARE_LAYERS: readonly GradientLayer[] = [
 // ─── Flare ──────────────────────────────────────────────────────────────────
 
 const FLARE_SIZE = 150;
-/** The bomb's own window — brief, because the surprise is over the instant it lands. */
-const FLARE_BRIEF_MS = NATIVE ? Motion.nativeBurst.flare : 1500;
-/**
- * The match's own window — long enough to carry the closing beat rather
- * than read as a second bomb: `flareKindFor` (impact.ts) is what
- * decides which of the two a landing plays, never a branch in here.
- */
-const FLARE_SETTLE_MS = 3000;
+/** Brief, because the surprise is over the instant it lands. */
+const FLARE_MS = NATIVE ? Motion.nativeBurst.flare : 1500;
 const FLARE_EASING = Easing.bezier(0.12, 0.72, 0.28, 1);
 const FLARE_Z = Layer.moment;
 
-/** Runs `fire` on the contact frame of a landing that flares, unless reduced motion withholds the burst. */
-function useBurst(landing: SharedValue<LandingSignal>, reduceMotion: boolean, fire: (kind: FlareKind) => void): void {
+/** Runs `fire` on the contact frame of a landing that bursts at the pile, unless reduced motion withholds the burst. */
+function useBurst(landing: SharedValue<LandingSignal>, reduceMotion: boolean, fire: () => void): void {
   useLandingReaction(landing, (l) => {
     "worklet";
-    const kind = flareKindFor(l.tier);
-    if (kind !== "none" && !reduceMotion) fire(kind);
+    if (pileBursts(l.tier) && !reduceMotion) fire();
   });
 }
 
@@ -144,24 +137,23 @@ function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale:
   const opacity = useOwnedValue(0);
   const scaleV = useOwnedValue(0.15);
 
-  useBurst(landing, usePrefersReducedMotion(), (kind) => {
+  useBurst(landing, usePrefersReducedMotion(), () => {
     "worklet";
-    const flareMs = kind === "settle" ? FLARE_SETTLE_MS : FLARE_BRIEF_MS;
     const e = FLARE_EASING;
     opacity.set(0);
     scaleV.set(0.15);
     opacity.set(
       withSequence(
-        withTiming(1, { duration: flareMs * 0.06, easing: e }),
-        withTiming(1, { duration: flareMs * 0.06, easing: e }),
-        withTiming(0, { duration: flareMs * 0.88, easing: e })
+        withTiming(1, { duration: FLARE_MS * 0.06, easing: e }),
+        withTiming(1, { duration: FLARE_MS * 0.06, easing: e }),
+        withTiming(0, { duration: FLARE_MS * 0.88, easing: e })
       )
     );
     scaleV.set(
       withSequence(
-        withTiming(0.9, { duration: flareMs * 0.06, easing: e }),
-        withTiming(1.05, { duration: flareMs * 0.06, easing: e }),
-        withTiming(7, { duration: flareMs * 0.88, easing: e })
+        withTiming(0.9, { duration: FLARE_MS * 0.06, easing: e }),
+        withTiming(1.05, { duration: FLARE_MS * 0.06, easing: e }),
+        withTiming(7, { duration: FLARE_MS * 0.88, easing: e })
       )
     );
   });
@@ -277,7 +269,7 @@ const BURST_Z = Layer.band;
  * The bomb's three layers, centred on the impact point — the same point
  * `PileLayer` draws the pile at. Rendered as a sibling of it inside the
  * table's own centre section. Each fires on the contact frame of a landing
- * whose tier flares (#765) — "brief" for the bomb, "settle" for the match.
+ * that `pileBursts` (impact.ts) answers yes for.
  */
 export function BombBurst({ landing, scale }: { landing: SharedValue<LandingSignal>; scale: number }) {
   return (
