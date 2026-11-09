@@ -12,6 +12,8 @@ import { MIN_TABLE_TIMEOUT_MS, TABLE_TIMEOUT_MS, tableTimeoutMs } from "../../sc
 import { posixWorld, windowsWorld } from "../helpers/processWorlds.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
+import { FORCED_EXIT_MS } from "../../server/http/shutdown.ts";
+import { gate } from "../soak/gateBudget.ts";
 import { NO_BACKGROUND_JIT } from "../../scripts/nodeTest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -30,8 +32,12 @@ const scrubbedEnv = (extra: Record<string, string> = {}): NodeJS.ProcessEnv => {
 
 /** Set in the parent for this whole file: a child that can see it was handed more than it asked for. */
 process.env.MURLAN_ENV_SENTINEL = "parent";
-const LEAK_CHECK = 'if (process.env.MURLAN_ENV_SENTINEL !== undefined) process.stderr.write("ENV-LEAK\\n");\n';
-const noLeak = (out: string) => assert.doesNotMatch(out, /ENV-LEAK/, "a planted child saw the parent's environment");
+const LEAK_CHECK = 'process.stderr.write(process.env.MURLAN_ENV_SENTINEL === undefined ? "RAN\\n" : "ENV-LEAK\\n");\n';
+/** Each child says it ran: one that inherited the parent's test context is skipped by node:test and says nothing. */
+const noLeak = (out: string, children = 1) => {
+  assert.doesNotMatch(out, /ENV-LEAK/, "a planted child saw the parent's environment");
+  assert.equal(out.match(/^(?:# )?RAN$/gm)?.length ?? 0, children, `${children} planted child(ren) should have run\n${out}`);
+};
 
 const PLANTED = {
   "syncChild.test.mjs":
@@ -69,7 +75,7 @@ describe("a test file that never finishes fails npm test by name", () => {
           resolve({ code: err ? err.code : 0, out: stdout + stderr })
         )
       );
-      noLeak(run.out);
+      noLeak(run.out, Object.keys(PLANTED).length);
       assert.equal(run.code, 1, run.out);
       // A hang that survives its deadline is still ended by --test-timeout, which also exits 1.
       const testTimeout = Number(/--test-timeout=(\d+)/.exec(script)?.[1]);
@@ -81,9 +87,22 @@ describe("a test file that never finishes fails npm test by name", () => {
   });
 
   test("the deadline outlasts the longest limit a test asks for", () => {
-    const asked = sourcesUnder(repoRoot, ["tests", "tools/loop/tests"], /\.test\.tsx?$/).flatMap(([, text]) =>
-      [...text.matchAll(/\btimeout:\s*(\d[\d_]*)\s*[,}]/g)].map((m) => Number(m[1].replaceAll("_", "")))
-    );
+    const known: Record<string, number> = { "GATE.timeoutMs": gate().timeoutMs, FORCED_EXIT_MS };
+    const asked: number[] = [];
+    const unresolved: string[] = [];
+    for (const [file, text] of sourcesUnder(repoRoot, ["tests", "tools/loop/tests"], /\.(test\.tsx?|mjs)$/)) {
+      const code = blankCommentsAndStrings(text);
+      for (const call of code.matchAll(/\b(?:test|it|describe)(?:\.\w+)?\s*\(\s*[^,]*,\s*\{([^}]*)\}/g)) {
+        const expr = /\btimeout:\s*([^,}]+)/.exec(call[1])?.[1].trim();
+        if (expr === undefined) continue;
+        const line = code.slice(0, call.index).split("\n").length;
+        const bare = expr.replace(/GATE\.timeoutMs|\bFORCED_EXIT_MS\b/g, (name) => String(known[name])).replaceAll("_", "");
+        const value = /^[\d+*\s()-]+$/.test(bare) ? Number(Function(`return (${bare})`)()) : NaN;
+        if (Number.isFinite(value)) asked.push(value);
+        else unresolved.push(`unresolvable timeout at ${file}:${line}: ${expr}`);
+      }
+    }
+    assert.deepEqual(unresolved, []);
     assert.ok(asked.length >= 5 && Math.max(...asked) >= 420_000, "the scan finds the longest limits");
     assert.ok(FILE_DEADLINE_MS >= 1.5 * Math.max(...asked), `${Math.max(...asked)} ms test limit`);
   });
@@ -100,13 +119,13 @@ describe("a test file that hangs on its way out fails npm test by name", () => {
   const passes = LEAK_CHECK + 'import { test } from "node:test";\ntest("passes", () => {});\n';
   // A stopped process runs no thread, so its own deadline worker is as gone as process.exit leaves it.
   const hangsOnExit = `${passes}process.on("exit", () => process.kill(process.pid, "SIGSTOP"));\n`;
-  const run = async (argv: string[], env: NodeJS.ProcessEnv) => {
+  const run = async (argv: string[], env: NodeJS.ProcessEnv, children = 1) => {
     const result = await new Promise<{ code: unknown; out: string }>((resolve) =>
       execFile(process.execPath, argv, { cwd: repoRoot, env, timeout: 60_000 }, (err, stdout, stderr) =>
         resolve({ code: err ? err.code : 0, out: stdout + stderr })
       )
     );
-    noLeak(result.out);
+    noLeak(result.out, children);
     return result;
   };
   const planted = (files: Record<string, string>) => {
@@ -120,7 +139,7 @@ describe("a test file that hangs on its way out fails npm test by name", () => {
     const { dir, glob } = planted({ "hangsOnExit.test.mjs": hangsOnExit, "exits.test.mjs": passes });
     try {
       const env = { ...quiet(), MURLAN_TEST_FILE_DEADLINE_MS: "2000", MURLAN_TEST_RUN_IDLE_MS: "15000", MURLAN_TEST_EXIT_GRACE_MS: "1000" };
-      const { code, out } = await run([...script.split(" ").slice(1, -1), glob], env);
+      const { code, out } = await run([...script.split(" ").slice(1, -1), glob], env, 2);
       assert.equal(code, 1, out);
       assert.match(out, /hangsOnExit\.test\.mjs: hung after its tests finished, killed 1s into its exit/);
       assert.doesNotMatch(out, /exits\.test\.mjs: hung/);
