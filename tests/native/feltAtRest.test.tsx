@@ -2,13 +2,13 @@
 // and a settled lamp's sway costs it no lighting (#1962, rule 51).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { PixelRatio } from 'react-native';
+import { PixelRatio, StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { makeMutable } from 'react-native-reanimated';
 
 import { TABLE_AT_REST } from '@/components/table/cardRects';
 import { FeltCanvas } from '@/components/table/feltCanvas';
-import { FELT_K_CAP, WEAVE_PLANES } from '@/components/table/feltShader';
+import { WEAVE_PLANES } from '@/components/table/feltShader';
 import { DESIGN, TABLE_CENTRE, lampControls, restingLamp, stepLamp, type Lamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
 import { setMotionPreference } from '@/lib/accessibility';
@@ -108,13 +108,9 @@ const sway = (lamp: ReturnType<typeof makeMutable<Lamp>>) => () =>
     stepLamp(s, 1 / 60, false);
     return s;
   }, true);
-// The view carries no testID: on web the render counter keys the felt's canvas by its nearest one, `table-felt`.
-type Node = { type: unknown; props: { style?: unknown }; parent: Node | null };
-const feltView = (canvas: Node) => {
-  let at = canvas.parent;
-  while (at && at.type !== 'View') at = at.parent;
-  return Object.assign({}, ...[at?.props.style].flat(2));
-};
+type Node = { props: { style?: unknown }; parent: Node | null };
+const scaled = (node: Node | null): unknown[] =>
+  node ? [...[node.props.style].flat(4).flatMap((s) => (s as { transform?: unknown[] } | undefined)?.transform ?? []), ...scaled(node.parent)] : [];
 const held = (kind: Kind) => mock.images.filter((i) => i.baked && i.kind === kind && !i.texture && i.dispose.mock.calls.length === 0);
 const planesHeld = () => held('weave');
 const bakes = (kind: Kind) => mock.bakes.filter((b) => b.kind === kind).map((b) => b.size);
@@ -290,30 +286,21 @@ describe('the felt cloth', () => {
     await view.unmount();
   });
 
-  it(`lays the canvas out at ${FELT_K_CAP} device pixels a point at most, and scales it up to the window`, async () => {
-    jest.spyOn(PixelRatio, 'get').mockReturnValue(3);
+  it.each([
+    [3, 1],
+    [3, 1.3],
+    [3.5, 1.1],
+  ])('draws every pixel of the felt where it shows, at DPR %p and %p points a design point: nothing scaled, every bake on the canvas\'s own pixels', async (dpr, s) => {
+    jest.spyOn(PixelRatio, 'get').mockReturnValue(dpr);
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
-    await frames(32);
-    expect(bakes('weave')).toEqual([[Math.round(DESIGN.width * FELT_K_CAP), Math.round(DESIGN.height * FELT_K_CAP)]]);
-    const style = feltView(view.getByTestId('felt-skia'));
-    expect(style.width).toBeCloseTo((DESIGN.width * FELT_K_CAP) / 3);
-    expect(style.height).toBeCloseTo((DESIGN.height * FELT_K_CAP) / 3);
-    expect(style.transform).toEqual([{ scale: 3 / FELT_K_CAP }]);
-    expect(style.transformOrigin).toBe('left top');
-    // Skia's web Canvas spreads its style into a div's CSS: one object, no RN transform.
-    const canvasStyle = view.getByTestId('felt-skia').props.style;
-    expect(Array.isArray(canvasStyle)).toBe(false);
-    expect(canvasStyle.transform).toBeUndefined();
-    await view.unmount();
-  });
-
-  it('fills the window itself under the cap', async () => {
-    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
-    const style = feltView(view.getByTestId('felt-skia'));
-    expect(style.transform).toBeUndefined();
-    expect([style.left, style.right, style.top, style.bottom]).toEqual([0, 0, 0, 0]);
+    const view = await render(<FeltCanvas lamp={lamp} sx={s} sy={s} stops={FeltGradient} cards={table} />);
+    await frames(160, sway(lamp));
+    const device = [Math.round(DESIGN.width * dpr * s), Math.round(DESIGN.height * dpr * s)];
+    expect(bakes('weave')).toEqual([device]);
+    expect(bakes('lit')).toEqual(Array(LIT_PER_TARGET).fill(device));
+    const canvas = view.getByTestId('felt-skia');
+    expect(canvas.props.style).toBe(StyleSheet.absoluteFill);
+    expect(scaled(canvas as unknown as Node)).toEqual([]);
     await view.unmount();
   });
 

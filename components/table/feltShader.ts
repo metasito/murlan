@@ -25,6 +25,12 @@ const UNIFORMS = `uniform vec2 uLamp;
 uniform float uK,uLampH,uFlare,uPoolR,uVigR,uPitch,uType,uDepth,uCover,uFuzz,uSheen,uAniso,uTwo,uMott;
 uniform vec3 uS0,uS1,uS2,uS3,uS4;`;
 
+/**
+ * The mockup's `V.K` cap (2026-11-07), on the weave's visibility only: the felt draws at device pixels,
+ * as a canvas capped and scaled up to the window lays a plaid of its resampling over the weave.
+ */
+export const FELT_K_CAP = 2.5;
+
 export const CLOTH_BODY = `vec3 stops(float t){t=clamp(t,0.,1.)*4.;if(t<1.)return mix(uS0,uS1,t);if(t<2.)return mix(uS1,uS2,t-1.);if(t<3.)return mix(uS2,uS3,t-2.);return mix(uS3,uS4,t-3.);}
 float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float h11(float n){return fract(sin(n*91.345+7.13)*47453.5453);}
@@ -59,7 +65,7 @@ vec4 cloth(vec2 p){
  vec3 T=wo?vec3(0.,1.,0.):vec3(1.,0.,0.);
  float th=dot(T,Hv),spec=pow(sqrt(max(0.,1.-th*th)),uAniso);
  float I=1./(1.+pow(d/260.,2.));
- float vis=smoothstep(1.4,3.,uK*uPitch)*(1.-uCover);
+ float vis=smoothstep(1.4,3.,min(uK,${FELT_K_CAP.toFixed(2)})*uPitch)*(1.-uCover);
  float ao=mix(1.-uDepth,1.,prof)*(.8+.4*diff);
  float shade=mix(1.,ao*(1.+tv),vis);
  float mott=((vn(p*.06)-.5)*.08+(vn(p*.25)-.5)*.05)*uMott;
@@ -102,9 +108,6 @@ const B_SPAN = 0.45;
 const S_SPAN = 0.45;
 
 export const WEAVE_PLANES = 2;
-
-/** The most device pixels a design point gets: the mockup's `V.K`, the owner's cap (2026-11-07). */
-export const FELT_K_CAP = 2.5;
 
 /**
  * The cloth's lamp-free terms, one plane each pass: the thread normal's slope and which thread is on

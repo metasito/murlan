@@ -2,7 +2,7 @@
 // whole table. On web it is only ever reached through `feltSkia.web.tsx`'s lazy boundary, once
 // CanvasKit has loaded — `Skia` is bound to it when this module is evaluated.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PixelRatio, Platform, StyleSheet, View } from "react-native";
+import { PixelRatio, Platform, StyleSheet } from "react-native";
 import {
   AlphaType,
   BlurStyle,
@@ -42,7 +42,7 @@ import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
 import { useGreyLayer } from "./greyLayer";
-import { CLOTH_SKSL, clothUniforms, FELT_K_CAP, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
+import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
@@ -477,11 +477,9 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const flipOpaque = useCallback((on: boolean) => setOpaque(IOS && on), []);
   useBenchHandle("feltOpaque", flipOpaque);
   const dpr = PixelRatio.get();
-  const full = dpr * Math.min(sx, sy);
-  const c = Math.min(1, FELT_K_CAP / full);
-  const k = full * c;
-  const gx = dpr * sx * c;
-  const gy = dpr * sy * c;
+  const k = dpr * Math.min(sx, sy);
+  const gx = dpr * sx;
+  const gy = dpr * sy;
   const rail = useMemo(() => bakeRail(k), [k]);
   useEffect(() => () => void (rail && free(rail)), [rail]);
   const makeWeave = useCallback((): Weave => ({ planes: bakeWeave(k, gx, gy), cloths: new ClothCache() }), [k, gx, gy]);
@@ -490,10 +488,6 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const planes = weave?.planes ?? null;
   const texel = useMemo(() => [{ scaleX: 1 / gx }, { scaleY: 1 / gy }], [gx, gy]);
   const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
-  const view = useMemo(
-    () => (c < 1 ? [StyleSheet.absoluteFill, { width: DESIGN.width * sx * c, height: DESIGN.height * sy * c, transform: [{ scale: 1 / c }], transformOrigin: "left top" }] : StyleSheet.absoluteFill),
-    [c, sx, sy]
-  );
 
   const [aim, setAim] = useState("");
   // 1 is the lit cloth, 0 a settled lamp's cross; the reaction lights the felt the frame the lamp moves on, before React drops the cross.
@@ -572,80 +566,77 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
 
   const { width, height } = DESIGN;
   return (
-    // On web Skia's Canvas writes its style straight onto a div, so the scale lives on a View.
-    <View style={view} pointerEvents="none">
-      <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
-        <Group transform={[{ scaleX: sx * c }, { scaleY: sy * c }]} layer={greyLayer}>
-          <Rect x={0} y={0} width={width} height={height} color={ROOM} />
-          {rail && <Image image={rail} fit="fill" x={0} y={0} width={width} height={height} />}
-          <Group clip={OUTER}>
-            <Group clip={FELT_EDGE} invertClip>
-              <Rect x={0} y={0} width={width} height={height} blendMode="softLight">
-                <RadialGradient c={light} r={RAIL_LIGHT.softRadius} colors={soft} positions={RAIL_LIGHT.softStops} />
-              </Rect>
-            </Group>
+    <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
+      <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={greyLayer}>
+        <Rect x={0} y={0} width={width} height={height} color={ROOM} />
+        {rail && <Image image={rail} fit="fill" x={0} y={0} width={width} height={height} />}
+        <Group clip={OUTER}>
+          <Group clip={FELT_EDGE} invertClip>
+            <Rect x={0} y={0} width={width} height={height} blendMode="softLight">
+              <RadialGradient c={light} r={RAIL_LIGHT.softRadius} colors={soft} positions={RAIL_LIGHT.softStops} />
+            </Rect>
           </Group>
-          <RoundedRect rect={COAT} style="stroke" strokeWidth={RAIL_LIGHT.coatWidth}>
-            <RadialGradient c={light} r={RAIL_LIGHT.coatRadius} colors={coat} />
-          </RoundedRect>
-          {rest && REST && (
-            <Rect x={0} y={0} width={width} height={height} opacity={cross}>
-              <Shader source={REST} uniforms={lean}>
-                {[rest.left, rest.right].map((image, i) => (
-                  <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
-                ))}
-              </Shader>
-            </Rect>
-          )}
-          {rest && planes && HAND_LIT ? (
-            <Rect x={0} y={0} width={width} height={height} opacity={hand}>
-              <Shader source={HAND_LIT} uniforms={handing}>
-                {[...planes, rest.left, rest.right].map((image, i) => (
-                  <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
-                ))}
-              </Shader>
-            </Rect>
-          ) : rest && HAND_CLOTH ? (
-            <Rect x={0} y={0} width={width} height={height} opacity={hand}>
-              <Shader source={HAND_CLOTH} uniforms={handing}>
-                {[rest.left, rest.right].map((image, i) => (
-                  <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
-                ))}
-              </Shader>
-            </Rect>
-          ) : planes && LIT ? (
-            <Rect x={0} y={0} width={width} height={height}>
-              <Shader source={LIT} uniforms={uniforms}>
-                {planes.map((plane, i) => (
-                  <ImageShader key={i} image={plane} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
-                ))}
-              </Shader>
-            </Rect>
-          ) : (
-            CLOTH && (
-              <Rect x={0} y={0} width={width} height={height}>
-                <Shader source={CLOTH} uniforms={uniforms} />
-              </Rect>
-            )
-          )}
-          {glows && (
-            <Group transform={flat}>
-              <Picture picture={glow} />
-            </Group>
-          )}
-          {shadows && (
-            <>
-              <Group transform={fall}>
-                <Picture picture={cast} />
-              </Group>
-              <Group transform={contact}>
-                <Picture picture={contacts} />
-              </Group>
-            </>
-          )}
-          <Rect x={0} y={0} width={width} height={height} color="black" opacity={shade} />
         </Group>
-      </Canvas>
-    </View>
+        <RoundedRect rect={COAT} style="stroke" strokeWidth={RAIL_LIGHT.coatWidth}>
+          <RadialGradient c={light} r={RAIL_LIGHT.coatRadius} colors={coat} />
+        </RoundedRect>
+        {rest && REST && (
+          <Rect x={0} y={0} width={width} height={height} opacity={cross}>
+            <Shader source={REST} uniforms={lean}>
+              {[rest.left, rest.right].map((image, i) => (
+                <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+              ))}
+            </Shader>
+          </Rect>
+        )}
+        {rest && planes && HAND_LIT ? (
+          <Rect x={0} y={0} width={width} height={height} opacity={hand}>
+            <Shader source={HAND_LIT} uniforms={handing}>
+              {[...planes, rest.left, rest.right].map((image, i) => (
+                <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+              ))}
+            </Shader>
+          </Rect>
+        ) : rest && HAND_CLOTH ? (
+          <Rect x={0} y={0} width={width} height={height} opacity={hand}>
+            <Shader source={HAND_CLOTH} uniforms={handing}>
+              {[rest.left, rest.right].map((image, i) => (
+                <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+              ))}
+            </Shader>
+          </Rect>
+        ) : planes && LIT ? (
+          <Rect x={0} y={0} width={width} height={height}>
+            <Shader source={LIT} uniforms={uniforms}>
+              {planes.map((plane, i) => (
+                <ImageShader key={i} image={plane} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+              ))}
+            </Shader>
+          </Rect>
+        ) : (
+          CLOTH && (
+            <Rect x={0} y={0} width={width} height={height}>
+              <Shader source={CLOTH} uniforms={uniforms} />
+            </Rect>
+          )
+        )}
+        {glows && (
+          <Group transform={flat}>
+            <Picture picture={glow} />
+          </Group>
+        )}
+        {shadows && (
+          <>
+            <Group transform={fall}>
+              <Picture picture={cast} />
+            </Group>
+            <Group transform={contact}>
+              <Picture picture={contacts} />
+            </Group>
+          </>
+        )}
+        <Rect x={0} y={0} width={width} height={height} color="black" opacity={shade} />
+      </Group>
+    </Canvas>
   );
 }

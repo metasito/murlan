@@ -10,9 +10,9 @@ import { FeltGradients } from "../../lib/tokens.ts";
 
 const require = createRequire(import.meta.url);
 
-/** Device pixels per design point on each axis: DPR 1, a DPR 2 phone, between, the felt's cap, and a window wider than the table. The cloth's `uK` is the lesser. */
+/** Device pixels per design point on each axis: DPR 1, a DPR 2 phone, between, the weave's cap, past it, and a window wider than the table. The cloth's `uK` is the lesser. */
 type Density = readonly [gx: number, gy: number];
-const DENSITIES: Density[] = [[1, 1], [2, 2], [2.2, 2.2], [FELT_K_CAP, FELT_K_CAP], [FELT_K_CAP, 2.2]];
+const DENSITIES: Density[] = [[1, 1], [2, 2], [2.2, 2.2], [FELT_K_CAP, FELT_K_CAP], [3, 3], [FELT_K_CAP, 2.2]];
 const kOf = ([gx, gy]: Density) => Math.min(gx, gy);
 const LAMPS: [x: number, y: number][] = [
   [437, 362],
