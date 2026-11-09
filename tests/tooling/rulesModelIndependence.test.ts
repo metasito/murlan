@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import ts from "typescript";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 // docs/adr/0012-a-rules-model-is-a-test-oracle.md
 
@@ -47,7 +48,10 @@ function scan(file: string, source: string): Import[] {
   return imports;
 }
 
-const insideModel = (file: string, spec: string) => spec.startsWith(".") && path.resolve(path.dirname(file), spec).startsWith(MODEL + path.sep);
+const insideModel = (file: string, spec: string) => {
+  const at = localPath(path.relative(root, file).split(path.sep).join("/"), spec, false);
+  return at !== null && path.join(root, at).startsWith(MODEL + path.sep);
+};
 
 function offenders(file: string, imports: Import[]): string[] {
   const at = (i: Import, why: string) => `${path.relative(root, file)} -> ${i.spec ?? `<non-literal ${i.text}>`} (${why})`;
@@ -108,7 +112,8 @@ const CALLER_DIRS = ["app", "components", "context", "lib", "modules", "plugins"
 
 function reachesModel(file: string, spec: string | null): boolean {
   if (spec === null) return false;
-  const target = spec.startsWith(".") ? path.resolve(path.dirname(file), spec) : spec.startsWith("@/") ? path.join(root, spec.slice(2)) : null;
+  const local = localPath(path.relative(root, file).split(path.sep).join("/"), spec);
+  const target = local === null ? null : path.join(root, local);
   return target !== null && (target === MODEL || target.startsWith(MODEL + path.sep));
 }
 

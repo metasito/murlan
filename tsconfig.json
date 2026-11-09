@@ -18,7 +18,8 @@
   },
   "exclude": [
     ".worktrees",
-    ".claude/worktrees"
+    ".claude/worktrees",
+    "docs/research"
   ],
   "include": [
     "**/*.ts",

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments } from "../helpers/sourceScan.ts";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -22,22 +22,13 @@ function storageKeyLiterals(files: [string, string][]): string[] {
 }
 
 const UPWARD = new Set(["context", "components", "app", "server"]);
-const IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)["']([^"']+)["']/g;
 
 function upwardImports(files: [string, string][]): string[] {
-  const hits: string[] = [];
-  for (const [file, src] of files) {
-    for (const m of blankComments(src).matchAll(IMPORT)) {
-      const spec = m[1];
-      const target = spec.startsWith("@/")
-        ? spec.slice(2)
-        : spec.startsWith(".")
-          ? path.posix.normalize(path.posix.join(path.posix.dirname(file), spec))
-          : null;
-      if (target && UPWARD.has(target.split("/")[0])) hits.push(`${file} -> ${spec}`);
-    }
-  }
-  return hits;
+  return files.flatMap(([file, src]) =>
+    moduleEdges(file, src, { types: true })
+      .filter((e) => e.local && UPWARD.has(e.to.split("/")[0]))
+      .map((e) => `${file} -> ${e.spec}`)
+  );
 }
 
 const read = (files: string[]): [string, string][] =>
@@ -55,5 +46,7 @@ test("lib/ and shared/ import nothing from context/, components/, app/ or server
   const files = read(sources("lib", "shared"));
   assert.ok(files.length > 20, "the sweep reads lib/ and shared/");
   assert.deepEqual(upwardImports([["lib/x.ts", 'import type { A } from "../context/A.tsx";']]), ["lib/x.ts -> ../context/A.tsx"]);
+  assert.deepEqual(upwardImports([["lib/x.ts", 'import { A } from "@/context/A";']]), ["lib/x.ts -> @/context/A"]);
+  assert.deepEqual(upwardImports([["shared/x.ts", 'export * from "@/server/y";']]), ["shared/x.ts -> @/server/y"]);
   assert.deepEqual(upwardImports(files), []);
 });

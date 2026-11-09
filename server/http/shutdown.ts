@@ -3,7 +3,7 @@ import type { SocketServer as SocketIOServer } from "../socket/socketTypes.ts";
 import runtime from "../../deploy/runtime.json" with { type: "json" };
 import { logger } from "../shared/logger.ts";
 import { closeDatabase, QUERY_TIMEOUT_MS } from "../store/db.ts";
-import { beginShutdown } from "../game/gameRoom.ts";
+import { beginShutdown, isShuttingDown } from "../game/gameRoom.ts";
 import { closeRedis } from "../store/redis.ts";
 import { stopInbox } from "../store/instanceInbox.ts";
 import { closeTableOwners } from "../store/tableOwners.ts";
@@ -89,8 +89,6 @@ export interface ShutdownDeps {
   exit?: (code: number) => void;
 }
 
-let shuttingDown = false;
-
 /**
  * Graceful shutdown for the production run path: hand every table to a live peer, tell every
  * websocket when to reconnect, disconnect them, stop the http server, close the pool, exit 0.
@@ -105,8 +103,8 @@ export async function shutdown(
   signal: string,
   { io, server, tables, exit = (code) => process.exit(code) }: ShutdownDeps
 ): Promise<void> {
-  if (shuttingDown) return;
-  shuttingDown = true;
+  if (isShuttingDown()) return;
+  beginShutdown();
   logger.info({ signal }, "Graceful shutdown initiated");
 
   const forceExit = setTimeout(() => {
@@ -118,7 +116,6 @@ export async function shutdown(
   (forceExit as unknown as { unref?: () => void }).unref?.();
 
   try {
-    beginShutdown();
     await within(SHUTDOWN_BUDGET.handOff, tables.handOffTables(SHUTDOWN_BUDGET.handOff));
     await within(SHUTDOWN_BUDGET.drainNotice, drainNotice(io, SHUTDOWN_BUDGET.drainNotice));
     // Closes the adapter too, which ends its read loop before Redis goes below.

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
 import { closeDatabase, DatabaseNotOpenError, openDatabase, pool } from "../../server/store/db.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -35,12 +36,9 @@ const SERVER_SAFE_LIB = [
       readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
         .map((f) => f.split(path.sep).join("/"))
         .filter((f) => f.endsWith(".ts"))
-        .flatMap((f) => [
-          ...readFileSync(path.join(repoRoot, dir, f), "utf-8").matchAll(
-            /from\s+"[^"]*\/lib\/((?:[a-zA-Z]+\/)?[a-zA-Z]+)\.ts"/g
-          ),
-        ])
-        .map((m) => m[1])
+        .flatMap((f) => moduleEdges(`${dir}/${f}`, readFileSync(path.join(repoRoot, dir, f), "utf-8"), { types: true }))
+        .filter((e) => e.local && /^lib\/([a-zA-Z]+\/)?[a-zA-Z]+$/.test(e.to))
+        .map((e) => e.to.slice("lib/".length))
     )
   ),
 ].sort();

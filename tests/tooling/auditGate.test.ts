@@ -34,3 +34,23 @@ test("a dependent flagged only through a package with no non-major fix does not 
   assert.equal(run(() => report({ forge: { ...vuln("high", major), via }, dep: { ...vuln("high", true), via: ["forge"] } }), () => {}), 0);
   assert.equal(run(() => report({ forge: { ...vuln("high", true), via }, dep: { ...vuln("high", true), via: ["forge"] } }), () => {}), 1);
 });
+
+test("a pull request fails only on a package its lockfile touches", async () => {
+  const { touchedPackages } = await import("../../tools/ci/audit-gate.mjs");
+  const lock = (packages: object) => JSON.stringify({ packages });
+  const base = lock({ "": {}, "node_modules/forge": { version: "1.0.0" }, "node_modules/a/node_modules/b": { version: "1.0.0" } });
+  const head = lock({ "": {}, "node_modules/forge": { version: "1.0.0" }, "node_modules/a/node_modules/b": { version: "1.1.0" }, "node_modules/c": { version: "2.0.0" } });
+  const touched = touchedPackages(base, head);
+  assert.deepEqual([...touched!].sort(), ["b", "c"]);
+  assert.equal(touchedPackages("nope", head), null);
+  const severe = report({ forge: vuln("high", true), b: vuln("high", true) });
+  assert.equal(run(() => severe, () => {}, touched), 1);
+  assert.equal(run(() => report({ forge: vuln("high", true) }), () => {}, touched), 0);
+  assert.equal(run(() => report({ forge: vuln("high", true) }), () => {}, null), 1);
+});
+
+test("ci.yml scopes the audit to the lockfile diff on a pull request only", async () => {
+  const { readFileSync } = await import("node:fs");
+  const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(ci, /audit-gate\.mjs \$\{\{ github\.event_name == 'pull_request' && format\('--base \{0\}', github\.event\.pull_request\.base\.sha\)/);
+});

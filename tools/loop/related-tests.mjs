@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { minimatch } from "minimatch";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { aliasedSpellings } from "../../scripts/lib/pathMappings.mjs";
 import { changedFiles, git } from "./cli.mjs";
 import { budgetLines } from "../ci/native-budget.mjs";
 
@@ -39,7 +40,7 @@ const stem = (f) =>
  */
 export function nearTests({ changed, related, source, reads = {} }) {
   const modules = changed.filter((f) => CODE.test(f) && !NATIVE_TEST.test(f));
-  const specs = modules.map((m) => `@/${m.replace(CODE, "")}`);
+  const specs = modules.flatMap((m) => aliasedSpellings(m.replace(CODE, "")));
   const stems = new Set(modules.map(stem));
   const named = related.filter((t) => stems.has(stem(t)));
   const importers = related.filter((t) => specs.some((s) => source(t).includes(`'${s}'`) || source(t).includes(`"${s}"`)));

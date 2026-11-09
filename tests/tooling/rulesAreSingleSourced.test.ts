@@ -33,7 +33,7 @@ describe("every agent rule is written down exactly once", () => {
     const body = read(RULES);
     assert.ok(body.length > 0, `${RULES} is missing`);
     const lines = body.split("\n").length;
-    assert.ok(lines < 120, `${RULES} is ${lines} lines; a ruleset nobody finishes is not enforced`);
+    assert.ok(lines < 120, `${RULES} is ${lines} lines; a ruleset nobody finishes is not enforced (docs/adr/0019: free a line, do not raise the cap)`);
   });
 
   test("rules are numbered 1..N with no gap, a retired one kept as a placeholder", () => {

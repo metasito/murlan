@@ -14,7 +14,9 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
+import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -26,37 +28,20 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
  */
 const UNRUNNABLE = /^(@react-native[\w-]*\/|react-native(\/|-|$)|@expo\/|expo(\/|-|$))/;
 
-/** Aliases `tsconfig.json` declares. A specifier under one of these is a module here. */
-const ALIASES: [string, string][] = [
-  ["@shared/", path.join(repoRoot, "shared")],
-  ["@/", repoRoot],
-];
-
-/** `import type` and `export type` are erased before anything is loaded. */
-const PATTERNS = [
-  /^\s*(?:import|export)\s+(?!type\s)[^;]*?from\s*["']([^"']+)["']/gm,
-  /^\s*import\s+["']([^"']+)["']/gm,
-  /\b(?:require|import)\s*\(\s*["']([^"']+)["']\s*\)/g,
-];
-
+/** What loads at runtime: `import type` and `export type` are erased, and a `jest.mock` loads nothing. */
 function specifiers(file: string): string[] {
-  const source = blankComments(readFileSync(file, "utf8"));
-  const out: string[] = [];
-  for (const re of PATTERNS) {
-    re.lastIndex = 0;
-    for (let m = re.exec(source); m; m = re.exec(source)) out.push(m[1]);
-  }
-  return out;
+  const rel = path.relative(repoRoot, file).split(path.sep).join("/");
+  return moduleEdges(rel, readFileSync(file, "utf8"))
+    .filter((e) => e.via !== "mock")
+    .map((e) => e.spec);
 }
 
 /** Every spelling of one module on disk, longest-lived first. */
 const EXTENSIONS = ["", ".ts", ".tsx", ".web.ts", ".web.tsx", ".js", ".mjs"];
 
 function local(from: string, specifier: string): string | null {
-  for (const [prefix, root] of ALIASES) {
-    if (specifier.startsWith(prefix)) return path.join(root, specifier.slice(prefix.length));
-  }
-  return specifier.startsWith(".") ? path.resolve(path.dirname(from), specifier) : null;
+  const found = localPath(path.relative(repoRoot, from).split(path.sep).join("/"), specifier);
+  return found === null ? null : path.join(repoRoot, found);
 }
 
 /**
@@ -74,7 +59,7 @@ function resolve(from: string, specifier: string): string | null {
   }
   throw new Error(
     `${path.relative(repoRoot, from)} imports "${specifier}", which names a module in this ` +
-      `repo and resolves to no file. Teach \`EXTENSIONS\`/\`ALIASES\` how to find it — left ` +
+      `repo and resolves to no file. Teach \`EXTENSIONS\` how to find it — left ` +
       `unresolved, everything it imports goes unscanned and this sweep passes on nothing.`
   );
 }

@@ -1,8 +1,7 @@
-// A file of its own: `beginShutdown` cannot be undone inside a process.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resumeOrphanedTables } from "../../server/game/tableLifecycle.ts";
-import { beginShutdown } from "../../server/game/gameRoom.ts";
+import { __resetShutdown, beginShutdown } from "../../server/game/gameRoom.ts";
 import { packPersistedState } from "../../shared/persistedEnvelope.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
 import { useMemoryTableStores } from "../helpers/memoryTableStores.ts";
@@ -48,6 +47,7 @@ test("a process on its way out wakes no table, however many have a player online
   const { rt, cluster } = recordingRuntime();
   cluster.online.add("besi");
   const routed = t.mock.method(rt, "route", async () => ({ ok: true as const }));
+  t.after(__resetShutdown);
   beginShutdown();
   await resumeOrphanedTables(rt);
   assert.equal(routed.mock.callCount(), 0);

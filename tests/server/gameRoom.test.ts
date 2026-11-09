@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { onlineTable } from "../helpers/onlineTable.ts";
-import { beginShutdown, isShuttingDown, seatName } from "../../server/game/gameRoom.ts";
+import { __resetShutdown, beginShutdown, isShuttingDown, seatName } from "../../server/game/gameRoom.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
 
-test("a process is not shutting down until beginShutdown, and is from then on", () => {
+test("a process is not shutting down until beginShutdown, and is from then on", (t) => {
+  t.after(__resetShutdown);
   assert.equal(isShuttingDown(), false);
   beginShutdown();
   assert.equal(isShuttingDown(), true);

@@ -321,7 +321,7 @@ describe("what the reports leave out", () => {
   describe("the quarantine", () => {
     const entry = { file: PLANTS, title: "option skip", issue: 7, expires: "2026-11-15" };
     const plants = readArtifacts(results).filter((a) => a.name === "test-results-verify-0-2");
-    const opened = (on: string) => ({ open: true, labelled: true, created: Date.parse(on) });
+    const opened = (on: string, body = `${PLANTS} option skip`) => ({ open: true, labelled: true, created: Date.parse(on), body });
     const open = new Map([[7, opened("2026-11-05T09:00:00Z")]]);
     const q = { ...base, artifacts: plants, listing: [CLEAN, PLANTS], tickets: open };
     const held = { head: { quarantine: [entry] }, base: { quarantine: [entry] } };
@@ -369,9 +369,19 @@ describe("what the reports leave out", () => {
 
     test("an entry needs an open issue labelled ci-flake", () => {
       const created = Date.parse("2026-11-05T09:00:00Z");
-      for (const t of [{ open: false, labelled: true, created }, { open: true, labelled: false, created }, undefined]) {
+      const body = `${PLANTS} option skip`;
+      for (const t of [{ open: false, labelled: true, created, body }, { open: true, labelled: false, created, body }, undefined]) {
         const problems = verdict({ ...q, ledger: held, tickets: new Map(t ? [[7, t]] : []) });
         has(problems, /under #7, which is not an open issue labelled ci-flake/);
+        assert.ok(skipRed(problems));
+      }
+    });
+
+    test("an issue must name the test's file and title, so a label on any open issue quarantines nothing", () => {
+      const created = Date.parse("2026-11-05T09:00:00Z");
+      for (const body of ["", `${PLANTS} some other test`, "option skip"]) {
+        const problems = verdict({ ...q, ledger: held, tickets: new Map([[7, { open: true, labelled: true, created, body }]]) });
+        has(problems, /under #7, whose body does not name that test's file and title/);
         assert.ok(skipRed(problems));
       }
     });
@@ -427,7 +437,7 @@ describe("the gate step", () => {
     const said: string[] = [];
     const long = { file: PLANTS, title: "option skip", issue: 7, expires: "2027-09-04" };
     const gh = (args: string[]) =>
-      args[1]!.includes("/issues/") ? JSON.stringify({ state: "open", created_at: "2026-11-08T00:00:00Z", pr: false, labels: ["ci-flake"] }) : args[0] === "api" ? "" : assert.fail(args.join(" "));
+      args[1]!.includes("/issues/") ? JSON.stringify({ state: "open", created_at: "2026-11-08T00:00:00Z", body: `${PLANTS} option skip`, pr: false, labels: ["ci-flake"] }) : args[0] === "api" ? "" : assert.fail(args.join(" "));
     const git = (args: string[]) => {
       if (args[0] === "ls-tree" && !args.includes("-r")) return args[2] === "HEAD" ? LEDGER : "";
       if (args[0] === "show") return JSON.stringify({ quarantine: [long] });
@@ -584,12 +594,12 @@ describe("the gate step", () => {
   test("CI gate runs the base branch's verdict over every test job's uploaded results", () => {
     const jobs = parse(readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8")).jobs as Record<string, { steps?: { run?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; if?: string }[]; env?: Record<string, string> }>;
     const gate = jobs["ci-gate"]!.steps!.map((s) => s.run ?? "").join("\n");
-    assert.match(gate, /"pull_request "\*\) base=HEAD\^1 into=\$BASE_REF ;;/);
-    assert.match(gate, /"push refs\/heads\/main"\) base=HEAD into=main ;;/);
-    assert.match(gate, /\*\) git fetch --no-tags --depth=1 origin main && base=\$\(git rev-parse FETCH_HEAD\) into=main ;;/);
+    assert.match(gate, /"pull_request "\*\) base=HEAD\^1 ;;/);
+    assert.match(gate, /"push refs\/heads\/main"\) base=HEAD ;;/);
+    assert.match(gate, /\*\) git fetch --no-tags --depth=1 origin main && base=\$\(git rev-parse FETCH_HEAD\) ;;/);
     assert.match(gate, /node "\$RUNNER_TEMP\/judge\/tools\/ci\/test-verdict\.mjs"/);
     const step = jobs["ci-gate"]!.steps!.find((s) => s.run?.includes("test-verdict.mjs"))!;
-    assert.deepEqual([step.env!.EVENT, step.env!.REF, step.env!.BASE_REF], ["${{ github.event_name }}", "${{ github.ref }}", "${{ github.base_ref }}"]);
+    assert.deepEqual([step.env!.EVENT, step.env!.REF], ["${{ github.event_name }}", "${{ github.ref }}"]);
     for (const job of SUITES.flatMap((s) => s.jobs)) {
       const upload = jobs[job]!.steps!.find((s) => String(s.with?.name ?? "").startsWith("test-results-"));
       assert.ok(upload, `${job} uploads no test-results-* artifact`);
@@ -608,20 +618,8 @@ describe("which commit's judge the gate step runs, the step itself run over scra
   const judgeBy = (who: string) => `console.log("judged by the ${who}");\n`;
   const always = { "scripts/lib/entry.mjs": "", "tests/e2e/tiers.mjs": "", "app.ts": "1" };
 
-  /** A `gh` answering the commits API from the scratch repository's own history, as GitHub would; `down` fails every call. */
-  function fakeGh(hub: "history" | "down") {
-    const bin = mkdtempSync(path.join(work, "gh-"));
-    const answer =
-      hub === "down"
-        ? "process.exit(1);"
-        : `const u = new URL(process.argv[3], "https://x/"); const n = execFileSync("git", ["rev-list", "--count", u.searchParams.get("sha"), "--", u.searchParams.get("path")], { encoding: "utf8" }).trim(); if (!/^repos\\/o\\/r\\/commits$/.test(u.pathname.slice(1)) || !process.argv.includes("length")) process.exit(2); console.log(Math.min(Number(n), 1));`;
-    writeFileSync(path.join(bin, "gh"), `#!/usr/bin/env node\nconst { execFileSync } = require("node:child_process");\n${answer}\n`, { mode: 0o755 });
-    return bin;
-  }
-  let hub: "history" | "down" = "history";
-  const gate = (...commits: Record<string, string | null>[]) => gateInto("main", ...commits);
   /** Commits each tree over the last (null deletes a file), the last as HEAD, and runs the step as GitHub's bash does. */
-  function gateInto(baseRef: string, ...commits: Record<string, string | null>[]) {
+  function gate(...commits: Record<string, string | null>[]) {
     const dir = mkdtempSync(path.join(work, "gate-"));
     const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
     const git = (...args: string[]) => assert.equal(spawnSync("git", args, { cwd: dir, env, encoding: "utf8" }).status, 0, `git ${args.join(" ")}`);
@@ -639,28 +637,21 @@ describe("which commit's judge the gate step runs, the step itself run over scra
     }
     const ran = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
       cwd: dir,
-      env: { ...env, PATH: `${fakeGh(hub)}${path.delimiter}${process.env.PATH}`, GITHUB_REPOSITORY: "o/r", EVENT: "pull_request", REF: "refs/pull/1/merge", BASE_REF: baseRef, RUNNER_TEMP: mkdtempSync(path.join(work, "runner-")) },
+      env: { ...env, EVENT: "pull_request", REF: "refs/pull/1/merge", RUNNER_TEMP: mkdtempSync(path.join(work, "runner-")) },
       encoding: "utf8",
     });
     return { code: ran.status, out: `${ran.stdout}${ran.stderr}` };
   }
   const judged = (r: { code: number | null; out: string }, who: string) => (assert.equal(r.code, 0, r.out), assert.match(r.out, new RegExp(`judged by the ${who}`)));
-  const red = (r: { code: number | null; out: string }) => (assert.equal(r.code, 1, r.out), assert.match(r.out, /::error::the base has no tools\/ci\/test-verdict\.mjs/), assert.doesNotMatch(r.out, /judged by/));
+  const red = (r: { code: number | null; out: string }) => (assert.equal(r.code, 1, r.out), assert.match(r.out, /::error::the base has no tools\/ci\/test-verdict\.mjs, so nothing may judge this run/), assert.doesNotMatch(r.out, /judged by/));
 
   test("a base with a judge judges, whatever the head does to it", () => {
     judged(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [JUDGE]: judgeBy("head") }), "base");
     judged(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }), "base");
   });
 
-  test("a head that adds both the writer and the judge to a base with neither judges itself, and says so", () => {
-    const r = gate({ [WRITER]: "", [JUDGE]: judgeBy("head") });
-    judged(r, "head");
-    assert.match(r.out, /::warning::the head adds the runners' results and their judge/);
-  });
-
-  test("a head that adds both to a branch other than main, which predates the judge, is red", () => {
-    red(gateInto("release-1", { [WRITER]: "", [JUDGE]: judgeBy("head") }));
-    red(gateInto("", { [WRITER]: "", [JUDGE]: judgeBy("head") }));
+  test("a head that adds both the writer and the judge to a base with neither is red: a head never judges itself", () => {
+    red(gate({ [WRITER]: "", [JUDGE]: judgeBy("head") }));
   });
 
   test("a base that deleted its judge is red", () => {
@@ -668,19 +659,8 @@ describe("which commit's judge the gate step runs, the step itself run over scra
     red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [JUDGE]: null }, { "app.ts": "2" }));
   });
 
-  test("a head that adds both back to a main that once held the judge is red, and so is one whose history cannot be read", () => {
-    const once = gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }, { [WRITER]: "", [JUDGE]: judgeBy("head") });
-    red(once);
-    assert.match(once.out, /main once held one/);
-    hub = "down";
-    try {
-      const down = gate({ [WRITER]: "", [JUDGE]: judgeBy("head") });
-      assert.equal(down.code, 1, down.out);
-      assert.match(down.out, /::error::the GitHub API call reading whether main ever held tools\/ci\/test-verdict\.mjs failed/);
-      assert.doesNotMatch(down.out, /never held|judged by/);
-    } finally {
-      hub = "history";
-    }
+  test("a head that adds both back after the base deleted them is red", () => {
+    red(gate({ [WRITER]: "", [JUDGE]: judgeBy("base") }, { [WRITER]: null, [JUDGE]: null }, { [WRITER]: "", [JUDGE]: judgeBy("head") }));
   });
 
   test("a base that renamed its judge is red", () => {

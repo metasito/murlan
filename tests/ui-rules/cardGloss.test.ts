@@ -2,7 +2,9 @@
 // mockup's own lines (#1260).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { cardGloss, nextGlossLight, nextStillLight } from "../../components/table/cardGloss.ts";
+import { lampControls, restingLamp, stepLamp } from "../../components/table/lampRig.ts";
+import { levelShade } from "../../components/table/rail.ts";
+import { cardGloss, nextGlossLight, nextShadeLevel, nextStillLight } from "../../components/table/cardGloss.ts";
 import { CardGloss } from "../../lib/tokens.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
@@ -104,6 +106,27 @@ describe("the light a gloss reads", () => {
     for (const moved of [{ lx: 439 }, { ly: 178 }, { level: 0.8 + 1 / 256 }, { r: 1 + 1 / 256 }]) {
       const lamp = { ...shown, t: aFrameOn, ...moved };
       assert.deepEqual(nextGlossLight(shown, lamp), lamp, JSON.stringify(moved));
+    }
+  });
+  test("the shade's level holds under a step and follows a step, whatever the sway does", () => {
+    assert.equal(nextShadeLevel(0.8, { level: 0.8 + 1 / 512, lvlT: 0.2 }), null);
+    assert.equal(nextShadeLevel(0.8, { level: 0.8 + 1 / 256, lvlT: 0.2 }), 0.8 + 1 / 256);
+    assert.equal(nextShadeLevel(0.8, { level: 0.2, lvlT: 0.2 }), 0.2);
+  });
+  test("the shade lands exactly on the level it glides to, and at rest at 1 shades nothing", () => {
+    for (const reduced of [false, true]) {
+      for (const hz of [60, 120]) {
+        const lamp = restingLamp([437, 200, 1], 0.6);
+        lampControls.hold(lamp, "breath", null, 3);
+        let shade = lamp.level;
+        for (let i = 0; i < hz * 20; i++) {
+          stepLamp(lamp, 1 / hz, reduced);
+          const next = nextShadeLevel(shade, lamp);
+          if (next !== null) shade = next;
+        }
+        assert.equal(shade, 1, `${reduced} ${hz}`);
+        assert.equal(levelShade(shade), 0);
+      }
     }
   });
 });
