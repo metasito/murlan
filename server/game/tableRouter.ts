@@ -21,6 +21,7 @@ import { TAKEOVER } from "./tableActions.ts";
 import { applyTableAction } from "./tableHandlers.ts";
 import { rehydrateGame } from "./tableLifecycle.ts";
 import { HAND_OFF, HAND_OFF_ANSWER, handOffOf, noteApplying, type HandedOff } from "./tableHandOff.ts";
+import { track } from "../shared/inFlight.ts";
 
 export const TABLE_ASK = "table-ask";
 export const TABLE_ANSWER = "table-answer";
@@ -144,10 +145,10 @@ export function registerTableRouting(rt: TableRuntime): void {
         .send(from, { kind: TABLE_ANSWER, ask, outcome })
         .catch((err: unknown) => logger.warn({ err, roomId: tableAction.roomId }, "Could not answer a forwarded table action"));
     // Not awaited: the inbox hands this instance its messages one at a time.
-    void answerAsOwner(rt, tableAction).then(answer, (err: unknown) => {
+    void track(answerAsOwner(rt, tableAction).then(answer, (err: unknown) => {
       logger.error({ err, action: tableAction.kind, roomId: tableAction.roomId }, "Forwarded table action threw");
       return answer({ ok: false, code: "SERVER_ERROR" });
-    });
+    }));
   });
   rt.peers.on(TABLE_ANSWER, ({ ask, outcome }) => {
     if (typeof ask === "string") waiting.get(ask)?.(outcome as Outcome | undefined);
@@ -155,7 +156,7 @@ export function registerTableRouting(rt: TableRuntime): void {
   rt.peers.on(HAND_OFF, ({ from, ask, action }) => {
     if (typeof from !== "string" || typeof ask !== "string" || !action) return;
     const resume = action as TableAction;
-    void acceptHandOff(rt, resume)
+    void track(acceptHandOff(rt, resume)
       .catch((err: unknown) => {
         logger.error({ err, roomId: resume.roomId }, "Taking a handed-off table failed");
         return false;
@@ -164,7 +165,7 @@ export function registerTableRouting(rt: TableRuntime): void {
         rt.peers
           .send(from, { kind: HAND_OFF_ANSWER, ask, claimed })
           .catch((err: unknown) => logger.warn({ err, roomId: resume.roomId }, "Could not answer a table hand-off"))
-      );
+      ));
   });
 }
 

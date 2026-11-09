@@ -1,19 +1,23 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import net from "node:net";
+import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { BASE_PORT, PORT_SPAN } from "../../ci/e2ePortRange.mjs";
+import { ownerArg } from "../../ci/e2eOwner.mjs";
 import {
   orphans,
   staleByAge,
-  netstatListeners,
+  lsofSockets,
+  readListeners,
+  staleE2eServers,
+  netstatSockets,
   toolingRoots,
   checkoutRoot,
   ownedByTooling,
-  stalePortHolders,
   wouldTakeSelf,
   isSessionHost,
   parseWindowsProcessJson,
@@ -82,23 +86,68 @@ describe("netstatListeners", () => {
     "  TCP    127.0.0.1:61001        127.0.0.1:5199         ESTABLISHED     9999",
   ].join("\n");
 
-  test("takes only what is listening on the port asked for", () => {
-    assert.deepEqual(netstatListeners(netstat, 5199), [4242]);
+  test("reads the port off each listening socket and ignores connections", () => {
+    assert.deepEqual(netstatSockets(netstat), [
+      { pid: 4242, port: 5199 },
+      { pid: 777, port: 8081 },
+    ]);
   });
 
-  /**
-   * A client connected *to* the port holds a socket naming it. Killing that is killing whoever
-   * was talking to the server rather than the server.
-   */
-  test("never takes a connection merely involving the port", () => {
-    assert.equal(netstatListeners(netstat, 5199).includes(9999), false);
+  test("lsof -Fpn output reads the same way", () => {
+    assert.deepEqual(lsofSockets("p4242\nn*:41233\nn[::]:41233\np777\nn127.0.0.1:8081\n"), [
+      { pid: 4242, port: 41233 },
+      { pid: 4242, port: 41233 },
+      { pid: 777, port: 8081 },
+    ]);
   });
 
-  test("with no port, every listener — this is the spare-list, so it must not miss one", () => {
-    assert.deepEqual(
-      netstatListeners(netstat).sort((a: number, b: number) => a - b),
-      [777, 4242]
-    );
+});
+
+describe("readListeners", () => {
+  const withPath = <T,>(dir: string, run: () => T): T => {
+    const was = process.env.PATH;
+    process.env.PATH = dir;
+    try {
+      return run();
+    } finally {
+      process.env.PATH = was;
+    }
+  };
+
+  test("sees a socket this process is listening on", async () => {
+    const server = net.createServer().listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const { port } = server.address() as net.AddressInfo;
+      const { sockets, blind } = readListeners();
+      assert.equal(blind, null);
+      assert.ok(sockets.some((s: { pid: number; port: number }) => s.pid === process.pid && s.port === port));
+    } finally {
+      server.close();
+    }
+  });
+
+  /** An unreadable machine must not read as an empty one: the sweep would take what it could not see held a port. */
+  test("a PATH without lsof is blind, never an empty list", () => {
+    const empty = mkdtempSync(path.join(tmpdir(), "reap-nopath-"));
+    try {
+      const { sockets, blind } = withPath(empty, () => readListeners({ platform: "linux" }));
+      assert.deepEqual(sockets, []);
+      assert.match(blind ?? "", /lsof could not run/);
+      assert.match(withPath(empty, () => readListeners({ platform: "win32" })).blind ?? "", /netstat could not run/);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  test("a tool that ran and found nothing is not blind", () => {
+    const bin = mkdtempSync(path.join(tmpdir(), "reap-lsof-"));
+    try {
+      writeFileSync(path.join(bin, "lsof"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+      assert.deepEqual(withPath(bin, () => readListeners({ platform: "linux" })), { sockets: [], blind: null });
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 });
 
@@ -131,36 +180,51 @@ describe("staleByAge", () => {
   });
 });
 
-describe("stalePortHolders", () => {
-  const table = [
-    { pid: 500, ppid: 42, startedAt: NOW - HOUR, name: "node.exe", commandLine: "node e2e-server.mjs" },
-    { pid: 501, ppid: 999, startedAt: NOW - HOUR, name: "node.exe", commandLine: "node e2e-server.mjs" },
-    { pid: 42, ppid: 1, startedAt: NOW - HOUR, name: "node.exe", commandLine: "playwright" },
-  ];
+describe("staleE2eServers", () => {
+  const server = (pid: number, ppid: number, owner: number | null, extra = "") => ({
+    pid,
+    ppid,
+    name: "node",
+    commandLine: `node ${checkoutRoot()}/server/index.ts${owner === null ? "" : ` ${ownerArg(owner)}`}${extra}`,
+    startedAt: NOW - HOUR,
+  });
+  const wrapper = (pid: number) => ({ pid, ppid: 1, name: "node", commandLine: `node ${checkoutRoot()}/scripts/e2e-server.mjs`, startedAt: NOW - 2 * HOUR });
+  const init = { pid: 1, ppid: 0, name: "init", commandLine: "/sbin/init", startedAt: NOW - 100 * HOUR };
+  const listening = (...pids: number[]) => pids.map((pid) => ({ pid, port: 40000 + pid }));
+  const take = (table: ReturnType<typeof server>[], pids: number[]) =>
+    staleE2eServers(listening(...pids), table, table.filter((p) => p.pid !== 1)).map((s: { pid: number }) => s.pid);
 
-  /**
-   * A sweep must not be able to end a suite that is running. Playwright stays alive for the whole
-   * run and the webServer is its child, so a live holder has a live parent — the same signal
-   * `orphans` uses, and a much better one than age here.
-   */
-  test("leaves a holder whose launcher is still running", () => {
-    assert.deepEqual(stalePortHolders([500], table), []);
+  /** Orphans are reparented to pid 1, which is alive: parentage cannot tell a leftover from a run. */
+  test("takes a server whose run is gone, though pid 1 is its live parent", () => {
+    assert.deepEqual(take([init, server(500, 1, 900)], [500]), [500]);
   });
 
-  test("takes a holder left behind by a session that exited", () => {
-    assert.deepEqual(stalePortHolders([501], table), [501]);
+  test("leaves a server whose run is alive", () => {
+    assert.deepEqual(take([init, wrapper(900), server(500, 900, 900)], [500]), []);
   });
 
-  /**
-   * A pid the process table does not describe cannot be shown to be a leftover, and this is the
-   * one class that kills something no ownership rule vouched for. It has to fail closed.
-   */
-  test("leaves a holder it cannot find in the process table", () => {
-    assert.deepEqual(stalePortHolders([777], table), []);
+  test("a pid reused by another program is not the run", () => {
+    const reused = { pid: 900, ppid: 1, name: "node", commandLine: "node something-else.js", startedAt: NOW - 2 * HOUR };
+    assert.deepEqual(take([init, reused, server(500, 1, 900)], [500]), [500]);
+    assert.deepEqual(take([init, { ...wrapper(900), startedAt: NOW }, server(500, 1, 900)], [500]), [500]);
   });
 
-  test("judges each holder on its own parent", () => {
-    assert.deepEqual(stalePortHolders([500, 501], table), [501]);
+  test("a run whose command line could not be read is not shown to be dead", () => {
+    assert.deepEqual(take([init, { ...wrapper(900), commandLine: "" }, server(500, 1, 900)], [500]), []);
+  });
+
+  /** The class kills what no ownership rule vouched for otherwise, so a server naming no run is never taken. */
+  test("spares a server that names no run, and one whose path only resembles ours", () => {
+    const lookalike = { ...server(501, 1, null), commandLine: `node ${checkoutRoot()}/observer/index.ts` };
+    assert.deepEqual(take([init, server(500, 1, null), lookalike], [500, 501]), []);
+  });
+
+  test("takes a pid it cannot describe for nothing", () => {
+    assert.deepEqual(take([init], [777]), []);
+  });
+
+  test("names a server once however many sockets it holds", () => {
+    assert.deepEqual(take([init, server(500, 1, 900)], [500, 500]), [500]);
   });
 });
 
@@ -541,7 +605,7 @@ describe("worktreeOrphans", () => {
       dryRun: true,
       say: (l: string) => said.push(l),
       readTable: () => ({ rows: [...table, self], blind: null }),
-      listening: () => new Set([34]),
+      listeners: () => ({ sockets: [{ pid: 34, port: 5199 }], blind: null }),
     });
     assert.deepEqual(took, [30]);
     assert.match(said.join("\n"), /would kill node\.exe pid 30/);
@@ -557,51 +621,54 @@ describe("the sweep, called in-process as housekeeping calls it", () => {
       stale: true,
       say: (l: string) => said.push(l),
       readTable: () => ({ rows: [self], blind: null }),
+      listeners: () => ({ sockets: [], blind: null }),
     });
-    assert.ok(said.some((l) => /e2e port/.test(l)), said.join("\n"));
+    assert.ok(said.some((l) => /e2e server/.test(l)), said.join("\n"));
     assert.equal(took, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
   });
 
-  async function sweepSpan(commandLine: string, heldPort: number, chosen?: string) {
-    const said: string[] = [];
-    const orphan = { pid: 777, ppid: 999999, name: "node", commandLine, startedAt: Date.now() };
-    const swept: number[] = [];
-    const pinned = process.env.E2E_PORT;
-    if (chosen === undefined) delete process.env.E2E_PORT;
-    else process.env.E2E_PORT = chosen;
-    try {
-      const { took } = await reap({
-        dryRun: true,
-        say: (l: string) => said.push(l),
-        readTable: () => ({ rows: [orphan], blind: null }),
-        listeners: (port: number) => (swept.push(port), port === heldPort ? [777] : []),
-      });
-      return { said: said.join("\n"), swept, took };
-    } finally {
-      if (pinned === undefined) delete process.env.E2E_PORT;
-      else process.env.E2E_PORT = pinned;
-    }
-  }
-  const OURS = () => `node ${checkoutRoot()}/serve.js`;
-  const WHOLE_SPAN = Array.from({ length: PORT_SPAN }, (_, i) => BASE_PORT + i);
+  const OURS = () => `node ${checkoutRoot()}/server/index.ts ${ownerArg(999999)}`;
+  const orphan = (commandLine: string, ppid = 999999) => ({ pid: 777, ppid, name: "node", commandLine, startedAt: Date.now() });
 
-  test("sweeps every port of the e2e span, not only the base", async () => {
-    const far = BASE_PORT + PORT_SPAN - 1;
-    const { said, swept, took } = await sweepSpan(OURS(), far);
-    assert.deepEqual(swept, WHOLE_SPAN);
-    assert.match(said, new RegExp(`would clear the e2e port ${far}, held by node pid 777`));
+  async function sweep(proc: ReturnType<typeof orphan>, port: number, others: ReturnType<typeof orphan>[] = []) {
+    const said: string[] = [];
+    const { took } = await reap({
+      dryRun: true,
+      say: (l: string) => said.push(l),
+      readTable: () => ({ rows: [proc, ...others], blind: null }),
+      listeners: () => ({ sockets: [{ pid: 777, port }], blind: null }),
+    });
+    return { said: said.join("\n"), took };
+  }
+
+  test("finds an e2e server on whatever port the OS gave it", async () => {
+    const { said, took } = await sweep(orphan(OURS()), 41233);
+    assert.match(said, /would clear the e2e server on port 41233, node pid 777/);
     assert.equal(took, 1);
   });
 
-  test("sweeps the same span when E2E_PORT names the port a run chose mid-span", async () => {
-    const { swept } = await sweepSpan(OURS(), BASE_PORT, String(BASE_PORT + 6));
-    assert.deepEqual(swept, WHOLE_SPAN);
+  test("a server whose run is alive is left alone", async () => {
+    const run = { pid: 888, ppid: 1, name: "node", commandLine: `node ${checkoutRoot()}/scripts/e2e-server.mjs`, startedAt: Date.now() - 60_000 };
+    const { said, took } = await sweep(orphan(OURS().replace("999999", "888"), 888), 41233, [run]);
+    assert.equal(took, 0, said);
   });
 
-  test("an orphan on a span port that is not ours is left alone", async () => {
-    const { said, took } = await sweepSpan("node some-other-dev-server.js", BASE_PORT + 5);
+  test("an unmarked detached server, on any port, is not a leftover", async () => {
+    for (const port of [5000, 41233]) {
+      const { took } = await sweep(orphan(`node ${checkoutRoot()}/server/index.ts`), port);
+      assert.equal(took, 0, `port ${port}`);
+    }
+  });
+
+  test("an orphan that is not ours is left alone", async () => {
+    const { said, took } = await sweep(orphan("node some-other-dev-server.js"), 41233);
     assert.equal(took, 0, said);
     assert.doesNotMatch(said, /would clear/);
+  });
+
+  test("a listener of ours that is not the server is left alone", async () => {
+    const { took } = await sweep(orphan(`node ${checkoutRoot()}/serve.js`), 41233);
+    assert.equal(took, 0);
   });
 
   test("a blind table comes back blind and is said, never read as a clean machine", async () => {
@@ -610,10 +677,104 @@ describe("the sweep, called in-process as housekeeping calls it", () => {
       dryRun: true,
       say: (l: string) => said.push(l),
       readTable: () => ({ rows: [], blind: "no table" }),
+      listeners: () => ({ sockets: [], blind: null }),
     });
     assert.equal(blind, "no table");
     assert.ok(said.includes("reap: no table"), said.join("\n"));
     assert.equal(took, 0);
+  });
+});
+
+describe("a sweep that cannot see what is listening", () => {
+  test("says so, takes nothing and reports blind, never a clean machine", async () => {
+    const said: string[] = [];
+    const server = { pid: 777, ppid: 1, name: "node", commandLine: `node ${checkoutRoot()}/server/index.ts ${ownerArg(999999)}`, startedAt: Date.now() };
+    const self = { pid: process.pid, ppid: 1, name: "node", commandLine: "node reap-test", startedAt: Date.now() };
+    const { took, blind } = await reap({
+      say: (l: string) => said.push(l),
+      readTable: () => ({ rows: [self, server], blind: null }),
+      listeners: () => ({ sockets: [], blind: "lsof could not run" }),
+    });
+    assert.equal(took, 0);
+    assert.equal(blind, "lsof could not run");
+    assert.ok(said.includes("reap: lsof could not run"), said.join("\n"));
+  });
+
+  test("the worktree sweep takes nothing either", () => {
+    const TREE = "/w/tree";
+    const stray = { pid: 30, ppid: 999, name: "node", commandLine: `node ${TREE}/node_modules/eslint/bin/eslint.js`, startedAt: Date.now() };
+    const self = { pid: process.pid, ppid: 1, name: "node", commandLine: "node x", startedAt: Date.now() };
+    const said: string[] = [];
+    const took = reapWorktree(TREE, {
+      dryRun: true,
+      say: (l: string) => said.push(l),
+      readTable: () => ({ rows: [self, stray], blind: null }),
+      listeners: () => ({ sockets: [], blind: "lsof could not run" }),
+    });
+    assert.deepEqual(took, []);
+  });
+});
+
+/**
+ * Real processes: an orphan is parented by whatever adopts it, which no table fixture can state.
+ * The table handed to the sweep is cut to these and the reaper, so nothing else on the machine is
+ * in reach of the kill.
+ */
+describe("a real orphaned e2e server", () => {
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  async function leave(dir: string, ...args: string[]) {
+    const script = path.join(dir, "listen.mjs");
+    writeFileSync(script, 'import net from "node:net";\nnet.createServer().listen(0, "127.0.0.1", () => console.log("pid " + process.pid));\nsetInterval(() => {}, 1000);\n');
+    const out = path.join(dir, `out-${args.length}-${Math.random().toString(36).slice(2)}`);
+    // The shell exits at once, so the node it started is adopted by pid 1 (or the nearest subreaper).
+    execFileSync("sh", ["-c", `"${process.execPath}" "${script}" "$@" > "${out}" 2>&1 &`, "sh", ...args]);
+    for (let i = 0; i < 100; i++) {
+      const pid = Number(readFileSync(out, "utf8").match(/pid (\d+)/)?.[1]);
+      if (pid) return pid;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error("the orphan never listened");
+  }
+
+  test("is found and reaped; an unmarked one and one with a live run are spared", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "reap-orphan-"));
+    const entry = path.join(checkoutRoot(), "server", "index.ts");
+    const pids: number[] = [];
+    try {
+      const dead = execFileSync(process.execPath, ["-e", "console.log(process.pid)"], { encoding: "utf8" }).trim();
+      const marked = await leave(dir, entry, ownerArg(Number(dead)));
+      const unmarked = await leave(dir, entry);
+      const wrapperDir = path.join(dir, "wrapper");
+      mkdirSync(wrapperDir);
+      const live = await leave(wrapperDir, path.join(checkoutRoot(), "scripts", "e2e-server.mjs"));
+      const guarded = await leave(dir, entry, ownerArg(live));
+      pids.push(marked, unmarked, live, guarded);
+
+      const parent = (pid: number) => Number(execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8" }).trim());
+      assert.ok(!alive(parent(marked)) || parent(marked) <= 1 || parent(marked) !== process.pid, "the fixture must be adopted, not ours");
+
+      const { rows } = processTable();
+      const cut = rows.filter((p: { pid: number }) => [process.pid, ...pids].includes(p.pid));
+      const said: string[] = [];
+      const { took } = await reap({ say: (l: string) => said.push(l), readTable: () => ({ rows: cut, blind: null }) });
+
+      for (let i = 0; i < 100 && alive(marked); i++) await new Promise((r) => setTimeout(r, 50));
+      assert.equal(alive(marked), false, said.join("\n"));
+      assert.equal(alive(unmarked), true, "an unmarked server must be spared");
+      assert.equal(alive(guarded), true, "a server whose run is alive must be spared");
+      assert.equal(took, 1, said.join("\n"));
+    } finally {
+      for (const pid of pids) if (alive(pid)) process.kill(pid, "SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

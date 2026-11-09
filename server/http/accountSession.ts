@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import type { User } from "../../shared/schema.ts";
 import type { SessionUserDto } from "../../shared/http.ts";
 import { revokeAccountSockets } from "../socket/socketRegistry.ts";
+import { track } from "../shared/inFlight.ts";
 
 export function sessionUser(user: User): SessionUserDto {
   return {
@@ -37,7 +38,7 @@ export function signIn(req: Request, userId: string): Promise<void> {
   return new Promise((resolve, reject) => {
     req.session.regenerate((regenErr) => {
       if (regenErr) return reject(new SignInError("regenerate", regenErr));
-      if (prior.userId) void revokeAccountSockets(prior.userId, { onlySid: prior.sid });
+      if (prior.userId) void track(revokeAccountSockets(prior.userId, { onlySid: prior.sid }));
       req.session.userId = userId;
       req.session.save((saveErr) => {
         if (saveErr) return reject(new SignInError("save", saveErr));

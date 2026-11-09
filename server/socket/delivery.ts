@@ -14,6 +14,7 @@ import { instancesOf } from "../store/presence.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { APP_QUERY_BOUND_MS } from "../store/pool.ts";
 import { supersedes } from "../../shared/stateOrder.ts";
+import { track } from "../shared/inFlight.ts";
 
 const DELIVER = "deliver";
 const STATE_NACK = "state-nack";
@@ -155,9 +156,9 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
         for (const [to, u] of byInstance) add(to, { ...item, u });
       }
       for (const [instance, list] of per) {
-        void send(instance, { kind: DELIVER, from: self, items: list }).catch((err: unknown) =>
+        void track(send(instance, { kind: DELIVER, from: self, items: list }).catch((err: unknown) =>
           logger.warn({ err, instance }, "Could not hand messages to another instance")
-        );
+        ));
       }
     }).catch((err: unknown) => logger.error({ err }, "Messages for other instances failed to leave"));
   }
@@ -228,9 +229,9 @@ export function deliveryOutbox(io: SocketServer, options: DeliveryOptions = {}):
         state,
         retry: item.r,
         missed: () =>
-          void send(from, { kind: STATE_NACK, roomId: state.roomId, userId }).catch((err: unknown) =>
+          void track(send(from, { kind: STATE_NACK, roomId: state.roomId, userId }).catch((err: unknown) =>
             logger.warn({ err, roomId: state.roomId, userId }, "Could not tell a table's owner a state went unacknowledged")
-          ),
+          )),
       });
     }
   });

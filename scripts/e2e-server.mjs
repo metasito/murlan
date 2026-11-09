@@ -24,9 +24,11 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ownerArg } from "../tools/ci/e2eOwner.mjs";
 import { PLAY_PORT } from "../tools/ci/e2ePortRange.mjs";
 import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 import { assertMark } from "./e2eBuildMark.mjs";
+import { exitWithParent } from "./lib/parentWatch.mjs";
 import { startBin, stopTree } from "./lib/proc.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,6 +43,13 @@ const STOP_GRACE_MS = 5_000;
 async function stopTheRest(err) {
   await Promise.allSettled([...children].map((c) => stopTree(c.pid, { graceMs: STOP_GRACE_MS })));
   throw err;
+}
+
+if (!PLAY) {
+  exitWithParent(async () => {
+    await Promise.allSettled([...children].map((c) => stopTree(c.pid, { graceMs: STOP_GRACE_MS })));
+    process.exit(1);
+  });
 }
 
 function run(cmd, args) {
@@ -100,4 +109,4 @@ process.env.SESSION_SECRET = PLAY ? randomBytes(32).toString("hex") : "e2e-test-
 process.env.PORT = PORT;
 process.env.MURLAN_WEB_DIST = DIST;
 
-await run(process.execPath, [path.join(ROOT, "server", "index.ts")]);
+await run(process.execPath, [path.join(ROOT, "server", "index.ts"), ...(PLAY ? [] : [ownerArg(process.pid)])]);

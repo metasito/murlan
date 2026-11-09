@@ -22,6 +22,7 @@ import { logger } from "../shared/logger.ts";
 import { clearTableOwner, recordTableOwner, refreshTableOwner } from "../store/tableOwners.ts";
 import { activeGames } from "./gameRoom.ts";
 import type { TableStore } from "./tableRuntime.ts";
+import { track } from "../shared/inFlight.ts";
 
 type OwnedRows = Pick<TableStore["games"], "claim" | "load" | "epochOf">;
 type ActiveGameRow = NonNullable<Awaited<ReturnType<OwnedRows["load"]>>>;
@@ -168,7 +169,7 @@ function connect(): Promise<Client | null> {
       heartbeat = setInterval(() => {
         void next.query("SELECT 1").then(
           () => {
-            for (const [roomId, epoch] of recordsToRenew(next)) void refreshTableOwner(roomId, epoch, OWNER_RECORD_TTL_MS);
+            for (const [roomId, epoch] of recordsToRenew(next)) void track(refreshTableOwner(roomId, epoch, OWNER_RECORD_TTL_MS));
           },
           (err: unknown) => {
             logger.error({ err }, "Game ownership connection stopped answering");
@@ -318,7 +319,7 @@ export async function lockHolder(roomId: string): Promise<LockHolder> {
 function loseRoom(roomId: string, hold: Hold, unlock: boolean): void {
   if (held.get(roomId) !== hold) return;
   held.delete(roomId);
-  if (hold.epoch !== null) void clearTableOwner(roomId, hold.epoch);
+  if (hold.epoch !== null) void track(clearTableOwner(roomId, hold.epoch));
   const c = client;
   if (unlock && c && hold.lockedOn === c) {
     void c
@@ -480,7 +481,7 @@ async function unlock(roomId: string): Promise<void> {
   const hold = held.get(roomId);
   if (!hold) return;
   held.delete(roomId);
-  if (hold.epoch !== null) void clearTableOwner(roomId, hold.epoch);
+  if (hold.epoch !== null) void track(clearTableOwner(roomId, hold.epoch));
   const c = client;
   if (!c) return;
   await c

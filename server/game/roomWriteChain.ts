@@ -1,3 +1,4 @@
+import { track } from "../shared/inFlight.ts";
 // server/game/roomWriteChain.ts — the order a table's writes land in. Only the instance that owns a
 // table writes for it, so an in-process order is the whole order (ADR 0014, decision 2).
 //
@@ -45,7 +46,7 @@ function enqueue(roomId: string, next: Entry): void {
   }
   const fresh = [next];
   queues.set(roomId, fresh);
-  void drain(roomId, fresh);
+  void track(drain(roomId, fresh));
 }
 
 /**

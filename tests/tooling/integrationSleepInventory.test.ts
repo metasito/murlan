@@ -65,6 +65,10 @@ const INVENTORY: Record<string, { n: number; why: string }> = {
     n: 1,
     why: "the restore's stand-in database read: the window a second racer has to land inside",
   },
+  "tests/integration/testServerCleanup.test.ts": {
+    n: 1,
+    why: "the connect notice's friend read is held for the stated time, the window stop() has to outwait",
+  },
   "tests/server/adminConcurrency.test.ts": {
     n: 1,
     why: "staggered task durations are the stimulus that interleaves completions against the limit",

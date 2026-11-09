@@ -33,6 +33,7 @@ import { deletePushToken } from "../../socket/push.ts";
 import { revokeAccountSockets } from "../../socket/socketRegistry.ts";
 import { mintSocketTicket } from "../../socket/ticket.ts";
 import { payload } from "../../shared/payload.ts";
+import { track } from "../../shared/inFlight.ts";
 
 /**
  * An integration suite registers one throwaway account per seat and burns the
@@ -283,9 +284,11 @@ export function mountAuth(app: Express): void {
     // awaiting the send, and only after the reply: the mint is an INSERT,
     // and doing it before the reply would reopen the timing gap #897
     // exists to close.
-    replaceEmailVerifyCode({ userId: user.id, email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS })
-      .then((code) => sendVerificationEmail(email, username, code, user.id, mailLocale(locale)))
-      .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification code"));
+    void track(
+      replaceEmailVerifyCode({ userId: user.id, email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS })
+        .then((code) => sendVerificationEmail(email, username, code, user.id, mailLocale(locale)))
+        .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification code"))
+    );
   });
 
   on(app, "POST /api/auth/login", authLimiter, validate(LoginSchema), loginUsernameLimiter, async (req, res) => {
@@ -474,9 +477,11 @@ export function mountAuth(app: Express): void {
       if (!user?.emailVerifiedAt) return;
       // Not awaited: the request this reply belonged to is already done, so
       // a rejection here has no caller left to reach it except this catch.
-      mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS)
-        .then((token) => sendPasswordResetEmail(user.email!, token, user.id, mailLocale(locale)))
-        .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the reset token"));
+      void track(
+        mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS)
+          .then((token) => sendPasswordResetEmail(user.email!, token, user.id, mailLocale(locale)))
+          .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the reset token"))
+      );
     }
   );
 

@@ -11,6 +11,7 @@ import {
   roundReplays,
   serverErrors,
 } from "../../shared/schema.ts";
+import { track } from "../shared/inFlight.ts";
 
 /**
  * Apple requires in-app account deletion to actually work. Every row that
@@ -78,9 +79,9 @@ export async function deleteUser(userId: string): Promise<string[]> {
     await tx.delete(users).where(eq(users.id, userId));
     return seated.map((r) => r.roomId);
   });
-  void purgeServerErrors(userId).catch((err: unknown) =>
+  void track(purgeServerErrors(userId).catch((err: unknown) =>
     logger.error({ err, userId }, "Could not purge a deleted account's server errors")
-  );
+  ));
   return seatedRoomIds;
 }
 

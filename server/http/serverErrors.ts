@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { db, pool, type Database } from "../store/db.ts";
 import { serverErrors } from "../../shared/schema.ts";
 import { setErrorRecorder } from "../shared/logger.ts";
+import { track } from "../shared/inFlight.ts";
 
 /** The same window as client crash reports. */
 export const SERVER_ERROR_RETENTION_DAYS = 90;
@@ -46,11 +47,13 @@ export function installServerErrorRecorder(): void {
       );
       return;
     }
-    db().insert(serverErrors)
-      .values({ level: Number(level), message: String(msg ?? "").slice(0, MESSAGE_MAX), context })
-      .catch((err: unknown) => {
-        process.stderr.write(`server_errors insert failed: ${String(err)}\n`);
-      });
+    void track(
+      db().insert(serverErrors)
+        .values({ level: Number(level), message: String(msg ?? "").slice(0, MESSAGE_MAX), context })
+        .catch((err: unknown) => {
+          process.stderr.write(`server_errors insert failed: ${String(err)}\n`);
+        })
+    );
   });
 }
 
