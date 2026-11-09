@@ -10,7 +10,9 @@ import {
   designScale,
   lampControls,
   lampMoved,
+  lampSettled,
   lampPools,
+  TABLE_CENTRE,
   restingLamp,
   stepLamp,
   type Lamp,
@@ -316,5 +318,52 @@ describe("one lamp", () => {
       assert.ok(placesALamp(code), code);
     for (const code of ["// lightPosition moved to the rig\nconst p = lampPools(a, w, h);", 'const s = "LAMP_CENTRE at 457, 292";'])
       assert.ok(!placesALamp(code), code);
+  });
+});
+
+describe("a lamp that has settled", () => {
+  const framesToSettle = (s: Lamp, reduced: boolean, limit = 60 * 60) => {
+    let n = 0;
+    while (!lampSettled(s, reduced) && n < limit) {
+      stepLamp(s, DT, reduced);
+      n++;
+    }
+    return n;
+  };
+
+  test("is settled at rest under reduced motion, and never with the sway running", () => {
+    assert.ok(lampSettled(restingLamp(TABLE_CENTRE), true));
+    const s = restingLamp(TABLE_CENTRE);
+    assert.equal(framesToSettle(s, false, 600), 600);
+  });
+
+  test("is settled at rest with the sway frozen", () => {
+    const s = restingLamp(TABLE_CENTRE);
+    lampControls.freeze(s, 1);
+    assert.ok(lampSettled(s, false));
+  });
+
+  test("settles after a glide, a dim, a flare and a kick, and wakes for each", () => {
+    const s = restingLamp(TABLE_CENTRE);
+    lampControls.freeze(s, 1);
+    const steps: Record<string, (l: Lamp) => void> = {
+      glide: (l) => lampControls.setTarget(l, [100, 100, 0.5], false),
+      dim: (l) => lampControls.hold(l, "lost", 0.3, 2),
+      flare: (l) => lampControls.flare(l, false),
+      kick: (l) => lampControls.kick(l, false),
+    };
+    for (const [name, move] of Object.entries(steps)) {
+      move(s);
+      assert.ok(!lampSettled(s, false), `${name} leaves the lamp moving`);
+      assert.ok(framesToSettle(s, false) < 60 * 60, `${name} settles`);
+    }
+  });
+
+  test("stops within the felt's step of where it would have glided to", () => {
+    const s = restingLamp(TABLE_CENTRE);
+    lampControls.setTarget(s, [100, 100, 0.5], true);
+    lampControls.hold(s, "lost", 0.3, 2);
+    framesToSettle(s, true);
+    assert.ok(Math.abs(s.level - 0.3) < 1e-3 && Math.abs(s.lx - 100) < DRAWN_BEHIND);
   });
 });

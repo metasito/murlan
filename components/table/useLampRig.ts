@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAnimatedReaction, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { useAnimatedReaction, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RoundMoment, Motion } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
+import { useDuring } from "@/lib/motion";
 import { flareKindFor } from "@/components/impact";
-import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
+import { designScale, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
 import { glossLightOf, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
@@ -32,7 +33,7 @@ export interface LampRig {
 }
 
 function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, reduced: SharedValue<boolean>) {
-  return (frame: FrameInfo) => {
+  return (frame: FrameInfo): boolean => {
     "worklet";
     const s = lamp.value;
     stepLamp(s, (frame.timeSincePreviousFrame ?? 0) / 1000, reduced.value);
@@ -43,6 +44,7 @@ function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight
     if (still) stillLight.value = still;
     const level = nextShadeLevel(shadeLevel.value, s);
     if (level !== null) shadeLevel.value = level;
+    return !lampSettled(s, reduced.value);
   };
 }
 
@@ -73,14 +75,15 @@ export function useLampRig({
   const shadeLevel = useSharedValue(resting.level);
   const [px, py, reach] = pool;
 
-  useEffect(() => {
-    reduced.value = reduceMotion;
-  }, [reduceMotion, reduced]);
-
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.
   const [step] = useState(() => lampStepper(lamp, glossLight, stillLight, shadeLevel, reduced));
-  useFrameCallback(step);
+  const wake = useDuring(step, true);
+
+  useEffect(() => {
+    reduced.set(reduceMotion);
+    wake();
+  }, [reduceMotion, reduced, wake]);
 
   useEffect(() => {
     lamp.modify((s) => {
@@ -88,7 +91,8 @@ export function useLampRig({
       lampControls.setTarget(s, [px, py, reach], reduced.value);
       return s;
     }, true);
-  }, [px, py, reach, lamp, reduced]);
+    wake();
+  }, [px, py, reach, lamp, reduced, wake]);
 
   useEffect(() => {
     lamp.modify((s) => {
@@ -97,7 +101,8 @@ export function useLampRig({
       else lampControls.hold(s, "lost", null, RoundMoment.releaseRate);
       return s;
     }, true);
-  }, [dim, lamp]);
+    wake();
+  }, [dim, lamp, wake]);
 
   const dealClock = deal?.clock;
   const riseAt = (deal?.offsetMs ?? 0) + Motion.deal.lead;
@@ -109,8 +114,9 @@ export function useLampRig({
       s.lvl = s.lvlT;
       return s;
     }, true);
+    wake();
     // A deal gone before its rise leaves the lamp where it would have risen to, at once.
-    return () =>
+    return () => {
       lamp.modify((s) => {
         "worklet";
         if (s.holds.breath === 1) return s;
@@ -118,7 +124,9 @@ export function useLampRig({
         s.lvl = s.lvlT;
         return s;
       }, true);
-  }, [dealClock, lamp]);
+      wake();
+    };
+  }, [dealClock, lamp, wake]);
   useAnimatedReaction(
     () => (dealClock ? dealClock.value : -1),
     (now, prev) => {
@@ -128,6 +136,7 @@ export function useLampRig({
         lampControls.hold(s, "breath", null, BREATH_RATE);
         return s;
       }, true);
+      wake();
     }
   );
 
@@ -139,6 +148,7 @@ export function useLampRig({
       lampControls.flare(s, false);
       return s;
     }, true);
+    wake();
   });
   useBombBeat(landing, reduceMotion, () => {
     "worklet";
@@ -148,6 +158,7 @@ export function useLampRig({
       lampControls.kick(s, false);
       return s;
     }, true);
+    wake();
   });
 
   const { sx, sy } = designScale(width, height);
@@ -160,12 +171,14 @@ export function useLampRig({
   );
 
   const controls = useMemo((): Pick<LampRig, "hold" | "freeze"> => {
-    const control = (apply: (s: Lamp) => void) =>
+    const control = (apply: (s: Lamp) => void) => {
       lamp.modify((s) => {
         "worklet";
         apply(s);
         return s;
       }, true);
+      wake();
+    };
     return {
       hold: (owner, level, rate) =>
         control((s) => {
@@ -178,7 +191,7 @@ export function useLampRig({
           lampControls.freeze(s, amount);
         }),
     };
-  }, [lamp]);
+  }, [lamp, wake]);
 
   return useMemo(() => ({ lamp, glossLight, stillLight, shadeLevel, sx, sy, ...controls }), [lamp, glossLight, stillLight, shadeLevel, sx, sy, controls]);
 }

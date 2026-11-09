@@ -1,12 +1,16 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   cancelAnimation,
+  useFrameCallback,
   useSharedValue,
   withRepeat,
   withSequence,
+  type FrameCallback,
+  type FrameInfo,
   type ReduceMotion,
   type SharedValue,
 } from "react-native-reanimated";
+import { isRNRuntime, scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 /** A shared value whose animation stops with the component: Reanimated keeps driving one past unmount. */
@@ -52,4 +56,45 @@ export function useLoop(value: SharedValue<number>, loop: (() => Loop) | null, k
 /** `cycle` run `times` times, or null under once: `withRepeat` reads a count of 0 as forever. */
 export function repeatTimes(cycle: number, times: number, reverse = false): number | null {
   return times >= 1 ? withRepeat(cycle, times, reverse) : null;
+}
+
+/**
+ * A frame callback that runs only while it has something to move: `step` returns whether it does, and the callback is
+ * released the frame it says no. The returned `wake` registers it again and may be called from either thread, after
+ * the write that gave `step` something to do. `awake` is whether it runs from mount.
+ */
+export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): () => void {
+  const dirty = useSharedValue(awake);
+  const releasing = useSharedValue(false);
+  const span = useSharedValue<number | null>(null);
+  const controller = useRef<FrameCallback | null>(null);
+  // A wake that lands between a frame saying no and the release reaching here must win.
+  const [release] = useState(() => () => {
+    releasing.value = false;
+    if (!dirty.value) controller.current?.setActive(false);
+  });
+  const [arm] = useState(() => () => controller.current?.setActive(true));
+  const [tick] = useState(() => (frame: FrameInfo) => {
+    "worklet";
+    // A woken callback's first frame has no previous one; an always-on callback would have had a frame's span.
+    const gap = frame.timeSincePreviousFrame;
+    if (gap !== null) span.value = gap;
+    else if (span.value !== null) frame = { ...frame, timeSincePreviousFrame: span.value };
+    if (step(frame)) return;
+    dirty.value = false;
+    if (releasing.value) return;
+    releasing.value = true;
+    scheduleOnRN(release);
+  });
+  const [wake] = useState(() => () => {
+    "worklet";
+    dirty.value = true;
+    if (isRNRuntime()) arm();
+    else scheduleOnRN(arm);
+  });
+  const frames = useFrameCallback(tick, awake);
+  useEffect(() => {
+    controller.current = frames;
+  }, [frames]);
+  return wake;
 }
