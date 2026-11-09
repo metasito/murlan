@@ -10,9 +10,11 @@ import { TEXT_METRICS } from "../../components/table/textMetrics.generated.ts";
  * - `same`: to the layout's rounding.
  * - `words`: a pill. Its height and line are the plate's; its width is a bound, and the drawn words sit
  *   in the priced rect as the solver's `aligns` says: a centred chip keeps its centre. `noticeWidth`
- *   prices a glyph at most `SNAP_PER_GLYPH` above its linear advance, which a renderer that positions
- *   glyphs by subpixel draws, and a glyph the bundled faces lack at a full em, so the drawn words may
- *   fall short of the price by that much a glyph.
+ *   prices a glyph at most `SNAP_PER_GLYPH` above its linear advance, and a glyph the bundled faces
+ *   lack at a full em. A renderer that positions glyphs by subpixel draws the linear advance; one that
+ *   hints lands each advance on a whole pixel, `HINT_PER_GLYPH` either side of linear: CI's Chrome
+ *   156 draws "Scegli una carta da 3 a 10 per Besnik" 6.4px narrower than Chrome 153's linear one.
+ *   The drawn words may fall short of the price by both a glyph.
  * - `inside`: a knob of its own fixed size, centred in the slot the solver gives it.
  * - `line`: a seat's name. Its words are priced as a pill's, and the label reserves a taller line
  *   than the font draws, under which the drawn line sits: the bottoms meet, the top may be lower.
@@ -27,11 +29,14 @@ export interface Box extends Rect {
 /** Layout rounds each edge to a device pixel, and a border's half pixel to one either side. */
 export const TOLERANCE = 1;
 
+/** How far a hinted glyph's whole-pixel advance may land from its linear one: `words` above. */
+export const HINT_PER_GLYPH = 1;
+
 const PRICED = new Set(Object.values(TEXT_METRICS.faces).flatMap((f) => Object.keys(f.advances)));
 
 /** How far short of the priced width the drawn words may fall: `words` above. */
 export const unpriced = (text: { words: string; em: number }) =>
-  [...text.words].reduce((sum, ch) => sum + (PRICED.has(ch) ? SNAP_PER_GLYPH : text.em), 0);
+  [...text.words].reduce((sum, ch) => sum + (PRICED.has(ch) ? SNAP_PER_GLYPH + HINT_PER_GLYPH : text.em), 0);
 
 const near = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE;
 const placed = (a: Rect, b: Rect, align: Align | undefined) => align !== undefined && near(a.x, aligned(align, b.x, b.w, a.w)) && a.w <= b.w + TOLERANCE;

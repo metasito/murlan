@@ -2,7 +2,7 @@
 // as the drawn tables measured, and see what they are for.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { fits, TOLERANCE, unpriced, type Box } from "../helpers/drawnFit.ts";
+import { fits, HINT_PER_GLYPH, TOLERANCE, unpriced, type Box } from "../helpers/drawnFit.ts";
 
 const EM = 14;
 const word = (words: string): Box["text"] => ({ words, em: EM });
@@ -13,8 +13,9 @@ describe("the drawn fits stay as tight as the evidence", () => {
     assert.equal(TOLERANCE, 1);
   });
 
-  test("a priced glyph may fall a pixel short, a glyph no face holds an em", () => {
-    assert.equal(unpriced(word("TURNO")!), 5);
+  test("a priced glyph may fall two pixels short, a glyph no face holds an em", () => {
+    assert.equal(HINT_PER_GLYPH, 1);
+    assert.equal(unpriced(word("TURNO")!), 10);
     assert.equal(unpriced(word("你")!), EM);
   });
 });
@@ -33,9 +34,9 @@ describe("the drawn fits see what they are for", () => {
     assert.ok(!fits.words(drawnAt(102, 116), priced, undefined));
   });
 
-  test("words short of their price by more than a pixel a glyph do not fit", () => {
-    assert.ok(fits.words(drawnAt(100, 120 - 5 - TOLERANCE), priced, "flex-start"));
-    assert.ok(!fits.words(drawnAt(100, 120 - 5 - TOLERANCE - 0.5), priced, "flex-start"));
+  test("words short of their price by more than two pixels a glyph do not fit", () => {
+    assert.ok(fits.words(drawnAt(100, 120 - 10 - TOLERANCE), priced, "flex-start"));
+    assert.ok(!fits.words(drawnAt(100, 120 - 10 - TOLERANCE - 0.5), priced, "flex-start"));
   });
 
   test("a name keeps its line's bottom and its label's alignment", () => {
