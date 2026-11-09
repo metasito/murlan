@@ -267,6 +267,17 @@ describe("the order a straight is shown in", () => {
     }
   });
 
+  test("every 13-card straight has the same strength, so none beats another, and it reads A to K", () => {
+    const thirteen = (suit: "hearts" | "spades") =>
+      ["K", "2", "A", "5", "Q", "3", "J", "4", "10", "9", "8", "7", "6"].map((r) => c(r as "5", suit));
+    const a = buildCombination(thirteen("hearts"))!;
+    const b = buildCombination(thirteen("spades"))!;
+    assert.equal(a.strength, 14);
+    assert.equal(a.cards.map((x) => x.rank).join(" "), "A 2 3 4 5 6 7 8 9 10 J Q K");
+    assert.equal(b.strength, a.strength);
+    assert.equal(beats(a, b), false);
+  });
+
   test("ordering changes no strength", () => {
     assert.equal(buildCombination([c("A", "clubs"), c("2", "hearts"), c("3", "hearts"), c("4", "spades"), c("5", "hearts")])?.strength, 5);
   });
