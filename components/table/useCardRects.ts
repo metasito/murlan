@@ -15,10 +15,9 @@ export interface CardTable {
   felt: Felt;
   motion: SharedValue<TableMotion>;
   pile: Point;
-  /** The hand zone's centre before its lift. */
+  /** The hand zone's centre. */
   hand: Point;
   seats: Record<OpponentSide, Point>;
-  handLift: SharedValue<number>;
   glossLight: SharedValue<GlossLight>;
   /** The lamp's pose without its sway, which an opponent's back reads (`glossLightFor`). */
   stillLight: SharedValue<GlossLight>;
@@ -47,7 +46,7 @@ export function glossLightFor(table: CardTable, rectKey: string): SharedValue<Gl
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
 
-export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, handLift: SharedValue<number>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>): CardTable {
+export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>): CardTable {
   const rects = useSharedValue<CardRects>({});
   const handOrder = useSharedValue<readonly string[]>([]);
   const pileOrder = useSharedValue<readonly string[]>([]);
@@ -67,7 +66,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
       if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, handLift, glossLight, stillLight, shadeLevel, handOrder, pileOrder }), [key, rects, motion, handLift, glossLight, stillLight, shadeLevel, handOrder, pileOrder]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, stillLight, shadeLevel, handOrder, pileOrder }), [key, rects, motion, glossLight, stillLight, shadeLevel, handOrder, pileOrder]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {

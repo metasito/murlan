@@ -50,10 +50,13 @@ export function contactMs(n: number, from: CardFrom[], to: CardSlot[], catchUp: 
   return end;
 }
 
-export function pileSlots(n: number, cardW: number, roomW: number): CardSlot[] {
+/** `roomW` bounds the cards as drawn: the outer two are turned `SLOT_ROT` a step, which takes their corners past their slots. */
+export function pileSlots(n: number, cardW: number, roomW: number, cardH: number): CardSlot[] {
   "worklet";
   const wanted = (n <= 2 ? 34 : n <= 4 ? 28 : 24) * (cardW / MOCKUP_CARD_W);
-  const gap = n > 1 ? Math.min(wanted, (roomW - cardW) / (n - 1)) : 0;
+  const turn = (((n - 1) / 2) * SLOT_ROT * Math.PI) / 180;
+  const drawnW = cardW * Math.cos(turn) + cardH * Math.sin(turn);
+  const gap = n > 1 ? Math.min(wanted, (roomW - drawnW) / (n - 1)) : 0;
   const out: CardSlot[] = [];
   for (let i = 0; i < n; i++) {
     const c = i - (n - 1) / 2;

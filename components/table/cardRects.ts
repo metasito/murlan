@@ -89,8 +89,7 @@ export interface HandPlace { x: number; y: number; clipX: number; clipHalf: numb
 export function handCard(
   row: HandPlace,
   card: { left: number; bottom: number; w: number; h: number; tx: number; ty: number; rot: number; scale: number; back: boolean; lift: number; glow: number },
-  pan: number,
-  zoneLift: number
+  pan: number
 ): DrawnCard {
   "worklet";
   const cx = row.x + card.left + card.w / 2 + card.tx - pan;
@@ -98,7 +97,7 @@ export function handCard(
   const seen = row.clipHalf > 0 ? (Math.min(cx + w / 2, row.clipX + row.clipHalf) - Math.max(cx - w / 2, row.clipX - row.clipHalf)) / w : 1;
   return {
     cx,
-    cy: row.y + zoneLift - card.bottom - card.h / 2 + card.ty,
+    cy: row.y - card.bottom - card.h / 2 + card.ty,
     w,
     h: card.h * card.scale,
     rot: card.rot,

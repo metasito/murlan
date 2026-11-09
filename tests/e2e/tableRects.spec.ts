@@ -16,7 +16,7 @@ import type { OfflineSave } from "../../lib/offlineSave";
 import { LOCALE_KEY } from "../../lib/storageKeys";
 import { catalogs, type Locale } from "../../shared/i18n";
 import type { EdgeInsets } from "../../components/tableFrame";
-import { tableRects, type Rect, type RectName, type TableRects } from "../../components/tableRects";
+import { brokenRules, tableRects, type Rect, type RectName, type TableRects } from "../../components/tableRects";
 import { drawnChips, gameTable, TABLETS, type DrawnTable } from "../helpers/tableScenes";
 
 const VIEWPORTS = [...PHONES, ...TABLETS];
@@ -49,7 +49,7 @@ const DRAWN: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
 const RAIL: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   rail: DRAWN.rail,
   railMenu: DRAWN.railMenu,
-  railFoot: { sel: '[data-testid="control-rail"] > div:last-child [role="button"]', fit: "inside" },
+  railFoot: { sel: '[data-testid="control-rail"] > div:last-child [role="button"]', fit: "same" },
 };
 interface Drawn { boxes: Partial<Record<RectName, Box>>; clip: Rect | null; texts: { combo: string; turn: string } }
 
@@ -169,12 +169,13 @@ function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
   return bad;
 }
 
-async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string) {
+async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false) {
   const got = await settled(page);
   const chips = drawnChips(table, locale, got.texts, exchangeName);
   expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn})`).toEqual({ combo: expect.anything(), turn: expect.anything() });
   const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn! } } });
   expect(misfits(got, solved), where).toEqual([]);
+  if (keepsRules) expect(brokenRules(solved), `${where}: the solved table breaks its rules`).toEqual([]);
 }
 
 for (const [v, vp] of VIEWPORTS.entries())
@@ -220,12 +221,40 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
   }
 });
 
+const ANA_AND_BESNIKS = ["Ana", "Besnik", "Besnik", "Besnik"];
+const STRAIGHT_12 = STRAIGHT_13.slice(0, 12);
+
+test.describe("the side seats and the hand are drawn in the solver's rects, and keep its rules", () => {
+  for (const vp of [PHONES[0], PHONES[1], PHONES[3], TABLETS[0]]) {
+    for (const [turn, hand] of [[1, "off its turn"], [0, "on its turn"]] as const)
+      test(`full seats, hand ${hand}: ${vp.name}`, async ({ page, baseURL }) => {
+        test.setTimeout(120_000);
+        const insets = INSETS["0/0"];
+        await page.setViewportSize({ width: vp.width, height: vp.height });
+        const save = offlineSave({ seats: 4, hand: 13, turn, names: ANA_AND_BESNIKS });
+        await open(page, baseURL!, save, "en", insets);
+        await check(page, `${vp.name}, hand ${hand}`, vp, insets, "en", gameTable(save.gameState), undefined, true);
+      });
+  }
+
+  for (const vp of TABLETS)
+    test(`a twelve-card straight between the side fans: ${vp.name}`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      const insets = INSETS["0/0"];
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      const free = createDeck().map((c) => c.id).filter((id) => !STRAIGHT_12.includes(id));
+      const save = offlineSave({ seats: 4, holding: [0, 10, 20, 30].map((from) => free.slice(from, from + 10)), pile: { cards: STRAIGHT_12, by: 2 }, names: ANA_AND_BESNIKS });
+      await open(page, baseURL!, save, "en", insets);
+      await check(page, `${vp.name}, pile 12`, vp, insets, "en", gameTable(save.gameState), undefined, true);
+    });
+});
+
 test("the rail's knobs are drawn in the solver's rects: online", async ({ browser, baseURL }) => {
   test.setTimeout(240_000);
   const table = await openOnlineTable(browser, baseURL!, { playerCount: 2, gameMode: "free_for_all", viewport: { width: SIXTEEN.width, height: SIXTEEN.height } });
   try {
     const got = await settled(table.page, RAIL);
-    const solved = tableRects({ width: SIXTEEN.width, height: SIXTEEN.height, insets: INSETS["0/0"], locale: "it", state: { seats: { top: null, left: null, right: null }, hand: { cards: 0, onTurn: false, faceDown: false, raised: false }, pile: 0, chips: { combo: [], turn: [] } } });
+    const solved = tableRects({ width: SIXTEEN.width, height: SIXTEEN.height, insets: INSETS["0/0"], locale: "it", state: { seats: { top: null, left: null, right: null }, hand: { cards: 0, onTurn: false, faceDown: false }, pile: 0, chips: { combo: [], turn: [] } } });
     expect(misfits(got, solved, RAIL), "iPhone 16 Pro, online").toEqual([]);
   } finally {
     await table.close();

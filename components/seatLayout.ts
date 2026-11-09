@@ -29,16 +29,9 @@ const ACTION_BTN = 56;
 export const ACTION_BTN_FLOOR = 48;
 /** Hand to button, and button to the edge of the play area. */
 export const HAND_ZONE_GAP = 26;
-/** How far the hand zone rises when the turn comes to the viewer, at scale 1: it rests this far below its designed place. */
-const HAND_LIFT = 4;
-
-/** The hand zone is lifted while the viewer has something to do with it: a turn to play, or a giveback to choose. */
+/** The hand zone is lit while the viewer has something to do with it: a turn to play, or a giveback to choose. */
 export function handRaised(i: { turnShown: boolean; isFinished: boolean; exchangeOpen: boolean; exchangeIsMine: boolean }): boolean {
   return (i.turnShown && !i.isFinished && !i.exchangeOpen) || i.exchangeIsMine;
-}
-
-export function handDrop(raised: boolean, scale: number): number {
-  return raised ? 0 : HAND_LIFT * scale;
 }
 
 /**
@@ -261,10 +254,11 @@ export function seatLabelH(scale: number): number {
 
 /**
  * How far above the disc's top a seat's label holds the bottoms of its two rows: the name, and the
- * badge row under it, `height` tall, 0 when the seat shows no badge.
+ * badge row under it, `height` tall, 0 when the seat shows no badge. `rise` lifts both clear of a
+ * fan standing taller than the ring (`seatLabelRise`).
  */
-export function seatLabelRows(scale: number, height: number): { name: number; badges: number } {
-  const badges = SEAT_LABEL_PAD * scale;
+export function seatLabelRows(scale: number, height: number, rise: number): { name: number; badges: number } {
+  const badges = SEAT_LABEL_PAD * scale + rise;
   return { badges, name: height > 0 ? badges + height + SEAT_LABEL_GAP * scale : badges };
 }
 

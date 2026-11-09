@@ -1,7 +1,6 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { View, StyleSheet, Pressable, type AccessibilityProps, type ViewProps } from "react-native";
 import {
-  Easing,
   useAnimatedStyle,
   withTiming,
   cancelAnimation,
@@ -17,7 +16,7 @@ import {
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { a11yState } from "@/lib/a11y";
-import { handDrop, HAND_ZONE_ALIGN, SIDE_SECTION_W } from "@/components/seatLayout";
+import { HAND_ZONE_ALIGN, SIDE_SECTION_W } from "@/components/seatLayout";
 import { RAIL_KNOB_ALIGN, type Rect } from "@/components/tableLayout";
 import type { Channel } from "@/lib/harnessChannels";
 
@@ -209,44 +208,6 @@ export const sharedTableStyles = StyleSheet.create({
     justifyContent: "center",
   },
 });
-
-// ─── useHandLift ──────────────────────────────────────────────────────────────
-
-/**
- * The hand rises off the bottom edge on the viewer's own turn — one of the
- * table's signals about whose turn it is, beside the lamp over the hand and
- * the lit turn pill.
- *
- * A lift, not a wash: a lit band behind the hand is a gold hairline drawn the
- * full width of the table, which reads as chrome across the felt rather than
- * as the hand coming up. `translateY` alone, so the browser composites it.
- */
-export function useHandLift(active: boolean, scale: number) {
-  const lift = useOwnedValue(0);
-  // A CSS transition does not fire on the value an element mounts with, and
-  // neither does this: a table rejoined mid-turn should open with the hand
-  // already up, not raise it over half a second nobody asked for.
-  const mounted = useRef(false);
-  const reduceMotion = usePrefersReducedMotion();
-
-  useEffect(() => {
-    // Anchored at the lifted state, not the settled one: the hand's designed
-    // position — cards cropped by the bottom edge, buttons on the safe line —
-    // is the one it holds while the player is using it. Lifting *from* that
-    // position instead would spend the crop it is measured by.
-    const resting = handDrop(active, scale);
-    if (!mounted.current || reduceMotion) {
-      mounted.current = true;
-      cancelAnimation(lift);
-      lift.set(resting);
-      return;
-    }
-    lift.set(withTiming(resting, { duration: Motion.handLift, easing: Easing.bezier(0.2, 0.8, 0.3, 1) }));
-  }, [active, scale, reduceMotion, lift]);
-
-  const style = useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
-  return { style, lift };
-}
 
 /**
  * The HUD chips and the reactions trigger fade rather than vanish under focus

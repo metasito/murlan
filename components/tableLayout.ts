@@ -5,7 +5,6 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { Player } from "@/lib/game/gameEngine";
-import { Spacing } from "../lib/tokens.ts";
 import { CARD_H, cardScale, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
 import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatLabelH } from "./seatLayout.ts";
@@ -14,7 +13,7 @@ import { aligned, type Align } from "./flexAlign.ts";
 import { sideNameInset } from "./table/legibilityRing.ts";
 import { pillAnchorFor, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot } from "./table/noticeModel.ts";
-import { computeTableFrame, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
+import { computeTableFrame, SIDE_SEAT_GAP, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
 
 /** Where the rail holds each knob across its width: `rail`'s slots and `ControlRail` both read it. */
 export const RAIL_KNOB_ALIGN: Align = "center";
@@ -29,7 +28,7 @@ export interface TableLayout {
   frame: TableFrame;
   handCardH: number;
   handZoneH: number;
-  /** Each seat's point and the pile's centre, in window points: a ring's centre, or the hand zone's before its lift. */
+  /** Each seat's point and the pile's centre, in window points: a ring's centre, or the hand zone's. */
   anchors: Record<FlyDirection | "pile", Point>;
   /** A seat's point from the pile: where its throw starts, a closed trick is swept, and a dealt card lands. */
   seatPoint(dir: FlyDirection): Delta;
@@ -43,7 +42,7 @@ export interface TableLayout {
   hud: { combo: { left: number; top: number; align: Align }; turn: { left: number; right: number; top: number; align: Align } };
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
-  /** The hand zone at its designed place, and the padding its row and buttons stand on. At rest it sits `handDrop` lower. */
+  /** The hand zone at its designed place, and the padding its row and buttons stand on. */
   handZone: Rect & { padBottom: number };
   /** PASSA and GIOCA, in the hand zone at its designed place. */
   buttons: { passa: Rect; gioca: Rect };
@@ -93,8 +92,8 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     pile: { x, y: midTop + midH / 2 },
     top: { x, y: frame.tableTop + seatLabelH(scale) + ring / 2 },
     bottom: { x, y: tableFloor - handZoneH / 2 },
-    left: { x: frame.tableLeft + Spacing.sm + ring / 2, y: sideY },
-    right: { x: width - frame.tableRight - Spacing.sm - ring / 2, y: sideY },
+    left: { x: frame.tableLeft + SIDE_SEAT_GAP + ring / 2, y: sideY },
+    right: { x: width - frame.tableRight - SIDE_SEAT_GAP - ring / 2, y: sideY },
   };
   return {
     scale,

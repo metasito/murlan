@@ -18,7 +18,7 @@ const TWIN = at("tests", "ui-rules", "seatLayoutTwin.ts");
 const POSITIONS = ["tableLayout"];
 const GEOMETRY = new Set([
   "scale", "backScale", "width", "height", "cardH", "rowRise", "leftInset", "topPad", "bottomPad", "surplus",
-  "handCardH", "handZoneH", "windowWidth", "windowHeight", "tableLeft", "tableRight", "tableTop", "chipsBottom", "inset", "nameW",
+  "handCardH", "handZoneH", "windowWidth", "windowHeight", "tableLeft", "tableRight", "tableTop", "chipsBottom", "inset", "nameW", "rise",
 ]);
 const EDGES = new Set(["top", "bottom", "left", "right"]);
 const SEATED: Record<string, string[]> = {

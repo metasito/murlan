@@ -97,7 +97,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
 /** A play of `cards` thrown from `from`, still in the air. */
 export function flightOf(key: string, cards: Card[], from: CardFrom[], reduced = false): Flight {
   const combo = { type: 'single', cards, strength: 0 } as Combination;
-  const spec = flightSpec(key, from, pileSlots(cards.length, 60, 400), false, reduced);
+  const spec = flightSpec(key, from, pileSlots(cards.length, 60, 400, 84), false, reduced);
   return { key, combo, playedBy: 0, spec, landing: { ...NO_LANDING, cards: cards.length }, roundOver: false, hidden: false };
 }
 
