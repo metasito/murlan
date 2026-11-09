@@ -1263,11 +1263,14 @@ const GUARDS = [
     files: ["tests/native/**/*.{ts,tsx}"],
     refine: (node, context) => {
       const [id, factory] = node.parent.arguments;
+      const variable = (n) => (n?.type === "Identifier" ? referenceOf(context, n)?.resolved : undefined);
+      const bound = variable(id);
+      const once = bound?.defs.length === 1 && bound.defs[0].type === "Variable" && bound.defs[0].parent.kind === "const";
       const body = factory?.type === "ArrowFunctionExpression" && factory.params.length === 0 ? factory.body : null;
-      const actual = body?.type === "CallExpression" && context.sourceCode.getText(body.callee) === "jest.requireActual" ? body.arguments[0] : null;
-      const text = (n) => context.sourceCode.getText(n);
-      const swapped = actual?.type === "CallExpression" && actual.callee.name === "platformVariant" && actual.arguments.length === 1 ? actual.arguments[0] : actual;
-      return !(actual && swapped && text(swapped) === text(id));
+      const actual = body?.type === "CallExpression" && body.callee.type === "MemberExpression" && body.callee.object.name === "jest" && body.callee.property.name === "requireActual" ? body.arguments[0] : null;
+      const from = actual?.type === "CallExpression" && actual.arguments.length === 1 ? variable(actual.callee)?.defs[0] : null;
+      const swap = from?.type === "ImportBinding" && /(^|\/)harness\/platformVariants$/.test(from.parent.source.value) && from.node.imported?.name === "platformVariant";
+      return !(once && body && variable(swap ? actual.arguments[0] : actual) === bound);
     },
     plant: { file: "tests/native/plant.test.tsx", code: [
       "const CONTEXT = '@/context/GameContext';",
@@ -1276,19 +1279,24 @@ const GUARDS = [
       "jest.mock(`@/context/${name}`, () => ({}));",
       "jest.setMock(path.join('context', 'GameContext'), {});",
       "jest.doMock('@/context/' + 'GameContext', () => ({ useGame: () => null }));",
-      "jest.doMock(target, () => jest.requireActual(other));",
-      "jest.doMock(target, () => jest.requireActual(platformVariant(other)));",
-      "jest.doMock(target, () => jest.requireActual(platformVariant(target, other)));",
-      "jest.doMock(target, () => ({ ...jest.requireActual(target), useGame: () => null }));",
-      "jest.doMock(target, (x) => jest.requireActual(target));",
-      "jest.doMock(target, () => jest.requireMock(target));",
-    ].join("\n"), hits: 11 },
+      "for (const target of targets) jest.doMock(target, () => jest.requireActual(other));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(other)));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target, other)));",
+      "for (const target of targets) jest.doMock(target, () => ({ ...jest.requireActual(target), useGame: () => null }));",
+      "for (const target of targets) jest.doMock(target, (x) => jest.requireActual(target));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireMock(target));",
+      "let id = '@/context/GameContext';\nid = '@/context/Other';\njest.doMock(`${id}`, () => jest.requireActual(`${id}`));",
+      "function platformVariant(t) { return fake; }\nfor (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
+      "let i = 0;\njest.doMock(ids[i++], () => jest.requireActual(ids[i++]));",
+      "let moving = a;\nmoving = b;\njest.doMock(moving, () => jest.requireActual(moving));",
+      "import { platformVariant } from './elsewhere';\nfor (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
+    ].join("\n"), hits: 16 },
     spare: [
       "jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));",
       "jest.doMock(`expo-asset`, () => ({}));",
-      "jest.doMock(target, () => jest.requireActual(target));",
-      "jest.doMock(path.join(root, file), () => jest.requireActual(path.join(root, file)));",
-      "jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
+      "for (const target of targets) jest.doMock(target, () => jest.requireActual(target));",
+      "import { platformVariant } from './harness/platformVariants';\nfor (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
+      "import { platformVariant } from '../harness/platformVariants';\nfor (const target of targets) jest.doMock(target, () => jest.requireActual(platformVariant(target)));",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
   {

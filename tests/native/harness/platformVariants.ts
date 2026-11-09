@@ -73,16 +73,20 @@ function answers(root: string, key: string): string[] {
     .map((f) => path.posix.join(dir, f));
 }
 
-/** Makes every import of a module with variants load the file `os` takes, whichever file the project's own resolver found. */
-export function loadVariantsAs(root: string, os: OS, variants: Variants) {
-  const taken = new Map<string, string>();
+let taken = new Map<string, string>();
+
+/** The absolute path of every file that answers an import of a module with variants, for `os`; `platformVariant` then names the file each takes. */
+export function variantTargets(root: string, os: OS, variants: Variants): string[] {
+  taken = new Map();
   for (const key of variants.keys()) {
     const chosen = loadedAs(root, os, key);
     if (chosen) for (const file of answers(root, key)) taken.set(path.join(root, file), path.join(root, chosen));
   }
-  const platformVariant = (target: string) => taken.get(target)!;
-  for (const target of taken.keys()) jest.doMock(target, () => jest.requireActual(platformVariant(target)));
+  return [...taken.keys()];
 }
+
+/** The file of a module, among those `variantTargets` last named, that its platform loads. */
+export const platformVariant = (target: string): string => taken.get(target)!;
 
 export function restoreVariants(root: string, variants: Variants) {
   for (const key of variants.keys()) for (const file of answers(root, key)) jest.dontMock(path.join(root, file));

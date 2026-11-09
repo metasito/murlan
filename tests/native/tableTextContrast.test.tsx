@@ -16,7 +16,7 @@ import { StyleSheet } from "react-native";
 import { Colors, FeltGradients, Gradient } from "../../lib/tokens.ts";
 import { contrastRatio } from "../../lib/contrast.ts";
 import { NOTICE_FACES } from "../../components/table/noticeModel.ts";
-import { loadedAs, loadVariantsAs, OSES, restoreVariants, variantsOf, type OS, type Variants } from "./harness/platformVariants";
+import { loadedAs, OSES, platformVariant, restoreVariants, variantsOf, variantTargets, type OS, type Variants } from "./harness/platformVariants";
 import { BODY_MIN, LARGE_MIN, readsOf, resolve, sourceArrays, sourcesRead, withOpacity } from "../helpers/contrastColours.ts";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -48,7 +48,7 @@ function sheetsMadeAs(os: OS, files: string[], watch: ReadonlySet<string>, varia
     }) as typeof rn.StyleSheet.create);
     jest.spyOn(rn.Platform, "select").mockImplementation(((spec: Record<string, unknown>) => pickFor(os, spec)) as typeof rn.Platform.select);
     Object.defineProperty(rn.Platform, "OS", { value: os, configurable: true });
-    loadVariantsAs(repoRoot, os, variants);
+    for (const target of variantTargets(repoRoot, os, variants)) jest.doMock(target, () => jest.requireActual(platformVariant(target)));
     try {
       for (const file of files) jest.requireActual(path.join(repoRoot, file));
     } finally {
@@ -156,14 +156,32 @@ function styleRefs(file: string, source: ts.SourceFile, expr: ts.Node, out: Foun
   unread("a style built by an expression this audit cannot follow");
 }
 
-type Graph = { uses: Map<string, Set<string>>; namespace: Set<string> };
+type Graph = { uses: Map<string, Set<string>>; namespace: Set<string>; unresolved: string[] };
 const TABLE_TEXT_FILE = "components/table/TableText.tsx";
+const COMPILER_OPTIONS = ts.getParsedCommandLineOfConfigFile(path.join(repoRoot, "tsconfig.json"), {}, {
+  ...ts.sys,
+  onUnRecoverableConfigFileDiagnostic: (d) => {
+    throw new Error(ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+  },
+})!.options;
 
 /** Which files bring `TableText` in, under which local names, following re-exports through `.ts` and `.tsx` files and `@/` or relative paths. */
 function tableTextGraph(sources: Map<string, ts.SourceFile>): Graph {
+  const unresolved: string[] = [];
+  const host: ts.ModuleResolutionHost = {
+    fileExists: (f) => sources.has(path.relative(repoRoot, f).split(path.sep).join("/")) || ts.sys.fileExists(f),
+    readFile: (f) => ts.sys.readFile(f),
+    realpath: (f) => f,
+  };
+  /** The tracked source a specifier names, resolved as tsconfig.json resolves it (its `paths` aliases, relative paths, packages); a specifier that resolves to nothing is unresolved, never skipped. */
   const resolveFrom = (from: string, spec: string): string | undefined => {
-    const base = spec.startsWith("@/") ? spec.slice(2) : spec.startsWith(".") ? path.posix.join(path.posix.dirname(from), spec) : undefined;
-    return base === undefined ? undefined : ["", ".tsx", ".ts", "/index.tsx", "/index.ts"].map((e) => base + e).find((f) => sources.has(f));
+    const found = ts.resolveModuleName(spec, path.join(repoRoot, from), COMPILER_OPTIONS, host).resolvedModule;
+    if (!found) {
+      unresolved.push(`${from}: ${spec}`);
+      return undefined;
+    }
+    const rel = path.relative(repoRoot, found.resolvedFileName).split(path.sep).join("/");
+    return sources.has(rel) ? rel : undefined;
   };
   const exported = new Map<string, Set<string>>([[TABLE_TEXT_FILE, new Set(["TableText"])]]);
   const uses = new Map<string, Set<string>>();
@@ -198,7 +216,7 @@ function tableTextGraph(sources: Map<string, ts.SourceFile>): Graph {
       }
     }
   }
-  return { uses, namespace };
+  return { uses, namespace, unresolved };
 }
 
 /** The names `TableText` is imported or aliased under in one file; any other use of one is unread. */
@@ -406,6 +424,10 @@ test("every <TableText> style is one this audit can follow to a sheet the module
   assert.ok(read.length > 30, `read only ${read.length} styles' colours off the modules' sheets`);
 });
 
+test("every import and re-export in the app's sources names a file or a package, so no alias hides TableText", () => {
+  assert.deepEqual(GRAPH.unresolved, []);
+});
+
 test("the manifest names what the audit reads: every glob reads a file, every importer of TableText is inside it, and so is every allowance", () => {
   for (const glob of reads) assert.ok(COMPONENT_FILES.some(([file]) => minimatch(file, glob)), `${glob} in tests/native/reads.json reads no tracked file`);
   const outside = [...GRAPH.uses.keys(), ...GRAPH.namespace].filter((file) => file !== TABLE_TEXT_FILE && !READ.has(file));
@@ -541,6 +563,14 @@ describe("the audit sees what a text scan of `key: {` could not", () => {
     assert.deepEqual(scan(PLANT, 'import { Label as Inner } from "./deep";\nconst a = <Inner style={styles.viaTwo} />;', barrel).keys, ["viaTwo"]);
     assert.equal(scan(PLANT, 'import * as Ui from "./table/barrel";', barrel).unread.length, 1);
     assert.deepEqual(scan(PLANT, 'import { Other } from "./table/barrel";\nconst a = <Other style={styles.no} />;', barrel).keys, []);
+  });
+
+  test("TableText is followed through every alias tsconfig.json names, and an unresolvable specifier is reported", () => {
+    const kit = { "shared/plantKit.ts": 'export { TableText } from "../components/table/TableText";' };
+    assert.deepEqual(scan(PLANT, 'import { TableText as Kit } from "@shared/plantKit";\nconst a = <Kit style={styles.viaShared} />;', kit).keys, ["viaShared"]);
+    assert.deepEqual(scan(PLANT, 'import { TableText as Kit } from "@/shared/plantKit";\nconst a = <Kit style={styles.viaRoot} />;', kit).keys, ["viaRoot"]);
+    const sources = new Map(Object.entries({ ...kit, [PLANT]: 'import { x } from "@nowhere/thing";' }).map(([name, src]) => [name, asSource(name, src)]));
+    assert.deepEqual(tableTextGraph(sources).unresolved, [`${PLANT}: @nowhere/thing`]);
   });
 
   test("NOTICE_FACES is the noticeModel import, not a name a file can reuse", () => {
