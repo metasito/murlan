@@ -251,6 +251,22 @@ describe("the order a straight is shown in", () => {
     assert.equal(faces(all), "A 2 3 4 5 6 7 8 9 10 J Q K");
   });
 
+  test("the pick order changes neither what the play is, its strength, nor which cards it holds", () => {
+    const permutations = <T,>(xs: T[]): T[][] =>
+      xs.length <= 1 ? [xs] : xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]));
+    const hand = [c("A", "clubs"), c("2", "hearts"), c("3", "hearts"), c("4", "spades"), c("5", "hearts")];
+    const reference = buildCombination(hand)!;
+    const perms = permutations(hand);
+    assert.equal(perms.length, 120);
+    for (const picked of perms) {
+      const combo = buildCombination(picked)!;
+      assert.equal(combo.type, reference.type);
+      assert.equal(combo.strength, reference.strength);
+      assert.deepEqual(combo.cards.map((x) => x.id).sort(), hand.map((x) => x.id).sort());
+      assert.deepEqual(combo.cards.map((x) => x.rank), reference.cards.map((x) => x.rank));
+    }
+  });
+
   test("ordering changes no strength", () => {
     assert.equal(buildCombination([c("A", "clubs"), c("2", "hearts"), c("3", "hearts"), c("4", "spades"), c("5", "hearts")])?.strength, 5);
   });
