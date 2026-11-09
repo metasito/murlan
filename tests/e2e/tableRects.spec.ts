@@ -164,7 +164,7 @@ function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
     const raw = got.boxes[name];
     const box = raw && name === "hand" ? { ...raw, ...clipTo(raw, got.clip) } : raw;
     if (!solved !== !box) bad.push(`${name}: drawn ${box ? at(box) : "nothing"}, solver ${solved ? at(solved) : "nothing"}`);
-    else if (solved && box && !fits[spec.fit](box, solved, { align: want.aligns[name], overcount: want.overcount[name], drift: name === "hudTurn" && want.aligns.hudTurn !== "center" ? drift : undefined })) {
+    else if (solved && box && !fits[spec.fit](box, solved, { align: want.aligns[name], overcount: want.overcount[name], capped: want.capped[name], drift: name === "hudTurn" && want.aligns.hudTurn !== "center" ? drift : undefined })) {
       const words = box.text && ` (words ${box.text.drawn.toFixed(1)} drawn, ${box.text.linear.toFixed(1)} linear; overcount ${want.overcount[name]?.toFixed(1)})`;
       bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}${words ?? ""}`);
     }

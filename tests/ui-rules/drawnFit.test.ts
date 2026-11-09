@@ -66,6 +66,14 @@ describe("the drawn fits see what they are for", () => {
     assert.ok(!fits.words(plate(ROW.x - drift, linearW + drift), priced, { align: "flex-start", overcount: OVERCOUNT }));
   });
 
+  test("a plate the table held to its room is the room wide, whatever the clipped words measure", () => {
+    const hinted = word("TURNO", LINEAR - 3);
+    const held = { align: "flex-start" as const, overcount: 0, capped: true };
+    assert.ok(fits.words(plate(ROW.x, ROW.w, hinted), priced, held));
+    assert.ok(!fits.words(plate(ROW.x, ROW.w - 4, hinted), priced, held));
+    assert.ok(!fits.words(plate(ROW.x, ROW.w, hinted), priced, { ...held, capped: false }));
+  });
+
   test("a plate drawn wider than its linear price does not fit", () => {
     assert.ok(!fits.words(plate(ROW.x, linearW + TOLERANCE + 0.5), priced, { align: "flex-start", overcount: OVERCOUNT }));
   });

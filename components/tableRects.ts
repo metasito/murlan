@@ -73,6 +73,8 @@ export interface TableRects {
   aligns: Partial<Record<RectName, Align>>;
   /** How much wider than its words' linear advances such a rect is priced: what snapping each glyph to a pixel may add. */
   overcount: Partial<Record<RectName, number>>;
+  /** A rect the table holds to its room, narrower than its words need. */
+  capped: Partial<Record<RectName, boolean>>;
   /** A rect whose words must stay whole and are drawn cut at its room: a pill of catalogue words alone, which a name or a clock does not bound. */
   cut: Partial<Record<RectName, boolean>>;
 }
@@ -122,8 +124,12 @@ export function tableRects(input: {
   };
   const turnCentred = layout.pill.centreX - turnW / 2;
   const turnAlign: Align = Math.abs(hud.turn.left - turnCentred) < EPS ? "center" : hud.turn.left > turnCentred ? "flex-start" : "flex-end";
+  const capped: TableRects["capped"] = {
+    hudCombo: noticeWidth("hudCombo", locale, chips, state.chips.combo) > comboRoom + EPS,
+    hudTurn: noticeWidth("turn", locale, chips, state.chips.turn) > turnRoom + EPS,
+  };
   const cut: TableRects["cut"] = {
-    hudCombo: state.chips.combo.every((part) => "runs" in part) && noticeWidth("hudCombo", locale, chips, state.chips.combo) > comboRoom + EPS,
+    hudCombo: state.chips.combo.every((part) => "runs" in part) && capped.hudCombo,
   };
   const pill = scorePillBox(0, 0, layout.pill);
   const chipH = CHIP_H(chips);
@@ -230,6 +236,7 @@ export function tableRects(input: {
       badgeRight: SEAT_LABEL_ALIGN[seatAnchor("right")],
     },
     overcount,
+    capped,
     cut,
   };
 }
