@@ -3,13 +3,14 @@
 // (the SessionStart hook) prints the same and always exits 0.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isInvokedDirectly } from "./lib/entry.mjs";
 
+const FINGERPRINT_BYTES = 1 << 20;
 const BROWSER_DIRS = { chromium: "chromium", "chromium-headless-shell": "chromium_headless_shell", ffmpeg: "ffmpeg" };
 
 /**
@@ -42,7 +43,7 @@ export function toolchainFindings({ node, wantNodeMajor, wantedBrowsers, browser
   return findings;
 }
 
-/** The hash of the largest file under `dir`: the browser binary, which two revisions never share. */
+/** The size and both ends of the largest file under `dir`: the browser binary, which two revisions never share, without reading all of it at session start. */
 function fingerprint(dir) {
   let biggest = { size: -1, file: "" };
   const walk = (d) => {
@@ -53,16 +54,28 @@ function fingerprint(dir) {
     }
   };
   walk(dir);
-  return biggest.file ? createHash("sha256").update(readFileSync(biggest.file)).digest("hex") : undefined;
+  if (!biggest.file) return undefined;
+  const fd = openSync(biggest.file, "r");
+  try {
+    const hash = createHash("sha256").update(String(biggest.size));
+    const window = Buffer.alloc(Math.min(FINGERPRINT_BYTES, biggest.size));
+    for (const at of [0, Math.max(0, biggest.size - window.length)]) {
+      readSync(fd, window, 0, window.length, at);
+      hash.update(window);
+    }
+    return hash.digest("hex");
+  } finally {
+    closeSync(fd);
+  }
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+function report(inform) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const require = createRequire(path.join(root, "package.json"));
   const wantNodeMajor = JSON.parse(readFileSync(path.join(root, "deploy", "runtime.json"), "utf8")).node;
   const browsers = JSON.parse(readFileSync(path.join(path.dirname(require.resolve("playwright-core/package.json")), "browsers.json"), "utf8")).browsers;
   const store = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), ".cache", "ms-playwright");
-  const findings = toolchainFindings({
+  return toolchainFindings({
     node: process.versions.node,
     wantNodeMajor,
     wantedBrowsers: browsers.filter((b) => b.name in BROWSER_DIRS),
@@ -75,9 +88,19 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
       const twin = readdirSync(store).find((d) => d !== dir && d.startsWith(kind) && fingerprint(path.join(store, d)) === mine);
       return twin && mine ? { copyOf: twin } : "present";
     },
-    dockerUp: spawnSync("docker", ["info"], { stdio: "ignore", timeout: 15_000 }).status === 0,
+    dockerUp: spawnSync("docker", ["info"], { stdio: "ignore", timeout: inform ? 2_000 : 15_000 }).status === 0,
   });
+}
+
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  const inform = process.argv.includes("--inform");
+  let findings;
+  try {
+    findings = report(inform);
+  } catch (err) {
+    findings = [{ level: "error", text: `the toolchain check itself failed: ${err instanceof Error ? err.message : String(err)}` }];
+  }
   for (const { level, text } of findings) console.log(`${level}: ${text}`);
   if (findings.length === 0) console.log("toolchain: as pinned");
-  process.exit(!process.argv.includes("--inform") && findings.some((f) => f.level === "error") ? 1 : 0);
+  process.exit(!inform && findings.some((f) => f.level === "error") ? 1 : 0);
 }

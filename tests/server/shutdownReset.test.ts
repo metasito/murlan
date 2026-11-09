@@ -19,8 +19,8 @@ function importsFrom(source: ts.SourceFile, module: RegExp): Map<string, string>
   return names;
 }
 
-/** Whether the file stages a shutdown and, if so, ends it before the next test boots a server. */
-export function leaks(file: string, text: string): boolean {
+/** Whether the file stages a shutdown, resolved through its imports, and whether it then leaves it standing before the next test boots a server. */
+export function stages(file: string, text: string): { staged: boolean; leaks: boolean } {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const room = importsFrom(source, /gameRoom\.ts/);
   const shutdownModule = importsFrom(source, /http\/shutdown\.ts/);
@@ -39,21 +39,24 @@ export function leaks(file: string, text: string): boolean {
     ts.forEachChild(node, visit);
   };
   visit(source);
-  if (lastStage < 0 || reset) return false;
+  if (lastStage < 0) return { staged: false, leaks: false };
+  if (reset) return { staged: true, leaks: false };
   const inHook = (call: ts.CallExpression) => {
     for (let n: ts.Node | undefined = call.parent; n; n = n.parent) {
       if (ts.isCallExpression(n) && /^(?:t\.)?(?:after|afterEach)$/.test(n.expression.getText())) return true;
     }
     return false;
   };
-  return !(boots && stops.some((call) => call.getStart() > lastStage || inHook(call)));
+  return { staged: true, leaks: !(boots && stops.some((call) => call.getStart() > lastStage || inHook(call))) };
 }
 
+const leaks = (file: string, text: string) => stages(file, text).leaks;
+
 test("a test file that stages a shutdown ends it, by reset or by stopping the server it booted", () => {
-  const staging = sourcesUnder(repoRoot, ["tests"]).filter(([file, text]) => file !== SELF && /\b(?:beginShutdown|shutdown)\b/.test(text));
-  const staged = staging.filter(([file, text]) => leaks(file, text) || /\b__resetShutdown\b|\.stop\(/.test(text));
-  assert.ok(staged.length >= 10, "the scan must see the files that stage a shutdown, or it proves nothing");
-  assert.deepEqual(staging.filter(([file, text]) => leaks(file, text)).map(([file]) => file), []);
+  const files = sourcesUnder(repoRoot, ["tests"]).filter(([file]) => file !== SELF);
+  const staged = files.filter(([file, text]) => stages(file, text).staged);
+  assert.ok(staged.length >= 15, `the scan resolved a staged shutdown in only ${staged.length} files, so it proves nothing`);
+  assert.deepEqual(staged.filter(([file, text]) => leaks(file, text)).map(([file]) => file), []);
 });
 
 test("the scan tells a leak from a reset, an aliased import from a stranger, and a stop that comes first", () => {

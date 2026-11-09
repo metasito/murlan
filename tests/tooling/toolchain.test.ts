@@ -1,4 +1,7 @@
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toolchainFindings } from "../../scripts/toolchain.mjs";
@@ -47,4 +50,22 @@ test("the startup hook prints the toolchain beside the loop's status, and never 
   const args = startup.map((h) => h.args.join(" "));
   assert.ok(args.some((a) => a.endsWith("loop-status.mjs --startup")));
   assert.ok(args.some((a) => a.endsWith("scripts/toolchain.mjs --inform")));
+});
+
+test("--inform exits 0 and says so when the check itself cannot run, as with no node_modules", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "toolchain-"));
+  try {
+    mkdirSync(path.join(dir, "scripts", "lib"), { recursive: true });
+    mkdirSync(path.join(dir, "deploy"));
+    cpSync(new URL("../../scripts/toolchain.mjs", import.meta.url), path.join(dir, "scripts", "toolchain.mjs"));
+    cpSync(new URL("../../scripts/lib/entry.mjs", import.meta.url), path.join(dir, "scripts", "lib", "entry.mjs"));
+    cpSync(new URL("../../deploy/runtime.json", import.meta.url), path.join(dir, "deploy", "runtime.json"));
+    const run = (...args: string[]) => spawnSync(process.execPath, [path.join(dir, "scripts", "toolchain.mjs"), ...args], { encoding: "utf8", cwd: dir, timeout: 30_000 });
+    const informed = run("--inform");
+    assert.equal(informed.status, 0, informed.stderr);
+    assert.match(informed.stdout, /the toolchain check itself failed/);
+    assert.equal(run().status, 1, "outside --inform a check that cannot run is red");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
