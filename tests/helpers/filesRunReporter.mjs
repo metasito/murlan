@@ -76,11 +76,11 @@ export default async function* filesRun(source) {
   // This runner's own start: a marker older than that is a previous run's that had this pid.
   const graceMs = exitGraceMs();
   if (graceMs === undefined) writeSync(2, `\nnpm test: the run's idle limit leaves no room for an exit grace; hangs in a file's exit go to the idle limit\n`);
-  // No inherited execArgv: the runner's own `--test …` or `-e` would make the worker something else.
-  const watch = new Worker(new URL("./runWatch.mjs", import.meta.url), { execArgv: [], workerData: { heartbeat, idleMs: runIdleMs(), markers } });
-  watch.unref();
-  // Set before the directory goes, so the exit guard's last tick does not report it missing.
+  // Set by the idle watchdog before it kills anything, and before the directory goes, so the exit guard's last tick does not report it missing.
   const stop = new Int32Array(new SharedArrayBuffer(4));
+  // No inherited execArgv: the runner's own `--test …` or `-e` would make the worker something else.
+  const watch = new Worker(new URL("./runWatch.mjs", import.meta.url), { execArgv: [], workerData: { heartbeat, idleMs: runIdleMs(), markers, stop } });
+  watch.unref();
   const since = Math.floor(performance.timeOrigin);
   const exitWatch =
     graceMs === undefined
