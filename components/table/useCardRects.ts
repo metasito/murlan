@@ -15,7 +15,7 @@ export interface CardTable {
   felt: Felt;
   motion: SharedValue<TableMotion>;
   pile: Point;
-  /** The hand zone's centre before its lift. */
+  /** The hand zone's centre. */
   hand: Point;
   seats: Record<OpponentSide, Point>;
   glossLight: SharedValue<GlossLight>;

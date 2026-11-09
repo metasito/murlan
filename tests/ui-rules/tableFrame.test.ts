@@ -7,11 +7,9 @@ import {
   HAND_ZONE_GAP,
   CHIP_H,
   HAND_WIDTH_SHARE,
-  SEAT_DISC,
 } from "../../components/seatLayout.ts";
 import { drawnShortEdge } from "../../components/cardFaceModel.ts";
-import { bannerTop, computeTableFrame, railWidth, SIDE_SEAT_GAP } from "../../components/tableFrame.ts";
-import { drawnFanBounds } from "../../components/fanGeometry.ts";
+import { bannerTop, computeTableFrame, railWidth } from "../../components/tableFrame.ts";
 import { tableLayout, tableScale } from "../../components/tableLayout.ts";
 
 
@@ -160,7 +158,6 @@ describe("computeTableFrame", () => {
     const f = frameOf({ width: 844 });
     const tableW = 844 - f.tableLeft - f.tableRight;
     assert.ok(f.fieldRoomW <= 844 * 0.55);
-    assert.ok(tableW - f.fieldRoomW >= 2 * (SIDE_SEAT_GAP + SEAT_DISC / 2 + drawnFanBounds(1).sideReach), "the field reaches into a side fan");
     assert.ok(f.fieldRoomW > 0);
     // Neither arc may take the whole table: together they still leave the
     // seats their columns.

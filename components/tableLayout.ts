@@ -28,7 +28,7 @@ export interface TableLayout {
   frame: TableFrame;
   handCardH: number;
   handZoneH: number;
-  /** Each seat's point and the pile's centre, in window points: a ring's centre, or the hand zone's before its lift. */
+  /** Each seat's point and the pile's centre, in window points: a ring's centre, or the hand zone's. */
   anchors: Record<FlyDirection | "pile", Point>;
   /** A seat's point from the pile: where its throw starts, a closed trick is swept, and a dealt card lands. */
   seatPoint(dir: FlyDirection): Delta;
