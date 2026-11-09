@@ -10,7 +10,6 @@ import {
   type Combination,
   type SelectionRefusal,
 } from "../../lib/game/gameEngine.ts";
-import { comboName } from "../../lib/comboName.ts";
 import { rankSpokenName, cardSpokenName, suitSpokenName } from "../../lib/cardNames.ts";
 import {
   translateServerPayload,
@@ -22,19 +21,8 @@ import { straightTopRankChar } from "./straightTopRank.ts";
 import { PLAY_SPOKEN_KEYS, playRefusalLabel } from "../../lib/table/playRefusal.ts";
 import type { TableA11yStrings } from "@/components/tableA11y";
 
-/** Who the HUD pill names for the play on top. */
-export const playerLabel = (viewers: boolean, name: string, t: TFn): string => (viewers ? t("gameShared.you") : name);
-
-/** The HUD pill's combination text: its kind, and how many cards once there are more than two. */
-export function comboLabel(combo: Combination | null, t: TFn): string | null {
-  if (!combo) return null;
-  const label = comboName(combo.type, t);
-  if (combo.cards.length > 2) return `${label}${t("gameShared.comboMultiplier", { count: combo.cards.length })}`;
-  return label;
-}
-
 /**
- * Spoken form of a played combination — richer than comboLabel's pill text,
+ * Spoken form of a played combination — richer than the pill's `comboLabel`,
  * which a sighted player pairs with the cards they can see: "pair of 8s", not
  * "Pair". For a straight only the top card is named, since that is what decides
  * whether a reply beats it.

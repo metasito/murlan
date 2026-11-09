@@ -89,8 +89,9 @@ describe.each(SCREENS)('on $name', (screenSize) => {
 
     expect(styleOf(byTestId('game-table')).bottom).toBe(frame.surplus);
 
-    const rail = styleOf(byTestId('control-rail'));
-    expect([rail.paddingTop, rail.paddingBottom]).toEqual([frame.tableTop, frame.tableBottom]);
+    const [menuSlot, footSlot] = kids(byTestId('control-rail')).map(styleOf);
+    expect(menuSlot.top).toBe(frame.tableTop);
+    expect(footSlot.bottom).toBeCloseTo(frame.tableBottom, 9);
 
     await fireEvent.press(screen.getByLabelText(t('gameTable.settingsA11yLabel')));
     const sheet = styleOf(byTestId('settings-sheet'));

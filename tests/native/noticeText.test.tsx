@@ -20,7 +20,7 @@ import { BoardButton } from '@/components/table/matchBoard';
 import { GameTable } from '@/components/GameTable';
 import { linkNote, RECONNECT_CODES, tableConnection, type ConnectionNote } from '@/components/table/connectionNote';
 import { exchangeNotes, type ExchangeView } from '@/components/table/exchangeModel';
-import { comboLabel, playerLabel } from '@/components/table/spokenLabels';
+import { comboLabel, playerLabel } from '@/components/table/noticeModel';
 import { floatLabels, nextFloat } from '@/components/table/floatModel';
 import { turnPresentation } from '@/components/turnTimerUi';
 import { LINK_PILLS } from '@/lib/ownLink';
