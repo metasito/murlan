@@ -15,7 +15,7 @@ import { makeMutable, type SharedValue } from "react-native-reanimated";
 import { getAnimatedStyle } from "./harness/animatedStyle";
 import type { ImpactTier } from "@/components/impact";
 import { Motion } from "@/lib/theme";
-import { BombBurst, Sweep } from "@/components/table/moments";
+import { BombBurst } from "@/components/table/moments";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import { fireLanding } from "./helpers/landing";
 
@@ -86,7 +86,7 @@ describe("the bomb burst actually moves once fired (#765)", () => {
   });
 });
 
-describe("the flare and the sweep blend only where blending is cheap (#1514)", () => {
+describe("the flare blends only where blending is cheap (#1514)", () => {
   const styleOf = (testID: string) =>
     StyleSheet.flatten(screen.getByTestId(testID, { includeHiddenElements: true }).props.style);
   const blended = Platform.OS === "web" ? "screen" : undefined;
@@ -100,12 +100,6 @@ describe("the flare and the sweep blend only where blending is cheap (#1514)", (
       expect(style.shadowRadius).toBeUndefined();
       expect(style.boxShadow).toBeUndefined();
     }
-    await r.unmount();
-  });
-
-  it(`the sweep's mixBlendMode on ${Platform.OS} is ${String(blended)}`, async () => {
-    const r = await render(<Sweep trigger={1} width={200} height={100} />);
-    expect(styleOf("sweep").mixBlendMode).toBe(blended);
     await r.unmount();
   });
 });
