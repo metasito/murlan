@@ -1,12 +1,23 @@
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { Canvas, Fill, Shader, Skia } from "@shopify/react-native-skia";
 import Animated, { useDerivedValue, useFrameCallback, useSharedValue } from "react-native-reanimated";
-import { keyframes, LOOP_SECONDS } from "./swayTable";
+import { css } from "react-native-reanimated";
+import { diag } from "@/lib/diagnostics";
+import { keyframes, keyframesVariant, LOOP_SECONDS } from "./swayTable";
 
 const W = 874;
 const H = 402;
 const FRAMES = keyframes();
+const MEMO = css.keyframes(FRAMES as never);
+const NO_EASE = keyframesVariant("noEase");
+const SHORT = keyframesVariant("short");
+const ANIM = {
+  full: { name: FRAMES, seconds: LOOP_SECONDS },
+  memo: { name: MEMO, seconds: LOOP_SECONDS },
+  noEase: { name: NO_EASE.frames, seconds: NO_EASE.seconds },
+  short: { name: SHORT.frames, seconds: SHORT.seconds },
+} as const;
 
 export type SpikeConfig = {
   layers: 1 | 2;
@@ -14,6 +25,7 @@ export type SpikeConfig = {
   opaqueB: boolean;
   pool: "none" | "g2" | "g1";
   offset: number;
+  anim?: keyof typeof ANIM;
 };
 
 const NOISE = Skia.RuntimeEffect.Make(`
@@ -64,7 +76,28 @@ function LiveLit() {
   );
 }
 
+class Guard extends Component<{ label: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: Error) {
+    diag({ k: "crash", t: performance.now(), message: `${this.props.label}: ${error.message}` });
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 export function SwaySpikeNative({ config }: { config: SpikeConfig }) {
+  return (
+    <Guard key={JSON.stringify(config)} label={JSON.stringify(config)}>
+      <Scene config={config} />
+    </Guard>
+  );
+}
+
+function Scene({ config }: { config: SpikeConfig }) {
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
   if (!ready) return null;
@@ -78,8 +111,8 @@ export function SwaySpikeNative({ config }: { config: SpikeConfig }) {
             [
               { position: "absolute", left: 0, top: 0, width: W, height: H, opacity: config.driver === "static" ? 0.5 : undefined },
               css && {
-                animationName: FRAMES,
-                animationDuration: `${LOOP_SECONDS}s`,
+                animationName: ANIM[config.anim ?? "full"].name,
+                animationDuration: `${ANIM[config.anim ?? "full"].seconds}s`,
                 animationIterationCount: "infinite",
                 animationTimingFunction: "linear",
                 animationDelay: `${-config.offset}s`,

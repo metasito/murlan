@@ -55,3 +55,13 @@ export function keyframes(): Record<string, { opacity: number; animationTimingFu
   }
   return out;
 }
+
+export function keyframesVariant(kind: "noEase" | "short") {
+  const out: Record<string, { opacity: number; animationTimingFunction?: string }> = {};
+  const n = kind === "short" ? 4 : HALF_SWINGS;
+  for (let k = 0; k <= n; k++) {
+    const pct = (100 * STOPS[k]) / STOPS[n];
+    out[k === n ? "100%" : `${pct}%`] = { opacity: k % 2 === 0 ? 0 : 1, ...(kind === "short" && k < n ? { animationTimingFunction: SWAY_EASING } : {}) };
+  }
+  return { frames: out, seconds: STOPS[n] };
+}
