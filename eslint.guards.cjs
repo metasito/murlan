@@ -1394,6 +1394,26 @@ const GUARDS = [
       "jest.spyOn(lampControls, 'setTarget');",
     ].map((code) => ({ file: "tests/native/plant.test.tsx", code })),
   },
+  {
+    id: "one-animation-owner",
+    why: "lib/motion.ts owns every per-frame callback and endless loop: use useDuring or useLoop from there, and a CSS animation only through it. The exemptions are pinned in tests/ui-rules/animationOwner.test.ts and only shrink.",
+    selector: 'Identifier[name=/^(useFrameCallback|requestAnimationFrame|withRepeat|animationName)$/], Literal[value="animationName"]',
+    files: CLIENT,
+    ignores: [
+      { glob: "lib/motion.ts", reason: "the owner" },
+      { glob: "lib/e2eTrace.ts", reason: "wraps the host's requestAnimationFrame to count frames for the specs" },
+      { glob: "lib/diagnostics/FrameProbe.tsx", reason: "measures the frame callback itself, so it cannot be driven by one it owns" },
+      { glob: "components/table/handShade.web.tsx", reason: "a one-shot, deferring the Skia probe past first paint" },
+      { glob: "components/table/feltSkia.web.tsx", reason: "a one-shot, deferring the Skia probe past first paint" },
+      { glob: "components/table/feltCanvas.tsx", reason: "a one-shot, waiting two frames for the canvas to be drawn" },
+      { glob: "components/table/particleLayer.web.tsx", reason: "the web canvas loop, which draws on the JS thread: it moves with the motes (PR F)" },
+    ],
+    plant: [
+      { file: "components/Plant.tsx", code: ["useFrameCallback(step, true);", "const id = requestAnimationFrame(tick);", "window.requestAnimationFrame(tick);", "value.set(withRepeat(1, -1));", "const style = { animationName: [] };", 'const style = { "animationName": [] };'].join("\n"), hits: 6 },
+      { file: "lib/errorReporting.ts", code: "const raf = requestAnimationFrame;", hits: 1 },
+    ],
+    spare: ["const wake = useDuring(step);", "cancelAnimationFrame(id);", "useLoop(glow, () => ({ cycle: 1 }));", "// useFrameCallback(step)\nconst s = 'requestAnimationFrame';"].map((code) => ({ file: "components/Plant.tsx", code })),
+  },
 ];
 
 // eslint's --cache keys a plugin's results on its meta.version, so an unversioned guard edit would

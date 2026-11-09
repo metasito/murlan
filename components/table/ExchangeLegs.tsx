@@ -3,7 +3,6 @@ import { StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
-  useFrameCallback,
   useSharedValue,
   type FrameInfo,
   type SharedValue,
@@ -16,6 +15,7 @@ import type { Seating, TableLayout } from "@/components/tableLayout";
 import { JOKERS, oneWayWords, readExchangeLegs, type ExchangeStages } from "@/components/table/exchangeModel";
 import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useDuring } from "@/lib/motion";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { cardSpokenName } from "@/lib/cardNames";
 import { event, withdraw } from "@/lib/device/feedback";
@@ -66,7 +66,8 @@ function stepper(
   return (frame: FrameInfo) => {
     "worklet";
     const r = run.value;
-    if (r.done || goAt.value < 0) return;
+    if (r.done) return false;
+    if (goAt.value < 0) return true;
     const times = legTimes(reduced.value);
     if (r.origin < 0) {
       // On the go's clock, not the first frame's: web hands a new frame callback its first frame two frames late.
@@ -98,7 +99,9 @@ function stepper(
     if (t >= (oneWay ? oneWayEndsAt(reduced.value) : ceremonyEndsAt(shows.value, reduced.value, jokers))) {
       r.done = true;
       scheduleOnRN(report.done);
+      return false;
     }
+    return true;
   };
 }
 
@@ -113,7 +116,7 @@ function release(run: SharedValue<Run>, gate: "ready" | "done", then: () => void
 
 function useLegClock(...args: Parameters<typeof stepper>) {
   const [step] = useState(() => stepper(...args));
-  return useFrameCallback(step, true);
+  return useDuring(step, true);
 }
 
 function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale, testID }: {
@@ -257,7 +260,7 @@ export function ExchangeLegs({
     : [mine(announced.loserIdx, announced.cardReceived), mine(announced.winnerIdx, announced.cardGiven)];
   const outgoing = useSharedValue(out);
   const drawn = useSharedValue([false, false]);
-  const frames = useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, lifted, outgoing, jokers, oneWay, { cue, stage, ready, done });
+  useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, lifted, outgoing, jokers, oneWay, { cue, stage, ready, done });
 
   useEffect(() => {
     outgoing.set(out);
@@ -308,10 +311,6 @@ export function ExchangeLegs({
     if (jokers || !opened || !(chosen || oneWay) || !(oneWay || choiceAt.get() < Infinity)) return;
     return armGateWatchdog(() => scheduleOnUI(release, run, "done", forcedDone));
   }, [jokers, oneWay, opened, chosen, choiceAt, run, forcedDone]);
-  useEffect(() => {
-    if (run.get().done) frames.setActive(false);
-  });
-
   useEffect(() => {
     holdRef.current = holdMsOverride;
     if (typeof holdMsOverride !== "number" || !(chosen || jokers || oneWay)) return;
