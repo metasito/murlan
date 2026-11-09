@@ -16,7 +16,7 @@ import { closeOwnership } from "../../server/game/gameOwnership.ts";
 import { flushTelemetry } from "../../server/shared/telemetryBatch.ts";
 import { installClock, type Clock } from "../../server/http/clock.ts";
 import { clear as clearTimer, pendingKeys, TIMER_KINDS } from "../../server/game/gameTimers.ts";
-import { isShuttingDown } from "../../server/game/gameRoom.ts";
+import { __resetShutdown, isShuttingDown } from "../../server/game/gameRoom.ts";
 import { settleInFlight } from "../../server/shared/inFlight.ts";
 
 /**
@@ -175,7 +175,7 @@ export interface StartTestServerOptions {
 export async function startTestServer(
   opts: StartTestServerOptions = {}
 ): Promise<TestServer> {
-  if (isShuttingDown()) throw new Error("startTestServer: this process is shutting down (beginShutdown cannot be undone); give the test a file of its own");
+  if (isShuttingDown()) throw new Error("startTestServer: this process is shutting down (a test that called beginShutdown() must call __resetShutdown() after)");
   const schema = `test_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const baseUrl = process.env.DATABASE_URL!;
   // Before the app exists: the schema this creates is the one the app is then pointed at.
@@ -252,6 +252,7 @@ export async function startTestServer(
           // disconnect grace of every seat they held, and that timer is ref'd, so left armed it
           // holds the process open for the grace's whole length.
           for (const kind of TIMER_KINDS) for (const key of pendingKeys(kind)) clearTimer(kind, key);
+          __resetShutdown();
           // Always run, even if closing the server/pool above threw: a
           // failed shutdown must not also leak the schema or leave
           // DATABASE_URL pointed at the throwaway connection string.

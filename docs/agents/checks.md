@@ -1,10 +1,8 @@
 # Checks
 
 Which check catches what a change needs and what it costs, the local ports, and an index of the
-traps that pass every check and still ship broken. Read this before a rendering change, not after a
-green loop has already lied to you. Rules live in `docs/agents/RULES.md`; this file and the ones
-it links are the *why* and the *gotcha*, not a restatement of either. Open a linked file only when
-its trigger applies.
+traps that pass every check and still ship broken. Rules live in `docs/agents/RULES.md`; this file and the ones it links are the *why* and the
+*gotcha*. Open a linked file only when its trigger applies.
 
 ## Shell
 
@@ -12,8 +10,10 @@ The shell is **pwsh**: `$PSVersionTable.PSVersion.Major` is **7** or higher, and
 `$OutputEncoding.WebName` is **utf-8**. `&&`/`||` work, `$env:NAME` sets a variable, and a
 multi-line GitHub body still goes through `--body-file`, because the problem is quoting, not
 encoding. Git Bash is available for POSIX scripts. `tests/tooling/shellClaims.test.ts` measures
-both floors against the shell actually running, so a self-update or a falsified floor goes red
-instead of sitting unguarded in prose.
+both floors against the shell actually running.
+
+The toolchain is pinned too: `npm run toolchain` (printed at session start) exits 1 on the wrong
+Node major or a missing Playwright build, and names a build that is an alias or copy of another.
 
 ## Pick the loop by what you changed
 

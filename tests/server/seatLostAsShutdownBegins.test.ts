@@ -1,8 +1,7 @@
-// A file of its own: `beginShutdown` cannot be undone inside a process.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyTableAction } from "../../server/game/tableHandlers.ts";
-import { activeGames, beginShutdown } from "../../server/game/gameRoom.ts";
+import { activeGames, __resetShutdown, beginShutdown } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import type { TableAction } from "../../server/game/tableActions.ts";
@@ -13,6 +12,7 @@ import { seat, state } from "../support/game.ts";
 const ROOM = "seat-lost-as-shutdown-begins-room";
 
 test("a seat lost between hands as the shutdown begins is released, and the loss is answered", async (t) => {
+  t.after(__resetShutdown);
   const { rt } = recordingRuntime({
     presence: {
       isAtTable: async () => {

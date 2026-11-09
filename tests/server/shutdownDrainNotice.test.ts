@@ -1,4 +1,3 @@
-// A file of its own: a shutdown cannot be undone inside a process.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "pg";
@@ -7,8 +6,10 @@ import { stubTransport } from "../helpers/recordingRuntime.ts";
 import { drainingReconnectAfterMs, shutdown } from "../../server/http/shutdown.ts";
 import { DRAINING_SPREAD_MS } from "../../lib/reconnectDelay.ts";
 import { openDatabase, pool } from "../../server/store/db.ts";
+import { __resetShutdown } from "../../server/game/gameRoom.ts";
 
 test("every socket is told when to reconnect after the hand-off and before io.close()", { timeout: 10_000 }, async (t) => {
+  t.after(__resetShutdown);
   t.mock.method(Client.prototype, "connect", async () => {});
   t.mock.method(Client.prototype, "end", async () => {});
   t.mock.method(Client.prototype, "query", async () => ({ rows: [] }));

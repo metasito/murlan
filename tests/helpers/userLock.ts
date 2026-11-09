@@ -28,30 +28,40 @@ export async function holdRowLock(lockSql: string, params: unknown[]) {
   const { rows } = await side.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
 
   /**
+   * The statements waiting for a row this connection holds. Only a row-lock wait counts: another
+   * test file's `CREATE INDEX CONCURRENTLY` also lists this connection as its blocker, since it
+   * waits out every open transaction in the database, and counted as a writer it releases the
+   * lock before the writer the test is waiting for has queued.
+   */
+  async function blocked(): Promise<string[]> {
+    // Transitively: a second waiter queues behind the first one's tuple
+    // lock, so only the first names the side connection as its blocker.
+    const waiting = await pool.query<{ query: string }>(
+      `WITH RECURSIVE blocked(pid) AS (
+         SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)) AND wait_event_type = 'Lock' AND wait_event IN ('tuple', 'transactionid')
+         UNION
+         SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid)) WHERE a.wait_event_type = 'Lock' AND a.wait_event IN ('tuple', 'transactionid')
+       ) SELECT a.query FROM pg_stat_activity a JOIN blocked b ON a.pid = b.pid`,
+      [rows[0]!.pid]
+    );
+    return waiting.rows.map((r) => r.query);
+  }
+
+  /**
    * Resolves once `n` writers wait on the lock. With `matching`, only waiters whose statement it
    * matches count: another writer that happens to take the same rows is not the one waited for.
    */
   async function waitForBlocked(n: number, matching?: RegExp) {
     let queued: string[] = [];
     await eventually(async () => {
-      // Transitively: a second waiter queues behind the first one's tuple
-      // lock, so only the first names the side connection as its blocker.
-      const blocked = await pool.query<{ query: string }>(
-        `WITH RECURSIVE blocked(pid) AS (
-           SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))
-           UNION
-           SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
-         ) SELECT a.query FROM pg_stat_activity a JOIN blocked b ON a.pid = b.pid`,
-        [rows[0]!.pid]
-      );
-      queued = blocked.rows.map((r) => r.query);
+      queued = await blocked();
       return queued.filter((q) => !matching || matching.test(q)).length >= n;
     }, `${n} writers queued on the row lock`).catch(() => {
       throw new Error(`only these waited on the row lock, ${n} wanted${matching ? ` matching ${matching}` : ""}: ${JSON.stringify(queued)}`);
     });
   }
 
-  return { waitForBlocked, release };
+  return { waitForBlocked, blocked, release };
 }
 
 /**
