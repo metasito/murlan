@@ -21,6 +21,7 @@
 /tests/e2e/helpers/skiaPerfBudgets.ts   @rotonmeta
 /tests/e2e/skiaPerf.spec.ts             @rotonmeta
 /tools/ci/target-freeze.mjs             @rotonmeta
+/tools/ci/codeowners.mjs                @rotonmeta
 /.github/workflows/target-freeze.yml    @rotonmeta
 /tests/tooling/targetFreeze.test.ts     @rotonmeta
 /.github/CODEOWNERS                     @rotonmeta
@@ -34,4 +35,7 @@
 package.json                            @rotonmeta
 /scripts/nodeTest.mjs                   @rotonmeta
 jest.config.js                          @rotonmeta
-/tests/e2e/playwright.config.ts         @rotonmeta
+/tests/e2e/playwright*.config.ts        @rotonmeta
+/tests/e2e/seatNameContrast.spec.ts     @rotonmeta
+/tests/tooling/litFloor.test.ts         @rotonmeta
+/docs/GAME-RULES.md                     @rotonmeta

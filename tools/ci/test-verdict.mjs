@@ -5,11 +5,12 @@
  * still skip or replace this step (docs/agents/suites.md § A flake is fixed, Limits).
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { prSpec } from "../../tests/e2e/tiers.mjs";
+import { matcher, ownedBy } from "./codeowners.mjs";
 import { JOBS, scopeOf } from "./scopeOf.mjs";
 
 export const LEDGER = "tools/ci/quarantine.json";
@@ -39,11 +40,39 @@ export const SUITES = [
 /** `test-results-<job>-<shard>-<attempt>`, ci.yml's upload name. */
 const NAME = /^test-results-(.+)-(\d+)-(\d+)$/;
 
+/**
+ * What turns a run into the records this verdict reads. Every test job runs the head's copy, so a
+ * head can make it report a pass for anything: a change to it is named on every run, and lands
+ * only beside files the base's CODEOWNERS gives its owner to review.
+ */
+export const WIRING = Object.freeze(["tools/ci/results-*.mjs", "scripts/nodeTest.mjs", "jest.config.js", "tests/e2e/playwright*.config.ts"]);
+const PACKAGE = "package.json";
+const CODEOWNERS = ".github/CODEOWNERS";
+const SELF = "tools/ci/test-verdict.mjs";
+const wired = WIRING.map(matcher);
+const runsTests = (/** @type {string} */ name, /** @type {string} */ command) => /^(loop:)?test(:|$)/.test(name) || /reporter|jest|playwright|nodeTest/.test(command);
+
+/**
+ * The wiring `changed` touches; package.json counts by the scripts that run a suite or name a runner.
+ * @param {string[]} changed
+ * @param {{ base: Record<string, string>, head: Record<string, string> }} scripts package.json's at each side
+ */
+export function wiringIn(changed, scripts) {
+  const files = changed.filter((f) => wired.some((m) => m(f)));
+  const names = [...new Set([...Object.keys(scripts.base), ...Object.keys(scripts.head)])].filter(
+    (n) => scripts.base[n] !== scripts.head[n] && runsTests(n, `${scripts.base[n] ?? ""} ${scripts.head[n] ?? ""}`),
+  );
+  if (changed.includes(PACKAGE) && names.length) files.push(`${PACKAGE} (${names.join(", ")})`);
+  return files;
+}
+
 /** @typedef {{ file: string, title: string, issue: number, expires: string }} Quarantined */
 /** @typedef {{ name: string, runs: { file: string, records: any[] }[] }} Artifact */
 /** @typedef {{ open: boolean, labelled: boolean, created: number }} Ticket */
 /**
  * `scope` is null only on a push to main, whose scope job may skip a tree its pull request passed.
+ * `wiring.unreviewed` is every changed file the base's CODEOWNERS gives no reviewer; `baseJudges`
+ * is false when the head judges its own run, whose judge a head rule would not bind.
  * @typedef {{
  *   needs: Record<string, { result?: string } | undefined>,
  *   artifacts: Artifact[],
@@ -54,6 +83,7 @@ const NAME = /^test-results-(.+)-(\d+)-(\d+)$/;
  *   renamed: [string, string][],
  *   scope: Scope | null,
  *   now: number,
+ *   wiring?: { files: string[], unreviewed: string[], baseJudges: boolean },
  *   suites?: typeof SUITES,
  * }} VerdictInput
  */
@@ -137,10 +167,14 @@ function attempts(artifacts) {
  * @param {VerdictInput} input
  * @returns {string[]} every reason the run is red; none is green
  */
-export function verdict({ needs, artifacts, listing, ledger, tickets, changed, renamed, scope, now, suites = SUITES }) {
+export function verdict({ needs, artifacts, listing, ledger, tickets, changed, renamed, scope, now, wiring, suites = SUITES }) {
   const { problems, parsed } = attempts(artifacts);
   const { problems: ledgerProblems, holds: quarantined } = quarantine({ ledger, tickets, changed, now });
   problems.push(...ledgerProblems);
+  if (wiring?.baseJudges && wiring.files.length && wiring.unreviewed.length) {
+    const shown = wiring.unreviewed.slice(0, 5).join(", ") + (wiring.unreviewed.length > 5 ? ` and ${wiring.unreviewed.length - 5} more` : "");
+    problems.push(`the runners' wiring changes (${wiring.files.join(", ")}) beside ${shown}, which ${CODEOWNERS} at the base gives no reviewer; the head's reporters write the records this verdict reads, so their change lands beside owner-reviewed files only`);
+  }
   for (const [from, to] of renamed)
     for (const s of suites) if (s.lists(from) && !s.lists(to)) problems.push(`${from} is renamed to ${to}, out of ${s.name}'s listing`);
   const judged = new Set(suites.flatMap((s) => s.jobs));
@@ -268,6 +302,27 @@ function ledgerAt(at, rev) {
 }
 
 /**
+ * @param {Exec} at
+ * @param {string} rev
+ * @param {string} file
+ */
+const textAt = (at, rev, file) => (at(["ls-tree", "--name-only", rev, "--", file]).trim() === file ? at(["show", `${rev}:${file}`]) : null);
+
+/**
+ * @param {Exec} at
+ * @param {string} rev
+ * @returns {Record<string, string>}
+ */
+function scriptsAt(at, rev) {
+  try {
+    const scripts = JSON.parse(textAt(at, rev, PACKAGE) ?? "{}")?.scripts;
+    return scripts && typeof scripts === "object" ? scripts : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
  * `HEAD` is the commit the run tested; `BASE` the base branch's tip it merges onto, main's tip for
  * a dispatch or a schedule, or `HEAD` on a push to main alone. `NEEDS` is the workflow's
  * `toJSON(needs)`; `EVENT` and `REF` are the run's `github.event_name` and `github.ref`.
@@ -308,11 +363,19 @@ export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}
     const changed = own ? [] : at(["diff", "--name-only", "-z", env.BASE, "HEAD"]).split("\0").filter(Boolean);
     const renamed = own ? [] : renames(at(["diff", "-M", "--name-status", "-z", env.BASE, "HEAD"]));
     const scope = own ? null : scopeOf(changed);
-    const problems = verdict({ needs, artifacts, listing, ledger, tickets, changed, renamed, scope, now: Date.now() });
+    const files = own ? [] : wiringIn(changed, { base: scriptsAt(at, env.BASE), head: scriptsAt(at, "HEAD") });
+    const reviewed = ownedBy(own ? "" : (textAt(at, env.BASE, CODEOWNERS) ?? ""));
+    const baseJudges = !own && textAt(at, env.BASE, SELF) !== null;
+    const wiring = { files, unreviewed: changed.filter((f) => !reviewed(f)), baseJudges };
+    const problems = verdict({ needs, artifacts, listing, ledger, tickets, changed, renamed, scope, now: Date.now(), wiring });
     const records = artifacts.reduce((n, a) => n + a.runs.reduce((m, r) => m + r.records.length, 0), 0);
+    const wired = files.length ? `the runners' wiring changed (${files.join(", ")}), and the head's copy wrote every record judged here` : "";
+    if (wired) log(`::error title=Runners' wiring changed::${escape(`${wired}; only its owner's review of ${files.join(", ")} vouches for this run's results${baseJudges ? "" : ", and the head judges itself"}`)}`);
     for (const p of problems.slice(0, 100)) log(`::error::${escape(p)}`);
     if (problems.length > 100) log(`::error::and ${problems.length - 100} more`);
-    log(`${artifacts.length} results artifacts, ${records} records: ${problems.length ? `${problems.length} problems (RULES.md 53)` : "every test that ran passed, once, and none was skipped unheard"}`);
+    const summary = `${artifacts.length} results artifacts, ${records} records: ${problems.length ? `${problems.length} problems (RULES.md 53)` : "every test that ran passed, once, and none was skipped unheard"}${wired ? `; ${wired}` : ""}`;
+    log(summary.replace(/[\r\n]/g, " "));
+    if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\n`);
     return problems.length || artifacts.length !== new Set(names).size ? 1 : 0;
   } catch (err) {
     log(`::error::the results could not be read: ${escape(String(err instanceof Error ? err.message : err).split("\n")[0])}`);

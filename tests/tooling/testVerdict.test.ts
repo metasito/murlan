@@ -440,15 +440,79 @@ describe("the gate step", () => {
     has(said, /native was skipped, but the base's scope of this change runs/);
   });
 
+  describe("the runners' wiring, which the head runs and the base cannot vouch for", () => {
+    const REPORTER = "tools/ci/results-node-reporter.mjs";
+    const pkg = (test: string, more = {}) => JSON.stringify({ scripts: { test, lint: "eslint ." }, ...more });
+    const baseTree = {
+      "tools/ci/test-verdict.mjs": "",
+      ".github/CODEOWNERS": "/tools/ci/results-*.mjs @o\npackage.json @o\n",
+      [REPORTER]: "report",
+      "package.json": pkg("node --test"),
+      "app.ts": "1",
+    };
+    /** Commits the base, then the head over it in a scratch repository, and runs the verdict with real git. */
+    function judgeHead(head: Record<string, string>, base: Record<string, string | null> = {}) {
+      const dir = mkdtempSync(path.join(work, "wiring-"));
+      const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+      const git = (args: string[]) => {
+        const r = spawnSync("git", args, { cwd: dir, env, encoding: "utf8" });
+        assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+        return r.stdout;
+      };
+      git(["init", "-q"]);
+      for (const tree of [{ ...baseTree, ...base }, head]) {
+        for (const [file, text] of Object.entries(tree)) {
+          if (text === null) continue;
+          mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+          writeFileSync(path.join(dir, file), text);
+          git(["add", file]);
+        }
+        git(["commit", "-q", "--allow-empty", "-m", "c"]);
+      }
+      const said: string[] = [];
+      const gh = (args: string[]) => (args[0] === "api" ? "" : assert.fail(args.join(" ")));
+      run({ GITHUB_REPOSITORY: "o/r", GITHUB_RUN_ID: "5", BASE: "HEAD^1", EVENT: "pull_request", REF: "refs/pull/1/merge", NEEDS: JSON.stringify(ran()) }, { gh, git, log: (l: string) => void said.push(l) });
+      return said;
+    }
+    const annotated = (said: string[], files: string) => has(said.filter((l) => l.startsWith("::error title=Runners' wiring changed::")), new RegExp(`wiring changed \\(${files}\\)`));
+    const summarised = (said: string[], files: string) => has(said.filter((l) => !l.startsWith("::")), new RegExp(`records: .*; the runners' wiring changed \\(${files}\\)`));
+    const redBeside = (said: string[]) => said.some((l) => /::error::the runners' wiring changes .* beside/.test(l));
+
+    test("a reporter edited alone, beside owner-reviewed files only, is annotated and summarised by name, and not red for it", () => {
+      const said = judgeHead({ [REPORTER]: "report passed" });
+      annotated(said, REPORTER);
+      summarised(said, REPORTER);
+      assert.ok(!redBeside(said), said.join("\n"));
+    });
+
+    test("a reporter edited beside a file its owner does not review is red, naming that file", () => {
+      const said = judgeHead({ [REPORTER]: "report passed", "app.ts": "2" });
+      annotated(said, REPORTER);
+      has(said, /::error::the runners' wiring changes \(tools\/ci\/results-node-reporter\.mjs\) beside app\.ts, which \.github\/CODEOWNERS at the base gives no reviewer/);
+    });
+
+    test("package.json counts by its test scripts: a test script changed is wiring, a dependency is not", () => {
+      annotated(judgeHead({ "package.json": pkg("node --test --test-reporter=./forged.mjs"), "app.ts": "2" }), "package\\.json \\(test\\)");
+      const deps = judgeHead({ "package.json": pkg("node --test", { dependencies: { a: "1" } }), "app.ts": "2" });
+      assert.ok(!deps.some((l) => /wiring/.test(l)), deps.join("\n"));
+    });
+
+    test("a head judging its own run, on a base with no judge, is annotated, and its own rule is not what holds it", () => {
+      const said = judgeHead({ [REPORTER]: "report passed", "app.ts": "2" }, { "tools/ci/test-verdict.mjs": null });
+      has(said.filter((l) => l.startsWith("::error title=")), /and the head judges itself/);
+      assert.ok(!redBeside(said), said.join("\n"));
+    });
+  });
+
   test("CI gate runs the base branch's verdict over every test job's uploaded results", () => {
     const jobs = parse(readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8")).jobs as Record<string, { steps?: { run?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; if?: string }[]; env?: Record<string, string> }>;
     const gate = jobs["ci-gate"]!.steps!.map((s) => s.run ?? "").join("\n");
-    assert.match(gate, /"pull_request "\*\) base=HEAD\^1 ;;/);
-    assert.match(gate, /"push refs\/heads\/main"\) base=HEAD ;;/);
-    assert.match(gate, /\*\) git fetch --no-tags --depth=1 origin main && base=\$\(git rev-parse FETCH_HEAD\) ;;/);
+    assert.match(gate, /"pull_request "\*\) base=HEAD\^1 into=\$BASE_REF ;;/);
+    assert.match(gate, /"push refs\/heads\/main"\) base=HEAD into=main ;;/);
+    assert.match(gate, /\*\) git fetch --no-tags --depth=1 origin main && base=\$\(git rev-parse FETCH_HEAD\) into=main ;;/);
     assert.match(gate, /node "\$RUNNER_TEMP\/judge\/tools\/ci\/test-verdict\.mjs"/);
     const step = jobs["ci-gate"]!.steps!.find((s) => s.run?.includes("test-verdict.mjs"))!;
-    assert.deepEqual([step.env!.EVENT, step.env!.REF], ["${{ github.event_name }}", "${{ github.ref }}"]);
+    assert.deepEqual([step.env!.EVENT, step.env!.REF, step.env!.BASE_REF], ["${{ github.event_name }}", "${{ github.ref }}", "${{ github.base_ref }}"]);
     for (const job of SUITES.flatMap((s) => s.jobs)) {
       const upload = jobs[job]!.steps!.find((s) => String(s.with?.name ?? "").startsWith("test-results-"));
       assert.ok(upload, `${job} uploads no test-results-* artifact`);
@@ -468,7 +532,8 @@ describe("which commit's judge the gate step runs, the step itself run over scra
   const always = { "scripts/lib/entry.mjs": "", "tests/e2e/tiers.mjs": "", "app.ts": "1" };
 
   /** Commits each tree over the last (null deletes a file), the last as HEAD, and runs the step as GitHub's bash does. */
-  function gate(...commits: Record<string, string | null>[]) {
+  const gate = (...commits: Record<string, string | null>[]) => gateInto("main", ...commits);
+  function gateInto(baseRef: string, ...commits: Record<string, string | null>[]) {
     const dir = mkdtempSync(path.join(work, "gate-"));
     const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
     const git = (...args: string[]) => assert.equal(spawnSync("git", args, { cwd: dir, env, encoding: "utf8" }).status, 0, `git ${args.join(" ")}`);
@@ -486,7 +551,7 @@ describe("which commit's judge the gate step runs, the step itself run over scra
     }
     const ran = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
       cwd: dir,
-      env: { ...env, EVENT: "pull_request", REF: "refs/pull/1/merge", RUNNER_TEMP: mkdtempSync(path.join(work, "runner-")) },
+      env: { ...env, EVENT: "pull_request", REF: "refs/pull/1/merge", BASE_REF: baseRef, RUNNER_TEMP: mkdtempSync(path.join(work, "runner-")) },
       encoding: "utf8",
     });
     return { code: ran.status, out: `${ran.stdout}${ran.stderr}` };
@@ -503,6 +568,11 @@ describe("which commit's judge the gate step runs, the step itself run over scra
     const r = gate({ [WRITER]: "", [JUDGE]: judgeBy("head") });
     judged(r, "head");
     assert.match(r.out, /::warning::the head adds the runners' results and their judge/);
+  });
+
+  test("a head that adds both to a branch other than main, which predates the judge, is red", () => {
+    red(gateInto("release-1", { [WRITER]: "", [JUDGE]: judgeBy("head") }));
+    red(gateInto("", { [WRITER]: "", [JUDGE]: judgeBy("head") }));
   });
 
   test("a base that deleted its judge is red", () => {

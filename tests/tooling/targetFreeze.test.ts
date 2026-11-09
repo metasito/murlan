@@ -179,7 +179,7 @@ describe("planted diffs", () => {
   const representative = [...TARGETS.map((t) => tracked.find(matcher(t.pattern))!), ...CODE.map((d) => tracked.find((f) => f.startsWith(d))!)];
   const spares = ["tests/e2e/fixtures/lantern-table/index.html", "tests/e2e/fixtures/spare/index.html", inScratch("spare.nightly.spec.ts")];
   const SELF = "tools/ci/target-freeze.mjs";
-  const tools = [SELF, "scripts/lib/entry.mjs", "tools/loop/cli.mjs", "tools/loop/session-env.mjs"];
+  const tools = [SELF, "tools/ci/codeowners.mjs", "scripts/lib/entry.mjs", "tools/loop/cli.mjs", "tools/loop/session-env.mjs"];
   const FIXTURE = "tests/e2e/fixtures/lantern-table/index.html";
   const targetAndCode = () => {
     write(FIXTURE, "moved\n");

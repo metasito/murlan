@@ -91,7 +91,7 @@ function watchContext(context: BrowserContext, entries: string[]): void {
   context.on("page", (page) => collectConsoleErrors(page, entries));
 }
 
-export function failOnBrowserErrors(entries: string[]): void {
+function failOnBrowserErrors(entries: string[]): void {
   if (entries.length > 0) {
     throw new Error(
       `Browser reported ${entries.length} error(s)/warning(s) during the test:\n\n` +

@@ -5,11 +5,8 @@
  */
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { git } from "../loop/cli.mjs";
+import { matcher } from "./codeowners.mjs";
 
-/**
- * CODEOWNERS patterns: a trailing `/` is a directory, a pattern holding `/` is anchored at the root,
- * one without matches a file name anywhere, and `*` stays inside one path segment.
- */
 export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/fixtures/", what: "the mockups" },
   { pattern: "*.nightly.spec.ts", what: "the parity and pixel specs, with their thresholds" },
@@ -33,6 +30,7 @@ export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/helpers/skiaPerfBudgets.ts", what: "the Skia table's speed budgets" },
   { pattern: "tests/e2e/skiaPerf.spec.ts", what: "the windows, throttle and seed the speed budgets are read in" },
   { pattern: "tools/ci/target-freeze.mjs", what: "this list" },
+  { pattern: "tools/ci/codeowners.mjs", what: "how this list's patterns match, here and in the verdict" },
   { pattern: ".github/workflows/target-freeze.yml", what: "the workflow that runs this list" },
   { pattern: "tests/tooling/targetFreeze.test.ts", what: "this list's floor and the workflow's shape" },
   { pattern: ".github/CODEOWNERS", what: "who reviews this list" },
@@ -53,7 +51,10 @@ export const JUDGES = Object.freeze([
   { pattern: "package.json", what: "the node runs' reporters, results among them" },
   { pattern: "scripts/nodeTest.mjs", what: "the launcher the node runs and their reporters go through" },
   { pattern: "jest.config.js", what: "the native run's reporters, results among them" },
-  { pattern: "tests/e2e/playwright.config.ts", what: "the browser run's reporters and its forbidOnly" },
+  { pattern: "tests/e2e/playwright*.config.ts", what: "the browser runs' reporters and their forbidOnly" },
+  { pattern: "tests/e2e/seatNameContrast.spec.ts", what: "the lit seat name's regression floor" },
+  { pattern: "tests/tooling/litFloor.test.ts", what: "the floor held equal to its ruling" },
+  { pattern: "docs/GAME-RULES.md", what: "the rulings the floors are held to" },
 ]);
 
 export const CODE = Object.freeze(["app/", "components/", "lib/"]);
@@ -63,17 +64,7 @@ export const OWNER = "@rotonmeta";
 export const WORKFLOW = ".github/workflows/target-freeze.yml";
 export const CHECK = "Target freeze";
 
-/** @param {string} pattern */
-export function matcher(pattern) {
-  const dir = pattern.endsWith("/");
-  const body = dir ? pattern.slice(0, -1) : pattern;
-  const glob = body
-    .split("*")
-    .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-    .join("[^/]*");
-  const re = new RegExp(`${body.includes("/") ? "^" : "(^|/)"}${glob}${dir ? "/" : "$"}`);
-  return (/** @type {string} */ file) => re.test(file);
-}
+export { matcher };
 
 const targetMatchers = TARGETS.map((t) => matcher(t.pattern));
 const codeMatchers = CODE.map((dir) => (/** @type {string} */ file) => file.startsWith(dir) && !file.endsWith(".md"));

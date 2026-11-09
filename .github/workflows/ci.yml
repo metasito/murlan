@@ -1086,7 +1086,7 @@ jobs:
         run: node tools/ci/gate.mjs
       # The base branch's judge, so a pull request that leaves this workflow alone cannot loosen the
       # verdict on itself; one that edits this step can (docs/agents/suites.md § A flake is fixed,
-      # Limits). Only a head that itself adds the results writer and the judge to a base holding
+      # Limits). Only a head that itself adds the results writer and the judge to a main holding
       # neither judges itself; a base that lost its judge is red (tests/tooling/testVerdict.test.ts).
       - name: Every test that ran passed, once, and none was skipped unheard
         if: ${{ !cancelled() }}
@@ -1095,21 +1095,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           case "$EVENT $REF" in
-            "pull_request "*) base=HEAD^1 ;;
-            "push refs/heads/main") base=HEAD ;;
-            *) git fetch --no-tags --depth=1 origin main && base=$(git rev-parse FETCH_HEAD) ;;
+            "pull_request "*) base=HEAD^1 into=$BASE_REF ;;
+            "push refs/heads/main") base=HEAD into=main ;;
+            *) git fetch --no-tags --depth=1 origin main && base=$(git rev-parse FETCH_HEAD) into=main ;;
           esac
           mkdir -p "$RUNNER_TEMP/judge"
           adds=$(git diff --no-renames --name-status "$base" HEAD -- tools/ci/results-writer.mjs tools/ci/test-verdict.mjs)
           if git cat-file -e "$base:tools/ci/test-verdict.mjs" 2>/dev/null; then
             from=$base
-          elif [ "$adds" = "$(printf 'A\ttools/ci/results-writer.mjs\nA\ttools/ci/test-verdict.mjs')" ]; then
-            echo "::warning::the head adds the runners' results and their judge, so it judges its own run"
+          elif [ "$into" = main ] && [ "$adds" = "$(printf 'A\ttools/ci/results-writer.mjs\nA\ttools/ci/test-verdict.mjs')" ]; then
+            echo "::warning::the head adds the runners' results and their judge to main, so it judges its own run"
             from=HEAD
           else
-            echo "::error::the base has no tools/ci/test-verdict.mjs and the head does not add it with tools/ci/results-writer.mjs, so nothing may judge this run"
+            echo "::error::the base has no tools/ci/test-verdict.mjs, and only a change into main that adds it with tools/ci/results-writer.mjs may judge itself, so nothing may judge this run"
             exit 1
           fi
           git archive "$from" tools/ci scripts/lib tests/e2e/tiers.mjs | tar -x -C "$RUNNER_TEMP/judge"

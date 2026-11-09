@@ -178,14 +178,22 @@ The gate runs the base's copy of `tools/ci/test-verdict.mjs`, extracted with `gi
 of the merge commit on a pull request, `HEAD` on a push to main, and `origin/main`'s tip on a
 dispatch or a schedule; the judge reds when `BASE` is `HEAD` on anything but a push to main. A base
 without the judge is red, unless the head adds both `tools/ci/results-writer.mjs` and
-`tools/ci/test-verdict.mjs` to a base holding neither: only then the head judges its own run, with a
-warning, and that is this mechanism's own pull request. A base that deleted or renamed either is
-red. Which jobs a change runs is `JOBS` in `tools/ci/scopeOf.mjs`: `scope.mjs` prints it as the
+`tools/ci/test-verdict.mjs` to a main holding neither: only then the head judges its own run, with a
+warning, and that is this mechanism's own pull request; a pull request into any other branch is
+red. A base that deleted or renamed either is red.
+
+The records are the head's: every test job runs the head's reporters through the head's configs.
+So the base's judge names a change to that wiring (`WIRING` in `tools/ci/test-verdict.mjs`: the
+reporters, `scripts/nodeTest.mjs`, `jest.config.js`, the Playwright configs, and `package.json`
+when a script that runs a suite or names a runner differs) on every run, in a `Runners' wiring
+changed` error annotation and the gate's summary line, and reds it beside any file the base's
+`.github/CODEOWNERS` gives no reviewer. A reporter change still lands, beside owner-reviewed files
+only. Which jobs a change runs is `JOBS` in `tools/ci/scopeOf.mjs`: `scope.mjs` prints it as the
 scope job's `jobs` output, every job's `if:` reads its own key, and the verdict reds a job the base's
 scope runs that was skipped. On a push to main the scope is not bound, since the scope job skips a
 tree its pull request already passed. The verdict, the ledger, the reporters, `gate.mjs`,
 `scope.mjs`, `scopeOf.mjs`, `ci.yml`, and the configs that wire the reporters in (`package.json`,
-`scripts/nodeTest.mjs`, `jest.config.js`, `tests/e2e/playwright.config.ts`) are `JUDGES` in
+`scripts/nodeTest.mjs`, `jest.config.js`, `tests/e2e/playwright*.config.ts`) are `JUDGES` in
 `tools/ci/target-freeze.mjs`, rendered into `.github/CODEOWNERS` beside
 rule 52's targets but frozen with nothing. Text from the head is escaped before it reaches a
 `::error::` line. `tests/tooling/testVerdict.test.ts` plants every bypass in a scratch project, runs
@@ -202,6 +210,11 @@ nothing until the ruleset requires code-owner review (`docs/agents/target-freeze
 review is the only thing in the way. The durable fix is a follow-up: a "Test verdict" check run
 from the default branch by a `workflow_run` trigger on CI, judging CI's artifacts with main's
 workflow and main's judge, required by the ruleset.
+The base's judge reads records the head's wiring wrote. A wiring change beside owner-reviewed files
+only is green on the owner's review alone, and that review is all that stands between a forged
+"passed" and a merge; the head's own test files, setup files and runner versions, which can make a
+test report a pass, are not `WIRING` at all. The `workflow_run` check above does not close it
+either, since CI's artifacts are still the head's; only a run with main's configs and reporters would.
 A runner that stops at a test's own early `return` reports a pass. A skip is heard by file and
 title, not by project or platform: an android-only skip passes on the ios run of the same test
 (`tableRelocksAfterEntry.test.tsx`). Every workflow but `ci.yml` (`maestro.yml`, `ios.yml`, the
