@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -184,12 +185,12 @@ describe("the repository layout (#1131)", () => {
 
   test("no lib/ file imports from components/", () => {
     const scanned = lib.filter((f) => /\.tsx?$/.test(f));
-    const imports = scanned.flatMap((f) =>
-      [...readFileSync(path.join(repoRoot, f), "utf8").matchAll(/from\s+["']([^"']+)["']/g)].map(([, spec]) => [f, spec] as const),
-    );
+    const imports = scanned.flatMap((f) => moduleEdges(f, readFileSync(path.join(repoRoot, f), "utf8"), { types: true }));
+    const reachesComponents = (edges: typeof imports) => edges.filter((e) => e.local && e.to.startsWith("components/")).map((e) => `${e.from} -> ${e.spec}`);
+    assert.deepEqual(reachesComponents(moduleEdges("lib/x.ts", 'import { A } from "@/components/A";\nexport * from "../components/B";')), ["lib/x.ts -> @/components/A", "lib/x.ts -> ../components/B"]);
     assert.ok(imports.length > 100, "the scan finds almost no imports");
     assert.deepEqual(
-      imports.filter(([, spec]) => /(^|\/)components\//.test(spec)).map(([f, spec]) => `${f} -> ${spec}`),
+      reachesComponents(imports),
       [],
     );
   });

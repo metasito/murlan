@@ -15,6 +15,8 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const at = (rel: string) => readFileSync(path.join(root, rel), "utf8");
@@ -32,9 +34,9 @@ function declaresPreflight(config: string, seen = new Set<string>()): boolean {
   seen.add(config);
   const text = at(config);
   if (/preflightMemory/.test(text)) return true;
-  return [...text.matchAll(/from "(\.[^"]+)"/g)].some((m) =>
-    declaresPreflight(path.posix.join(path.posix.dirname(config), m[1]), seen)
-  );
+  return moduleEdges(config, text, { types: true })
+    .filter((e) => e.local)
+    .some((e) => declaresPreflight(localPath(config, e.spec)!, seen));
 }
 
 describe("the memory preflight", () => {

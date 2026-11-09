@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 import { deadlineMs, EXIT_MARKERS_ENV, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
 import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMarginMs, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
 import { EXIT_TICK_MS, exitGuard, haltable } from "../helpers/exitGuard.mjs";
@@ -17,6 +18,149 @@ import { gate } from "../soak/gateBudget.ts";
 import { NO_BACKGROUND_JIT } from "../../scripts/nodeTest.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+const LIMITED_CALLS = new Set(["test", "it", "describe", "suite", "before", "after", "beforeEach", "afterEach"]);
+const MODIFIERS = ["skip", "only", "todo"];
+
+/** The expression inside any parentheses, cast, `satisfies` or `!`. */
+function unwrap(e: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isTypeAssertionExpression(e) || ts.isNonNullExpression(e)) e = e.expression;
+  return e;
+}
+
+type Binding = "string" | "binding" | "other";
+
+const patternNames = (name: ts.BindingName, wanted: string): boolean =>
+  ts.isIdentifier(name) ? name.text === wanted : name.elements.some((el) => !ts.isOmittedExpression(el) && patternNames(el.name, wanted));
+
+/** What binds `id` where it stands, read off the scopes around it: a string-valued variable, a loop variable, a parameter or a destructured name, or anything else; undefined when nothing in the file does. */
+function bindingOf(id: ts.Identifier): Binding | undefined {
+  const declared = (list: readonly ts.VariableDeclaration[], loop: boolean): Binding | undefined => {
+    for (const d of list) {
+      if (!patternNames(d.name, id.text)) continue;
+      if (loop || !ts.isIdentifier(d.name)) return "binding";
+      const init = d.initializer && unwrap(d.initializer);
+      return init && (ts.isStringLiteralLike(init) || ts.isTemplateExpression(init)) ? "string" : "other";
+    }
+    return undefined;
+  };
+  for (let n: ts.Node | undefined = id.parent; n; n = n.parent) {
+    if (ts.isFunctionLike(n) && n.parameters.some((p) => patternNames(p.name, id.text))) return "binding";
+    if (ts.isCatchClause(n) && n.variableDeclaration && patternNames(n.variableDeclaration.name, id.text)) return "binding";
+    if ((ts.isForOfStatement(n) || ts.isForInStatement(n) || ts.isForStatement(n)) && n.initializer && ts.isVariableDeclarationList(n.initializer)) {
+      const found = declared(n.initializer.declarations, !ts.isForStatement(n));
+      if (found) return found;
+    }
+    if (ts.isBlock(n) || ts.isSourceFile(n) || ts.isModuleBlock(n) || ts.isCaseClause(n) || ts.isDefaultClause(n)) {
+      for (const stmt of n.statements) {
+        if (ts.isVariableStatement(stmt)) {
+          const found = declared(stmt.declarationList.declarations, false);
+          if (found) return found;
+        } else if ((ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt)) && stmt.name?.text === id.text) return "other";
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Every limit a node:test call asks for, read off the syntax tree: the options of a test, a suite
+ * or a hook, wherever they sit. A limit it cannot read comes back unresolved (`expr` empty) rather
+ * than unseen: options that are not an object literal, a spread, a key that is not a plain
+ * identifier, a getter or method, and the imported function used any way but called. A test's first
+ * argument is its name only when it is a string, a variable bound to one, a loop variable, a
+ * parameter, a destructured name or a `.name`; anything else but an object literal is unresolved.
+ */
+function timeoutsAsked(file: string, text: string): { expr: string; why: string; line: number }[] {
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const found: { expr: string; why: string; line: number }[] = [];
+  const lineOf = (n: ts.Node) => source.getLineAndCharacterOfPosition(n.getStart()).line + 1;
+  const imported = new Map<string, string>();
+  for (const stmt of source.statements) {
+    if (!ts.isImportDeclaration(stmt) || !stmt.moduleSpecifier.getText().includes("node:test")) continue;
+    const clause = stmt.importClause;
+    if (clause?.name) imported.set(clause.name.text, "test");
+    const named = clause?.namedBindings;
+    if (named && ts.isNamedImports(named)) for (const el of named.elements) imported.set(el.name.text, (el.propertyName ?? el.name).text);
+  }
+  const theImport = (id: ts.Identifier) => (bindingOf(id) === undefined ? imported.get(id.text) : undefined);
+  const calleeName = (e: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(e)) {
+      const real = theImport(e);
+      return real !== undefined && LIMITED_CALLS.has(real) ? real : undefined;
+    }
+    if (!ts.isPropertyAccessExpression(e)) return undefined;
+    if (ts.isIdentifier(e.expression) && theImport(e.expression) !== undefined && MODIFIERS.includes(e.name.text)) return calleeName(e.expression);
+    return LIMITED_CALLS.has(e.name.text) ? e.name.text : undefined;
+  };
+  const isFunction = (n: ts.Node) => ts.isArrowFunction(n) || ts.isFunctionExpression(n);
+  const options = (arg: ts.Expression, line: number) => {
+    const literal = unwrap(arg);
+    if (!ts.isObjectLiteralExpression(literal)) {
+      found.push({ expr: "", why: `options not a literal: ${arg.getText()}`, line });
+      return;
+    }
+    for (const prop of literal.properties) {
+      if (ts.isSpreadAssignment(prop)) found.push({ expr: "", why: `options spread: ${prop.getText()}`, line });
+      else if (ts.isGetAccessor(prop) || ts.isSetAccessor(prop) || ts.isMethodDeclaration(prop)) found.push({ expr: "", why: `options accessor: ${prop.name.getText()}`, line });
+      else if (ts.isShorthandPropertyAssignment(prop)) {
+        if (prop.name.text === "timeout") found.push({ expr: "timeout", why: "", line });
+      } else if (ts.isPropertyAssignment(prop)) {
+        if (!ts.isIdentifier(prop.name)) found.push({ expr: "", why: `options key not an identifier: ${prop.name.getText()}`, line });
+        else if (prop.name.text === "timeout") found.push({ expr: prop.initializer.getText().replace(/\s+/g, " "), why: "", line });
+      }
+    }
+  };
+  const isName = (arg: ts.Expression): boolean => {
+    if (ts.isStringLiteralLike(arg) || ts.isTemplateExpression(arg)) return true;
+    if (ts.isPropertyAccessExpression(arg)) return arg.name.text === "name";
+    if (ts.isIdentifier(arg)) {
+      const how = bindingOf(arg);
+      return how === "string" || how === "binding";
+    }
+    return false;
+  };
+  const usedAsValue = (id: ts.Identifier): boolean => {
+    const parent = id.parent;
+    if (ts.isImportSpecifier(parent) || ts.isImportClause(parent)) return false;
+    if (ts.isCallExpression(parent)) return parent.arguments.includes(id);
+    if (ts.isPropertyAccessExpression(parent)) return parent.expression === id && !MODIFIERS.includes(parent.name.text);
+    return ts.isVariableDeclaration(parent) || ts.isBinaryExpression(parent) || ts.isArrayLiteralExpression(parent) || ts.isShorthandPropertyAssignment(parent) || ts.isReturnStatement(parent) || ts.isConditionalExpression(parent) || ts.isAsExpression(parent) || ts.isParenthesizedExpression(parent) || (ts.isPropertyAssignment(parent) && parent.initializer === id);
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && LIMITED_CALLS.has(theImport(node) ?? "") && usedAsValue(node)) {
+      found.push({ expr: "", why: `${node.text} used as a value: ${node.parent.getText().slice(0, 60)}`, line: lineOf(node) });
+    }
+    if (ts.isCallExpression(node)) {
+      const name = calleeName(node.expression);
+      const subtest = ts.isPropertyAccessExpression(node.expression) && !(ts.isIdentifier(node.expression.expression) && theImport(node.expression.expression) !== undefined);
+      if (name !== undefined && (!subtest || node.arguments.some(isFunction))) {
+        const line = lineOf(node);
+        const hook = !["test", "it", "describe", "suite"].includes(name);
+        node.arguments.forEach((raw, at) => {
+          const arg = unwrap(raw);
+          if (isFunction(arg)) return;
+          if (at === 0) {
+            if (hook || isName(arg)) return;
+            if (ts.isObjectLiteralExpression(arg)) options(raw, line);
+            else found.push({ expr: "", why: `first argument is not a name or options: ${raw.getText()}`, line });
+            return;
+          }
+          if (ts.isSpreadElement(arg)) found.push({ expr: "", why: `argument spread: ${arg.getText()}`, line });
+          else options(raw, line);
+        });
+      }
+      const target = node.expression;
+      if (ts.isPropertyAccessExpression(target) && ["apply", "call", "bind"].includes(target.name.text) && calleeName(target.expression) !== undefined) {
+        found.push({ expr: "", why: `${target.getText()} hides its arguments`, line: lineOf(node) });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
 const script = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")).scripts.test as string;
 
 /** Only what a child needs to find node and a temp dir: whatever else the parent's run was given (a shard, a context) is not the planted run's. */
@@ -91,20 +235,87 @@ describe("a test file that never finishes fails npm test by name", () => {
     const asked: number[] = [];
     const unresolved: string[] = [];
     for (const [file, text] of sourcesUnder(repoRoot, ["tests", "tools/loop/tests"], /\.(test\.tsx?|mjs)$/)) {
-      const code = blankCommentsAndStrings(text);
-      for (const call of code.matchAll(/\b(?:test|it|describe)(?:\.\w+)?\s*\(\s*[^,]*,\s*\{([^}]*)\}/g)) {
-        const expr = /\btimeout:\s*([^,}]+)/.exec(call[1])?.[1].trim();
-        if (expr === undefined) continue;
-        const line = code.slice(0, call.index).split("\n").length;
-        const bare = expr.replace(/GATE\.timeoutMs|\bFORCED_EXIT_MS\b/g, (name) => String(known[name])).replaceAll("_", "");
-        const value = /^[\d+*\s()-]+$/.test(bare) ? Number(Function(`return (${bare})`)()) : NaN;
+      for (const limit of timeoutsAsked(file, text)) {
+        const bare = limit.expr.replace(/GATE\.timeoutMs|\bFORCED_EXIT_MS\b/g, (name) => String(known[name])).replaceAll("_", "");
+        const value = limit.expr !== "" && /^[\d+*\s()-]+$/.test(bare) ? Number(Function(`return (${bare})`)()) : NaN;
         if (Number.isFinite(value)) asked.push(value);
-        else unresolved.push(`unresolvable timeout at ${file}:${line}: ${expr}`);
+        else unresolved.push(`unresolvable timeout at ${file}:${limit.line}: ${limit.expr || limit.why}`);
       }
     }
     assert.deepEqual(unresolved, []);
     assert.ok(asked.length >= 5 && Math.max(...asked) >= 420_000, "the scan finds the longest limits");
     assert.ok(FILE_DEADLINE_MS >= 1.5 * Math.max(...asked), `${Math.max(...asked)} ms test limit`);
+  });
+
+  describe("the scan of the limits a test asks for", () => {
+    const read = (code: string) => timeoutsAsked("planted.test.ts", `import { test, suite, before } from "node:test";\n${code}`).map((l) => l.expr || l.why);
+
+    test("reads a limit on a test, a suite and a hook", () => {
+      assert.deepEqual(read('test("x", { timeout: 5 }, () => {}); suite("y", { timeout: 6 }, () => {}); before(() => {}, { timeout: 7 }); t.test("z", { skip: f({ a: 1 }), timeout: 8 }, () => {});'), ["5", "6", "7", "8"]);
+    });
+
+    test("cannot resolve options held in a variable or spread, and says so", () => {
+      assert.equal(read('test("x", opts, () => {});').length, 1);
+      assert.equal(read('test("x", { ...opts }, () => {});').length, 1);
+      assert.equal(read('before(() => {}, hookOpts);').length, 1);
+      assert.equal(read('test("x", { timeout }, () => {});')[0], "timeout");
+    });
+
+    test("follows the local name of an import, and cannot follow a call through an alias", () => {
+      const aliased = (code: string) => timeoutsAsked("planted.test.ts", `import { test as t, describe as d } from "node:test";\n${code}`).map((l) => l.expr || l.why);
+      assert.deepEqual(aliased('t("x", { timeout: 5 }, () => {}); d("y", { timeout: 6 }, () => {});'), ["5", "6"]);
+      assert.equal(aliased("const t2 = t;").length, 1);
+      assert.equal(aliased('t.apply(null, ["x", { timeout: 1 }, () => {}]);').length >= 1, true);
+      assert.equal(aliased('t.call(null, "x", { timeout: 1 }, () => {});').length >= 1, true);
+      assert.equal(aliased("run(t);").length, 1);
+    });
+
+    test("cannot read a key that is not a plain identifier, a getter or a method", () => {
+      assert.equal(read('test("x", { "timeout": 5 }, () => {});').length, 1);
+      assert.equal(read('test("x", { ["time" + "out"]: 5 }, () => {});').length, 1);
+      assert.equal(read('test("x", { get timeout() { return 5; } }, () => {});').length, 1);
+      assert.equal(read('test("x", { timeout() { return 5; } }, () => {});').length, 1);
+    });
+
+    test("takes a first argument for a name only when it is one, and reads an object there as options", () => {
+      assert.equal(read('test("x", opts);').length, 1);
+      assert.equal(read("test({ timeout: 5 }, () => {});")[0], "5");
+      assert.deepEqual(read('const name = "x";\ntest(name, () => {});'), []);
+      assert.deepEqual(read("for (const c of cases) test(c.name, () => {});"), []);
+      assert.deepEqual(read("cases.forEach((row) => test(row.name, () => {}));"), []);
+      assert.deepEqual(read("function f({ title }) { test(title, () => {}); }"), []);
+      assert.deepEqual(read("for (const title of titles) test(title, () => {});"), []);
+    });
+
+    test("cannot tell options from a name when the first argument is anything else", () => {
+      const unresolved = (code: string) => assert.equal(read(code).length, 1, code);
+      unresolved("test(cond ? { timeout: 9 } : {}, () => {});");
+      unresolved("test(make(), () => {});");
+      unresolved('import { opts } from "./opts.ts";\ntest(opts, () => {});');
+      unresolved("test(cfg.o, () => {});");
+      unresolved("const opts = { timeout: 7 };\ntest(opts, () => {});");
+      unresolved("test(...args);");
+    });
+
+    test("reads through a cast or parentheses to the object", () => {
+      assert.deepEqual(read("test({ timeout: 9 } as any, () => {});"), ["9"]);
+      assert.deepEqual(read("test({ timeout: 9 } as const, () => {});"), ["9"]);
+      assert.deepEqual(read("test(({ timeout: 9 }), () => {});"), ["9"]);
+      assert.deepEqual(read('test("x", ({ timeout: 9 }) as any, () => {});'), ["9"]);
+      assert.equal(read("test(({ ...o }) as any, () => {});").length, 1);
+      assert.equal(read('test("x", (opts as any), () => {});').length, 1);
+    });
+
+    test("a shadowing parameter hides the import only where it shadows", () => {
+      const used = (code: string) => timeoutsAsked("planted.test.ts", `import { test } from "node:test";\n${code}`).length;
+      assert.equal(used("function f(test) { return test; }\nconst t2 = test;"), 1);
+      assert.equal(used("function f(test) { return test; }"), 0);
+      assert.equal(used("const g = (test) => { const t3 = test; };"), 0);
+    });
+
+    test("is not fooled by a nested object before the limit", () => {
+      assert.deepEqual(read('test("x", { env: { A: 1 }, timeout: 9 }, () => {});'), ["9"]);
+    });
   });
 
   test("the deadline can be shortened and never lengthened or switched off", () => {

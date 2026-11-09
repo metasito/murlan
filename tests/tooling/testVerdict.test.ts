@@ -321,7 +321,7 @@ describe("what the reports leave out", () => {
   describe("the quarantine", () => {
     const entry = { file: PLANTS, title: "option skip", issue: 7, expires: "2026-11-15" };
     const plants = readArtifacts(results).filter((a) => a.name === "test-results-verify-0-2");
-    const opened = (on: string) => ({ open: true, labelled: true, created: Date.parse(on) });
+    const opened = (on: string, body = `${PLANTS} option skip`) => ({ open: true, labelled: true, created: Date.parse(on), body });
     const open = new Map([[7, opened("2026-11-05T09:00:00Z")]]);
     const q = { ...base, artifacts: plants, listing: [CLEAN, PLANTS], tickets: open };
     const held = { head: { quarantine: [entry] }, base: { quarantine: [entry] } };
@@ -369,9 +369,19 @@ describe("what the reports leave out", () => {
 
     test("an entry needs an open issue labelled ci-flake", () => {
       const created = Date.parse("2026-11-05T09:00:00Z");
-      for (const t of [{ open: false, labelled: true, created }, { open: true, labelled: false, created }, undefined]) {
+      const body = `${PLANTS} option skip`;
+      for (const t of [{ open: false, labelled: true, created, body }, { open: true, labelled: false, created, body }, undefined]) {
         const problems = verdict({ ...q, ledger: held, tickets: new Map(t ? [[7, t]] : []) });
         has(problems, /under #7, which is not an open issue labelled ci-flake/);
+        assert.ok(skipRed(problems));
+      }
+    });
+
+    test("an issue must name the test's file and title, so a label on any open issue quarantines nothing", () => {
+      const created = Date.parse("2026-11-05T09:00:00Z");
+      for (const body of ["", `${PLANTS} some other test`, "option skip"]) {
+        const problems = verdict({ ...q, ledger: held, tickets: new Map([[7, { open: true, labelled: true, created, body }]]) });
+        has(problems, /under #7, whose body does not name that test's file and title/);
         assert.ok(skipRed(problems));
       }
     });
@@ -427,7 +437,7 @@ describe("the gate step", () => {
     const said: string[] = [];
     const long = { file: PLANTS, title: "option skip", issue: 7, expires: "2027-09-04" };
     const gh = (args: string[]) =>
-      args[1]!.includes("/issues/") ? JSON.stringify({ state: "open", created_at: "2026-11-08T00:00:00Z", pr: false, labels: ["ci-flake"] }) : args[0] === "api" ? "" : assert.fail(args.join(" "));
+      args[1]!.includes("/issues/") ? JSON.stringify({ state: "open", created_at: "2026-11-08T00:00:00Z", body: `${PLANTS} option skip`, pr: false, labels: ["ci-flake"] }) : args[0] === "api" ? "" : assert.fail(args.join(" "));
     const git = (args: string[]) => {
       if (args[0] === "ls-tree" && !args.includes("-r")) return args[2] === "HEAD" ? LEDGER : "";
       if (args[0] === "show") return JSON.stringify({ quarantine: [long] });

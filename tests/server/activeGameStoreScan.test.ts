@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import ts from "typescript";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 const REPO = path.resolve(import.meta.dirname, "..", "..");
 const SCHEMA = "shared/schema";
@@ -13,16 +14,7 @@ const TABLE_SQL = /\bactive_games\b/;
 
 const owner = (file: string) => file.startsWith("server/store/") || file === "server/game/retention.ts";
 
-function isSchema(file: string, spec: string): boolean {
-  const bare = spec.startsWith("@shared/")
-    ? `shared/${spec.slice("@shared/".length)}`
-    : spec.startsWith("@/")
-      ? spec.slice(2)
-      : spec.startsWith(".")
-        ? path.posix.join(path.posix.dirname(file), spec)
-        : spec;
-  return bare.replace(/\.ts$/, "") === SCHEMA;
-}
+const isSchema = (file: string, spec: string): boolean => localPath(file, spec)?.replace(/\.ts$/, "") === SCHEMA;
 
 const nameOf = (el: ts.ImportSpecifier | ts.ExportSpecifier | ts.BindingElement) =>
   ((el.propertyName ?? el.name) as ts.Identifier).text;

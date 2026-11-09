@@ -20,6 +20,7 @@ import { CARD_BACK_IDS, TABLE_FELT_IDS } from "../../lib/cosmetics.ts";
 import { BOT_PERSONALITIES } from "../../lib/game/botPersonalities.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 const LOCALES = { it, en, sq } as const;
 type LocaleName = keyof typeof LOCALES;
@@ -950,8 +951,9 @@ describe("every player-facing server response carries a code", () => {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
       const specifier = statement.moduleSpecifier.text;
       const bindings = statement.importClause?.namedBindings;
-      if (!specifier.startsWith(".") || !bindings || !ts.isNamedImports(bindings)) continue;
-      const full = path.resolve(REPO_ROOT, path.dirname(sourceFile.fileName), specifier);
+      const target = localPath(sourceFile.fileName, specifier);
+      if (target === null || !bindings || !ts.isNamedImports(bindings)) continue;
+      const full = path.resolve(REPO_ROOT, target);
       if (!existsSync(full)) throw new Error(`${sourceFile.fileName}: cannot resolve the import "${specifier}"`);
       const imported = localFunctions(
         ts.createSourceFile(full, readFileSync(full, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
