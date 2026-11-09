@@ -24,6 +24,8 @@ one file here a command reproduces:
 npx playwright test -c tests/e2e/playwright.config.ts onlineTableSurvey
 ```
 
+With `AUDIT_UPDATE=1` it rewrites the rows it measured, so `-g <viewport>` re-records one size and leaves the rest.
+
 It registers, creates a room, fills it with bots and photographs the dealt table at the four
 viewports above — and measures the *offline* table beside it each time, because both screens
 render one `<GameTable>`. Its columns are `table.txt`'s plus `emptyBand`, the number finding 3
@@ -82,7 +84,7 @@ in `tests/e2e/onlineTableSurvey.spec.ts` holds them to. That check compares the 
 against the offline one, and nothing else: the two can drift together, and the band did,
 because a fix landed for it. What pins the band itself is `tests/ui-rules/tableProportions.test.ts`.
 
-`online-table.txt` is merged, by `MODE\tviewport\tcards`, on every whole run of that spec, so
+`online-table.txt` is merged, by `MODE\tviewport\tcards`, on every `AUDIT_UPDATE=1` run of that spec, whole or `-g`-filtered, so
 it reports the app as it is now — but only a local run reaches this repository, since CI
 writes it onto a runner nothing commits from. The run is held to it either way. `cards` is
 part of the key (#800): every seat is a real dealt-in account, so a fresh 4-player table's
