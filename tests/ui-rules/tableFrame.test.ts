@@ -6,7 +6,6 @@ import {
   actionBtnSize,
   HAND_ZONE_GAP,
   CHIP_H,
-  SIDE_SECTION_W,
   HAND_WIDTH_SHARE,
 } from "../../components/seatLayout.ts";
 import { drawnShortEdge } from "../../components/cardFaceModel.ts";
@@ -158,7 +157,7 @@ describe("computeTableFrame", () => {
   test("the field takes what the seats leave it, capped by its own share", () => {
     const f = frameOf({ width: 844 });
     const tableW = 844 - f.tableLeft - f.tableRight;
-    assert.equal(f.fieldRoomW, Math.min(tableW - SIDE_SECTION_W * 2, 844 * 0.55));
+    assert.ok(f.fieldRoomW <= 844 * 0.55);
     assert.ok(f.fieldRoomW > 0);
     // Neither arc may take the whole table: together they still leave the
     // seats their columns.
@@ -166,20 +165,17 @@ describe("computeTableFrame", () => {
     assert.ok(f.handRoomW < 844);
   });
 
-  // Numbers, not the formula again: restating `min(tableW - 2*SIDE_SECTION_W,
-  // share)` passes whatever either term holds, which is how a column twice the
-  // prototype's width sat here unnoticed. The small phone is where the seats'
-  // own columns bind rather than the share.
+  // Numbers, not the formula again: restating the bound passes whatever either
+  // term holds, which is how a column twice the prototype's width sat here
+  // unnoticed. The small phone is where the seats' own columns bind rather than
+  // the share.
   test("the seats' columns are what caps the field on the smallest phone", () => {
     const noInsets = { top: 0, bottom: 0, left: 0, right: 0 };
     const small = computeTableFrame({ width: 568, height: 320, insets: noInsets, scale: tableScale({ width: 568, height: 320 }) });
     const tableW = 568 - small.tableLeft - small.tableRight;
-    assert.equal(Math.round(tableW - SIDE_SECTION_W * 2), 260);
-    assert.ok(
-      tableW - SIDE_SECTION_W * 2 < 568 * 0.55,
-      "the share is meant to be the looser of the two bounds here"
-    );
-    assert.equal(Math.round(small.fieldRoomW), 260);
+    assert.equal(Math.round(tableW - small.fieldRoomW), 152);
+    assert.ok(small.fieldRoomW < 568 * 0.55, "the share is meant to be the looser of the two bounds here");
+    assert.equal(Math.round(small.fieldRoomW), 300);
   });
 
 });

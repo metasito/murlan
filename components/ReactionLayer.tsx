@@ -23,6 +23,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTableReactions, type TableReaction } from "@/lib/reactions";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
+import { RailKnob } from "@/components/table/chrome";
 
 // The spoken word travels with the glyph: a label built from the glyph alone leaves
 // the announcement to the OS's emoji pronunciation.
@@ -101,18 +102,12 @@ export function FloatingReactions({ viewerSeat, playerCount }: { viewerSeat: num
   );
 }
 
-export function ReactionTrigger({ onPress }: { onPress: () => void }) {
+export function ReactionTrigger({ onPress, size }: { onPress: () => void; size: number }) {
   const { t } = useTranslation();
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
-      hitSlop={Spacing.cosy}
-      accessibilityRole="button"
-      accessibilityLabel={t("reactionLayer.triggerA11yLabel")}
-    >
+    <RailKnob onPress={onPress} a11yLabel={t("reactionLayer.triggerA11yLabel")} size={size}>
       <Text style={styles.triggerText} {...a11yHidden()}>💬</Text>
-    </Pressable>
+    </RailKnob>
   );
 }
 
@@ -154,17 +149,6 @@ export function ReactionPanel({
 }
 
 const styles = StyleSheet.create({
-  trigger: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: TOUCH_TARGET_MIN / 2,
-    backgroundColor: Scrim.heavy,
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-  },
-  triggerPressed: { backgroundColor: Colors.goldMuted, borderColor: Colors.goldStrong },
   triggerText: { fontSize: FontSize.lg },
 
   panel: {

@@ -52,7 +52,7 @@ import { pileGroupZ, pilePaintOrder } from "./cardShadows";
 function fieldSlots(cards: Card[], cardScale: number, roomW: number) {
   const w = CARD_W(cardScale);
   const h = CARD_H(cardScale);
-  const slots = pileSlots(cards.length, w, roomW);
+  const slots = pileSlots(cards.length, w, roomW, h);
   const span = cards.length > 1 ? slots[cards.length - 1].x - slots[0].x : 0;
   return { slots, w, h, boxW: span + w };
 }
@@ -718,7 +718,7 @@ export function usePileFlight({
     prevComboKeyRef.current = key;
 
     const thrown = readThrownPlay({ combo, playedBy: lastPlayedBy }, layout, seating, handOrigins.current);
-    const to = pileSlots(thrown.cards.length, CARD_W(layout.scale * FIELD_SCALE), roomW);
+    const to = pileSlots(thrown.cards.length, CARD_W(layout.scale * FIELD_SCALE), roomW, CARD_H(layout.scale * FIELD_SCALE));
     const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion, Platform.OS !== "web") };
     if (atRest) {
       setTrick((t) => playOnto(t, play));

@@ -43,7 +43,6 @@ for (const vp of VIEWPORTS) {
 
     const prompt = page.getByTestId("exchange-prompt");
     await expect(prompt, "the exchange has to ask on the felt").toBeVisible({ timeout: 15_000 });
-    // The prompt and `useHandLift`'s 500ms rise start on one render.
     await atRest(page, TABLE_SCREEN);
 
     // Soft, so one run reports every way it does not fit rather than stopping

@@ -108,11 +108,6 @@ the deal already animates translate and rotate — was rejected on its own merit
 constraint: the cards would jump size and *then* slide apart, which reads as two events where
 there is one.
 
-What is not a cut: the hand's lift. `useHandLift` eases 500ms on the same turn change
-(`components/table/chrome.tsx`), so the moment is animated even though the size within it is
-not. Revisit if the glyph measurement ever moves off ink-versus-box, which is what makes a
-transformed card unmeasurable.
-
 ### 3.3 The held seat, and the team it is on
 
 The owner's answer to #679, and the three questions the letter itself did not settle.

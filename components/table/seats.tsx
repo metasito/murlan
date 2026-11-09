@@ -15,10 +15,9 @@ import {
   seatLabelW,
   seatNameSet,
   OPP_LABEL_MAX_W,
-  type SeatAnchor,
   type OpponentSide,
 } from "@/components/seatLayout";
-import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
+import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc, seatLabelRise } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
@@ -652,7 +651,7 @@ export const OpponentSeat = memo(function OpponentSeat({
         reconnecting={reconnecting}
         scale={scale}
         countdown={countdown}
-        anchor={seatAnchor(place)}
+        place={place}
         nameInset={nameInset}
         focusMode={focusMode}
         mark={mark}
@@ -682,7 +681,7 @@ function SeatWho({
   reconnecting,
   scale,
   countdown,
-  anchor = "centre",
+  place,
   nameInset = 0,
   focusMode = false,
   mark,
@@ -700,22 +699,19 @@ function SeatWho({
   reconnecting?: { seconds: number; resetKey: string };
   scale: number;
   countdown?: SeatCountdown;
-  /**
-   * Which of the label's edges is pinned to the disc. The top seat has the
-   * whole table to spread into and centres; a side seat sits flush against its
-   * own column, so a label centred there hangs off the screen.
-   */
-  anchor?: SeatAnchor;
+  /** Which seat this is. Its label's edge pins to the disc by `seatAnchor`: the top seat centres, a side seat sits flush against its own column. */
+  place: OpponentSide;
   nameInset?: number;
   focusMode?: boolean;
 }) {
+  const anchor = seatAnchor(place);
   const disc = SEAT_DISC * scale;
   const lit = seatLit(isActive, mark);
   const labelW = seatLabelW(anchor, scale);
   const labelLeft = seatLabelLeft(anchor, scale, nameInset);
   const nameSet = seatNameSet(scale);
   const badge: SeatBadge | undefined = reconnecting ? "reconnecting" : vacated ? "vacated" : undefined;
-  const rows = seatLabelRows(scale, seatBadgeH(badge, scale));
+  const rows = seatLabelRows(scale, seatBadgeH(badge, scale), seatLabelRise(place, scale));
   const row = (above: number) => [seatStyles.whoLabel, { width: labelW, left: labelLeft, bottom: disc + above, alignItems: SEAT_LABEL_ALIGN[anchor] }];
   return (
     <View style={seatStyles.who}>
@@ -758,9 +754,9 @@ function SeatWho({
         countdown={countdown}
         focusMode={focusMode}
         mark={mark}
-        side={anchor === "centre" ? "top" : anchor}
+        side={place}
       />
-      {passed && !focusMode && <PassedMark side={anchor === "centre" ? "top" : "side"} disc={disc} scale={scale} />}
+      {passed && !focusMode && <PassedMark side={place === "top" ? "top" : "side"} disc={disc} scale={scale} />}
     </View>
   );
 }
