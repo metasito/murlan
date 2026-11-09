@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { io, type Manager, type Socket as UntypedSocket, type SocketReservedEvents } from "socket.io-client";
+import { io, type Socket as UntypedSocket, type SocketReservedEvents } from "socket.io-client";
 import type { Emitter } from "@socket.io/component-emitter";
 import { getApiUrl, requestOf, type Reply } from "@/lib/query-client";
 import {
@@ -188,10 +188,9 @@ export function reconnectSocket(socket: Socket): void {
   halted.delete(socket);
   cancelPendingClose(socket);
   const s = raw(socket);
-  const manager: { engine?: Manager["engine"] } = s.io;
-  const abandoned = manager.engine?.readyState === "opening" ? manager.engine : undefined;
+  const abandoned = s.io.engine?.readyState === "opening" ? s.io.engine : undefined;
   // The manager closes its engine with the socket; detached, it is not, so a connecting websocket is left to settle.
-  if (abandoned) manager.engine = undefined;
+  if (abandoned) Reflect.set(s.io, "engine", undefined);
   s.disconnect().connect();
   if (!abandoned) return;
   const close = () => {

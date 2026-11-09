@@ -24,37 +24,18 @@ export interface PendingAck<E extends keyof Outgoing = keyof Outgoing> {
 
 type AuthCallback = (cb: (data: Record<string, unknown>) => void) => void;
 
-type EngineEvent = 'open' | 'error' | 'close';
 type EngineState = 'opening' | 'open' | 'closing' | 'closed';
 
 /** One websocket attempt. The Manager replaces it with a fresh one on a reconnect, and a detached one settles on its own. */
 export class FakeEngine {
   readyState: EngineState = 'closed';
   readonly close = jest.fn(() => {
-    this.end();
+    this.readyState = 'closed';
     return this;
   });
   private listeners = new Map<string, Listener[]>();
 
-  /** How many listeners the engine still holds, across every event. */
-  listenerCount(): number {
-    return [...this.listeners.values()].reduce((n, l) => n + l.length, 0);
-  }
-
-  /** The websocket ending on its own, as the network drops it. */
-  end(): void {
-    if (this.readyState === 'closed') return;
-    this.readyState = 'closed';
-    [...(this.listeners.get('close') ?? [])].forEach((l) => (l as () => void)());
-  }
-
-  /** This attempt's websocket failing before it opened. */
-  fail(err: Error): void {
-    this.readyState = 'closed';
-    [...(this.listeners.get('error') ?? [])].forEach((l) => (l as (e: Error) => void)(err));
-  }
-
-  once(event: EngineEvent, fn: Listener): this {
+  once(event: 'open' | 'error', fn: Listener): this {
     const wrapper = Object.assign((...args: never[]) => {
       this.off(event, wrapper);
       fn(...args);
@@ -63,7 +44,7 @@ export class FakeEngine {
     return this;
   }
 
-  off(event: EngineEvent, fn: Listener): this {
+  off(event: 'open' | 'error', fn: Listener): this {
     this.listeners.set(event, (this.listeners.get(event) ?? []).filter((l) => l !== fn && (l as { inner?: Listener }).inner !== fn));
     return this;
   }
