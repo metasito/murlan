@@ -83,7 +83,7 @@ const imports = (/** @type {string} */ text) => [...text.matchAll(/(?:\bfrom\s*|
 export function wiringOf(listing, textOf, scripts, suites = SUITES) {
   const tracked = new Set(listing);
   const resolved = (/** @type {string} */ from, /** @type {string} */ ref) => {
-    const rel = ref.replace(/^\$\{[^}]*\}\//, "");
+    const rel = ref.replace(/^(\$\{[^}]*\}|<rootDir>)\//, "");
     const bases = rel === ref ? [path.posix.join(from, ref), path.posix.normalize(ref)] : [path.posix.normalize(rel)];
     return bases.flatMap((b) => ["", ".ts", ".tsx", ".mjs", ".js"].map((x) => b + x)).find((f) => tracked.has(f));
   };
