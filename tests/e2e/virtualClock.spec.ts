@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import type { Page } from "@playwright/test";
 import { animationPhase, installVirtualClock, step, stepThen, takeOver } from "./helpers/virtualClock.ts";
 import { STEP_MS } from "./helpers/traceDiff.ts";
 
@@ -8,7 +9,7 @@ const PAGE = `<!doctype html><style>
 .held { animation: slide 10s linear both paused }
 </style><div id="box"></div>`;
 
-const start = async (page: import("@playwright/test").Page, cls: string) => {
+const start = async (page: Page, cls: string) => {
   await installVirtualClock(page, 1);
   await page.setContent(PAGE);
   await takeOver(page);
