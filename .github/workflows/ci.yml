@@ -21,7 +21,7 @@ on:
   # already passed that tree.
   schedule:
     - cron: "17 4 * * 1"
-    - cron: "17 2 * * *"
+    - cron: "17 2 * * 0,2-6"
 
 permissions:
   contents: read
@@ -312,6 +312,7 @@ jobs:
         if: ${{ !cancelled() && steps.up1.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: test-results-verify-0-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
@@ -362,6 +363,7 @@ jobs:
         if: ${{ !cancelled() && steps.up2.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: test-results-native-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
@@ -380,6 +382,7 @@ jobs:
         if: ${{ !cancelled() && steps.up3.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: over-budget-native-${{ matrix.shard }}
           path: ${{ runner.temp }}/over-budget.json
           if-no-files-found: error
@@ -435,6 +438,7 @@ jobs:
         if: ${{ !cancelled() && steps.up4.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: test-results-harness-0-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
@@ -481,6 +485,7 @@ jobs:
         if: ${{ !cancelled() && steps.up5.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: test-results-harness-windows-0-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
@@ -795,6 +800,7 @@ jobs:
         if: ${{ !cancelled() && steps.up6.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: test-results-browser-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
@@ -813,6 +819,7 @@ jobs:
         if: ${{ !cancelled() && steps.up7.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: over-budget-browser-${{ matrix.shard }}
           path: ${{ runner.temp }}/over-budget.json
           if-no-files-found: error
@@ -838,6 +845,7 @@ jobs:
         if: ${{ !cancelled() && steps.up8.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: blob-report-${{ matrix.shard }}
           path: tests/e2e/blob-report/
           if-no-files-found: error
@@ -864,6 +872,7 @@ jobs:
         if: ${{ !cancelled() && steps.up9.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: playwright-test-results-${{ matrix.shard }}
           path: tests/e2e/test-results/
           if-no-files-found: ignore
@@ -956,6 +965,7 @@ jobs:
         if: ${{ !cancelled() && steps.up10.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: playwright-report
           path: playwright-report/
           if-no-files-found: error
@@ -987,6 +997,7 @@ jobs:
         if: ${{ !cancelled() && steps.up11.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          overwrite: true
           name: e2e-timings
           path: tests/e2e/timings.json
           if-no-files-found: error

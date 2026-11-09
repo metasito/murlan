@@ -5,13 +5,15 @@ export interface Edge {
   from: string;
   to: string;
   spec: string;
+  /** True when `to` is a repository path, false when it is a package. */
+  local: boolean;
   via: "import" | "require" | "mock";
   gated: boolean;
 }
 
-function resolveSpec(file: string, spec: string): string {
-  const bare = localPath(file, spec, false) ?? spec;
-  return bare.replace(/\.(tsx?|mjs|js)$/, "").replace(/\/index$/, "");
+function resolveSpec(file: string, spec: string): { to: string; local: boolean } {
+  const path = localPath(file, spec);
+  return { to: (path ?? spec).replace(/\.(tsx?|mjs|js)$/, "").replace(/\/index$/, ""), local: path !== null };
 }
 
 const typeOnly = (clause: ts.ImportClause | undefined): boolean =>
@@ -33,20 +35,21 @@ function isDiagnosticsGate(node: ts.Expression, source: ts.SourceFile): boolean 
   );
 }
 
-export function moduleEdges(file: string, text: string): Edge[] {
+/** Every module `text` loads; `types` also counts the imports and exports a compiler erases. */
+export function moduleEdges(file: string, text: string, { types = false } = {}): Edge[] {
   const kind = file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
   const out: Edge[] = [];
   const add = (spec: string, via: Edge["via"], gated: boolean) =>
-    out.push({ from: file, to: resolveSpec(file, spec), spec, via, gated });
+    out.push({ from: file, ...resolveSpec(file, spec), spec, via, gated });
   const visit = (node: ts.Node, gated: boolean): void => {
-    if (ts.isImportDeclaration(node) && !typeOnly(node.importClause) && ts.isStringLiteral(node.moduleSpecifier)) {
+    if (ts.isImportDeclaration(node) && (types || !typeOnly(node.importClause)) && ts.isStringLiteral(node.moduleSpecifier)) {
       add(node.moduleSpecifier.text, "import", false);
     }
-    if (ts.isImportEqualsDeclaration(node) && !node.isTypeOnly && ts.isExternalModuleReference(node.moduleReference) && ts.isStringLiteral(node.moduleReference.expression)) {
+    if (ts.isImportEqualsDeclaration(node) && (types || !node.isTypeOnly) && ts.isExternalModuleReference(node.moduleReference) && ts.isStringLiteral(node.moduleReference.expression)) {
       add(node.moduleReference.expression.text, "require", false);
     }
-    if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    if (ts.isExportDeclaration(node) && (types || !node.isTypeOnly) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
       add(node.moduleSpecifier.text, "import", false);
     }
     if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {

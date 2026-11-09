@@ -1,7 +1,6 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { builtinModules, createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +11,7 @@ import { NIGHTLY } from "../e2e/tiers.mjs";
 import { CODE, JUDGES, TARGETS, codeowners, freezeVerdict, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
 import { ownedBy } from "../../tools/ci/codeowners.mjs";
 import { wiringOf } from "../../tools/ci/test-verdict.mjs";
+import { ALIASES, localPath, resolveSpecifier } from "../helpers/specifiers.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -20,33 +20,19 @@ const tracked = trackedFiles(root);
 const APP = /^(lib|components|app|context|locales|shared)\//;
 const SOURCE = /\.(ts|tsx|mjs|js)$/;
 const importsOf = (file: string, text: string) => ts.preProcessFile(text, true, true).importedFiles.map((i) => i.fileName);
-const aliases = Object.entries(ts.readConfigFile(path.join(root, "tsconfig.json"), ts.sys.readFile).config.compilerOptions.paths as Record<string, string[]>).map(
-  ([key, [target]]) => [key.replace(/\*$/, ""), target.replace(/^\.\//, "").replace(/\*$/, "")] as const,
-);
-const isPackage = (spec: string) => {
-  const name = spec.startsWith("node:") ? spec : spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/");
-  if (builtinModules.includes(name.replace(/^node:/, "")) || name.startsWith("node:")) return true;
-  const here = createRequire(path.join(root, "package.json"));
-  return [name, `${name}/package.json`].some((candidate) => {
-    try {
-      here.resolve(candidate);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-};
-/** The repository path a specifier names, before any extension is tried: undefined for a package. */
-const specPath = (from: string, spec: string) => {
-  if (spec.startsWith(".")) return path.posix.join(path.posix.dirname(from), spec);
-  const alias = aliases.find(([prefix]) => spec.startsWith(prefix));
-  if (alias) return alias[1] + spec.slice(alias[0].length);
-  return undefined;
+/** What a specifier names, or undefined when it is no relative path, mapped path or installed package. */
+const place = (from: string, spec: string) => {
+  try {
+    return resolveSpecifier(from, spec);
+  } catch {
+    return undefined;
+  }
 };
 /** A tracked file, or null when the specifier is a package; undefined when it names nothing. */
 const resolveImport = (from: string, spec: string, all: Set<string>) => {
-  const joined = specPath(from, spec);
-  if (joined === undefined) return isPackage(spec) ? null : undefined;
+  const placed = place(from, spec);
+  if (placed?.kind !== "local") return placed ? null : undefined;
+  const joined = placed.path;
   const base = joined.replace(/\.(m?js|tsx?)$/, "");
   return [joined, ...[".ts", ".tsx", ".mjs", ".js", "/index.ts", "/index.tsx"].map((e) => base + e)].find((c) => all.has(c));
 };
@@ -165,7 +151,7 @@ describe("the list looks at the repository as it is", () => {
     const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
     const into = tracked
       .filter((f) => APP.test(f) && SOURCE.test(f))
-      .flatMap((f) => importsOf(f, read(f)).map((i) => [f, specPath(f, i)] as const))
+      .flatMap((f) => importsOf(f, read(f)).map((i) => [f, localPath(f, i, false)] as const))
       .filter(([, target]) => target?.startsWith("tests/"))
       .map(([f, target]) => `${f} -> ${target}`);
     assert.deepEqual(into, []);
@@ -205,7 +191,7 @@ describe("the list looks at the repository as it is", () => {
   });
 
   test("an alias from tsconfig is followed, and a specifier that is no package, relative path or alias is unresolved", () => {
-    assert.ok(aliases.some(([prefix, dir]) => prefix === "@shared/" && dir === "shared/"));
+    assert.ok(ALIASES.some(([prefix, dir]) => prefix === "@shared/" && dir === "shared"));
     const files: Record<string, string> = {
       "scratch/a.nightly.spec.ts": "import { f } from '@shared/zzFloor'; import { g } from '@zzunknown/x'; import fs from 'node:fs'; import { test } from '@playwright/test';",
       "shared/zzFloor.ts": "export const f = 1;",

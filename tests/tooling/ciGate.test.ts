@@ -87,19 +87,19 @@ test("a daily schedule runs the whole suite on main, and only the weekly one com
   const raw = readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
   const crons = ((parse(raw).on.schedule ?? []) as { cron: string }[]).map((s) => s.cron);
   assert.equal(crons.length, 2, "one weekly cron, one daily");
-  const [weekly, daily] = [crons.find((c) => /\* 1$/.test(c)), crons.find((c) => /\* \*$/.test(c))];
+  const [weekly, daily] = [crons.find((c) => /\* 1$/.test(c)), crons.find((c) => /\* 0,2-6$/.test(c))];
   assert.ok(weekly && daily, "a weekly and a daily cron");
-  assert.doesNotMatch(raw, /github\.event_name == 'schedule'/, "a daily run would compile devices and commit timings");
+  assert.doesNotMatch(raw, /github\.event_name\s*==\s*['"]schedule['"]/, "a daily run would compile devices and commit timings");
   assert.equal(raw.match(new RegExp(`github\\.event\\.schedule == '${weekly.replace(/\*/g, "\\*")}'`, "g"))?.length, 3);
 });
 
-type UploadStep = Step & { uses?: string; "continue-on-error"?: boolean; if?: string; with?: { name?: string } };
+type UploadStep = Step & { uses?: string; "continue-on-error"?: boolean; if?: string; with?: { name?: string; overwrite?: boolean | string } };
 
 /** Each upload that is not half of a pair: a first attempt with no unguarded retry straight after, or a lone attempt. */
 export function unretriedUploads(steps: UploadStep[]): string[] {
   const upload = (s?: UploadStep) => /^actions\/upload-artifact@/.test(s?.uses ?? "");
   const retries = (first: UploadStep | undefined, s: UploadStep | undefined) =>
-    upload(first) && first!["continue-on-error"] === true && !!first!.id && upload(s) && s!.with?.name === first!.with?.name && !s!["continue-on-error"] && String(s!.if).includes(`steps.${first!.id}.outcome == 'failure'`);
+    upload(first) && first!["continue-on-error"] === true && !!first!.id && upload(s) && s!.with?.name === first!.with?.name && !s!["continue-on-error"] && s!.with?.overwrite === true && /(^|[^\w!])!cancelled\(\)/.test(String(s!.if)) && String(s!.if).includes(`steps.${first!.id}.outcome == 'failure'`);
   const bad: string[] = [];
   steps.forEach((s, i) => {
     if (!upload(s)) return;
@@ -119,7 +119,7 @@ test("every artifact upload is tried twice: a guarded first attempt, then a retr
 
 test("an upload with no retry, a retry that may itself fail, and one for another artifact are each red", () => {
   const first = { id: "up", uses: "actions/upload-artifact@x", "continue-on-error": true, with: { name: "a" } };
-  const retry = { if: "${{ !cancelled() && steps.up.outcome == 'failure' }}", uses: "actions/upload-artifact@x", with: { name: "a" } };
+  const retry = { if: "${{ !cancelled() && steps.up.outcome == 'failure' }}", uses: "actions/upload-artifact@x", with: { name: "a", overwrite: true } };
   assert.deepEqual(unretriedUploads([first, retry]), []);
   assert.equal(unretriedUploads([{ ...first, "continue-on-error": undefined }]).length, 1);
   assert.equal(unretriedUploads([retry]).length, 1);
@@ -127,4 +127,7 @@ test("an upload with no retry, a retry that may itself fail, and one for another
   assert.equal(unretriedUploads([first, { ...retry, "continue-on-error": true }]).length, 2);
   assert.equal(unretriedUploads([first, { ...retry, with: { name: "b" } }]).length, 2);
   assert.equal(unretriedUploads([first, { ...retry, if: "${{ always() }}" }]).length, 2);
+  assert.equal(unretriedUploads([first, { ...retry, with: { name: "a" } }]).length, 2, "a retry without overwrite gets a 409 when the first attempt created the record");
+  assert.equal(unretriedUploads([first, { ...retry, with: { name: "a", overwrite: false } }]).length, 2);
+  assert.equal(unretriedUploads([first, { ...retry, if: "${{ steps.up.outcome == 'failure' }}" }]).length, 2, "a retry that is not gated on !cancelled() runs after a cancel");
 });

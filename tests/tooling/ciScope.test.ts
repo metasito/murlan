@@ -7,6 +7,8 @@ import { STEPS } from "../../tools/loop/check-steps.mjs";
 import ts from "typescript";
 import { parse } from "yaml";
 import { JOBS, outputs, scopeOf } from "../../tools/ci/scope.mjs";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
+import { localPath } from "../helpers/specifiers.ts";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 /**
@@ -48,15 +50,9 @@ function reachedFromLoop(): string[] {
     const file = queue.pop()!;
     if (seen.has(file)) continue;
     seen.add(file);
-    const specifiers = read(file).matchAll(
-      /(?:from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)["'](\.{1,2}\/[^"']+)["']/g,
-    );
-    for (const [, spec] of specifiers) {
-      const base = path.posix.normalize(path.posix.join(path.posix.dirname(file), spec));
-      const target = [base, `${base}.ts`, `${base}.mjs`, base.replace(/\.js$/, ".ts")].find((c) =>
-        tracked.includes(c),
-      );
-      assert.ok(target, `${file} imports ${spec}, which resolves to no tracked file`);
+    for (const edge of moduleEdges(file, read(file), { types: true }).filter((e) => e.local)) {
+      const target = ["", ".ts", ".tsx", ".mjs", ".js", ".cjs", "/index.ts", "/index.mjs"].map((x) => edge.to + x).find((c) => tracked.includes(c));
+      assert.ok(target, `${file} imports ${edge.spec}, which resolves to no tracked file`);
       queue.push(target);
     }
   }
@@ -72,10 +68,10 @@ function testsListingTheRepo(): string[] {
   return tracked
     .filter((f) => /\.(test|spec)\.m?[jt]sx?$/.test(f))
     .filter((file) => {
-      const specs = [...read(file).matchAll(/(?:from\s+|import\s*\(\s*)["'](\.{1,2}\/[^"']+)["']/g)];
-      const imported = specs
-        .map(([, spec]) => path.posix.normalize(path.posix.join(path.posix.dirname(file), spec)))
-        .filter((f) => tracked.includes(f));
+      const imported = moduleEdges(file, read(file), { types: true })
+        .filter((e) => e.local && e.via === "import")
+        .map((e) => localPath(file, e.spec))
+        .filter((f): f is string => f !== null && tracked.includes(f));
       return [file, ...imported].some((f) => ROOT_LISTING.test(read(f)));
     });
 }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import ts from "typescript";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
+import { localPath } from "../helpers/specifiers.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 const SELF = path.basename(import.meta.filename);
@@ -35,8 +36,8 @@ function importedCalls(sfs: ts.SourceFile[]): ImportedCalls {
     for (const statement of sf.statements) {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
       const spec = statement.moduleSpecifier.text;
-      if (!spec.startsWith(".")) continue;
-      const target = path.posix.normalize(path.posix.join(path.posix.dirname(sf.fileName), spec));
+      const target = localPath(sf.fileName, spec);
+      if (target === null) continue;
       const named = statement.importClause?.namedBindings;
       if (!named || !ts.isNamedImports(named)) continue;
       for (const el of named.elements) bound.set(el.name.text, `${target}#${(el.propertyName ?? el.name).text}`);
