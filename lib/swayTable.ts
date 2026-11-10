@@ -20,7 +20,7 @@ export function speedOf(t: number): number {
 /** Seconds between the stops of a track: linear between stops this far apart is off a sine by at most `(1.01 * TRACK_STEP)^2 / 8`, the speed's top being 1.008 rad/s, about 0.001. */
 export const TRACK_STEP = 0.1;
 
-/** The rig's `ph` and `t` at the moment a track starts: its speed follows `t`, which a freeze does not stop,. */
+/** The rig's `ph` and `t` at the moment a track starts: its speed follows `t`, which a freeze does not stop. */
 export interface SwayStart {
   ph: number;
   t: number;

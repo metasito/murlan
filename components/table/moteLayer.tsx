@@ -148,7 +148,10 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & 
     const thawed = wasFrozen.current && !frozen;
     wasFrozen.current = frozen;
     if (!thawed) return;
-    const next = setTimeout(rebuild, 0);
+    const next = setTimeout(() => {
+      rebuild();
+      if (E2E_FAST) traceOnset("moment", "air-thaw");
+    }, 0);
     return () => clearTimeout(next);
   }, [frozen, rebuild]);
 
