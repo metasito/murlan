@@ -64,7 +64,7 @@ import { matchDim } from "@/lib/timeline/matchEnding";
 import { scorePillHitBox, voteTop } from "@/components/table/scorePillModel";
 import { matchBoardFor, scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
-import { HudComboPill, WindowTurnChip } from "@/components/table/notices/hud";
+import { HudComboPill, PileNote, WindowTurnChip } from "@/components/table/notices/hud";
 import { tableConnection, type ConnectionNote } from "@/components/table/connectionNote";
 import { useCountdown } from "@/components/table/countdown";
 import { useDeviceOffline, useTableClaim } from "@/components/OfflineBanner";
@@ -940,10 +940,23 @@ export function GameTable({
           style={[styles.hudLeft, { left: hud.combo.left, top: hud.combo.top }, focusFadeStyle, greyStyle]}
         >
           {/* The chip draws the words the group's label already says. */}
-          <View {...a11yHidden()}>
-            <HudComboPill scale={chips} room={hud.combo.room} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} note={pillNote} />
-          </View>
+          {exchangeChip === null && (
+            <View {...a11yHidden()}>
+              <HudComboPill scale={chips} room={hud.combo.room} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} />
+            </View>
+          )}
         </Animated.View>
+
+        {pillNote && (
+          <Animated.View
+            testID="pile-note"
+            pointerEvents="none"
+            {...a11yHidden()}
+            style={[styles.pileNote, { left: layout.pileNote.centreX - layout.pileNote.room / 2, top: layout.pileNote.top, width: layout.pileNote.room }, focusFadeStyle, greyStyle]}
+          >
+            <PileNote scale={scale} room={layout.pileNote.room} note={pillNote} />
+          </Animated.View>
+        )}
 
         <Animated.View
           testID="game-hud-stack"
@@ -1323,6 +1336,7 @@ const styles = StyleSheet.create({
 
   hudLeft: { position: "absolute", zIndex: Layer.moment },
   hudCentre: { position: "absolute", zIndex: Layer.moment },
+  pileNote: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
   pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
   greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   matchDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },

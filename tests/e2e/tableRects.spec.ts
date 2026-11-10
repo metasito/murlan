@@ -3,7 +3,8 @@
 // ties the solver to it.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { DEAL_SIZE, exchangeSave, offlineSave, seedSave } from "./helpers/offlineSeed";
+import { DEAL_SIZE, exchangeSave, offlineSave, resumeOnVirtualClock, seedSave } from "./helpers/offlineSeed";
+import { installVirtualClock, stepUntil } from "./helpers/virtualClock";
 import { openApp } from "./helpers/navigation";
 import { openOnlineTable } from "./helpers/onlineTable";
 import { PHONES } from "./helpers/phones";
@@ -11,7 +12,7 @@ import { setSafeArea } from "./helpers/safeArea";
 import { INSETS } from "../helpers/phoneTable";
 import { fits, type Box, type Fit } from "../helpers/drawnFit";
 import { captureGameState, captureStateById, type CaptureState } from "../../lib/captureStates";
-import { createDeck } from "../../lib/game/gameEngine";
+import { createDeck, type Card } from "../../lib/game/gameEngine";
 import type { OfflineSave } from "../../lib/offlineSave";
 import { LOCALE_KEY } from "../../lib/storageKeys";
 import { catalogs, type Locale } from "../../shared/i18n";
@@ -30,6 +31,7 @@ const DRAWN: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   railMenu: { sel: '[data-testid="control-rail"] > div:first-child [role="button"]', fit: "same" },
   hudCombo: { sel: '[data-testid="notice-hudCombo"]', fit: "words" },
   hudTurn: { sel: '[data-testid="notice-turn"]', fit: "words" },
+  pileNote: { sel: '[data-testid="notice-pileNote"]', fit: "words" },
   scorePill: { sel: '[data-testid="score-pill-plate"]', fit: "same" },
   seatTop: { sel: '[data-testid="top-seat"] [data-testid="seat-ring"]', fit: "same" },
   seatLeft: { sel: '[data-testid="side-seat-left"] [data-testid="seat-ring"]', fit: "same" },
@@ -46,13 +48,21 @@ const DRAWN: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   gioca: { sel: '[data-testid="btn-gioca-box"]', fit: "same" },
   hand: { sel: '[data-testid="hand-row"] [data-testid="card-box"]', fit: "same" },
 };
+const BADGE_SEL = ':is([data-testid="notice-reconnecting"], [data-testid="notice-vacated"])';
+/** The seats' rings, names and badges: what a badge moves, and the badge itself. */
+const BADGES: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
+  ...Object.fromEntries((["seatTop", "seatLeft", "seatRight", "nameTop", "nameLeft", "nameRight"] as const).map((name) => [name, DRAWN[name]!])),
+  badgeTop: { sel: `[data-testid="top-seat"] ${BADGE_SEL}`, fit: "words" },
+  badgeLeft: { sel: `[data-testid="side-seat-left"] ${BADGE_SEL}`, fit: "words" },
+  badgeRight: { sel: `[data-testid="side-seat-right"] ${BADGE_SEL}`, fit: "words" },
+};
 /** The rail's foot holds a knob only on the online table, where the reactions trigger takes it. */
 const RAIL: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
   rail: DRAWN.rail,
   railMenu: DRAWN.railMenu,
   railFoot: { sel: '[data-testid="control-rail"] > div:last-child [role="button"]', fit: "same" },
 };
-interface Drawn { boxes: Partial<Record<RectName, Box>>; clip: Rect | null; texts: { combo: string; turn: string } }
+interface Drawn { boxes: Partial<Record<RectName, Box>>; clip: Rect | null; texts: { combo: string; turn: string; note: string } }
 
 /** Each rect as the union of what its selector matched; a scrolled hand as the part its window shows. */
 async function drawn(page: Page, rects: Partial<Record<RectName, { sel: string; fit: Fit }>>): Promise<Drawn> {
@@ -117,6 +127,7 @@ async function drawn(page: Page, rects: Partial<Record<RectName, { sel: string; 
       texts: {
         combo: document.querySelector('[data-testid="notice-hudCombo"]')?.textContent ?? "",
         turn: document.querySelector('[data-testid="notice-turn"]')?.textContent ?? "",
+        note: document.querySelector('[data-testid="notice-pileNote"]')?.textContent ?? "",
       },
     };
   }, rects as Record<string, { sel: string; fit: Fit }>) as Promise<Drawn>;
@@ -172,11 +183,11 @@ function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
   return bad;
 }
 
-async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false) {
+async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false, exchangeCards?: { received: Card; given: Card }) {
   const got = await settled(page);
-  const chips = drawnChips(table, locale, got.texts, exchangeName);
-  expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn})`).toEqual({ combo: expect.anything(), turn: expect.anything() });
-  const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn! } } });
+  const chips = drawnChips(table, locale, got.texts, exchangeName, exchangeCards);
+  expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn} | ${got.texts.note})`).toEqual({ combo: expect.anything(), turn: expect.anything(), note: got.texts.note === "" ? null : expect.anything() });
+  const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn!, note: chips.note ?? undefined } } });
   expect(misfits(got, solved), where).toEqual([]);
   if (keepsRules) expect(brokenRules(solved), `${where}: the solved table breaks its rules`).toEqual([]);
 }
@@ -212,6 +223,33 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
       await open(page, baseURL!, save, "it", insets);
       await expect(page.getByTestId("exchange-prompt"), "the winner's hand lifts once the exchange asks").toBeVisible({ timeout: 15_000 });
       await check(page, `${vp.name}, exchange`, vp, insets, "it", gameTable(save.gameState), EXCHANGE_NAME);
+    });
+
+    test(`an exchange's note under the pile: ${vp.name}`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await installVirtualClock(page, 1833);
+      await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [LOCALE_KEY, "it"]);
+      const save = exchangeSave({ seats: 3, hand: DEAL_SIZE[3], winner: 0, loser: 1, names: [EXCHANGE_NAME, EXCHANGE_NAME, EXCHANGE_NAME] });
+      await resumeOnVirtualClock(page, baseURL!, save);
+      await stepUntil(page, () => page.getByTestId("exchange-pill-note").isVisible(), "the received card resting on the pile", { chunkMs: 100 });
+      let before = "";
+      await stepUntil(
+        page,
+        async () => {
+          const now = JSON.stringify(await drawn(page, DRAWN));
+          const still = now === before && (await page.getByTestId("exchange-pill-note").isVisible());
+          before = now;
+          return still;
+        },
+        "the table at rest under the note",
+        { chunkMs: 100 }
+      );
+      const phase = save.gameState.exchangePhase;
+      if (phase?.kind !== "open") throw new Error("the save opens no exchange");
+      const dealt = gameTable(save.gameState);
+      const resting: DrawnTable = { ...dealt, base: { ...dealt.base, hand: { ...dealt.base.hand, onTurn: false } } };
+      await check(page, `${vp.name}, the note under the pile`, vp, INSETS["0/0"], "it", resting, EXCHANGE_NAME, false, { received: phase.cardFromLoser, given: phase.cardFromLoser });
     });
 
     test(`a thirteen-card straight over an eighteen-card hand: ${vp.name}`, async ({ page, baseURL }) => {
@@ -277,4 +315,54 @@ test("the rail's knobs are drawn in the solver's rects: online", async ({ browse
   } finally {
     await table.close();
   }
+});
+
+test.describe("a seat's badge is drawn in the solver's rects: online", () => {
+  const SIDES = { top: '[data-testid="top-seat"]', left: '[data-testid="side-seat-left"]', right: '[data-testid="side-seat-right"]' } as const;
+
+  /** The seats as the page draws them: who sits, and the badge each wears with the seconds it counts. */
+  const seated = (page: Page) =>
+    page.evaluate((sides) => {
+      const out: Record<string, { name: string; badge?: { kind: "vacated" } | { kind: "reconnecting"; seconds: number } }> = {};
+      for (const [dir, sel] of Object.entries(sides)) {
+        const seat = document.querySelector(sel);
+        const name = seat?.querySelector('[data-testid="seat-name"]')?.textContent;
+        if (!seat || !name) continue;
+        const wait = seat.querySelector('[data-testid="notice-reconnecting"]')?.textContent?.match(/\d+/)?.[0];
+        out[dir] = { name, badge: wait ? { kind: "reconnecting", seconds: Number(wait) } : seat.querySelector('[data-testid="notice-vacated"]') ? { kind: "vacated" } : undefined };
+      }
+      return out;
+    }, SIDES);
+
+  for (const vp of [SE, SIXTEEN, TABLETS[0]])
+    test(`reconnecting, then vacated: ${vp.name}`, async ({ browser, baseURL }) => {
+      test.setTimeout(300_000);
+      const table = await openOnlineTable(browser, baseURL!, { playerCount: 3, gameMode: "free_for_all", viewport: { width: vp.width, height: vp.height } });
+      try {
+        const gone = table.others[0];
+        await gone.context().setOffline(true);
+        for (const kind of ["reconnecting", "vacated"] as const) {
+          await expect(table.page.getByTestId(`notice-${kind}`), `a seat is ${kind}`).toBeVisible({ timeout: 90_000 });
+          const got = await settled(table.page, BADGES);
+          const seats = await seated(table.page);
+          const badged = Object.values(seats).filter((seat) => seat.badge?.kind === kind);
+          expect(badged, `the ${kind} badge is on one seat`).toHaveLength(1);
+          const solved = tableRects({
+            width: vp.width,
+            height: vp.height,
+            insets: INSETS["0/0"],
+            locale: "it",
+            state: {
+              seats: { top: null, left: null, right: null, ...Object.fromEntries(Object.entries(seats).map(([dir, seat]) => [dir, { name: seat.name, cards: 0, badge: seat.badge }])) },
+              hand: { cards: 0, onTurn: false, faceDown: false },
+              pile: 0,
+              chips: { combo: [], turn: [] },
+            },
+          });
+          expect(misfits(got, solved, BADGES), `${vp.name}, ${kind}`).toEqual([]);
+        }
+      } finally {
+        await table.close();
+      }
+    });
 });

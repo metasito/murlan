@@ -253,14 +253,33 @@ export function seatLabelH(scale: number): number {
 }
 
 /**
- * How far above the disc's top a seat's label holds the bottoms of its two rows: the name, and the
- * badge row under it, `height` tall, 0 when the seat shows no badge. `rise` lifts both clear of a
- * fan standing taller than the ring (`seatLabelRise`).
+ * How far above the disc's top a seat's label holds the bottom of its name. A side seat's badge row
+ * stands between the name and the disc, `height` tall, 0 when it shows none, so the name is lifted
+ * clear of it; the top seat's name is already under the turn chip, so its badge stands beside the
+ * disc (`seatBadgeSlot`) and the name stays. `rise` lifts both clear of a fan taller than the ring
+ * (`seatLabelRise`).
  */
-export function seatLabelRows(scale: number, height: number, rise: number): { name: number; badges: number } {
-  const badges = SEAT_LABEL_PAD * scale + rise;
-  return { badges, name: height > 0 ? badges + height + SEAT_LABEL_GAP * scale : badges };
+export function seatNameRise(place: OpponentSide, scale: number, height: number, rise: number): number {
+  const base = SEAT_LABEL_PAD * scale + rise;
+  return place !== "top" && height > 0 ? base + height + SEAT_LABEL_GAP * scale : base;
 }
+
+/**
+ * The strip a seat's badge row is laid out in: `left` off the disc's left edge, `top` off the disc's
+ * top edge (negative above it), `width` wider than any badge so the badge is never cut, and `align`
+ * where in the strip it holds. A side seat's runs inward from the disc under its name; the top
+ * seat's stands to the disc's right, centred on its height.
+ */
+export function seatBadgeSlot(place: OpponentSide, scale: number, nameInset: number, height: number, rise: number): { left: number; top: number; width: number; align: Align } {
+  const disc = SEAT_DISC * scale;
+  const width = SEAT_BADGE_SLOT_W * scale;
+  if (place === "top") return { left: disc + seatGap(scale), top: (disc - height) / 2, width, align: "flex-start" };
+  const anchor = seatAnchor(place);
+  return { left: seatLabelLeft(anchor, scale, nameInset, width), top: -(SEAT_LABEL_PAD * scale + rise + height), width, align: SEAT_LABEL_ALIGN[anchor] };
+}
+
+/** Wider than the widest badge in any locale at scale 1: `tests/ui-rules/tableRects.test.ts` holds each inside it. */
+export const SEAT_BADGE_SLOT_W = 400;
 
 /** A seat name's size at scale 1, before `tableFontSize`'s floor. */
 const SEAT_NAME_FS = 11;
@@ -304,9 +323,8 @@ export function seatLabelW(anchor: SeatAnchor, scale: number): number {
 }
 
 /** The label's left edge from its disc's: centred on the disc, or flush with the edge `anchor` names and `inset` in from it. */
-export function seatLabelLeft(anchor: SeatAnchor, scale: number, inset: number): number {
+export function seatLabelLeft(anchor: SeatAnchor, scale: number, inset: number, labelW = seatLabelW(anchor, scale)): number {
   const disc = SEAT_DISC * scale;
-  const labelW = seatLabelW(anchor, scale);
   return anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? inset : disc - labelW - inset;
 }
 

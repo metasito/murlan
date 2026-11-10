@@ -1,4 +1,4 @@
-// tests/e2e/oneWayExchange.spec.ts — a one-way exchange is told by the table's two pills and nothing on the felt (#1833).
+// tests/e2e/oneWayExchange.spec.ts — a one-way exchange is told by the label under the pile and the turn pill (#1833).
 // The deal is rigged (helpers/oneWayDeal.ts): Ana wins holding nothing from 3 to 10, Luan loses and leads.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -31,31 +31,31 @@ async function play(page: Page, baseURL: string, locale: string, strings: String
   await installVirtualClock(page, 1833);
   await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [LOCALE_KEY, locale]);
   await resumeOnVirtualClock(page, baseURL, oneWaySave(), () => rigTheDeal(page), undefined, strings["home.resumeGame"]);
-  await stepUntil(page, () => page.locator(NOTE).isVisible(), "the receive resting on the last-played pill", { chunkMs: 100 });
+  await stepUntil(page, () => page.locator(NOTE).isVisible(), "the receive resting on the pile", { chunkMs: 100 });
 }
 
 const PHONES = [{ width: 844, height: 390 }, { width: 667, height: 375 }];
 const TABLET = { width: 1024, height: 768 };
-// The tablet is where the pill and the turn chip sit closest, so every language runs there; the
+// The tablet is where the label and the turn chip are widest, so every language runs there; the
 // phones have room to spare and run in Italian only.
 const CASES = LANGUAGES.flatMap((language) =>
   (language.locale === "it" ? [...PHONES, TABLET] : [TABLET]).map((viewport) => ({ ...language, viewport }))
 );
 
 for (const { locale, strings, viewport } of CASES) {
-  test(`${viewport.width}px in ${locale}: the receive, then the winner's nothing to give back, are said by the pills`, async ({ page, baseURL }) => {
+  test(`${viewport.width}px in ${locale}: the receive, then the winner's nothing to give back, are said by the label and the turn pill`, async ({ page, baseURL }) => {
     test.setTimeout(240_000);
     await page.setViewportSize(viewport);
     await play(page, baseURL!, locale, strings);
 
     const receive = await text(page, NOTE);
     expect(receive).toBe(say(strings, "exchange.pileGivesYou", { from: ONE_WAY_NAMES[1], card: "2♣" }));
-    expect(await text(page, COMBO_PILL)).toContain("2♣");
+    await expect(page.locator(COMBO_PILL), "the empty table's pill gives the chip row to the exchange").toHaveCount(0);
     await expect(page.getByTestId("exchange-pile-label")).toHaveCount(0);
     expectNoteFits(await page.evaluate(readPillFacts, NEIGHBOUR_IDS), viewport, "the receive");
     const pile = await box(page, '[data-testid="pile-area"]');
     const note = await box(page, NOTE);
-    expect(note.y + note.height, "the note is up in the pill, not on the felt").toBeLessThan(pile.y);
+    expect(note.y, "the note is under the pile").toBeGreaterThanOrEqual(pile.y + pile.height);
 
     await stepUntil(page, async () => {
       const now = await text(page, NOTE);

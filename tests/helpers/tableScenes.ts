@@ -33,6 +33,8 @@ export interface ChipScene {
   name: string;
   combo: NoticeContent;
   turn: NoticeContent;
+  /** What the exchange says under the pile, when it says anything. */
+  note: NoticeContent | null;
 }
 
 const CLOCK: NoticePart = { runtime: "strong" };
@@ -89,7 +91,7 @@ const views = (name: string): Record<"winner" | "loser" | "watcher", ExchangeVie
 const CLOSED: ExchangeView = { open: false, viewerIsWinner: false, viewerIsLoser: false, winner: null, loser: null };
 
 /** Every exchange the table announces, from each chair, as the pair of pills it draws together. */
-export function exchangeScenes(name: string): ChipScene[] {
+export function exchangeScenes(name: string, cards: { received: Card; given: Card } = { received: card("K"), given: card("4") }): ChipScene[] {
   const players = [{ name }, { name }, { name }];
   const out: ChipScene[] = [];
   const announce = (winnerIdx: number, loserIdx: number, extra: Partial<ExchangeAnnounceData>): ExchangeAnnounceData => ({
@@ -106,8 +108,8 @@ export function exchangeScenes(name: string): ChipScene[] {
     const loserIdx = seat === "loser" ? 0 : 2;
     const shapes: [string, ExchangeAnnounceData][] = [
       ["twoJokers", announce(winnerIdx, loserIdx, { twoJokers: true })],
-      ["oneWay", announce(winnerIdx, loserIdx, { oneWay: true, cardReceived: card("K") })],
-      ["give", announce(winnerIdx, loserIdx, { cardReceived: card("K"), cardGiven: card("4") })],
+      ["oneWay", announce(winnerIdx, loserIdx, { oneWay: true, cardReceived: cards.received })],
+      ["give", announce(winnerIdx, loserIdx, { cardReceived: cards.received, cardGiven: cards.given })],
     ];
     for (const [shape, shown] of shapes) {
       // The choice opens only once the received card has landed (`choiceOpensAt`), so the card's note and the choice never share a stage.
@@ -119,8 +121,9 @@ export function exchangeScenes(name: string): ChipScene[] {
         if (chip === null) continue;
         out.push({
           name: `${shape} as ${seat}, ${label}`,
-          combo: [runsOf(pillNote ? pillNote.text : tagged("gameShared.emptyTable"), "text")],
+          combo: [],
           turn: [DOT, runsOf(chip, "text"), CLOCK],
+          note: pillNote ? [runsOf(pillNote.text, "text")] : null,
         });
       }
     }
@@ -186,10 +189,11 @@ export function wordsOf(content: NoticeContent, locale: Locale): string {
 export function drawnChips(
   table: DrawnTable,
   locale: Locale,
-  read: { combo: string; turn: string },
-  exchangeName?: string
-): { combo: NoticeContent | null; turn: NoticeContent | null } {
-  const exchange = exchangeName === undefined ? [] : exchangeScenes(exchangeName);
+  read: { combo: string; turn: string; note: string },
+  exchangeName?: string,
+  exchangeCards?: { received: Card; given: Card }
+): { combo: NoticeContent | null; turn: NoticeContent | null; note: NoticeContent | null } {
+  const exchange = exchangeName === undefined ? [] : exchangeScenes(exchangeName, exchangeCards);
   const combos = [
     comboScene(table.game.lastPlayedCombination, { you: table.game.lastPlayedBy === CAPTURE_VIEWER_SEAT, name: table.lastBy ?? "" }),
     ...exchange.map((s) => s.combo),
@@ -198,7 +202,8 @@ export function drawnChips(
   const turn = [...turnScenes(table.onMove), ...exchange]
     .map((s) => [...s.turn.slice(0, -1), ...(digits ? [{ runtime: "strong", text: digits } as const] : [])])
     .find((c) => wordsOf(c, locale) === read.turn);
-  return { combo: combos.find((c) => wordsOf(c, locale) === read.combo) ?? null, turn: turn ?? null };
+  const note = read.note === "" ? [] : exchange.flatMap((s) => (s.note ? [s.note] : [])).filter((n) => wordsOf(n, locale) === read.note);
+  return { combo: combos.find((c) => wordsOf(c, locale) === read.combo) ?? null, turn: turn ?? null, note: note[0] ?? null };
 }
 
 /** The tablets the table's rects are held to beside the phones: a 4:3 screen and the largest iPad. */
