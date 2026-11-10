@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
 import { useAnimatedStyle, useSharedValue, type FrameInfo } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
-import { useDuring } from "@/lib/motion";
+import { stampChange, startOf, useDuring } from "@/lib/motion";
 import { holdGrey, linkHeld, type OwnLink } from "@/lib/ownLink";
 import { viewFilterGrey } from "@/lib/platform";
 import { Reconnect } from "@/lib/theme";
@@ -20,7 +19,7 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "hold">
   const reduceMotion = usePrefersReducedMotion();
   const held = linkHeld(link);
   const grey = useSharedValue(holdGrey(link));
-  const ramp = useSharedValue({ to: holdGrey(link), perMs: 0, from: holdGrey(link), at: 0 });
+  const ramp = useSharedValue({ to: holdGrey(link), perMs: 0, startedAt: 0, from: holdGrey(link), at: 0 });
   const was = useRef(link);
   // Outlasts `held` until the grey has faded out: whatever iOS lifts over the scrim must stay lifted while it fades.
   const [greyed, setGreyed] = useState(held);
@@ -28,12 +27,11 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "hold">
 
   const [step] = useState(() => (frame: FrameInfo): boolean => {
     "worklet";
-    const { to, perMs, from, at } = ramp.value;
-    const first = from < 0;
-    // Web hands a woken frame callback its first frame two frames late, so the ramp runs on the change's clock, as the flight does.
-    const origin = first ? (Platform.OS === "web" ? Math.min(frame.timestamp, at) : frame.timestamp) : at;
+    const { to, perMs, startedAt, from, at } = ramp.value;
+    const first = startedAt < 0;
+    const origin = first ? startOf(frame.timestamp, at) : startedAt;
     const start = first ? grey.value : from;
-    if (first) ramp.value = { to, perMs, from: start, at: origin };
+    if (first) ramp.value = { to, perMs, startedAt: origin, from: start, at };
     const d = perMs * (frame.timestamp - origin);
     const next = start < to ? Math.min(to, start + d) : Math.max(to, start - d);
     grey.value = next;
@@ -49,7 +47,7 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "hold">
     rampedFor.current = `${held}${reduceMotion}`;
     const to = held ? Reconnect.grey : 0;
     if (reduceMotion) grey.set(to);
-    ramp.set({ to, perMs: Reconnect.grey / (held ? Reconnect.greyIn : Reconnect.greyOut), from: -1, at: performance.now() });
+    ramp.set({ to, perMs: Reconnect.grey / (held ? Reconnect.greyIn : Reconnect.greyOut), startedAt: -1, from: 0, at: stampChange() });
     wake();
   }, [held, reduceMotion, grey, ramp, rig, wake]);
 

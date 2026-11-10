@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
-import { AppState, Platform } from "react-native";
 import { useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { useDuring } from "@/lib/motion";
+import { inBackground, startOf, stampChange, useDuring } from "@/lib/motion";
 import { contactMs, flightEndMs, type CardFrom, type CardSlot } from "@/components/flightPose";
 import { LAND_WOBBLE_MS, type ImpactTier } from "@/components/impact";
 import type { PulseStep } from "@/lib/device/feedback";
@@ -27,8 +26,7 @@ export function flightSpec(key: string, from: CardFrom[], to: CardSlot[], catchU
   };
 }
 
-/** No frames are drawn: a hidden page (react-native-web maps visibility here) or a backgrounded app. */
-export const inBackground = () => AppState.currentState === "background";
+export { inBackground };
 
 interface Run { spec: FlightSpec | null; thrownAt: number; startedAt: number; touched: boolean }
 
@@ -54,8 +52,7 @@ function stepper(
     const r = run.value;
     if (!r.spec) return false;
     if (r.startedAt < 0) {
-      // Web hands a new frame callback its first frame two frames late, so it runs on the throw's clock; native starts on the first drawn frame, so a first play's mount hitch is not taken out of the flight.
-      r.startedAt = Platform.OS === "web" ? Math.min(frame.timestamp, r.thrownAt) : frame.timestamp;
+      r.startedAt = startOf(frame.timestamp, r.thrownAt);
       scheduleOnRN(report.start, r.spec.key, r.startedAt + r.spec.contact, r.startedAt + r.spec.end);
     }
     const t = frame.timestamp - r.startedAt;
@@ -95,7 +92,7 @@ export function useFlightClock(
       elapsed,
       arm: (l: LandingPayload) => landing.set(l),
       begin: (spec: FlightSpec) => {
-        run.set({ spec, thrownAt: inBackground() ? Infinity : performance.now(), startedAt: -1, touched: false });
+        run.set({ spec, thrownAt: stampChange(), startedAt: -1, touched: false });
         elapsed.set(0);
         wake();
       },
