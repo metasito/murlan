@@ -1,3 +1,4 @@
+// A target (RULES.md 52), set by the owner's ruling of 2026-11-10 that freezes the S4 rest limits.
 // tests/e2e/tableAtRest.spec.ts — a settled table draws only what moves (rule 51): counted per stepped
 // frame on the virtual clock, so a slow runner cannot pass by drawing fewer frames.
 import type { Page } from "@playwright/test";

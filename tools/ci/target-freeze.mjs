@@ -42,6 +42,7 @@ export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/helpers/safeArea.ts", what: "the insets a spec measures under" },
   { pattern: "tests/e2e/helpers/skiaPerfBudgets.ts", what: "the Skia table's speed budgets" },
   { pattern: "tests/e2e/skiaPerf.spec.ts", what: "the windows, throttle and seed the speed budgets are read in" },
+  { pattern: "tests/e2e/tableAtRest.spec.ts", what: "what a settled table may still draw, counted per stepped frame" },
   { pattern: "tools/ci/target-freeze.mjs", what: "this list" },
   { pattern: "tools/ci/codeowners.mjs", what: "how this list's patterns match, here and in the verdict" },
   { pattern: ".github/workflows/target-freeze.yml", what: "the workflow that runs this list" },

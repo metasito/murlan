@@ -28,6 +28,7 @@
 /tests/e2e/helpers/safeArea.ts                       @rotonmeta
 /tests/e2e/helpers/skiaPerfBudgets.ts                @rotonmeta
 /tests/e2e/skiaPerf.spec.ts                          @rotonmeta
+/tests/e2e/tableAtRest.spec.ts                       @rotonmeta
 /tools/ci/target-freeze.mjs                          @rotonmeta
 /tools/ci/codeowners.mjs                             @rotonmeta
 /.github/workflows/target-freeze.yml                 @rotonmeta

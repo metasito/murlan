@@ -135,6 +135,13 @@ describe("the list looks at the repository as it is", () => {
     assert.equal(freezeVerdict([target, "components/x.tsx"]).ok, false);
   });
 
+  test("the rest spec is a target, so a change to it cannot land beside the code it judges", () => {
+    const spec = "tests/e2e/tableAtRest.spec.ts";
+    assert.ok(isTarget(spec));
+    assert.equal(freezeVerdict([spec, "components/x.tsx"]).ok, false);
+    assert.equal(freezeVerdict([spec, "tests/e2e/skiaPerf.spec.ts"]).ok, true);
+  });
+
   test("everything a target reaches through imports is a target or plumbing with a reason, and every plumbing entry is reached", () => {
     const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
     const roots = tracked.filter((f) => isTarget(f) && SOURCE.test(f) && f.startsWith("tests/") && !f.startsWith("tests/tooling/"));
