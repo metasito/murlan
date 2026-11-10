@@ -57,3 +57,37 @@ for (const [name, advance] of steppers) {
     expect((await animationPhase(page))[0].currentTime).toBe(STEP_MS);
   });
 }
+
+test("an animation heavy page costs the Animation domain no event per step", async ({ page, baseURL }) => {
+  await installVirtualClock(page, 1);
+  await page.goto(`${baseURL}/metadata.json`);
+  const frames = Array.from({ length: 300 }, (_, i) => `${(i / 299) * 100}%{transform:translateX(${i}px)}`).join("");
+  await page.setContent(
+    `<!doctype html><style>@keyframes heavy{${frames}}div{animation:heavy 300s linear both}</style>${"<div></div>".repeat(20)}`
+  );
+  await takeOver(page);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Animation.enable");
+  let updates = 0;
+  cdp.on("Animation.animationUpdated", () => updates++);
+  await step(page);
+  const settled = updates;
+  for (let i = 0; i < 10; i++) await step(page);
+  expect(updates - settled, `${updates - settled} animationUpdated events over 10 steps of 20 animations`).toBe(0);
+  expect((await animationPhase(page))[0].currentTime).toBe(11 * STEP_MS);
+});
+
+test("an animation that a step carries to its end still finishes", async ({ page, baseURL }) => {
+  await installVirtualClock(page, 1);
+  await page.goto(`${baseURL}/metadata.json`);
+  await page.setContent(`${PAGE}<style>.short { animation: slide ${STEP_MS * 3}ms linear both }</style>`);
+  await takeOver(page);
+  await page.evaluate(() => {
+    (window as unknown as { ended: number }).ended = 0;
+    const box = document.getElementById("box")!;
+    box.addEventListener("animationend", () => (window as unknown as { ended: number }).ended++);
+    box.classList.add("short");
+  });
+  for (let i = 0; i < 5; i++) await step(page);
+  expect(await page.evaluate(() => (window as unknown as { ended: number }).ended)).toBe(1);
+});

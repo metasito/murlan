@@ -31,11 +31,23 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
   await cdp.send("Animation.setPlaybackRate", { playbackRate: 0 });
   const install = (generator: typeof mulberry32, seed: number, ordered: typeof orderedStep) => {
     Math.random = generator(seed);
-    // A paused animation holds its phase in a browser, so the clock holds it too. In the page so
-    // a spec's own in-page stepping loop calls this one rather than keeping a copy.
+    // Each animation is paused the first time it is seen and only then seeked: every seek of a running
+    // one makes the DevTools Animation domain send its whole keyframe list (75 ms a step at 51 tracks of
+    // 621 keyframes, against 8 paused). A paused animation never finishes on its own, so the seek that
+    // reaches its end finishes it, and `animationend` and Reanimated's completions still fire. One the
+    // app paused itself is not in the set and stays where it is. In the page so a spec's own stepping
+    // loop calls this one rather than keeping a copy.
+    const held = new WeakSet<Animation>();
     window.murlanStepAnimations = (ms) => {
       for (const a of document.getAnimations()) {
-        if (a.playState === "running" && a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
+        if (!held.has(a) && a.playState === "running") {
+          a.pause();
+          held.add(a);
+        }
+        if (!held.has(a) || a.playState !== "paused" || a.currentTime === null) continue;
+        const to = Number(a.currentTime) + ms;
+        if (to >= Number(a.effect?.getComputedTiming().endTime ?? Infinity)) a.finish();
+        else a.currentTime = to;
       }
     };
     window.murlanStep = async (ms) => {
