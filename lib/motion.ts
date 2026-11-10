@@ -123,16 +123,18 @@ export function repeatTimes(cycle: number, times: number, reverse = false): numb
 export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): () => void {
   const dirty = useSharedValue(awake);
   const releasing = useSharedValue(false);
+  const epoch = useSharedValue(0);
   const span = useSharedValue<number | null>(null);
   const controller = useRef<FrameCallback | null>(null);
-  // A wake that lands between a frame saying no and the release reaching here must win.
-  const [release] = useState(() => () => {
+  // A wake that lands between a frame saying no and the release reaching here must win, though that frame's own write to `dirty` may land after the wake's: `seen` is the epoch the frame began in.
+  const [release] = useState(() => (seen: number) => {
     releasing.value = false;
-    if (!dirty.value) controller.current?.setActive(false);
+    if (!dirty.value && epoch.value === seen) controller.current?.setActive(false);
   });
   const [arm] = useState(() => () => controller.current?.setActive(true));
   const [tick] = useState(() => (frame: FrameInfo) => {
     "worklet";
+    const seen = epoch.value;
     // A woken callback's first frame has no previous one; an always-on callback would have had a frame's span.
     const gap = frame.timeSincePreviousFrame;
     if (gap !== null) span.value = gap;
@@ -141,10 +143,11 @@ export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): (
     dirty.value = false;
     if (releasing.value) return;
     releasing.value = true;
-    scheduleOnRN(release);
+    scheduleOnRN(release, seen);
   });
   const [wake] = useState(() => () => {
     "worklet";
+    epoch.value += 1;
     if (!isRNRuntime() && dirty.value) return;
     dirty.value = true;
     if (isRNRuntime()) arm();
