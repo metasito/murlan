@@ -21,7 +21,7 @@ import {
 import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc, seatLabelRise } from "@/components/fanGeometry";
 import { designRect, fanBacks, TABLE_AT_REST } from "./cardRects";
 import type { Placed } from "./glossTrack";
-import { FanGloss } from "./FanGloss";
+import { FanGlossSlot } from "./FanGlossSlot";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
 import { handCountOf } from "@/shared/protocol";
@@ -199,7 +199,7 @@ function CardFan({
         ))}
       </View>
       {table?.tracks ? (
-        <FanGloss
+        <FanGlossSlot
           tracks={table.tracks}
           s={table.felt.s}
           placed={placed}

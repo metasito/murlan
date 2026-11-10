@@ -4,7 +4,6 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CardGloss } from "../../lib/tokens.ts";
 import { cardGloss, foilGlint, glossSpot } from "./cardGloss.ts";
 import { SWAY, stepLamp, type Lamp } from "./lampRig.ts";
 
@@ -25,7 +24,7 @@ const OVER_LEVEL = 1 / 256;
 const TOLERANCE_PT = 0.4;
 /** One level counted as this many points when it sets how finely the stops fall. */
 const LEVEL_PT = 40;
-const FRAME = 1 / 60;
+export const FRAME = 1 / 60;
 const LONGEST_STRETCH = 30;
 
 /** The next snapshot to bake from, or null while `baked` still describes the lamp. */
@@ -143,60 +142,6 @@ export function bakeGlossTrack(snap: LampSnap, epoch: number): GlossTrack {
 function lampAt(track: GlossTrack, n: number) {
   const p = track.path;
   return { lx: p.lx[n]!, ly: p.ly[n]!, level: p.level[n]!, r: p.r[n]! };
-}
-
-const seconds = (n: number) => n * FRAME;
-
-type Keyframes = Record<string, Record<string, unknown>>;
-
-function keyframesOf(track: GlossTrack, upTo: number, at: (n: number) => Record<string, unknown>): Keyframes {
-  const last = track.stops[upTo]!;
-  const out: Keyframes = {};
-  for (let i = 0; i <= upTo; i++) {
-    const n = track.stops[i]!;
-    out[`${+((n / last) * 100).toFixed(4)}%`] = at(n);
-  }
-  return out;
-}
-
-export interface Played {
-  keyframes: Keyframes;
-  /** Milliseconds. */
-  duration: number;
-}
-
-/** What every back shares: the spot's move off where it stands now, and the two fades that cross as the lamp sways. */
-export interface SharedTrack {
-  spot: Played | null;
-  fadeA: Played | null;
-  fadeB: Played | null;
-  /** The fades as the track begins. */
-  at: { fadeA: number; fadeB: number };
-}
-
-/** Of the two ends the streak crosses between, the share that the end on the sway's +side holds: 0 at the sway's far side, 1 at the near. */
-export const crossAt = (kick: number, lx: number, x: number) => {
-  const reach = swayAmplitude(kick);
-  return Math.min(1, Math.max(0, (lx - x) / (2 * reach) + 0.5));
-};
-
-/** `s` the felt's points-to-pixels scale. */
-export function sharedTrack(track: GlossTrack, s: number): SharedTrack {
-  const p = track.path;
-  const last = track.stops.length - 1;
-  const cross = (n: number) => crossAt(p.kick[n]!, p.lx[n]!, p.x[n]!);
-  const at = { fadeA: 1 - cross(0), fadeB: cross(0) };
-  const duration = seconds(track.stops[last]!) * 1000;
-  const play = (frame: (n: number) => Record<string, unknown>): Played | null => (track.moves ? { keyframes: keyframesOf(track, last, frame), duration } : null);
-  return {
-    spot: play((n) => ({
-      transform: [{ translateX: (p.lx[n]! - p.lx[0]!) * s }, { translateY: (p.ly[n]! - p.ly[0]!) * s }],
-      opacity: CardGloss.spot.alpha * p.level[n]!,
-    })),
-    fadeA: play((n) => ({ opacity: 1 - cross(n) })),
-    fadeB: play((n) => ({ opacity: cross(n) })),
-    at,
-  };
 }
 
 /** The place and size of a back as the table lays it out: its centre in design points, its own box and turn. */

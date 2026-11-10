@@ -4,7 +4,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { GLIDE, lampControls, restingLamp, stepLamp, type Lamp } from "../../components/table/lampRig.ts";
 import { cardGloss, glossSpot } from "../../components/table/cardGloss.ts";
-import { backPose, bakeGlossTrack, crossAt, GLOSS_HORIZON_S, nextGlossBake, sharedTrack, snapOf, swayAmplitude, type GlossTrack, type LampSnap } from "../../components/table/glossTrack.ts";
+import { backPose, bakeGlossTrack, GLOSS_HORIZON_S, nextGlossBake, snapOf, swayAmplitude, type GlossTrack, type LampSnap } from "../../components/table/glossTrack.ts";
+import { crossAt, sharedTrack } from "../../components/table/fanTrack.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
 const FRAME = 1 / 60;

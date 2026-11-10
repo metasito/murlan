@@ -8,7 +8,8 @@ import { a11yHidden } from "@/lib/a11y";
 import { ambient } from "@/lib/motion";
 import { cardRadius } from "@/components/cardFaceModel";
 import type { ArcCard } from "@/components/tableArc";
-import { backPose, sharedTrack, type BackPose, type Placed, type Played } from "./glossTrack";
+import { backPose, type BackPose, type Placed } from "./glossTrack";
+import { sharedTrack, type Played } from "./fanTrack";
 import type { GlossTracks } from "./glossTrackStore";
 import { GLOSS_SPOT_ART } from "./LampGloss";
 
