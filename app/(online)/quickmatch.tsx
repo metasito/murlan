@@ -8,13 +8,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useOrientedWindow } from "@/lib/device/orientation";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -26,8 +20,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import type { GameMode } from "@/lib/game/gameEngine";
-import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { useLoop } from "@/lib/motion";
+import { thereAndBack, useAmbient } from "@/lib/motion";
 
 interface ModeOption {
   maxPlayers: number;
@@ -78,6 +71,8 @@ function buildModes(t: ReturnType<typeof useTranslation>["t"]): ModeOption[] {
   ];
 }
 
+const PULSE = thereAndBack({ transform: [{ scale: 1 }] }, { transform: [{ scale: 1.15 }] });
+
 export default function QuickmatchScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
@@ -90,8 +85,6 @@ export default function QuickmatchScreen() {
   const [phase, setPhase] = useState<"selecting" | "searching">("selecting");
   const [selectedMode, setSelectedMode] = useState<ModeOption | null>(null);
   const [dotCount, setDotCount] = useState(0);
-  const pulse = useSharedValue(1);
-  const reduceMotion = usePrefersReducedMotion();
 
   const isLandscape = W > H;
 
@@ -116,18 +109,7 @@ export default function QuickmatchScreen() {
   }, [phase, handleCancelSearch, navigation]);
 
   const searching = phase === "searching";
-  useLoop(pulse, searching ? () => {
-    const breath = (to: number) =>
-      withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
-    return { cycle: withSequence(breath(1.15), breath(1)) };
-  } : null);
-  useEffect(() => {
-    if (!searching || reduceMotion) pulse.set(1);
-  }, [searching, pulse, reduceMotion]);
-
-  // After the effect above, not before it: reading a shared value here freezes
-  // it for the React Compiler, and the assignment then bails the whole file.
-  const pulseAnim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  const pulseAnim = useAmbient(searching ? { keyframes: PULSE, duration: Motion.duration.dwell * 2 } : null);
 
   useEffect(() => {
     if (phase !== "searching") return;

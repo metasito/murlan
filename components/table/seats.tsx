@@ -28,7 +28,6 @@ import Animated, {
   withTiming,
   withDelay,
   withSequence,
-  interpolate,
   ReduceMotion,
   Easing,
   cancelAnimation,
@@ -51,7 +50,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
 import { pulseRepeats, RING_PULSE_MS, urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { repeatTimes, useLoop } from "@/lib/motion";
+import { repeatTimes, thereAndBack, useAmbient } from "@/lib/motion";
 import type { Combination, Player } from "@/lib/game/gameEngine";
 import { useRingProbe } from "@/lib/diagnostics";
 import { webDeps } from "@/lib/platform";
@@ -375,6 +374,9 @@ export function CountdownRing({
 
 /** One full brighten-and-fade cycle of the focus-mode breathing ring. */
 const BREATHE_MS = 3400;
+const BREATHE = thereAndBack({ opacity: 0.35 }, { opacity: 1 });
+const BREATHE_RESTING = { opacity: 0.35 };
+const BREATHE_OFF = { opacity: 0 };
 const BREATHE_GLOW = 30;
 
 function SeatRing({
@@ -448,18 +450,8 @@ function SeatRing({
   // Focus mode strips every other turn signal off the felt, so the ring on
   // move has to carry that on its own — a slow breathe, on a loop for as
   // long as the turn lasts, not a one-shot like the ping above.
-  const breathe = useSharedValue(0);
-  const breathing = isActive && focusMode && !reduceMotion;
-  useLoop(breathe, breathing ? () => ({
-    cycle: withTiming(1, { duration: BREATHE_MS / 2, easing: Easing.inOut(Easing.sin) }),
-    reverse: true,
-  }) : null);
-  useEffect(() => {
-    if (!breathing) breathe.set(0);
-  }, [breathing, breathe]);
-  const breatheStyle = useAnimatedStyle(() => ({
-    opacity: isActive && focusMode ? interpolate(breathe.value, [0, 1], [0.35, 1]) : 0,
-  }));
+  const breathing = isActive && focusMode;
+  const breatheStyle = useAmbient(breathing ? { keyframes: BREATHE, duration: BREATHE_MS } : null);
 
   const { t } = useTranslation();
   const initials = name
@@ -490,6 +482,7 @@ function SeatRing({
         style={[
           { position: "absolute", width: size, height: size, borderRadius: size / 2 },
           makeShadow(Colors.goldLit, 0, 0, 0.6, BREATHE_GLOW * scale, 0),
+          breathing ? BREATHE_RESTING : BREATHE_OFF,
           breatheStyle,
         ]}
       />
