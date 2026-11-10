@@ -2,13 +2,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MOTES, createAir, type Air } from "../../components/table/air.ts";
-import { advanceAir, buildFlight, buildMoteTracks, flightAt, FLIGHT_S, litAt, REBUILD_S, SPAN_S, stillAlphas, trackAlpha, TWINKLE_KEYFRAMES, TWINKLE_MS, twinkleDelay, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
+import { advanceAir, buildFlight, buildMoteTracks, buildMoth, mothAt, mothKeyframes, FLIGHT_S, litAt, SPAN_S, stillAlphas, trackAlpha, TWINKLE_KEYFRAMES, TWINKLE_MS, twinkleDelay, type MoteTrack, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
 import { swayTimeOf, SWAY_REST_AT } from "../../lib/swayTable.ts";
-import type { MoteTrack } from "../../components/table/moteTracks.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 import { mulberry32 } from "../support/game.ts";
 
 const DT = 1 / 60;
+/** A rebuilt track is held this long: the rig's sway speed drifts with its own clock, which the table (read at the build) does not follow. */
+const REBUILD_S = 240;
 const ALPHA_WITHIN = 0.05;
 
 interface Drawn {
@@ -169,9 +170,25 @@ describe("the moth's flight against drawAir", () => {
     const stops = buildFlight({ x: 437, ly: 252, tt: swayTimeOf(phase) });
     let worst = 0;
     for (const b of body) {
-      const p = flightAt(stops, Math.min(FLIGHT_S, b.s));
+      const p = mothAt([{ s: 0, stops }], Math.min(FLIGHT_S, b.s))!;
       worst = Math.max(worst, Math.hypot(p.mx - b.x, p.my - b.y));
     }
     assert.ok(worst < 1.5, `${worst} pt off the mockup's moth`);
+  });
+
+  test("the moth is scheduled 6 to 10 s in, then 10 to 15 s apart, hidden between flights", () => {
+    const rng = mulberry32(5);
+    const { flights, next } = buildMoth(LIGHT, 0, 8, rng);
+    assert.equal(flights[0].s, 8);
+    for (let i = 1; i < flights.length; i++) {
+      const gap = flights[i].s - flights[i - 1].s;
+      assert.ok(gap >= 10 && gap <= 15, `gap ${gap}`);
+    }
+    assert.ok(next >= SPAN_S - FLIGHT_S);
+    assert.equal(mothAt(flights, 4), null);
+    assert.ok(mothAt(flights, 10));
+    assert.equal(mothAt(flights, 13), null);
+    const kf = mothKeyframes(flights, "body") as Record<string, { opacity: number }>;
+    assert.equal(Object.values(kf).filter((k) => k.opacity === 1).length, flights.length * flights[0].stops.length);
   });
 });

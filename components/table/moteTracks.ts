@@ -17,12 +17,6 @@ const WRAP_GAP_S = 0.01;
 /** The wobble moves a mote 4.3 pt over 9 s: a stop a second keeps a track within 0.3 pt of it. */
 const STOP_S = 1;
 
-/**
- * How long the layer plays a track before rebuilding it. The rig's sway speed drifts with its own clock, which the table
- * (read from the phase at the build) does not follow, so a track's light falls behind the rig's after about this long.
- */
-export const REBUILD_S = 240;
-
 export const FLIGHT_S = 4;
 const FLIGHT_STEP_S = 1 / 30;
 
@@ -193,29 +187,49 @@ export function buildFlight(light: Omit<RestLight, "level" | "r">): FlightStop[]
   return stops;
 }
 
-export function flightAt(stops: readonly FlightStop[], s: number): FlightStop {
-  const [a, b, u] = around(stops, s);
+export interface Flight {
+  /** Seconds after the track's build at which the moth sets off. */
+  s: number;
+  stops: FlightStop[];
+}
+
+/** The moths over a span, from the first at `first` seconds on the air's clock and `built` its clock at the build, 10 to 15 s apart as the mockup sends them; `next` is the one after the span. */
+export function buildMoth(light: RestLight, built: number, first: number, rng: () => number): { flights: Flight[]; next: number } {
+  const flights: Flight[] = [];
+  let at = first;
+  while (at < built) at += 10 + rng() * 5;
+  for (; at - built + FLIGHT_S < SPAN_S; at += 10 + rng() * 5) {
+    const s = at - built;
+    flights.push({ s, stops: buildFlight({ x: light.x, ly: light.ly, tt: light.tt + s }) });
+  }
+  return { flights, next: at };
+}
+
+/** Where the moth is `s` seconds after the build, or null while none flies. */
+export function mothAt(flights: readonly Flight[], s: number): FlightStop | null {
+  const f = flights.find((x) => s >= x.s && s <= x.s + FLIGHT_S);
+  if (!f) return null;
+  const [a, b, u] = around(f.stops, s - f.s);
   return { t: s, mx: between(a.mx, b.mx, u), my: between(a.my, b.my, u), sx: between(a.sx, b.sx, u), sy: between(a.sy, b.sy, u) };
 }
 
-export function bodyKeyframes(stops: readonly FlightStop[]): CSSAnimationKeyframes {
-  return Object.fromEntries(stops.map((p) => [percent(p.t, FLIGHT_S), { transform: [{ translateX: p.mx }, { translateY: p.my }] }])) as CSSAnimationKeyframes;
-}
-
-export function shadowKeyframes(stops: readonly FlightStop[]): CSSAnimationKeyframes {
-  return Object.fromEntries(stops.map((p) => [percent(p.t, FLIGHT_S), { transform: [{ translateX: p.sx }, { translateY: p.sy }] }])) as CSSAnimationKeyframes;
-}
-
-/** A wing beat is `|sin(rate · t)|` wide: one beat, as a scale from the width at rest to full. */
-function beat(rate: number, from: number): { keyframes: CSSAnimationKeyframes; ms: number } {
-  const stops = 8;
-  return {
-    ms: (Math.PI / rate) * 1000,
-    keyframes: Object.fromEntries(Array.from({ length: stops + 1 }, (_, j) => [`${(j / stops) * 100}%`, { transform: [{ scaleX: from + (1 - from) * Math.sin((j / stops) * Math.PI) }] }])) as CSSAnimationKeyframes,
+/** The moth's body or shadow over the whole span: hidden between flights, a flight's stops while one flies. */
+export function mothKeyframes(flights: readonly Flight[], part: "body" | "shadow"): CSSAnimationKeyframes {
+  const out: Record<string, object> = {};
+  const at = (p: FlightStop) => (part === "body" ? { translateX: p.mx, translateY: p.my } : { translateX: p.sx, translateY: p.sy });
+  const put = (t: number, p: FlightStop, opacity: number) => {
+    const { translateX, translateY } = at(p);
+    out[percent(t, SPAN_S)] = { opacity, transform: [{ translateX }, { translateY }] };
   };
+  put(0, flights[0].stops[0], 0);
+  for (const f of flights) {
+    put(Math.max(0, f.s - WRAP_GAP_S), f.stops[0], 0);
+    for (const p of f.stops) put(f.s + p.t, p, 1);
+    put(Math.min(SPAN_S, f.s + FLIGHT_S + WRAP_GAP_S), f.stops[f.stops.length - 1], 0);
+  }
+  return out as CSSAnimationKeyframes;
 }
 
-/** The moth's wings: width `3 + 4|sin(38 t)|` against 7 at most. */
-export const WING_BEAT = beat(38, 3 / 7);
-/** Its shadow: `rx = 16 + 9|sin(40 t)|` against 25 at most. */
-export const SHADOW_BEAT = beat(40, 16 / 25);
+/** Wings and shadow at their mean widths: `3 + 4|sin(38 t)|` and `16 + 9|sin(40 t)|` average to these. */
+export const WING_MEAN = 3 + 4 * (2 / Math.PI);
+export const SHADOW_MEAN = 16 + 9 * (2 / Math.PI);

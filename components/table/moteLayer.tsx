@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View, type ViewStyle } from "react-native";
 import Animated, { useAnimatedReaction } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
+import { E2E_FAST } from "@/lib/e2eConfig";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ambient } from "@/lib/motion";
@@ -16,24 +17,21 @@ import type { LampRig } from "./useLampRig";
 import { tableRng } from "./particles";
 import {
   advanceAir,
-  bodyKeyframes,
-  buildFlight,
   buildMoteTracks,
+  buildMoth,
   coneKeyframes,
   driftKeyframes,
-  flightAt,
-  FLIGHT_S,
   litAt,
-  REBUILD_S,
-  SHADOW_BEAT,
-  shadowKeyframes,
+  mothAt,
+  mothKeyframes,
+  SHADOW_MEAN,
   SPAN_S,
   stillAlphas,
   TWINKLE_KEYFRAMES,
   TWINKLE_MS,
   twinkleDelay,
-  WING_BEAT,
-  type FlightStop,
+  WING_MEAN,
+  type Flight,
   type MoteTrack,
   type MoteTracks,
   type RestLight,
@@ -43,8 +41,8 @@ import {
 const SETTLE_MS = (3 / GLIDE) * 1000;
 const MS = 1000;
 
-const WING = { w: 14, h: 4 } as const;
-const SHADOW = { w: 50, h: 12, rot: "0.3rad" } as const;
+const WING = { w: 2 * WING_MEAN, h: 4 } as const;
+const SHADOW = { w: 2 * SHADOW_MEAN, h: 12, rot: "0.3rad" } as const;
 
 const styles = StyleSheet.create({
   fill: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 },
@@ -98,21 +96,19 @@ const Still = memo(function Still({ x, y, r, alpha }: { x: number; y: number; r:
   );
 });
 
-const Moth = memo(function Moth({ stops, paused }: { stops: FlightStop[]; paused: boolean }) {
-  const body = useMemo(() => ambient({ keyframes: bodyKeyframes(stops), duration: FLIGHT_S * MS, iterations: 1, paused }), [stops, paused]);
-  const shadow = useMemo(() => ambient({ keyframes: shadowKeyframes(stops), duration: FLIGHT_S * MS, iterations: 1, paused }), [stops, paused]);
-  const wings = useMemo(() => ambient({ keyframes: WING_BEAT.keyframes, duration: WING_BEAT.ms }), []);
-  const spread = useMemo(() => ambient({ keyframes: SHADOW_BEAT.keyframes, duration: SHADOW_BEAT.ms }), []);
+const Moth = memo(function Moth({ flights, paused }: { flights: Flight[]; paused: boolean }) {
+  const body = useMemo(() => ambient({ keyframes: mothKeyframes(flights, "body"), duration: SPAN_S * MS, paused }), [flights, paused]);
+  const shadow = useMemo(() => ambient({ keyframes: mothKeyframes(flights, "shadow"), duration: SPAN_S * MS, paused }), [flights, paused]);
   return (
     <>
-      <Animated.View style={[styles.anchor, shadow]}>
-        <Animated.View style={[styles.shadow, spread]} />
+      <Animated.View style={[styles.anchor, { opacity: 0 }, shadow]}>
+        <View style={styles.shadow} />
       </Animated.View>
-      <Animated.View style={[styles.anchor, body]}>
-        <Animated.View style={[styles.wings, wings]}>
+      <Animated.View style={[styles.anchor, { opacity: 0 }, body]}>
+        <View style={styles.wings}>
           <View style={styles.wing} />
           <View style={styles.wing} />
-        </Animated.View>
+        </View>
       </Animated.View>
     </>
   );
@@ -126,9 +122,9 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
   const [air] = useState<Air>(() => createAir(tableRng()));
   const [tracks, setTracks] = useState<MoteTracks | null>(null);
   const [still, setStill] = useState<number[] | null>(null);
-  const [flight, setFlight] = useState<FlightStop[] | null>(null);
-  const flightAt0 = useRef(0);
-  const builtAt = useRef<number | null>(null);
+  const [moth, setMoth] = useState<Flight[] | null>(null);
+  const [rng] = useState(tableRng);
+  const nextMoth = useRef(air.mothAt);
   const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const lightNow = useCallback((): RestLight => {
@@ -140,14 +136,17 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
     const light = lightNow();
     if (reduced) {
       setTracks(null);
+      setMoth(null);
       setStill(stillAlphas(air, light));
       return;
     }
     advanceAir(air, elapsed() - air.t);
-    builtAt.current = air.t;
+    const { flights } = buildMoth(light, air.t, nextMoth.current, rng);
+    nextMoth.current = air.t + flights[0].s;
     setStill(null);
+    setMoth(flights);
     setTracks(buildMoteTracks(air, light));
-  }, [air, elapsed, lightNow, reduced]);
+  }, [air, elapsed, lightNow, reduced, rng]);
 
   useEffect(() => {
     if (frozen) return;
@@ -174,28 +173,10 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
   );
 
   useEffect(() => {
-    if (reduced || frozen) return;
-    const rng = tableRng();
-    const gap = () => 10 + rng() * 5;
-    let timer: ReturnType<typeof setTimeout>;
-    const land = () => {
-      setFlight(null);
-      timer = setTimeout(fly, (gap() - FLIGHT_S) * MS);
-    };
-    const fly = () => {
-      if (builtAt.current !== null && elapsed() - builtAt.current > REBUILD_S) rebuild();
-      const l = lightNow();
-      setFlight(buildFlight({ x: l.x, ly: l.ly, tt: l.tt }));
-      flightAt0.current = elapsed();
-      traceOnset("moment", "moth");
-      timer = setTimeout(land, FLIGHT_S * MS);
-    };
-    timer = setTimeout(fly, Math.max(0, air.mothAt - elapsed()) * MS);
-    return () => {
-      clearTimeout(timer);
-      setFlight(null);
-    };
-  }, [reduced, frozen, air, elapsed, lightNow, rebuild]);
+    if (!E2E_FAST || !tracks || !moth || frozen) return;
+    const timers = moth.map((f) => setTimeout(() => traceOnset("moment", "moth"), (tracks.built + f.s - elapsed()) * MS));
+    return () => timers.forEach(clearTimeout);
+  }, [tracks, moth, frozen, elapsed]);
 
   useTraceSource("live", useCallback(() => MOTES, []));
   useTraceSource(
@@ -208,10 +189,10 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
   useTraceSource(
     "moth",
     useCallback(() => {
-      if (!flight) return null;
-      const p = flightAt(flight, Math.min(FLIGHT_S, elapsed() - flightAt0.current));
-      return { x: p.mx * sx, y: p.my * sy };
-    }, [flight, elapsed, sx, sy])
+      if (!tracks || !moth) return null;
+      const p = mothAt(moth, elapsed() - tracks.built);
+      return p && { x: p.mx * sx, y: p.my * sy };
+    }, [tracks, moth, elapsed, sx, sy])
   );
 
   const sized = useMemo<ViewStyle>(
@@ -223,7 +204,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
       <View style={sized}>
         {tracks?.motes.map((m) => <Mote key={`${tracks.built}-${m.i}`} track={m} built={tracks.built} paused={frozen} />)}
         {still?.map((a, i) => (a >= UNSEEN * MOTE_ALPHA ? <Still key={i} x={air.m[i * MOTE_STRIDE + M.x]} y={air.m[i * MOTE_STRIDE + M.y]} r={air.m[i * MOTE_STRIDE + M.r]} alpha={a} /> : null))}
-        {flight && <Moth stops={flight} paused={frozen} />}
+        {tracks && moth && <Moth key={tracks.built} flights={moth} paused={frozen} />}
       </View>
     </View>
   );

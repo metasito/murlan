@@ -21,6 +21,7 @@ jest.mock('@/lib/e2eTrace', () => ({
   traceOnset: (...onset: string[]) => mockOnsets.push(onset.join(':')),
 }));
 const mockOnsets: string[] = [];
+jest.mock('@/lib/e2eConfig', () => ({ ...jest.requireActual<object>('@/lib/e2eConfig'), E2E_FAST: true }));
 
 jest.mock('@shopify/react-native-skia', () => {
   const React = require('react') as typeof import('react');
