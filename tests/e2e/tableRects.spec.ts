@@ -144,7 +144,7 @@ async function open(page: Page, baseURL: string, save: OfflineSave, locale: Loca
   await openApp(page, baseURL);
   await page.getByRole("button", { name: catalogs[locale]["home.resumeGame"] }).click({ timeout: 60_000 });
   await expect(page.getByTestId("hand-zone")).toBeVisible({ timeout: 30_000 });
-  await setSafeArea(page, insets.left, insets.bottom, insets.right);
+  await setSafeArea(page, insets.left, insets.bottom, insets.right, insets.top);
 }
 
 const clipTo = (r: Rect, c: Rect | null): Rect => {

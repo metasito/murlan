@@ -26,6 +26,7 @@ An ADR is history and is never rewritten. A decision that no longer holds gets
 | [0017](0017-eslint-10-without-the-expo-preset-and-typescript-7-for-typecheck.md) | ESLint 10 without the Expo preset, and TypeScript 7 for `typecheck` | Accepted | `eslint.base.cjs` keeps every rule `eslint-config-expo` enabled, with eslint-plugin-import-x for import and eslint-plugin-react on a pinned React version; TypeScript 7 runs `npm run typecheck` (about 3x cold, 2.6x incremental), 6 stays for the API, typescript-eslint and `typecheck:strict`. Supersedes ADR-0015 decision 5's TypeScript and ESLint clauses. |
 | [0018](0018-the-skia-table-is-held-to-counted-budgets.md) | The Skia table is held to counted budgets, and to no time budget | Accepted | `tests/e2e/skiaPerf.spec.ts` gates every draw and style write its counters see (WebGL, 2D, offscreen, `readPixels`, style writes under `game-root`, and card writes and felt frames on their own) at 4x CPU, at rest and through a turn, against `tests/e2e/helpers/skiaPerfBudgets.ts`. Script time is not gated: the virtual clock hides frame work from it, so a pure-CPU regression passes. |
 | [0019](0019-the-ruleset-stays-under-its-line-cap.md) | The ruleset stays under its line cap | Accepted | `RULES.md` keeps its line cap; a rule that does not fit merges or retires another in review. |
+| [0020](0020-the-table-at-rest-plays-precomputed-tracks.md) | The table at rest plays precomputed tracks | Accepted | Ambient motion is baked at each settle and played on the compositor via `ambient()`; nothing redraws at rest. |
 
 ## Writing one
 
@@ -37,7 +38,5 @@ agents read, and a record nothing points at is a record nobody opens.
 Write one only for a decision that constrains future changes. A completed task, a run log
 or a session summary is not a decision and does not belong in this directory.
 
-A plan, a research note or a design spec is a working artefact: it is deleted once the work it
-describes has landed, and anything in it worth keeping past that point is a record here, not a
-file kept alive by habit. `docs/README.md` is where a reader finds this index; nothing links
-into a deleted plan/research/specs/design file, because nothing does anymore.
+A plan, a research note or a design spec is a working artefact: it is deleted once its work
+lands, and anything in it worth keeping is a record here. `docs/README.md` points at this index.
