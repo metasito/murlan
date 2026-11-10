@@ -1,6 +1,6 @@
 // The native particle layer: the rest air (moteLayer) and, only while a burst flies, one Skia <Atlas> over the felt, its
 // simulation stepped on the UI thread in one frame callback. The web's is `particleLayer.web.tsx`.
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useCallback, useImperativeHandle, useState, type Ref } from "react";
 import { StyleSheet } from "react-native";
 import {
   Atlas,
@@ -79,26 +79,13 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, onIdle: () 
   };
 }
 
-function BurstField({ field, lamp, sx, sy, sheet, greyLayer, wakeRef, onIdle }: {
+function BurstField({ field, sx, sy, sheet, greyLayer }: {
   field: SharedValue<Field>;
-  lamp: SharedValue<Lamp>;
   sx: number;
   sy: number;
   sheet: SkImage;
   greyLayer: ReturnType<typeof useGreyLayer>;
-  wakeRef: { current: (() => void) | undefined };
-  onIdle: () => void;
 }) {
-  // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
-  const [onFrame] = useState(() => stepper(field, lamp, onIdle));
-  const wake = useDuring(onFrame, true);
-  useEffect(() => {
-    wakeRef.current = wake;
-    return () => {
-      wakeRef.current = undefined;
-    };
-  }, [wake, wakeRef]);
-
   const sprites = useRectBuffer(PARTICLE_BUDGET, (r, i) => {
     "worklet";
     const { s, d } = field.value;
@@ -144,14 +131,13 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
   const field = useSharedValue(initial);
   const [bursting, setBursting] = useState(false);
   const reduced = usePrefersReducedMotion();
-  const wakeRef = useRef<(() => void) | undefined>(undefined);
-  const poke = useCallback(() => {
-    setBursting(true);
-    wakeRef.current?.();
-  }, []);
   const idle = useCallback(() => {
     if (sceneIdle(field.get())) setBursting(false);
   }, [field]);
+  // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
+  const [onFrame] = useState(() => stepper(field, lamp, idle));
+  // The simulation steps from the throw, whatever the canvas is doing: only the canvas waits for the render.
+  const wake = useDuring(onFrame, false);
   const throwInto = (spawns: readonly ParticleSpawn[]) => {
     "worklet";
     field.modify((v) => {
@@ -159,16 +145,17 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
       for (const p of spawns) spawn(v.s, p);
       return v;
     }, true);
+    wake();
   };
   useLandingReaction(landing, (l) => {
     "worklet";
     throwInto(landingDust(l, reduced, sx, sy, Math.random));
-    scheduleOnRN(poke);
+    scheduleOnRN(setBursting, true);
   });
   useBombBeat(landing, reduced, (l) => {
     "worklet";
     throwInto(bombFx(l, reduced, sx, sy, Math.random));
-    scheduleOnRN(poke);
+    scheduleOnRN(setBursting, true);
     scheduleOnRN(traceOnset, "moment", "bombFx");
   });
 
@@ -182,7 +169,8 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         for (const p of spawns) spawn(v.s, p);
         return v;
       }, true);
-      poke();
+      wake();
+      setBursting(true);
     },
     ember(from, to) {
       if (reduced) return;
@@ -191,7 +179,8 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         startEmber(v.ember, from, to);
         return v;
       }, true);
-      poke();
+      wake();
+      setBursting(true);
     },
     rain() {
       if (reduced) return;
@@ -200,14 +189,15 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         startRain(v.rain);
         return v;
       }, true);
-      poke();
+      wake();
+      setBursting(true);
     },
-  }), [field, reduced, poke]);
+  }), [field, reduced, wake]);
 
   return (
     <>
       <MoteLayer rig={rig} />
-      {bursting && sheet && <BurstField field={field} lamp={lamp} sx={sx} sy={sy} sheet={sheet} greyLayer={greyLayer} wakeRef={wakeRef} onIdle={idle} />}
+      {bursting && sheet && <BurstField field={field} sx={sx} sy={sy} sheet={sheet} greyLayer={greyLayer} />}
     </>
   );
 }

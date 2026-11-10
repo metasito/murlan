@@ -1,13 +1,13 @@
 // The web's particle layer: the rest air (moteLayer) and a 2D canvas that mounts only while a burst flies, whether or not
 // CanvasKit has loaded — the felt swaps renderers, this never does (#1252).
-import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { lazy, Suspense, useCallback, useImperativeHandle, useRef, useState, type Ref } from "react";
 import type { FrameInfo, SharedValue } from "react-native-reanimated";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useDuring } from "@/lib/motion";
-import { DESIGN, type Lamp } from "./lampRig";
+import { DESIGN } from "./lampRig";
 import type { LampRig } from "./useLampRig";
-import { bombFx, landingDust, spawn, tableRng, type ParticleEmitter, type Rng } from "./particles";
+import { bombFx, landingDust, spawn, tableRng, type ParticleEmitter } from "./particles";
 import { startEmber } from "./ember";
 import { startRain } from "./coneRain";
 import { useLandingReaction } from "./useLandingReaction";
@@ -82,52 +82,6 @@ function paintScene(c: CanvasRenderingContext2D, cv: HTMLCanvasElement, scene: S
   c.globalAlpha = 1;
 }
 
-function BurstCanvas({ scene, lamp, rng, sx, sy, wakeRef, onIdle }: {
-  scene: Scene;
-  lamp: SharedValue<Lamp>;
-  rng: Rng;
-  sx: number;
-  sy: number;
-  wakeRef: { current: (() => void) | undefined };
-  onIdle: () => void;
-}) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const [paint] = useState(() => ({ white: null as HTMLCanvasElement | null, sheets: new Map<string, HTMLCanvasElement>() }));
-  const [frame] = useState(() => (info: FrameInfo): boolean => {
-    const dt = Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000);
-    stepScene(scene, lamp.value, dt, rng);
-    const cv = canvas.current;
-    const c = cv?.getContext?.("2d");
-    if (cv && c) paintScene(c, cv, scene, paint, sx, sy);
-    if (sceneIdle(scene)) {
-      onIdle();
-      return false;
-    }
-    return true;
-  });
-  const wake = useDuring(frame, true);
-  useEffect(() => {
-    wakeRef.current = wake;
-    return () => {
-      wakeRef.current = undefined;
-    };
-  }, [wake, wakeRef]);
-  useEffect(() => {
-    const cv = canvas.current;
-    if (!cv) return;
-    cv.width = Math.round(DESIGN.width * sx);
-    cv.height = Math.round(DESIGN.height * sy);
-    wake();
-  }, [sx, sy, wake]);
-  return (
-    <canvas
-      ref={canvas}
-      data-testid="particles"
-      style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-    />
-  );
-}
-
 export function ParticleLayer({ ref, rig, landing }: {
   ref?: Ref<ParticleEmitter>;
   rig: Pick<LampRig, "lamp" | "stillLight" | "sx" | "sy">;
@@ -136,16 +90,29 @@ export function ParticleLayer({ ref, rig, landing }: {
   const { lamp, sx, sy } = rig;
   const [scene] = useState(() => createScene());
   const [rng] = useState(tableRng);
+  const [paint] = useState(() => ({ white: null as HTMLCanvasElement | null, sheets: new Map<string, HTMLCanvasElement>() }));
   const [bursting, setBursting] = useState(false);
   const reduced = usePrefersReducedMotion();
-  const wakeRef = useRef<(() => void) | undefined>(undefined);
+  const canvas = useRef<HTMLCanvasElement | null>(null);
+  // The simulation steps from the throw, whatever the canvas is doing: only the canvas waits for the render.
+  const [frame] = useState(() => (info: FrameInfo): boolean => {
+    stepScene(scene, lamp.value, Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000), rng);
+    const cv = canvas.current;
+    const c = cv?.getContext?.("2d");
+    if (cv && c) {
+      const [w, h] = [Math.round(DESIGN.width * sx), Math.round(DESIGN.height * sy)];
+      if (cv.width !== w || cv.height !== h) [cv.width, cv.height] = [w, h];
+      paintScene(c, cv, scene, paint, sx, sy);
+    }
+    if (!sceneIdle(scene)) return true;
+    setBursting(false);
+    return false;
+  });
+  const wake = useDuring(frame, false);
   const poke = useCallback(() => {
     setBursting(true);
-    wakeRef.current?.();
-  }, []);
-  const idle = useCallback(() => {
-    if (sceneIdle(scene)) setBursting(false);
-  }, [scene]);
+    wake();
+  }, [wake]);
   useLandingReaction(landing, (l) => {
     "worklet";
     for (const p of landingDust(l, reduced, sx, sy, rng)) spawn(scene.s, p);
@@ -183,7 +150,13 @@ export function ParticleLayer({ ref, rig, landing }: {
       <Suspense fallback={null}>
         <MoteLayer rig={rig} />
       </Suspense>
-      {bursting && <BurstCanvas scene={scene} lamp={lamp} rng={rng} sx={sx} sy={sy} wakeRef={wakeRef} onIdle={idle} />}
+      {bursting && (
+        <canvas
+          ref={canvas}
+          data-testid="particles"
+          style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+        />
+      )}
     </>
   );
 }
