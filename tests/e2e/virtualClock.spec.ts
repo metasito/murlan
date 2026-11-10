@@ -35,3 +35,17 @@ test("a paused CSS animation holds its phase across steps", async ({ page, baseU
   await stepThen(page, STEP_MS, "0");
   expect(await animationPhase(page)).toEqual([{ name: "slide", currentTime: 0 }]);
 });
+
+test("an animation a timer creates during a step has not yet been advanced by it", async ({ page, baseURL }) => {
+  await installVirtualClock(page, 1);
+  await page.goto(`${baseURL}/metadata.json`);
+  await page.setContent(PAGE);
+  await takeOver(page);
+  await page.evaluate(() => setTimeout(() => document.getElementById("box")!.classList.add("late"), 1));
+  await step(page);
+  const [created] = await animationPhase(page);
+  expect(created.currentTime).toBeGreaterThanOrEqual(0);
+  expect(created.currentTime).toBeLessThan(STEP_MS);
+  await step(page);
+  expect((await animationPhase(page))[0].currentTime).toBe(STEP_MS);
+});

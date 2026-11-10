@@ -54,9 +54,10 @@ export async function takeOver(page: Page): Promise<void> {
   if (offGrid > 0) await page.clock.runFor(offGrid);
 }
 
+/** Animations step first: one a timer or rAF creates during the step then reads 0, as a browser reads 0 to 15 ms, not the whole step. */
 export async function step(page: Page, ms: number = STEP_MS): Promise<void> {
-  await page.clock.runFor(ms);
   await page.evaluate((ms) => window.murlanStepAnimations(ms), ms);
+  await page.clock.runFor(ms);
 }
 
 /** Every animation's name and `currentTime` now, in the order the document lists them. */
@@ -81,8 +82,8 @@ export async function stepThen<T>(page: Page, ms: number | null, read: string): 
     if (!clock) throw new Error("Playwright's in-page clock is not installed");
     const ms = ${ms};
     if (ms !== null) {
-      await clock.runFor(ms);
       globalThis.murlanStepAnimations(ms);
+      await clock.runFor(ms);
     }
     return ${read};
   })()`) as Promise<T>;

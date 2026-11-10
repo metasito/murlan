@@ -49,8 +49,8 @@ function stepUntil({ want, frames, stepMs }: { want: "engaged" | "rest"; frames:
     let scale = read();
     for (let i = 0; i < frames; i++) {
       if (want === "engaged" && done(scale)) return { scale, frames: i };
-      await clock.runFor(stepMs);
       window.murlanStepAnimations(stepMs);
+      await clock.runFor(stepMs);
       await yieldTask();
       scale = read();
       if (want === "rest" && done(scale)) return { scale, frames: i + 1 };
