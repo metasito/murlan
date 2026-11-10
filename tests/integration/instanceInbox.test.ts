@@ -152,10 +152,13 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     try {
       await opened(target);
       for (let round = 0; round < 50; round++) {
+        const [top] = await redis.xRevRange(inboxOf(target), "+", "-", { COUNT: 1 });
+        const past = Math.max(Number(top?.id.split("-")[0]), Date.now()) + 1_000;
         await redis.del(inboxOf(target));
         const first = sender.send(target, { kind: "probe", n: 2 * round });
-        // An id past every one the reader has seen, as a stream made anew after a loss gets.
-        await redis.xAdd(inboxOf(target), `${Date.now() + 1}-0`, { m: JSON.stringify({ kind: "boot" }) });
+        // An id past every one the reader has seen, as a stream made anew after a loss gets; a clock
+        // reading would repeat the last round's ids when two rounds share a millisecond.
+        await redis.xAdd(inboxOf(target), `${past}-0`, { m: JSON.stringify({ kind: "boot" }) });
         const second = sender.send(target, { kind: "probe", n: 2 * round + 1 });
         await Promise.all([first, second]);
         await eventually(() => seen.length === 2 * round + 2, `round ${round}'s two messages`);
