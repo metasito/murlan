@@ -99,8 +99,10 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
       );
       const phase = save.gameState.exchangePhase;
       if (phase?.kind !== "open") throw new Error("the save opens no exchange");
-      const { hand: _hand, ...beside } = DRAWN;
-      await check(page, `${vp.name}, the note under the pile`, vp, INSETS["0/0"], "it", gameTable(save.gameState), EXCHANGE_NAME, false, { received: phase.cardFromLoser, given: phase.cardFromLoser }, beside);
+      const dealt = gameTable(save.gameState);
+      // The received card rests on the pile, so the hand draws one fewer than the state holds.
+      const resting: DrawnTable = { ...dealt, base: { ...dealt.base, hand: { ...dealt.base.hand, cards: dealt.base.hand.cards - 1 } } };
+      await check(page, `${vp.name}, the note under the pile`, vp, INSETS["0/0"], "it", resting, EXCHANGE_NAME, false, { received: phase.cardFromLoser, given: phase.cardFromLoser });
     });
 
     test(`a thirteen-card straight over an eighteen-card hand: ${vp.name}`, async ({ page, baseURL }) => {
