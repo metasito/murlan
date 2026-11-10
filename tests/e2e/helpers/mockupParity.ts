@@ -598,11 +598,26 @@ interface Capture {
   atRest?: { frames: Capture["frames"]; regions: Trace["regions"] };
 }
 
-/** The app's particle canvas alone: what it drew, and whether it drew anything. */
+/** The app's particle layer alone: what it drew, and whether it drew anything. At rest that is the air, whose motes are views, not canvas pixels. */
 const appLayer = async (page: Page): Promise<Omit<LayerSample, "t"> | null> => {
   const drawn = await page.evaluate(() => {
     const c = document.querySelector<HTMLCanvasElement>('[data-testid="particles"]');
-    if (!c) return null;
+    if (!c) {
+      const air = document.querySelector<HTMLElement>('[data-testid="air"]');
+      if (!air) return null;
+      let lit = false;
+      const state: string[] = [];
+      for (const el of air.querySelectorAll<HTMLElement>("*")) {
+        const s = getComputedStyle(el);
+        state.push(`${s.transform}|${s.opacity}`);
+        if (el.children.length === 0) {
+          let alpha = 1;
+          for (let at: HTMLElement | null = el; at && at !== air; at = at.parentElement) alpha *= Number(getComputedStyle(at).opacity);
+          if (alpha >= 0.017) lit = true;
+        }
+      }
+      return { url: state.join(";"), drawn: lit };
+    }
     // A copy: reading the app's own context back every frame makes Chromium warn on the app's page.
     const copy = new OffscreenCanvas(c.width, c.height).getContext("2d", { willReadFrequently: true })!;
     copy.drawImage(c, 0, 0);
