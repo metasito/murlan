@@ -24,6 +24,7 @@ import {
   type WireGameState,
   type WireRoomState,
   type RatingAfter,
+  type ServerToClientEvents,
 } from "@/shared/protocol";
 import { requireUpdate } from "@/lib/updateRequired";
 import { reportError } from "@/lib/errorReporting";
@@ -608,7 +609,20 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onReaction = (r: { emoji: string; fromSeat: number; username: string }) =>
       pushReaction(r);
 
-    const onPlayerLeft = () => setPlayerLeft(true);
+    const clearDisconnectedSeat = (seat: number | null | undefined) => {
+      if (typeof seat !== "number") return;
+      setDisconnectedSeats((cur) => {
+        if (!(seat in cur)) return cur;
+        const next = { ...cur };
+        delete next[seat];
+        return next;
+      });
+    };
+
+    const onPlayerLeft = (payload: Parameters<ServerToClientEvents["game:player_left"]>[0]) => {
+      setPlayerLeft(true);
+      clearDisconnectedSeat(payload.seatIndex);
+    };
 
     // A vacated seat handed to a bot — the table survives, so this is a
     // notice and nothing more. It must stay separate from game:player_left,
@@ -629,12 +643,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }
       // The seat is vacated now, not merely disconnecting — the sanitized
       // state's own `vacated` flag carries the label from here on.
-      setDisconnectedSeats((cur) => {
-        if (!(payload.seatIndex in cur)) return cur;
-        const next = { ...cur };
-        delete next[payload.seatIndex];
-        return next;
-      });
+      clearDisconnectedSeat(payload.seatIndex);
     };
 
     const onPlayerDisconnected = (
@@ -672,15 +681,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         setReconnectNotice((cur) => (cur === notice ? null : cur));
       }, 3_500);
 
-      if (typeof payload.seatIndex === "number") {
-        const seat = payload.seatIndex;
-        setDisconnectedSeats((cur) => {
-          if (!(seat in cur)) return cur;
-          const next = { ...cur };
-          delete next[seat];
-          return next;
-        });
-      }
+      clearDisconnectedSeat(payload.seatIndex);
     };
 
     const onRejoinFailed = (data: ServerPayload & { roomId?: string }) => {

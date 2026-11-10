@@ -237,9 +237,11 @@ describe("on POSIX, modelled", () => {
     const world = posixWorld();
     const child = world.proc.startBin("node", ["a.js"], {});
     const identity = world.proc.identityOf(child.pid!);
+    const statsBefore = world.statReads();
     assert.equal(world.proc.endTreeIf(child.pid!, identity!, () => true), false);
     world.proc.killTree(child.pid, { halted: () => true });
     assert.equal(world.reads(), 0);
+    assert.equal(world.statReads(), statsBefore, "a halt reads no /proc stat either");
   });
 
   test("a process whose identity still matches is ended with its tree", () => {
