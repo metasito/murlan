@@ -152,7 +152,7 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     try {
       await opened(target);
       for (let round = 0; round < 50; round++) {
-        const [top] = await redis.xRevRange(inboxOf(target), "+", "-", { COUNT: 1 });
+        const top = (await redis.xRevRange(inboxOf(target), "+", "-", { COUNT: 1 }))?.[0];
         const past = Math.max(Number(top?.id.split("-")[0]), Date.now()) + 1_000;
         await redis.del(inboxOf(target));
         const first = sender.send(target, { kind: "probe", n: 2 * round });
