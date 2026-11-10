@@ -22,6 +22,23 @@ const { felt: FELT, handShade: HAND_SHADE, particles: PARTICLES } = COUNTED;
 
 type Frame = RenderCounts & { lamp: TraceFrame["lamp"] };
 
+/** The air's mote views: how many show (their opacities multiplied up to the air), and each one's transform and opacity. */
+const AIR = `(() => {
+  const air = document.querySelector('[data-testid="air"]');
+  if (!air) return null;
+  let lit = 0;
+  const state = [];
+  for (const el of air.querySelectorAll("*")) {
+    const s = getComputedStyle(el);
+    state.push(s.transform + "|" + s.opacity);
+    if (el.children.length) continue;
+    let alpha = 1;
+    for (let at = el; at && at !== air; at = at.parentElement) alpha *= Number(getComputedStyle(at).opacity);
+    if (alpha > 0.017) lit++;
+  }
+  return { lit, state: state.join(";") };
+})()`;
+
 const READ = `({ ...${TAKE_RENDER_COUNTS}, lamp: window.murlanTrace.frames.at(-1)?.lamp })`;
 
 async function frames(page: Page, n: number): Promise<Frame[]> {
@@ -46,7 +63,9 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   await startRenderCounts(page);
   await frames(page, SETTLE);
 
+  const airBefore = await page.evaluate<{ lit: number; state: string } | null>(AIR);
   const rest = await frames(page, WINDOW);
+  const airAfter = await page.evaluate<{ lit: number; state: string } | null>(AIR);
   const counts = {
     felt: drew(rest, FELT),
     feltTwiceRunning: rest.filter((f, i) => i > 0 && (f.draws[FELT] ?? 0) > 0 && (rest[i - 1].draws[FELT] ?? 0) > 0).length,
@@ -66,6 +85,8 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   expect(counts.offscreen, "draws to a canvas outside the document").toBe(0);
   expect(counts.cardStyles, "style writes inside a card's view at rest").toBe(0);
   expect(counts.particles, "frames the motes drew").toBeLessThanOrEqual(WINDOW * 0.55);
+  const airShows = !!airBefore && !!airAfter && airBefore.lit >= 1 && airAfter.lit >= 1 && airAfter.state !== airBefore.state;
+  expect(counts.particles >= 1 || airShows, "the motes neither drew on a canvas nor showed as views whose transforms and opacities moved").toBe(true);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await frames(page, SETTLE);
