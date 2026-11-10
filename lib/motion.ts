@@ -56,7 +56,7 @@ export function useLoop(value: SharedValue<number>, loop: (() => Loop) | null, k
   }, [running, value, key]);
 }
 
-/** Penner's easeInOutSine, the ease every ambient loop in the app breathes on. */
+/** Penner's easeInOutSine as a bezier: within 0.0175 of the move from `Easing.inOut(Easing.sin)`. */
 export const SINE_EASE = cubicBezier(0.445, 0.05, 0.55, 0.95);
 
 /** A keyframe set that goes `from` to `to` and back on `SINE_EASE`: one loop is there and back, so it needs no reversed direction. */
@@ -75,22 +75,19 @@ export interface AmbientSpec {
   duration: number;
   /** A negative delay starts the loop that far into its pass. */
   delay?: number;
-  /** False pauses the loop where it stands and resumes it from there. */
-  playing?: boolean;
 }
 
 /**
  * An endless loop of opacity or transform keyframes, as the style that runs it: a CSS animation on web, Reanimated's
  * C++ engine on native, neither on the JS or UI thread per frame. A style the caller wears on an `Animated.View`.
  */
-export function ambient({ keyframes, duration, delay = 0, playing = true }: AmbientSpec): ViewStyle {
+export function ambient({ keyframes, duration, delay = 0 }: AmbientSpec): ViewStyle {
   return {
     animationName: keyframes,
     animationDuration: `${duration}ms`,
     animationIterationCount: "infinite",
     animationTimingFunction: "linear",
     animationDelay: `${delay}ms`,
-    animationPlayState: playing ? "running" : "paused",
   } as ViewStyle;
 }
 
@@ -101,10 +98,9 @@ export function useAmbient(spec: AmbientSpec | null): ViewStyle | undefined {
   const keyframes = spec?.keyframes;
   const duration = spec?.duration;
   const delay = spec?.delay;
-  const playing = spec?.playing;
   return useMemo(
-    () => (on && keyframes !== undefined && duration !== undefined ? ambient({ keyframes, duration, delay, playing }) : undefined),
-    [on, keyframes, duration, delay, playing]
+    () => (on && keyframes !== undefined && duration !== undefined ? ambient({ keyframes, duration, delay }) : undefined),
+    [on, keyframes, duration, delay]
   );
 }
 

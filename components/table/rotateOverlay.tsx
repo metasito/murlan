@@ -4,7 +4,7 @@
 
 import { View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import Animated from "react-native-reanimated";
+import Animated, { type CSSAnimationKeyframes } from "react-native-reanimated";
 import { TableText } from "./TableText";
 import { portraitOverlayStyles } from "./chrome";
 import { ROTATE_SETTLED, ROTATE_UPRIGHT, rotateGlyphAngle } from "./rotateGlyph";
@@ -22,7 +22,7 @@ const PERIOD = HOLD_UPRIGHT + TURN_MS + HOLD_SETTLED + TURN_MS;
 const turned = (turn: number) => ({ transform: [{ rotate: `${rotateGlyphAngle(turn)}deg` }] });
 const RESTING = turned(ROTATE_SETTLED);
 const at = (ms: number) => `${(100 * ms) / PERIOD}%`;
-const TURNING = {
+const TURNING: CSSAnimationKeyframes = {
   "0%": { ...turned(ROTATE_UPRIGHT), animationTimingFunction: SINE_EASE },
   [at(HOLD_UPRIGHT)]: { ...turned(ROTATE_UPRIGHT), animationTimingFunction: SINE_EASE },
   [at(HOLD_UPRIGHT + TURN_MS)]: { ...turned(ROTATE_SETTLED), animationTimingFunction: SINE_EASE },
@@ -32,7 +32,7 @@ const TURNING = {
 
 export function RotateOverlay() {
   const { t } = useTranslation();
-  const glyphStyle = useAmbient({ keyframes: TURNING as never, duration: PERIOD, delay: -(HOLD_UPRIGHT + TURN_MS + HOLD_SETTLED) });
+  const glyphStyle = useAmbient({ keyframes: TURNING, duration: PERIOD, delay: -(HOLD_UPRIGHT + TURN_MS + HOLD_SETTLED) });
 
   return (
     <View testID="rotate-overlay" style={portraitOverlayStyles.overlay} accessibilityViewIsModal>

@@ -8,8 +8,6 @@ import {
   DESIGN,
   LIGHT_ABOVE,
   designScale,
-  SWAY,
-  SWAY_KICKED,
   lampControls,
   lampMoved,
   lampSettled,
@@ -21,7 +19,6 @@ import {
   type LevelOwner,
   type Pool,
 } from "../../components/table/lampRig.ts";
-import { SWAY_VS_INTEGRAL } from "../../lib/swayTable.ts";
 import { seatDirection, type FlyDirection } from "../../components/seatLayout.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { INSETS, NO_INSETS, phoneTable } from "../helpers/phoneTable.ts";
@@ -70,9 +67,7 @@ function mockup() {
   return {
     lamp: ctx.lamp as MockupLamp,
     step() {
-      // The rig's sway clock stops with the freeze; the mockup's `simT` is the clock its sway speed reads.
-      const lamp = ctx.lamp as MockupLamp;
-      if (lamp.freeze === 0) ctx.simT = (ctx.simT as number) + DT;
+      ctx.simT = (ctx.simT as number) + DT;
       (ctx.lampStep as (dt: number) => void)(DT);
     },
     to: (seat: string) => (ctx.lampTo as (k: string) => void)(seat),
@@ -104,14 +99,14 @@ describe("the lamp rig", () => {
       }
       m.step();
       stepLamp(app, DT, false);
-      for (const [a, b, within] of [
-        [app.lx, m.lamp.lx, SWAY_VS_INTEGRAL * (SWAY + SWAY_KICKED)],
-        [app.ly, m.lamp.ly, 1e-9],
-        [app.level, m.lamp.L, 1e-9],
-        [app.f, m.lamp.f, 1e-9],
-        [app.r, 1, 1e-9],
-      ] as const) {
-        assert.ok(Math.abs(a - b) < within, `frame ${frame}: ${a} against the mockup's ${b}`);
+      for (const [a, b] of [
+        [app.lx, m.lamp.lx],
+        [app.ly, m.lamp.ly],
+        [app.level, m.lamp.L],
+        [app.f, m.lamp.f],
+        [app.r, 1],
+      ]) {
+        assert.ok(Math.abs(a - b) < 1e-9, `frame ${frame}: ${a} against the mockup's ${b}`);
       }
     }
   });
