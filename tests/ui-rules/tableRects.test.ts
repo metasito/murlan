@@ -8,6 +8,9 @@ import { SUPPORTED_LOCALES } from "../../shared/i18n.ts";
 import { USERNAME_MAX } from "../../shared/username.ts";
 import { brokenRules, intersects, RECT_NAMES, TABLE_RULES, tableRects, type SeatBadgeState, type TableState } from "../../components/tableRects.ts";
 import type { EdgeInsets } from "../../components/tableFrame.ts";
+import { SEAT_BADGE_SLOT_W } from "../../components/seatLayout.ts";
+import { noticeWidth } from "../../components/table/noticeWidth.ts";
+import { TEXT_METRICS } from "../../components/table/textMetrics.generated.ts";
 import type { NoticeContent } from "../../components/table/noticeWidth.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { INSETS } from "../helpers/phoneTable.ts";
@@ -65,7 +68,7 @@ function* cases(): Generator<Case> {
         for (const base of EXTREMES) yield at("extreme", { ...base, chips: { combo: empty, turn: onMove.turn } });
         const [onMoveLong] = turnScenes(LONGEST_USERNAME).filter((t) => t.name.includes("turnOf"));
         yield at("longest username", { ...DEALT, chips: { combo: empty, turn: onMoveLong.turn } });
-        for (const scene of exchangeScenes(LONGEST_BOT)) yield at(`exchange ${scene.name}`, { ...DEALT, chips: { combo: scene.combo, turn: scene.turn } });
+        for (const scene of exchangeScenes(LONGEST_BOT)) yield at(`exchange ${scene.name}`, { ...DEALT, chips: { combo: scene.combo, turn: scene.turn, note: scene.note ?? undefined } });
         for (const badge of BADGES) yield at(`badged ${badge.kind}`, { ...DEALT, seats: badgedSeats(badge), chips: { combo: empty, turn: onMove.turn } });
       }
 }
@@ -80,24 +83,12 @@ interface Known {
   where: readonly RegExp[];
 }
 
-const ANY = "[^,]+";
-/** The cases on `viewport`, in `locale`, at `inset`, each a regex alternation, whose label goes on with `rest`. */
-const on = (viewport: string, locale: string, inset: string, rest: string) =>
-  new RegExp(`^(?:${viewport}) \\(\\d+x\\d+\\), (?:${inset}), (?:${locale}), ${rest}`);
-
 /**
  * What the table on main breaks, each found by this test and none fixed here. A break outside an
  * entry is red; so is a case an entry covers that keeps all its rules, and a rule of an entry broken
  * more or fewer times than it says, so a fix has to narrow the entry and the list only shrinks.
  */
-const KNOWN: readonly Known[] = [
-  {
-    defect: "a badge lifts its seat's name a badge row higher, the top seat's into the turn chip",
-    ticket: "#1988 item 109",
-    breaks: { "hudTurn overlaps nameTop": 144 },
-    where: [on("[^(]+", ANY, ANY, "badged ")],
-  },
-];
+const KNOWN: readonly Known[] = [];
 
 describe("the table keeps its rules", () => {
   test("the matrix covers what it says", () => {
@@ -143,7 +134,7 @@ describe("the rules see what they are for", () => {
     seats: FULL,
     hand: { cards: 13, onTurn: true, faceDown: false },
     pile: 5,
-    chips: { combo: [], turn: [] },
+    chips: { combo: [{ runs: [{ run: "text:gameShared.emptyTable" }] }], turn: [], note: [{ runs: [{ run: "text:exchange.pillNothing" }] }] },
   };
   const solved = () => tableRects({ ...tablet, state });
 
@@ -183,14 +174,61 @@ describe("the rules see what they are for", () => {
 
   test("a chip too wide for its row is an overlap, and a note cut is named", () => {
     const sentence = { runs: [{ run: "text:exchange.pileGives", slots: ["w".repeat(30), "w".repeat(30), "w".repeat(30)] }] };
+    const empty = { runs: [{ run: "text:gameShared.emptyTable" }] };
+    const choice = { runs: [{ run: "text:exchange.watching", slots: ["w".repeat(30), "w".repeat(30)] }] };
     const long = turnScenes("w".repeat(30)).find((s) => s.name.includes("turnOf"))!.turn;
     const named = tableRects({ ...tablet, state: { ...state, chips: { combo: [], turn: long } } });
     assert.deepEqual(brokenRules(named), [], "a turn chip is held to its band whatever it holds");
-    const cut = tableRects({ ...tablet, state: { ...state, chips: { combo: [sentence, sentence, sentence, sentence], turn: [] } } });
+    const cut = tableRects({ ...tablet, state: { ...state, chips: { combo: Array(40).fill(empty), turn: [] } } });
     assert.ok(brokenRules(cut).includes("hudCombo cuts its words"), brokenRules(cut).join("; "));
+    const noteCut = tableRects({ ...tablet, state: { ...state, chips: { combo: [], turn: [], note: [sentence, sentence, sentence, sentence] } } });
+    assert.ok(brokenRules(noteCut).includes("pileNote cuts its words"), brokenRules(noteCut).join("; "));
+    const asked = tableRects({ ...tablet, state: { ...state, chips: { combo: [], turn: [{ dot: true }, choice, choice, { runtime: "strong" }] } } });
+    assert.ok(brokenRules(asked).includes("hudTurn cuts its words"), brokenRules(asked).join("; "));
     const t = tableRects({ ...tablet, state: { ...state, chips: { combo: [], turn: long } } });
     const combo = t.rects.hudCombo ?? { x: 0, y: t.rects.hudTurn!.y, w: 0, h: t.rects.hudTurn!.h };
     t.rects.hudCombo = { ...combo, w: t.rects.hudTurn!.x + 1 - combo.x };
     assert.ok(brokenRules(t).some((m) => m.startsWith("hudCombo overlaps")), brokenRules(t).join("; "));
+  });
+});
+
+describe("a seat's badge is drawn whole", () => {
+  const cases = VIEWPORTS.flatMap((vp) => SUPPORTED_LOCALES.flatMap((locale) => BADGES.map((badge) => ({ vp, locale, badge }))));
+  const solve = (c: (typeof cases)[number], seconds = 60) =>
+    tableRects({ ...c.vp, insets: INSETS["0/0"], locale: c.locale, state: { ...DEALT, seats: badgedSeats(c.badge.kind === "reconnecting" ? { kind: "reconnecting", seconds } : c.badge), chips: { combo: [], turn: [] } } });
+
+  test("its strip is wider than the widest badge, so no seat's is cut at a label's width", () => {
+    for (const c of cases)
+      for (const name of ["badgeTop", "badgeLeft", "badgeRight"] as const) {
+        const t = solve(c);
+        assert.ok(t.rects[name]!.w <= SEAT_BADGE_SLOT_W * t.layout.scale, `${c.vp.name}, ${c.locale}, ${c.badge.kind}: ${name} ${t.rects[name]!.w} wide`);
+        assert.equal(t.capped[name], undefined, `${name} is held to a width`);
+      }
+  });
+
+  test("a username of thirty letters is cut short of everything beside its badge", () => {
+    for (const c of cases.filter((x) => x.badge.kind === "vacated")) {
+      const t = tableRects({ ...c.vp, insets: INSETS["0/0"], locale: c.locale, state: { ...DEALT, seats: { top: { ...FULL.top, name: LONGEST_USERNAME, badge: c.badge }, left: { ...FULL.left, name: LONGEST_USERNAME, badge: c.badge }, right: { ...FULL.right, name: LONGEST_USERNAME, badge: c.badge } }, chips: { combo: [], turn: [] } } });
+      for (const name of ["badgeTop", "badgeLeft", "badgeRight"] as const) {
+        assert.ok(t.rects[name]!.w <= SEAT_BADGE_SLOT_W * t.layout.scale + 1e-6, `${c.vp.name}, ${c.locale}: ${name} is ${t.rects[name]!.w} wide`);
+        assert.equal(t.capped[name], true);
+      }
+      assert.deepEqual(brokenRules(t).filter((rule) => rule.includes("badge")), [], `${c.vp.name}, ${c.locale}: a cut badge touches something`);
+    }
+  });
+
+  test("a countdown is priced at its widest digits, since the face sets none tabular", () => {
+    const face = TEXT_METRICS.faces.bold;
+    assert.notEqual(new Set(Object.values(face.tabularDigits)).size, 1, "the face now sets tabular digits: price the digit, not the widest");
+    for (const c of cases.filter((x) => x.badge.kind === "reconnecting")) {
+      const at = (seconds: number) => solve(c, seconds);
+      for (const digits of [[10, 60], [1, 9]])
+        for (let seconds = digits[0]; seconds <= digits[1]; seconds++) {
+          const [now, widest] = [at(seconds), at(digits[1])];
+          assert.equal(now.rects.badgeTop!.w, widest.rects.badgeTop!.w, `${c.vp.name}, ${c.locale}: ${seconds} s is priced narrower than ${digits[1]} s`);
+          const typed = noticeWidth("reconnecting", c.locale, now.layout.scale, [{ runs: [{ run: "text:gameTable.seatReconnecting", slots: [String(seconds)] }] }], "linear");
+          assert.ok(Math.abs(now.rects.badgeTop!.w - now.overcount.badgeTop! - typed) < 1e-9, `${c.vp.name}, ${c.locale}: ${seconds} s overcount is not the words as typed`);
+        }
+    }
   });
 });

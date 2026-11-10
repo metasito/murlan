@@ -29,21 +29,21 @@ export function PassedMark({ side, disc, scale }: { side: "top" | "side"; disc: 
  * A seat's own disconnect countdown, for the whole grace (docs/GAME-RULES.md § Decisions). Ticks
  * locally off the server's own `seconds`, restarted by `resetKey`.
  */
-export function ReconnectingMark({ seconds, resetKey, scale }: { seconds: number; resetKey: string; scale: number }) {
+export function ReconnectingMark({ seconds, resetKey, scale, room }: { seconds: number; resetKey: string; scale: number; room?: number }) {
   const { t } = useTranslation();
   const left = useSecondsLeft(useCountdown({ seconds, resetKey, running: true }));
 
   return (
-    <TableNotice kind="reconnecting" tone="neutral" scale={scale}>
+    <TableNotice kind="reconnecting" tone="neutral" scale={scale} room={room}>
       <NoticeText testID="seat-reconnect-chip">{t("gameTable.seatReconnecting", { seconds: left })}</NoticeText>
     </TableNotice>
   );
 }
 
-export function VacatedMark({ username, scale }: { username: string; scale: number }) {
+export function VacatedMark({ username, scale, room }: { username: string; scale: number; room?: number }) {
   const { t } = useTranslation();
   return (
-    <TableNotice kind="vacated" tone="neutral" scale={scale}>
+    <TableNotice kind="vacated" tone="neutral" scale={scale} room={room}>
       <NoticeText testID="seat-vacated-chip">{t("game.seatLeft", { username })}</NoticeText>
     </TableNotice>
   );

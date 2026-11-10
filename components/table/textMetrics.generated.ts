@@ -303,63 +303,6 @@ export const TEXT_METRICS = {
           "fallback": [],
           "slots": []
         },
-        "text:exchange.pileGives": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 2602,
-          "chars": 7,
-          "fallback": [],
-          "slots": [
-            "from",
-            "card",
-            "to"
-          ]
-        },
-        "text:exchange.pileYouGive": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 2618,
-          "chars": 7,
-          "fallback": [],
-          "slots": [
-            "card",
-            "to"
-          ]
-        },
-        "text:exchange.pileGivesYou": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 2503,
-          "chars": 7,
-          "fallback": [],
-          "slots": [
-            "from",
-            "card"
-          ]
-        },
-        "text:exchange.pillNothing": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 8694,
-          "chars": 18,
-          "fallback": [],
-          "slots": []
-        },
-        "text:exchangeAnnouncement.noExchangeText": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 14787,
-          "chars": 32,
-          "fallback": [
-            "U+1F0CF"
-          ],
-          "slots": []
-        },
         "text:gameShared.you": {
           "face": "regular",
           "upper": true,
@@ -439,6 +382,65 @@ export const TEXT_METRICS = {
           ]
         }
       },
+      "pileNote": {
+        "text:exchange.pileGives": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 2546,
+          "chars": 7,
+          "fallback": [],
+          "slots": [
+            "from",
+            "card",
+            "to"
+          ]
+        },
+        "text:exchange.pileYouGive": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 2594,
+          "chars": 7,
+          "fallback": [],
+          "slots": [
+            "card",
+            "to"
+          ]
+        },
+        "text:exchange.pileGivesYou": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 2479,
+          "chars": 7,
+          "fallback": [],
+          "slots": [
+            "from",
+            "card"
+          ]
+        },
+        "text:exchange.pillNothing": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 8700,
+          "chars": 18,
+          "fallback": [],
+          "slots": []
+        },
+        "text:exchangeAnnouncement.noExchangeText": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 14778,
+          "chars": 32,
+          "fallback": [
+            "U+1F0CF"
+          ],
+          "slots": []
+        }
+      },
       "turn": {
         "text:gameShared.matchOver": {
           "face": "regular",
@@ -500,8 +502,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 13578,
-          "chars": 31,
+          "units": 8802,
+          "chars": 21,
           "fallback": [],
           "slots": [
             "name"
@@ -531,8 +533,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 14706,
-          "chars": 32,
+          "units": 11248,
+          "chars": 25,
           "fallback": [],
           "slots": [
             "winner"
@@ -542,8 +544,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 13792,
-          "chars": 30,
+          "units": 10334,
+          "chars": 23,
           "fallback": [],
           "slots": [
             "winner",
@@ -865,63 +867,6 @@ export const TEXT_METRICS = {
           "fallback": [],
           "slots": []
         },
-        "text:exchange.pileGives": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 4275,
-          "chars": 11,
-          "fallback": [],
-          "slots": [
-            "from",
-            "card",
-            "to"
-          ]
-        },
-        "text:exchange.pileYouGive": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 5344,
-          "chars": 13,
-          "fallback": [],
-          "slots": [
-            "card",
-            "to"
-          ]
-        },
-        "text:exchange.pileGivesYou": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 4668,
-          "chars": 11,
-          "fallback": [],
-          "slots": [
-            "from",
-            "card"
-          ]
-        },
-        "text:exchange.pillNothing": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 8020,
-          "chars": 17,
-          "fallback": [],
-          "slots": []
-        },
-        "text:exchangeAnnouncement.noExchangeText": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 12977,
-          "chars": 28,
-          "fallback": [
-            "U+1F0CF"
-          ],
-          "slots": []
-        },
         "text:gameShared.you": {
           "face": "regular",
           "upper": true,
@@ -1001,6 +946,65 @@ export const TEXT_METRICS = {
           ]
         }
       },
+      "pileNote": {
+        "text:exchange.pileGives": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 4226,
+          "chars": 11,
+          "fallback": [],
+          "slots": [
+            "from",
+            "card",
+            "to"
+          ]
+        },
+        "text:exchange.pileYouGive": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 5316,
+          "chars": 13,
+          "fallback": [],
+          "slots": [
+            "card",
+            "to"
+          ]
+        },
+        "text:exchange.pileGivesYou": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 4640,
+          "chars": 11,
+          "fallback": [],
+          "slots": [
+            "from",
+            "card"
+          ]
+        },
+        "text:exchange.pillNothing": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 8042,
+          "chars": 17,
+          "fallback": [],
+          "slots": []
+        },
+        "text:exchangeAnnouncement.noExchangeText": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 12974,
+          "chars": 28,
+          "fallback": [
+            "U+1F0CF"
+          ],
+          "slots": []
+        }
+      },
       "turn": {
         "text:gameShared.matchOver": {
           "face": "regular",
@@ -1062,8 +1066,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 14039,
-          "chars": 31,
+          "units": 6952,
+          "chars": 17,
           "fallback": [],
           "slots": [
             "name"
@@ -1093,8 +1097,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 12272,
-          "chars": 27,
+          "units": 9505,
+          "chars": 21,
           "fallback": [],
           "slots": [
             "winner"
@@ -1104,8 +1108,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 10655,
-          "chars": 24,
+          "units": 7888,
+          "chars": 18,
           "fallback": [],
           "slots": [
             "winner",
@@ -1427,63 +1431,6 @@ export const TEXT_METRICS = {
           "fallback": [],
           "slots": []
         },
-        "text:exchange.pileGives": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 2726,
-          "chars": 8,
-          "fallback": [],
-          "slots": [
-            "from",
-            "card",
-            "to"
-          ]
-        },
-        "text:exchange.pileYouGive": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 3413,
-          "chars": 10,
-          "fallback": [],
-          "slots": [
-            "card",
-            "to"
-          ]
-        },
-        "text:exchange.pileGivesYou": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 3149,
-          "chars": 8,
-          "fallback": [],
-          "slots": [
-            "from",
-            "card"
-          ]
-        },
-        "text:exchange.pillNothing": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 7293,
-          "chars": 16,
-          "fallback": [],
-          "slots": []
-        },
-        "text:exchangeAnnouncement.noExchangeText": {
-          "face": "regular",
-          "upper": true,
-          "tabular": false,
-          "units": 14856,
-          "chars": 33,
-          "fallback": [
-            "U+1F0CF"
-          ],
-          "slots": []
-        },
         "text:gameShared.you": {
           "face": "regular",
           "upper": true,
@@ -1563,6 +1510,65 @@ export const TEXT_METRICS = {
           ]
         }
       },
+      "pileNote": {
+        "text:exchange.pileGives": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 2677,
+          "chars": 8,
+          "fallback": [],
+          "slots": [
+            "from",
+            "card",
+            "to"
+          ]
+        },
+        "text:exchange.pileYouGive": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 3387,
+          "chars": 10,
+          "fallback": [],
+          "slots": [
+            "card",
+            "to"
+          ]
+        },
+        "text:exchange.pileGivesYou": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 3112,
+          "chars": 8,
+          "fallback": [],
+          "slots": [
+            "from",
+            "card"
+          ]
+        },
+        "text:exchange.pillNothing": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 7292,
+          "chars": 16,
+          "fallback": [],
+          "slots": []
+        },
+        "text:exchangeAnnouncement.noExchangeText": {
+          "face": "bold",
+          "upper": true,
+          "tabular": false,
+          "units": 14886,
+          "chars": 33,
+          "fallback": [
+            "U+1F0CF"
+          ],
+          "slots": []
+        }
+      },
       "turn": {
         "text:gameShared.matchOver": {
           "face": "regular",
@@ -1624,8 +1630,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 14456,
-          "chars": 33,
+          "units": 8873,
+          "chars": 21,
           "fallback": [],
           "slots": [
             "name"
@@ -1655,8 +1661,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 12133,
-          "chars": 27,
+          "units": 9001,
+          "chars": 20,
           "fallback": [],
           "slots": [
             "winner"
@@ -1666,8 +1672,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 11191,
-          "chars": 25,
+          "units": 8059,
+          "chars": 18,
           "fallback": [],
           "slots": [
             "winner",
