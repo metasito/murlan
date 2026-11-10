@@ -24,6 +24,7 @@ import {
   type WireGameState,
   type WireRoomState,
   type RatingAfter,
+  type SeatEvent,
 } from "@/shared/protocol";
 import { requireUpdate } from "@/lib/updateRequired";
 import { reportError } from "@/lib/errorReporting";
@@ -618,7 +619,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       });
     };
 
-    const onPlayerLeft = (payload?: { seatIndex?: number | null }) => {
+    const onPlayerLeft = (payload: SeatEvent) => {
       setPlayerLeft(true);
       clearDisconnectedSeat(payload?.seatIndex);
     };

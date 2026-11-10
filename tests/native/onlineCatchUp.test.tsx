@@ -97,9 +97,20 @@ describe('the online table under a reconnect notice', () => {
       message: 'Carl disconnected',
       params: { seconds: 30 },
     });
-    expect(mockTableProps.mock.calls.at(-1)![0]).toMatchObject({ disconnectedSeats: { 1: { seconds: 30 } } });
+    await view.socket().deliver('game:player_disconnected', {
+      userId: 'dana',
+      username: 'Dana',
+      seatIndex: 2,
+      code: 'NEWER_SERVER_NOTICE',
+      message: 'Dana disconnected',
+      params: { seconds: 30 },
+    });
+    expect(mockTableProps.mock.calls.at(-1)![0]).toMatchObject({
+      disconnectedSeats: { 1: { seconds: 30 }, 2: { seconds: 30 } },
+    });
     await view.socket().deliver('game:player_left', { userId: 'carl', username: 'Carl', seatIndex: 1 });
-    expect((mockTableProps.mock.calls.at(-1)![0] as { disconnectedSeats: object }).disconnectedSeats).toEqual({});
+    const away = (mockTableProps.mock.calls.at(-1)![0] as { disconnectedSeats: Record<number, unknown> }).disconnectedSeats;
+    expect(Object.keys(away)).toEqual(['2']);
     await view.unmount();
   });
 });

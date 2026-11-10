@@ -203,7 +203,7 @@ export function procFor({
 
   /** Ends the tree of `pid` only while it is still the process `identity` names. True when it did. */
   function endTreeIf(pid, identity, /** @type {() => boolean} */ halted = () => false) {
-    if (identity == null || identityOf(pid) !== identity) return false;
+    if (identity == null || halted() || identityOf(pid) !== identity) return false;
     return killTree(pid, { identity, halted });
   }
 

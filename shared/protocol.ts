@@ -76,7 +76,7 @@ export interface ServerPayload {
   params?: TranslationParams;
 }
 
-interface SeatEvent {
+export interface SeatEvent {
   userId: string;
   username: string;
   seatIndex: number;
