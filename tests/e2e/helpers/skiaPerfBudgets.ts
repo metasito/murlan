@@ -21,5 +21,5 @@ export interface WindowBudget {
 
 export const BUDGETS = {
   rest: { feltFrames: 89, glDrawsPerFrame: 5.1, canvas2dDraws: 1580, offscreenDraws: 0, readPixels: 0, styleWrites: 0 },
-  turn: { glDrawsPerFrame: 35.5, canvas2dDraws: 11850, offscreenDraws: 4, readPixels: 0, styleWrites: 17700, cardStyles: 16800, cardStylesFloor: 1300 },
+  turn: { glDrawsPerFrame: 35.5, canvas2dDraws: 11850, offscreenDraws: 4, readPixels: 0, styleWrites: 17700, cardStyles: 16800, cardStylesFloor: 400 },
 } as const satisfies Record<string, WindowBudget>;
