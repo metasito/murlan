@@ -10,7 +10,7 @@ import { openOnlineTable } from "./helpers/onlineTable";
 import { PHONES } from "./helpers/phones";
 import { setSafeArea } from "./helpers/safeArea";
 import { INSETS } from "../helpers/phoneTable";
-import { DRAWN, drawn, misfits, RAIL, settled } from "./helpers/drawnRects";
+import { DRAWN, misfits, RAIL, settled } from "./helpers/drawnRects";
 import { captureGameState, captureStateById, type CaptureState } from "../../lib/captureStates";
 import { createDeck, type Card } from "../../lib/game/gameEngine";
 import type { OfflineSave } from "../../lib/offlineSave";
@@ -20,6 +20,7 @@ import { USERNAME_MAX } from "../../shared/username";
 import type { EdgeInsets } from "../../components/tableFrame";
 import { brokenRules, tableRects } from "../../components/tableRects";
 import { drawnChips, gameTable, TABLETS, type DrawnTable } from "../helpers/tableScenes";
+import { readHandArrival } from "../../components/table/exchangeModel";
 
 const VIEWPORTS = [...PHONES, ...TABLETS];
 const PHONE_INSETS = Object.entries(INSETS);
@@ -35,7 +36,7 @@ async function open(page: Page, baseURL: string, save: OfflineSave, locale: Loca
   await setSafeArea(page, insets.left, insets.bottom, insets.right, insets.top);
 }
 
-async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false, exchangeCards?: { received: Card; given: Card }, rects = DRAWN) {
+async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false, exchangeCards?: { received: Card; given?: Card }, rects = DRAWN) {
   const got = await settled(page, rects);
   const chips = drawnChips(table, locale, got.texts, exchangeName, exchangeCards);
   expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn} | ${got.texts.note})`).toEqual({ combo: expect.anything(), turn: expect.anything(), note: got.texts.note === "" ? null : expect.anything() });
@@ -85,24 +86,18 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
       const save = exchangeSave({ seats: 3, hand: DEAL_SIZE[3], winner: 0, loser: 1, names: [EXCHANGE_NAME, EXCHANGE_NAME, EXCHANGE_NAME] });
       await resumeOnVirtualClock(page, baseURL!, save);
       await stepUntil(page, () => page.getByTestId("exchange-pill-note").isVisible(), "the received card resting on the pile", { chunkMs: 100 });
-      let before = "";
-      await stepUntil(
-        page,
-        async () => {
-          const now = JSON.stringify(await drawn(page, DRAWN));
-          const still = now === before && (await page.getByTestId("exchange-pill-note").isVisible());
-          before = now;
-          return still;
-        },
-        "the table at rest under the note",
-        { chunkMs: 100 }
-      );
       const phase = save.gameState.exchangePhase;
       if (phase?.kind !== "open") throw new Error("the save opens no exchange");
       const dealt = gameTable(save.gameState);
-      // The received card rests on the pile, so the hand draws one fewer than the state holds.
-      const resting: DrawnTable = { ...dealt, base: { ...dealt.base, hand: { ...dealt.base.hand, cards: dealt.base.hand.cards - 1 } } };
-      await check(page, `${vp.name}, the note under the pile`, vp, INSETS["0/0"], "it", resting, EXCHANGE_NAME, false, { received: phase.cardFromLoser, given: phase.cardFromLoser });
+      const hand = save.gameState.players[0].hand;
+      const { withheldIds } = readHandArrival({
+        hand,
+        announced: { winnerName: EXCHANGE_NAME, loserName: EXCHANGE_NAME, winnerIdx: 0, loserIdx: 1, twoJokers: false, oneWay: false, cardReceived: phase.cardFromLoser },
+        stages: { key: "", receive: "rest", give: "waiting", ready: false },
+        viewerSeat: 0,
+      });
+      const resting: DrawnTable = { ...dealt, base: { ...dealt.base, hand: { ...dealt.base.hand, cards: hand.length - withheldIds.length } } };
+      await check(page, `${vp.name}, the note under the pile`, vp, INSETS["0/0"], "it", resting, EXCHANGE_NAME, false, { received: phase.cardFromLoser });
     });
 
     test(`a thirteen-card straight over an eighteen-card hand: ${vp.name}`, async ({ page, baseURL }) => {

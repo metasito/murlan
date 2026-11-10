@@ -91,7 +91,7 @@ const views = (name: string): Record<"winner" | "loser" | "watcher", ExchangeVie
 const CLOSED: ExchangeView = { open: false, viewerIsWinner: false, viewerIsLoser: false, winner: null, loser: null };
 
 /** Every exchange the table announces, from each chair, as the pair of pills it draws together. */
-export function exchangeScenes(name: string, cards: { received: Card; given: Card } = { received: card("K"), given: card("4") }): ChipScene[] {
+export function exchangeScenes(name: string, cards: { received: Card; given?: Card } = { received: card("K") }): ChipScene[] {
   const players = [{ name }, { name }, { name }];
   const out: ChipScene[] = [];
   const announce = (winnerIdx: number, loserIdx: number, extra: Partial<ExchangeAnnounceData>): ExchangeAnnounceData => ({
@@ -109,7 +109,7 @@ export function exchangeScenes(name: string, cards: { received: Card; given: Car
     const shapes: [string, ExchangeAnnounceData][] = [
       ["twoJokers", announce(winnerIdx, loserIdx, { twoJokers: true })],
       ["oneWay", announce(winnerIdx, loserIdx, { oneWay: true, cardReceived: cards.received })],
-      ["give", announce(winnerIdx, loserIdx, { cardReceived: cards.received, cardGiven: cards.given })],
+      ["give", announce(winnerIdx, loserIdx, { cardReceived: cards.received, cardGiven: cards.given ?? card("4") })],
     ];
     for (const [shape, shown] of shapes) {
       // The choice opens only once the received card has landed (`choiceOpensAt`), so the card's note and the choice never share a stage.
@@ -191,7 +191,7 @@ export function drawnChips(
   locale: Locale,
   read: { combo: string; turn: string; note: string },
   exchangeName?: string,
-  exchangeCards?: { received: Card; given: Card }
+  exchangeCards?: { received: Card; given?: Card }
 ): { combo: NoticeContent | null; turn: NoticeContent | null; note: NoticeContent | null } {
   const exchange = exchangeName === undefined ? [] : exchangeScenes(exchangeName, exchangeCards);
   const combos = [
