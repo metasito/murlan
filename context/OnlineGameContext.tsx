@@ -24,7 +24,7 @@ import {
   type WireGameState,
   type WireRoomState,
   type RatingAfter,
-  type SeatEvent,
+  type ServerToClientEvents,
 } from "@/shared/protocol";
 import { requireUpdate } from "@/lib/updateRequired";
 import { reportError } from "@/lib/errorReporting";
@@ -619,9 +619,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       });
     };
 
-    const onPlayerLeft = (payload: SeatEvent) => {
+    const onPlayerLeft = (payload: Parameters<ServerToClientEvents["game:player_left"]>[0]) => {
       setPlayerLeft(true);
-      clearDisconnectedSeat(payload?.seatIndex);
+      clearDisconnectedSeat(payload.seatIndex);
     };
 
     // A vacated seat handed to a bot — the table survives, so this is a
