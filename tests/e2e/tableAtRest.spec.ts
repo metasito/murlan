@@ -22,6 +22,28 @@ const { felt: FELT, handShade: HAND_SHADE, particles: PARTICLES } = COUNTED;
 
 type Frame = RenderCounts & { lamp: TraceFrame["lamp"] };
 
+/**
+ * The air's mote views (not the moth's): how many show, their opacities multiplied up to the air, and the transforms
+ * they and the views they ride on stand at. Null where the table has no air layer.
+ */
+const AIR = `(() => {
+  const air = document.querySelector('[data-testid="air"]');
+  if (!air) return null;
+  let lit = 0;
+  const transforms = new Set();
+  for (const mote of air.querySelectorAll('[data-testid="air-mote"]')) {
+    let alpha = 1;
+    for (let at = mote; at && at !== air; at = at.parentElement) {
+      alpha *= Number(getComputedStyle(at).opacity);
+      transforms.add(getComputedStyle(at).transform);
+    }
+    if (alpha > 0.017) lit++;
+  }
+  return { lit, transforms: [...transforms].join(";") };
+})()`;
+
+type Air = { lit: number; transforms: string } | null;
+
 const READ = `({ ...${TAKE_RENDER_COUNTS}, lamp: window.murlanTrace.frames.at(-1)?.lamp })`;
 
 async function frames(page: Page, n: number): Promise<Frame[]> {
@@ -46,12 +68,14 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   await startRenderCounts(page);
   await frames(page, SETTLE);
 
+  const airBefore = await page.evaluate<Air>(AIR);
   const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
   const rest: Frame[] = [];
   for (const length of [60, 60, WINDOW - 120]) {
     rest.push(...(await frames(page, length)));
     if (sway.length < 3) sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
   }
+  const airAfter = await page.evaluate<Air>(AIR);
   const counts = {
     felt: drew(rest, FELT),
     feltTwiceRunning: rest.filter((f, i) => i > 0 && (f.draws[FELT] ?? 0) > 0 && (rest[i - 1].draws[FELT] ?? 0) > 0).length,
@@ -71,7 +95,9 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   expect(counts.offscreen, "draws to a canvas outside the document").toBe(0);
   expect(counts.cardStyles, "style writes inside a card's view at rest").toBe(0);
   expect(counts.particles, "frames the motes drew").toBeLessThanOrEqual(WINDOW * 0.55);
-  expect(counts.particles, "the motes never drew").toBeGreaterThanOrEqual(1);
+  const airShows = !!airBefore && !!airAfter && airBefore.lit >= 1 && airAfter.lit >= 1 && airAfter.transforms !== airBefore.transforms;
+  const motesShown = airBefore || airAfter ? airShows : counts.particles >= 1;
+  expect(motesShown, "the motes neither showed as views whose transforms moved (the table has an air layer), nor drew on a canvas (it has none)").toBe(true);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await frames(page, SETTLE);
