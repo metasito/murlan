@@ -2,20 +2,29 @@ diff --git a/node_modules/react-native-worklets/lib/module/threads.js b/node_mod
 index 215bec9..df7664a 100644
 --- a/node_modules/react-native-worklets/lib/module/threads.js
 +++ b/node_modules/react-native-worklets/lib/module/threads.js
-@@ -28,6 +28,18 @@ export function runOnUIAsync(worklet, ...args) {
+@@ -27,7 +27,27 @@
+   });
  }
  let runOnUIQueue = [];
++let jestUIQueue = [];
++function drainJestUIQueue() {
++  const jobs = jestUIQueue;
++  jestUIQueue = [];
++  for (const [worklet, args, resolve, reject] of jobs) {
++    try {
++      const result = worklet(...args);
++      resolve?.(result);
++    } catch (e) {
++      if (reject) reject(e); else throw e;
++    }
++  }
++}
  function enqueueUI(worklet, args, resolve, reject) {
-+  // A UI job runs on the next timer turn, as on a device, not a test's animation frame later.
++  // A UI job runs on the next timer turn, as on a device, not a test's animation frame later: one queue and one timer, so
++  // jobs keep their order (a zero-delay timer made during a timer turn is given 1 ms, and would pass one made after it).
 +  if (IS_JEST) {
-+    setTimeout(() => {
-+      try {
-+        const result = worklet(...args);
-+        resolve?.(result);
-+      } catch (e) {
-+        if (reject) reject(e); else throw e;
-+      }
-+    }, 0);
++    jestUIQueue.push([worklet, args, resolve, reject]);
++    if (jestUIQueue.length === 1) setTimeout(drainJestUIQueue, 0);
 +    return;
 +  }
    const job = [worklet, args, resolve, reject];
