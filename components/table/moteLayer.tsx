@@ -137,11 +137,23 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & 
     setTracks(next.tracks);
   }, [air, elapsed, lightNow, reduced, rng]);
 
-  // Not on a thaw: the tracks and the air's clock were paused together, and a rebuild is the one long task the air has.
   useEffect(() => {
     const first = setTimeout(rebuild, 0);
     return () => clearTimeout(first);
   }, [rebuild]);
+
+  // The rig's phase stops in a freeze but its clock, and so its speed, does not: the sway a track was baked with is off the rig after a thaw.
+  const wasFrozen = useRef(false);
+  useEffect(() => {
+    const thawed = wasFrozen.current && !frozen;
+    wasFrozen.current = frozen;
+    if (!thawed) return;
+    const next = setTimeout(() => {
+      rebuild();
+      if (E2E_FAST) traceOnset("moment", "air-thaw");
+    }, 0);
+    return () => clearTimeout(next);
+  }, [frozen, rebuild]);
 
   useEffect(() => {
     if (!tracks || frozen) return;

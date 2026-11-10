@@ -24,7 +24,7 @@ the mockup wins.
    compositor move and blend the pictures.
 2. **The lamp rig stays the source of truth** (`components/table/lampRig.ts`), with the mockup's
    semantics. A track is baked from the rig's state when the lamp settles and rebaked at the next
-   settle. The rig, the tracks and the trace source read one phase table (`lib/swayTable.ts`),
+   settle. The rig, the tracks and the trace source read one sway model (`lib/swayTable.ts`),
    so there is one copy of the sway (rule 48).
 3. **Live drawing is for events only** (glide, flare, kick), started with the event and released
    at its end. The one-off bakes an event needs are done at glide time.
