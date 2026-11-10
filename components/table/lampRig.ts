@@ -5,6 +5,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
+import { SWAY_REST_AT, swayAt, swayPhase } from "../../lib/swayTable.ts";
 import type { FlyDirection } from "../seatLayout.ts";
 
 export const DESIGN = { width: 874, height: 402 } as const;
@@ -57,7 +58,7 @@ export function lightUniforms(reach: number): { uPoolR: number; uVigR: number } 
 
 export const GLIDE = 2.2;
 export const SWAY = 20;
-const SWAY_KICKED = 80;
+export const SWAY_KICKED = 80;
 const KICK_DECAY = 1.1;
 const FLARE_DECAY = 2.4;
 const DEFAULT_LEVEL_RATE = 3;
@@ -76,6 +77,8 @@ export interface Lamp {
   /** The light's reach, gliding toward `tr` with the pool. */
   r: number;
   tr: number;
+  /** Seconds into the sway table (`lib/swayTable.ts`), held while frozen: the one clock the sway reads. */
+  at: number;
   ph: number;
   kick: number;
   flare: number;
@@ -85,7 +88,7 @@ export interface Lamp {
   /** The level each owner holds the lamp at, `RELEASED` when it holds nothing; `lvlT` is the lowest. */
   holds: Record<LevelOwner, number>;
   freeze: number;
-  /** Seconds the rig has run: the sway's period drifts with it. */
+  /** Seconds the rig has run. */
   t: number;
   /** What a frame draws: the light point, swayed, and its level and flare. */
   lx: number;
@@ -105,7 +108,8 @@ export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
     ty: y,
     r,
     tr: r,
-    ph: 0,
+    at: SWAY_REST_AT,
+    ph: swayPhase(SWAY_REST_AT),
     kick: 0,
     flare: 0,
     lvl: level,
@@ -169,9 +173,9 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
   }
   s.lvl += (s.lvlT - s.lvl) * (1 - Math.exp(-dt * s.lvlRate));
   const run = 1 - s.freeze;
-  const w = 0.84 * (1 + 0.14 * Math.sin(s.t * 0.11 + 1.3) + 0.06 * Math.sin(s.t * 0.37));
-  s.ph += dt * w * run;
-  const sway = reduced ? 0 : Math.sin(s.ph) * (SWAY + SWAY_KICKED * s.kick);
+  s.at += dt * run;
+  s.ph = swayPhase(s.at);
+  const sway = reduced ? 0 : swayAt(s.at) * (SWAY + SWAY_KICKED * s.kick);
   s.kick *= Math.exp(-dt * KICK_DECAY);
   s.level = clamp01(s.lvl);
   s.lx = s.x + sway;

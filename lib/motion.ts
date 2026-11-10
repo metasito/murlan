@@ -1,6 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ViewStyle } from "react-native";
 import {
   cancelAnimation,
+  cubicBezier,
+  type CSSAnimationKeyframes,
   useFrameCallback,
   useSharedValue,
   withRepeat,
@@ -12,6 +15,7 @@ import {
 } from "react-native-reanimated";
 import { isRNRuntime, scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { SWAY_EASE } from "./swayTable";
 
 /** A shared value whose animation stops with the component: Reanimated keeps driving one past unmount. */
 export function useOwnedValue<T>(initial: T): SharedValue<T> {
@@ -51,6 +55,58 @@ export function useLoop(value: SharedValue<number>, loop: (() => Loop) | null, k
     value.set(lead === undefined ? repeated : withSequence(lead, repeated));
     return () => cancelAnimation(value);
   }, [running, value, key]);
+}
+
+/** Penner's easeInOutSine, the ease every ambient loop in the app breathes on. */
+export const SINE_EASE = cubicBezier(...SWAY_EASE);
+
+/** A keyframe set that goes `from` to `to` and back on `SINE_EASE`: one loop is there and back, so it needs no reversed direction. */
+export function thereAndBack(from: ViewStyle, to: ViewStyle): CSSAnimationKeyframes {
+  return {
+    "0%": { ...from, animationTimingFunction: SINE_EASE },
+    "50%": { ...to, animationTimingFunction: SINE_EASE },
+    "100%": from,
+  } as CSSAnimationKeyframes;
+}
+
+export interface AmbientSpec {
+  /** Opacity or transform keyframes; a module constant, so the engine registers them once. */
+  keyframes: CSSAnimationKeyframes;
+  /** One pass, in milliseconds. */
+  duration: number;
+  /** A negative delay starts the loop that far into its pass. */
+  delay?: number;
+  /** False pauses the loop where it stands and resumes it from there. */
+  playing?: boolean;
+}
+
+/**
+ * An endless loop of opacity or transform keyframes, as the style that runs it: a CSS animation on web, Reanimated's
+ * C++ engine on native, neither on the JS or UI thread per frame. A style the caller wears on an `Animated.View`.
+ */
+export function ambient({ keyframes, duration, delay = 0, playing = true }: AmbientSpec): ViewStyle {
+  return {
+    animationName: keyframes,
+    animationDuration: `${duration}ms`,
+    animationIterationCount: "infinite",
+    animationTimingFunction: "linear",
+    animationDelay: `${delay}ms`,
+    animationPlayState: playing ? "running" : "paused",
+  } as ViewStyle;
+}
+
+/** `ambient` while `spec` is given and the player has not asked for less motion; undefined otherwise, and the view rests at its own style. */
+export function useAmbient(spec: AmbientSpec | null): ViewStyle | undefined {
+  const reduceMotion = usePrefersReducedMotion();
+  const on = spec !== null && !reduceMotion;
+  const keyframes = spec?.keyframes;
+  const duration = spec?.duration;
+  const delay = spec?.delay;
+  const playing = spec?.playing;
+  return useMemo(
+    () => (on && keyframes !== undefined && duration !== undefined ? ambient({ keyframes, duration, delay, playing }) : undefined),
+    [on, keyframes, duration, delay, playing]
+  );
 }
 
 /** `cycle` run `times` times, or null under once: `withRepeat` reads a count of 0 as forever. */
