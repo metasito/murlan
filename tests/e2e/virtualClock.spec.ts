@@ -89,5 +89,6 @@ test("an animation that a step carries to its end still finishes", async ({ page
     box.classList.add("short");
   });
   for (let i = 0; i < 5; i++) await step(page);
-  expect(await page.evaluate(() => (window as unknown as { ended: number }).ended)).toBe(1);
+  // The event is queued for the next real frame, which no step waits on.
+  await expect.poll(() => page.evaluate(() => (window as unknown as { ended: number }).ended)).toBe(1);
 });
