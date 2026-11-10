@@ -10,4 +10,6 @@ curl -Ls "https://get.maestro.mobile.dev" | bash
 # Checked rather than echoed. A tag that does not resolve leaves the installer's own `exit`
 # returning the status of the echo before it, which is 0 with nothing installed - so the pin has to
 # be read back off the binary that arrived.
-"$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
+v=$("$HOME/.maestro/bin/maestro" --version 2>&1)
+echo "$v" >&2
+grep -q "$MAESTRO_VERSION" <<<"$v"

@@ -122,7 +122,7 @@ describe("both device jobs pin the tool that reads the screen", () => {
     // installer exiting 0 with nothing installed, so the check is what turns
     // a typo - or a retagged release - into a named failure rather than a
     // run driven by whatever is on the box.
-    assert.match(installScript(), /--version[^\n]*grep -q "\$MAESTRO_VERSION"/, `${INSTALLER} never checks which Maestro it actually installed`);
+    assert.match(installScript(), /--version[^\n]*\)\n(?:echo [^\n]*\n)?grep -q "\$MAESTRO_VERSION" <<<"\$v"/, `${INSTALLER} never checks which Maestro it actually installed`);
   });
 
   test("the pin is present", () => {
