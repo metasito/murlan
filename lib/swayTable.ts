@@ -11,9 +11,18 @@ export const STEPS = 36;
 const STEP = Math.PI / STEPS;
 const COUNT = HALF_SWINGS * STEPS;
 
-const phaseOf = (t: number) => 0.84 * (t - (0.14 / 0.11) * Math.cos(0.11 * t + 1.3) - (0.06 / 0.37) * Math.cos(0.37 * t));
+/** The mockup's sway speed: a base rate, a slow drift and a quick one. */
+const BASE = 0.84;
+const SLOW = { amp: 0.14, rate: 0.11, offset: 1.3 };
+const QUICK = { amp: 0.06, rate: 0.37 };
 
-const speedOf = (t: number) => 0.84 * (1 + 0.14 * Math.sin(t * 0.11 + 1.3) + 0.06 * Math.sin(t * 0.37));
+const phaseOf = (t: number) => BASE * (t - (SLOW.amp / SLOW.rate) * Math.cos(SLOW.rate * t + SLOW.offset) - (QUICK.amp / QUICK.rate) * Math.cos(QUICK.rate * t));
+
+/** The sway's speed in radians a second, `t` seconds into the rig's clock: the mockup's `lampStep`, and the one definition the rig, the table and every track read. */
+export function speedOf(t: number): number {
+  "worklet";
+  return BASE * (1 + SLOW.amp * Math.sin(t * SLOW.rate + SLOW.offset) + QUICK.amp * Math.sin(t * QUICK.rate));
+}
 
 /** Seconds at which the phase integral reaches `target`, found in `[from, to]` (the speed is positive, so the integral is monotone). */
 function timeOf(target: number, from: number, to: number): number {

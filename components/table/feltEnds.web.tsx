@@ -1,69 +1,55 @@
 // End B of the settled felt, on web: a 2D canvas over the Skia felt, filled once from it, whose opacity a
 // compositor animation carries along the lamp's sway. The Skia canvas keeps end A and draws nothing while
-// the table rests (rule 51).
-import { useEffect, useRef, useState } from "react";
+// the table rests (rule 51); docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md.
+import { useLayoutEffect, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
-import Animated, {
-  useAnimatedReaction,
-  useSharedValue,
-} from "react-native-reanimated";
+import Animated, { useAnimatedReaction } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { afterFrames, inOneFrame, useAmbient } from "@/lib/motion";
+import { afterFrames, ambientPlace, inOneFrame, steerAmbient, useAmbient } from "@/lib/motion";
 import { TRACK_SECONDS } from "@/lib/swayTable";
-import {
-  DRIFT_CHECK_MS,
-  DRIFT_PT,
-  driftPt,
-  endTrack,
-  isRested,
-  QUIET_MS,
-  REBAKE_BEFORE_MS,
-  type EndTrack,
-} from "./restEnds";
-import type { FeltEnds, FeltEndsArgs } from "./feltEnds";
+import type { EndsProps } from "./feltCanvas";
+import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endTrack, isRested, placeOf, QUIET_MS, REBAKE_BEFORE, type EndTrack } from "./restEnds";
 
-/** The canvas a track plays on and the keyframes' frame, kept together so a stale one cannot pair with a new canvas. */
-type Playing = EndTrack;
-
-function copyOf(host: unknown, into: HTMLCanvasElement | null): boolean {
+function copyOf(host: unknown, into: HTMLCanvasElement): boolean {
   const from = (host as HTMLElement | null)?.querySelector("canvas");
-  if (!from || !into || from.width === 0 || from.height === 0) return false;
+  if (!from || from.width === 0 || from.height === 0) return false;
   if (into.width !== from.width || into.height !== from.height) {
     into.width = from.width;
     into.height = from.height;
   }
   // The felt's drawing buffer is display-p3 (SkiaPictureView.web.js): a 2D canvas in sRGB would convert it.
-  const context =
-    into.getContext("2d", { colorSpace: "display-p3" }) ??
-    into.getContext("2d");
+  const context = into.getContext("2d", { colorSpace: "display-p3" }) ?? into.getContext("2d");
   if (!context) return false;
   context.drawImage(from, 0, 0);
   return true;
 }
 
-export function useFeltEnds({
-  lamp,
-  settle,
-  content,
-  host,
-}: FeltEndsArgs): FeltEnds {
+export function EndB({ lamp, settle, content, side, host }: EndsProps) {
   const reduceMotion = usePrefersReducedMotion();
-  const side = useSharedValue(0);
   const [steady, setSteady] = useState(false);
   const [quiet, setQuiet] = useState(false);
-  const [playing, setPlaying] = useState<Playing | null>(null);
+  const [playing, setPlaying] = useState<EndTrack | null>(null);
   const layer = useRef<HTMLCanvasElement>(null);
   const quietTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // In the frame the table stops being at rest: the overlay is stale from then, and a passive cleanup would leave it a frame over the live felt.
+  const [hide] = useState(() => () => {
+    if (layer.current) layer.current.style.visibility = "hidden";
+    side.set(0);
+  });
 
   useAnimatedReaction(
     () => isRested(lamp.value) && settle.value === 0,
     (now, before) => {
-      if (now !== before) scheduleOnRN(setSteady, now);
+      if (now === before) return;
+      if (!now) scheduleOnRN(hide);
+      scheduleOnRN(setSteady, now);
     },
   );
 
   const [onContent] = useState(() => () => {
+    hide();
     setQuiet(false);
     if (quietTimer.current) clearTimeout(quietTimer.current);
     quietTimer.current = setTimeout(() => setQuiet(true), QUIET_MS);
@@ -74,7 +60,7 @@ export function useFeltEnds({
       if (before !== null && now !== before) scheduleOnRN(onContent);
     },
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     onContent();
     return () => {
       if (quietTimer.current) clearTimeout(quietTimer.current);
@@ -82,61 +68,73 @@ export function useFeltEnds({
   }, [onContent]);
 
   const engaged = steady && quiet && !reduceMotion;
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = layer.current;
     if (!engaged || !canvas) return;
     let live = true;
-    let baked = { sway: [] as readonly number[], at: 0 };
+    let baked: EndTrack | null = null;
+    const cancels: (() => void)[] = [];
+    const steer = (to?: { paused: boolean }) => {
+      const element = canvas.parentElement;
+      if (!element || !baked) return;
+      steerAmbient(element, to ?? { place: placeOf(baked, lamp.get().t) });
+    };
     const bake = () => {
       const s = lamp.get();
-      const track = endTrack(s.ph, s.t, 0);
-      baked = { sway: track.sway, at: performance.now() };
-      setPlaying(track);
+      baked = endTrack(s.ph, s.t);
+      setPlaying(baked);
+      // The animation starts when the commit does, not when the track was read: it is moved to where the rig is.
+      cancels.push(afterFrames(2, () => live && steer()));
     };
     bake();
-    let cancelFrame = () => {};
-    // Two frames for the track to commit and start. Then both steps in one frame: the felt draws end B between them, the second copies it and draws end A back, so end B is never presented.
-    const cancelWait = afterFrames(2, () => {
-      cancelFrame = inOneFrame([
-        () => live && side.set(1),
-        () => {
-          if (!live) return;
-          if (copyOf(host.current, canvas)) {
-            canvas.style.visibility = "visible";
-            side.set(-1);
-          } else side.set(0);
-        },
-      ]);
-    });
-    const again = setInterval(() => {
-      const since = performance.now() - baked.at;
-      if (since > TRACK_SECONDS * 1000 - REBAKE_BEFORE_MS || driftPt(baked.sway, since, lamp.get().ph) > DRIFT_PT) bake();
+    // Both steps in one frame: a microtask checkpoint falls between callbacks of a frame, where the felt draws end B before the second copies it and draws end A back, so end B is never presented.
+    cancels.push(
+      afterFrames(3, () => {
+        cancels.push(
+          inOneFrame([
+            () => live && side.set(1),
+            () => {
+              if (!live) return;
+              if (copyOf(host.current, canvas)) {
+                canvas.style.visibility = "visible";
+                side.set(-1);
+              } else side.set(0);
+            },
+          ]),
+        );
+      }),
+    );
+    const check = setInterval(() => {
+      const element = canvas.parentElement;
+      if (!element || !baked) return;
+      const at = ambientPlace(element);
+      const place = placeOf(baked, lamp.get().t);
+      if (at === null || place > TRACK_SECONDS - REBAKE_BEFORE) bake();
+      else if (driftPt(baked.sway, at, place) > DRIFT_PT) steer();
     }, DRIFT_CHECK_MS);
+    // A hidden page steps no rig while its animation keeps the clock: hold it, and put it where the rig is on return.
+    const visibility = () => {
+      if (document.hidden) steer({ paused: true });
+      else {
+        steer();
+        steer({ paused: false });
+      }
+    };
+    document.addEventListener("visibilitychange", visibility);
     return () => {
       live = false;
-      cancelWait();
-      cancelFrame();
-      clearInterval(again);
-      canvas.style.visibility = "hidden";
-      side.set(0);
+      cancels.forEach((cancel) => cancel());
+      clearInterval(check);
+      document.removeEventListener("visibilitychange", visibility);
+      hide();
       setPlaying(null);
     };
-  }, [engaged, lamp, side, host]);
+  }, [engaged, lamp, side, host, hide]);
 
   const style = useAmbient(playing);
-  return {
-    side,
-    layer: (
-      <Animated.View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, style]}
-      >
-        <canvas
-          ref={layer}
-          data-testid="felt-end-b"
-          style={{ visibility: "hidden", width: "100%", height: "100%" }}
-        />
-      </Animated.View>
-    ),
-  };
+  return (
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
+      <canvas ref={layer} data-testid="felt-end-b" style={{ visibility: "hidden", width: "100%", height: "100%" }} />
+    </Animated.View>
+  );
 }

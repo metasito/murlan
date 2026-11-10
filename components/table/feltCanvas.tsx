@@ -1,7 +1,7 @@
 // The felt, the rail and the lamp on them (#1252 § The felt, § The rail): one Skia canvas for the
 // whole table. On web it is only ever reached through `feltSkia.web.tsx`'s lazy boundary, once
 // CanvasKit has loaded — `Skia` is bound to it when this module is evaluated.
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ComponentType, type RefObject } from "react";
 import { PixelRatio, Platform, StyleSheet, View } from "react-native";
 import {
   AlphaType,
@@ -42,7 +42,6 @@ import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames } from "@/lib/motion";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
-import { useFeltEnds } from "./feltEnds";
 import { NOT_SHOWN, nextShown, type Shown } from "./restEnds";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
@@ -64,6 +63,20 @@ export interface FeltCanvasProps {
   cards: CardTable;
   /** `useLinkHold`'s grey: drawn here on iOS only, where the view filter is not. */
   grey?: SharedValue<number>;
+  /** The settled felt's second end, laid over this canvas (web only: `feltEnds.web.tsx`). */
+  Ends?: ComponentType<EndsProps>;
+}
+
+export interface EndsProps {
+  lamp: SharedValue<Lamp>;
+  /** 1 while the canvas still crosses its two ends itself, 0 once it has. */
+  settle: SharedValue<number>;
+  /** Moves when anything an end draws changes besides the sway. */
+  content: SharedValue<number>;
+  /** -1 draws end A of a rested lamp and 1 end B; 0 the lamp as it is. */
+  side: SharedValue<number>;
+  /** The element holding this canvas. */
+  host: RefObject<unknown>;
 }
 
 const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
@@ -477,7 +490,7 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCanvasProps) {
+export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, Ends }: FeltCanvasProps) {
   const greyLayer = useGreyLayer(grey);
   const canvas = useCanvasRef();
   const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
@@ -523,10 +536,10 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   }, [weave, aim, gx, gy, stops, base]);
   // The ends of the lamp's next target, one a frame while it glides there, so settling bakes nothing.
   useEffect(() => {
-    if (!weave || !target) return;
+    if (!Ends || !weave || !target) return;
     const cancels = CLOTH_ENDS.map((lean, i) => afterFrames(i + 1, () => endCloth(weave, target, stops, base, gx, gy, lean)));
     return () => cancels.forEach((cancel) => cancel());
-  }, [weave, target, gx, gy, stops, base]);
+  }, [Ends, weave, target, gx, gy, stops, base]);
   const reduceMotion = usePrefersReducedMotion();
   useEffect(() => {
     if (!rest) return void settle.set(1);
@@ -540,8 +553,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
 
   const content = useSharedValue(0);
   const host = useRef<ComponentRef<typeof View>>(null);
-  const ends = useFeltEnds({ lamp, settle, content, host });
-  const side = ends.side;
+  const side = useSharedValue(0);
   const held = useSharedValue<Shown>(NOT_SHOWN);
   const view = useDerivedValue(() => {
     const next = nextShown(held.value, lamp.value, side.value);
@@ -605,9 +617,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   }, [onReady]);
 
   const { width, height } = DESIGN;
-  return (
-    <>
-    <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">
+  const drawn = (
     <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
       <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={greyLayer}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
@@ -680,8 +690,14 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
         <Rect x={0} y={0} width={width} height={height} color="black" opacity={shade} />
       </Group>
     </Canvas>
-    </View>
-    {ends.layer}
+  );
+  if (!Ends) return drawn;
+  return (
+    <>
+      <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">
+        {drawn}
+      </View>
+      <Ends lamp={lamp} settle={settle} content={content} side={side} host={host} />
     </>
   );
 }

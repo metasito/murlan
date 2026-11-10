@@ -8,7 +8,7 @@
 import type { CSSAnimationKeyframes } from "react-native-reanimated";
 import { bakeSway, TRACK_SECONDS, TRACK_STEP, trackAt } from "../../lib/swayTable.ts";
 import { FLARE_SEEN } from "./feltShader.ts";
-import { LIGHT_ABOVE, SWAY, SWAY_KICKED, type Lamp } from "./lampRig.ts";
+import { lightX, lightY, SWAY, SWAY_KICKED, type Lamp } from "./lampRig.ts";
 
 /** What the canvas draws of the lamp: the light point, its reach and level, and how far the cloth crosses from end A to end B. */
 export interface Shown {
@@ -75,8 +75,8 @@ export function shownLamp(s: Lamp, side: number): Shown {
       lean: leanOf(s),
     };
   return {
-    lx: s.tx + side * SWAY,
-    ly: s.ty - LIGHT_ABOVE,
+    lx: lightX(s.tx, side * SWAY),
+    ly: lightY(s.ty),
     f: 0,
     r: s.tr,
     level: clamp01(s.lvlT),
@@ -98,49 +98,46 @@ export function nextShown(held: Shown, s: Lamp, side: number): Shown {
   return same ? held : next;
 }
 
-/** What a CSS animation takes between asking for it and its first frame, a median: the track is started this far ahead. A measured lag, not a motion step. */
-export const START_LAG_MS = 8;
-
 export interface EndTrack {
   /** The sway, -1 to 1, at each `TRACK_STEP`: what `keyframes` are the opacity of. */
   sway: readonly number[];
   keyframes: CSSAnimationKeyframes;
   /** One pass, in milliseconds. */
   duration: number;
-  /** Negative: the pass starts this far in. */
-  delay: number;
+  /** The rig's clock when the track starts: a track `s` seconds in is the light at rig time `t + s`. */
+  t: number;
 }
 
-/** End B's opacity from the rig's `ph` and `t`, sampled `TRACK_STEP` apart for `TRACK_SECONDS`; `sinceMs` is how long ago that state was read. */
-export function endTrack(ph: number, t: number, sinceMs: number): EndTrack {
+/** End B's opacity from the rig's `ph` and `t`, sampled `TRACK_STEP` apart for `TRACK_SECONDS`. */
+export function endTrack(ph: number, t: number): EndTrack {
   const sway = bakeSway({ ph, t }, TRACK_SECONDS);
   const last = sway.length - 1;
   const keyframes: Record<string, { opacity: number }> = {};
   sway.forEach((v, i) => {
     keyframes[`${((i / last) * 100).toFixed(4)}%`] = { opacity: 0.5 + 0.5 * v };
   });
-  return {
-    sway,
-    keyframes: keyframes as CSSAnimationKeyframes,
-    duration: last * TRACK_STEP * 1000,
-    delay: -(sinceMs + START_LAG_MS),
-  };
+  return { sway, keyframes: keyframes as CSSAnimationKeyframes, duration: last * TRACK_STEP * 1000, t };
 }
 
-/** Milliseconds before a track ends that the next is baked: a track loops back to its start, and the bake cannot be late. Not a motion step. */
-export const REBAKE_BEFORE_MS = 2000;
+/** Seconds before a track ends that the next is baked: an animation loops back to its start. */
+export const REBAKE_BEFORE = 2;
 /** How long what an end draws holds still before the table is shown as ends again: a debounce, not a motion step. */
 export const QUIET_MS = 250;
 
-/** Points the compositor's light may lie off the rig's before the track is baked again from the rig. */
-export const DRIFT_PT = 0.4;
-/** How often the track is held against the rig. */
-export const DRIFT_CHECK_MS = 1000;
+/** Points the compositor's light may lie off the rig's before the animation is moved to where the rig is. */
+export const DRIFT_PT = 0.2;
+/** How often the animation is held against the rig: at the rate a rig that stalls drifts (5% slow, 1 pt a second), the two are never 0.5 pt apart between checks. A polling cadence, not a motion step. */
+export const DRIFT_CHECK_MS = 250;
+
+/** The rig's place in a track baked at rig time `t`, in seconds; past `TRACK_SECONDS - REBAKE_BEFORE` the track is spent. */
+export function placeOf(track: Pick<EndTrack, "t">, rigT: number): number {
+  return rigT - track.t;
+}
 
 /**
- * How far the light the track plays `sinceMs` after its bake is from the rig's, in points. The rig steps at most
- * `MAX_DT` a frame, so a page that stalls runs it behind the wall clock the animation keeps.
+ * How far the light the animation plays, `playing` seconds into its pass, is from the rig's at `place`, in points. The rig
+ * steps at most `MAX_DT` a frame, so a page that stalls runs it behind the wall clock the animation keeps.
  */
-export function driftPt(sway: readonly number[], sinceMs: number, ph: number): number {
-  return Math.abs(Math.sin(ph) - trackAt(sway, (sinceMs + START_LAG_MS) / 1000)) * SWAY;
+export function driftPt(sway: readonly number[], playing: number, place: number): number {
+  return Math.abs(trackAt(sway, playing) - trackAt(sway, place)) * SWAY;
 }

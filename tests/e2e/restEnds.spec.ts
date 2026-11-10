@@ -6,6 +6,7 @@ import { heldTurnTable } from "./helpers/mockupParity";
 import { installVirtualClock, stepThen, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS } from "./helpers/traceDiff";
 import { HAND_CARD_BOXES } from "./helpers/selectors";
+import { END_B_SAMPLE, type EndBSample, swayShows } from "./helpers/renderCounters";
 
 const VIEWPORT = { width: 874, height: 402 };
 const SEED = 1255;
@@ -49,6 +50,10 @@ test("the end-B layer's opacity follows the lamp's light to within half a point"
     samples.push(s!);
   }
   expect(Math.min(...samples.map((s) => s.running)), "frames the end-B layer had no running animation").toBeGreaterThanOrEqual(1);
+
+  const picture = [await stepThen<EndBSample | null>(page, STEP_MS, END_B_SAMPLE), await stepThen<EndBSample | null>(page, 60 * STEP_MS, END_B_SAMPLE), await stepThen<EndBSample | null>(page, 60 * STEP_MS, END_B_SAMPLE)];
+  console.log(`end B leans ${picture.map((p) => p?.lean.toFixed(2)).join(", ")} levels toward its far side`);
+  expect(swayShows(picture), "end B is not a picture lit from the far end of the sway, or its layer does not sway").toBe(true);
 
   const lows = samples.map((s) => s.lx);
   const centre = (Math.max(...lows) + Math.min(...lows)) / 2;
