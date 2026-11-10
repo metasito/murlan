@@ -191,9 +191,14 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     const to = openInbox({ id: target });
     const seen: number[] = [];
     let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => (entered = resolve));
     const held = new Promise<void>((resolve) => (release = resolve));
     to.on("probe", async (m: InstanceMessage) => {
-      if (m.n === 0) await held;
+      if (m.n === 0) {
+        entered();
+        await held;
+      }
       seen.push(m.n as number);
     });
     try {
@@ -202,6 +207,7 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
       const batch = redis.multi();
       for (let n = 0; n < 3; n++) batch.xAdd(inboxOf(target), `${ahead + n}-0`, { m: JSON.stringify({ kind: "probe", n }) });
       await batch.exec();
+      await started;
       await redis.del(inboxOf(target));
       await opened(target);
       await sender.send(target, { kind: "probe", n: 3 });

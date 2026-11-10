@@ -99,8 +99,9 @@ export function openInbox({
 
   // Pipelined in one write, so the stream is never left without its expiry. When the stream was
   // lost entirely, its first id is past every one fetched even if the store's clock is behind
-  // them, or each later `*` id would sit below the cursor and be skipped. A stream that survives
-  // with an older top id is not covered.
+  // them, or each later `*` id would sit below the cursor and be skipped. Not covered: a stream that
+  // survives with an older top id, and a reply already served but not yet processed when the
+  // keep-alive recreates the stream.
   const create = () => {
     const seen = Number(fetched.split("-")[0]);
     const id = seen > 0 ? `${seen + 1}-*` : "*";
@@ -145,7 +146,7 @@ export function openInbox({
       try {
         const reply = await reader.xRead({ key: inboxKey(id), id: cursor }, { BLOCK: BLOCK_MS, COUNT: READ_COUNT });
         const streams = (reply ?? []) as { messages: { id: string; message: Record<string, string> }[] }[];
-        for (const { messages } of streams) fetched = messages.at(-1)?.id ?? fetched;
+        fetched = streams.at(-1)?.messages.at(-1)?.id ?? fetched;
         for (const { messages } of streams) {
           for (const entry of messages) {
             noteStreamRead("inbox", entry.id);
