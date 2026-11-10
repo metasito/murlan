@@ -1,6 +1,6 @@
 // The table at rest (#1261): 40 motes lit only inside the lamp's cone, and a moth crossing the light, played by the compositor
-// from tracks (moteTracks.ts) that are rebuilt when the lamp settles on a seat. Nothing here runs per frame; the burst
-// canvas (particleLayer) is a separate layer that mounts only while something bursts.
+// from tracks (moteTracks.ts) that are rebuilt when the lamp settles on a seat, and before they end. Nothing here runs per frame;
+// the burst canvas (particleLayer) is a separate layer, mounted and idle until something bursts.
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View, type ViewStyle } from "react-native";
 import Animated, { useAnimatedReaction } from "react-native-reanimated";
@@ -16,9 +16,7 @@ import { DESIGN, LIGHT_ABOVE } from "./lampRig";
 import { LAMP_SETTLE_MS, type LampRig } from "./useLampRig";
 import { tableRng } from "./particles";
 import {
-  advanceAir,
-  buildMoteTracks,
-  buildMoth,
+  rebuildTracks,
   litAt,
   mothAt,
   moteKeyframes,
@@ -35,8 +33,6 @@ import {
   type RestLight,
 } from "./moteTracks";
 
-/** The most air time one rebuild steps through: a table that sat frozen or hidden for longer is not replayed. */
-const REPLAY_CAP_S = 20;
 const MS = 1000;
 
 const WING = { w: 4 * WING_HALF_MAX, h: 4 } as const;
@@ -78,7 +74,7 @@ function useAirClock(frozen: boolean) {
 }
 
 const Mote = memo(function Mote({ tracks, track, paused }: { tracks: MoteTracks; track: MoteTrack; paused: boolean }) {
-  const motion = useMemo(() => ambient({ keyframes: moteKeyframes(tracks, track), duration: SPAN_S * MS, paused }), [tracks, track, paused]);
+  const motion = useMemo(() => ambient({ keyframes: moteKeyframes(tracks, track), duration: SPAN_S * MS, iterations: 1, holdEnd: true, paused }), [tracks, track, paused]);
   const box = useMemo(() => boxOf(track.r), [track.r]);
   return <Animated.View testID="air-mote" style={[box, { opacity: trackAlpha(tracks, track, 0) }, motion]} />;
 });
@@ -92,8 +88,8 @@ const Still = memo(function Still({ x, y, r, alpha }: { x: number; y: number; r:
 });
 
 const Moth = memo(function Moth({ flights, paused }: { flights: Flight[]; paused: boolean }) {
-  const body = useMemo(() => ambient({ keyframes: mothKeyframes(flights, "body"), duration: SPAN_S * MS, paused }), [flights, paused]);
-  const shadow = useMemo(() => ambient({ keyframes: mothKeyframes(flights, "shadow"), duration: SPAN_S * MS, paused }), [flights, paused]);
+  const body = useMemo(() => ambient({ keyframes: mothKeyframes(flights, "body"), duration: SPAN_S * MS, iterations: 1, holdEnd: true, paused }), [flights, paused]);
+  const shadow = useMemo(() => ambient({ keyframes: mothKeyframes(flights, "shadow"), duration: SPAN_S * MS, iterations: 1, holdEnd: true, paused }), [flights, paused]);
   return (
     <>
       <Animated.View style={[styles.anchor, { opacity: 0 }, shadow]}>
@@ -135,12 +131,11 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & 
       setStill(stillAlphas(air, light));
       return;
     }
-    advanceAir(air, elapsed() - air.t, REPLAY_CAP_S);
-    const { flights, next } = buildMoth(light, air.t, nextMoth.current, rng);
-    nextMoth.current = flights.length ? air.t + flights[0].s : next;
+    const next = rebuildTracks(air, light, elapsed(), nextMoth.current, rng);
+    nextMoth.current = next.nextMoth;
     setStill(null);
-    setMoth(flights.length ? flights : null);
-    setTracks(buildMoteTracks(air, light));
+    setMoth(next.flights);
+    setTracks(next.tracks);
   }, [air, elapsed, lightNow, reduced, rng]);
 
   // Not on a thaw: the tracks and the air's clock were paused together, and a rebuild is the one long task the air has.

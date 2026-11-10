@@ -1,4 +1,4 @@
-// The web's particle layer: the rest air (moteLayer) and a 2D canvas that mounts only while a burst flies, whether or not
+// The web's particle layer: the rest air (moteLayer) and a 2D canvas that stays mounted and draws only while a burst flies, whether or not
 // CanvasKit has loaded — the felt swaps renderers, this never does (#1252).
 import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import type { FrameInfo, SharedValue } from "react-native-reanimated";
@@ -88,8 +88,6 @@ export function ParticleLayer({ ref, rig, landing }: {
   ref?: Ref<ParticleEmitter>;
   rig: Pick<LampRig, "lamp" | "sx" | "sy"> & Partial<Pick<LampRig, "stillLight">>;
   landing: SharedValue<LandingSignal>;
-  /** Native's iOS grey layer; the web greys its whole table with a view filter. */
-  grey?: SharedValue<number>;
 }) {
   const { lamp, sx, sy } = rig;
   const [scene] = useState(() => createBurstScene());
@@ -110,7 +108,6 @@ export function ParticleLayer({ ref, rig, landing }: {
   useEffect(() => {
     if (!paint.current.white) paint.current.white = bakeSheet();
   }, []);
-  const poke = wake;
   useEffect(() => {
     const cv = canvas.current;
     if (!cv) return;
@@ -120,31 +117,31 @@ export function ParticleLayer({ ref, rig, landing }: {
   useLandingReaction(landing, (l) => {
     "worklet";
     for (const p of landingDust(l, reduced, sx, sy, rng)) spawn(scene.s, p);
-    poke();
+    wake();
   });
   useBombBeat(landing, reduced, (l) => {
     "worklet";
     for (const p of bombFx(l, reduced, sx, sy, rng)) spawn(scene.s, p);
-    poke();
+    wake();
     traceOnset("moment", "bombFx");
   });
 
   useImperativeHandle(ref, () => ({
     emit(spawns) {
       for (const p of spawns) spawn(scene.s, p);
-      poke();
+      wake();
     },
     ember(from, to) {
       if (reduced) return;
       startEmber(scene.ember, from, to);
-      poke();
+      wake();
     },
     rain() {
       if (reduced) return;
       startRain(scene.rain);
-      poke();
+      wake();
     },
-  }), [scene, reduced, poke]);
+  }), [scene, reduced, wake]);
 
   // The motes are live from the first frame, whether or not their chunk has loaded.
   useTraceSource("live", useCallback(() => scene.s.live + MOTES, [scene]));

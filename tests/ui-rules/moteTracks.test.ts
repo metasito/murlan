@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MOTES, createAir, type Air } from "../../components/table/air.ts";
-import { advanceAir, buildFlight, buildMoteTracks, buildMoth, mothAt, mothKeyframes, FLIGHT_S, litAt, SPAN_S, stillAlphas, trackAlpha, moteKeyframes, type MoteTrack, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
+import { advanceAir, buildFlight, buildMoteTracks, buildMoth, rebuildTracks, REBUILD_LEAD_S, mothAt, mothKeyframes, FLIGHT_S, litAt, SPAN_S, stillAlphas, trackAlpha, moteKeyframes, type MoteTrack, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
 import { swayTimeOf, SWAY_REST_AT } from "../../lib/swayTable.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 import { mulberry32 } from "../support/game.ts";
@@ -227,5 +227,22 @@ describe("the moth's flight against drawAir", () => {
     assert.ok(Math.min(...spread) < 16.8 && Math.max(...spread) <= 25 && Math.max(...spread) > 24, `${Math.min(...spread)} to ${Math.max(...spread)}`);
     assert.ok(Math.abs(peaks(wing) - (FLIGHT_S * 38) / Math.PI) <= 3, `${peaks(wing)} beats`);
     assert.ok(Math.abs(peaks(spread) - (FLIGHT_S * 40) / Math.PI) <= 3, `${peaks(spread)} breaths`);
+  });
+
+  test("a rebuild before the track's end picks each mote up where the outgoing track has it", () => {
+    const air = createAir(mulberry32(1261));
+    const first = buildMoteTracks(air, LIGHT);
+    const now = SPAN_S - REBUILD_LEAD_S;
+    const next = rebuildTracks(air, LIGHT, now, air.mothAt, mulberry32(2));
+    let compared = 0;
+    for (const m of next.tracks.motes) {
+      const old = first.motes.find((o) => o.i === m.i);
+      if (!old) continue;
+      const was = trackAt(old, now);
+      const at = m.drift[0];
+      assert.ok(Math.hypot(was.x - at.x, was.y - at.y) < 0.5, `mote ${m.i} jumps ${Math.hypot(was.x - at.x, was.y - at.y).toFixed(1)} pt`);
+      compared++;
+    }
+    assert.ok(compared > 20, `${compared} motes compared`);
   });
 });

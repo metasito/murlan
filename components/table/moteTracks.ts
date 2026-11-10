@@ -60,12 +60,26 @@ export interface MoteTracks {
   motes: ({ i: number } & MoteTrack)[];
 }
 
-/** Brings `air` `seconds` on at the mockup's own rate: the first `replay` seconds stepped, the rest of a longer gap skipped, as the table was not watched. */
+/** Brings `air` `seconds` on at the mockup's own rate: the first `replay` seconds stepped, the rest of a longer gap skipped. */
 export function advanceAir(air: Air, seconds: number, replay = Infinity): void {
   const stepped = Math.min(seconds, replay);
   const steps = Math.round(stepped / FRAME_S);
   for (let n = 0; n < steps; n++) stepAir(air, FRAME_S, { freeze: 0 }, false, () => 0);
   air.t += seconds - stepped;
+}
+
+/** Rng as the tracks draw their moths. */
+type Draw = () => number;
+
+/**
+ * The next tracks, from `air` brought on to `now`: the whole of the outgoing track's span is stepped, so a rebuild picks the motes
+ * up where that track has them; only time past its end, which nothing showed, is skipped. `nextMoth` is the air-clock time of the
+ * next moth, and comes back as the next to carry on.
+ */
+export function rebuildTracks(air: Air, light: RestLight, now: number, nextMoth: number, rng: Draw): { tracks: MoteTracks; flights: Flight[] | null; nextMoth: number } {
+  advanceAir(air, now - air.t, SPAN_S);
+  const { flights, next } = buildMoth(light, air.t, nextMoth, rng);
+  return { tracks: buildMoteTracks(air, light), flights: flights.length ? flights : null, nextMoth: flights.length ? air.t + flights[0].s : next };
 }
 
 /** The lamp's light at `s` seconds into a track that began at `light`. */
