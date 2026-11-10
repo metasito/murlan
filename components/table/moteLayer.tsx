@@ -11,7 +11,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ambient } from "@/lib/motion";
 import { swayTimeOf } from "@/lib/swayTable";
 import { RestAir } from "@/lib/tokens";
-import { createAir, M, MOTE_ALPHA, MOTE_STRIDE, MOTES, UNSEEN, type Air } from "./air";
+import { createAir, M, MOTE_ALPHA, MOTE_STRIDE, UNSEEN, type Air } from "./air";
 import { DESIGN, GLIDE, LIGHT_ABOVE } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { tableRng } from "./particles";
@@ -172,7 +172,6 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
     return () => timers.forEach(clearTimeout);
   }, [tracks, moth, frozen, elapsed]);
 
-  useTraceSource("live", useCallback(() => MOTES, []));
   useTraceSource(
     "motes",
     useCallback(() => {

@@ -20,6 +20,7 @@ import { useSharedValue, type FrameInfo, type SharedValue } from "react-native-r
 import { scheduleOnRN } from "react-native-worklets";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useDuring } from "@/lib/motion";
+import { MOTES } from "./air";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
@@ -151,7 +152,7 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
     scheduleOnRN(traceOnset, "moment", "bombFx");
   });
 
-  useTraceSource("live", useCallback(() => field.value.s.live, [field]));
+  useTraceSource("live", useCallback(() => field.value.s.live + MOTES, [field]));
   useTraceSource("dropped", useCallback(() => field.value.s.dropped, [field]));
 
   useImperativeHandle(ref, () => ({

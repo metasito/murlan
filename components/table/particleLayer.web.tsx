@@ -5,6 +5,7 @@ import type { FrameInfo, SharedValue } from "react-native-reanimated";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useDuring } from "@/lib/motion";
+import { MOTES } from "./air";
 import { DESIGN } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { bombFx, landingDust, spawn, tableRng, type ParticleEmitter } from "./particles";
@@ -142,7 +143,8 @@ export function ParticleLayer({ ref, rig, landing }: {
     },
   }), [scene, reduced, poke]);
 
-  useTraceSource("live", useCallback(() => scene.s.live, [scene]));
+  // The motes are live from the first frame, whether or not their chunk has loaded.
+  useTraceSource("live", useCallback(() => scene.s.live + MOTES, [scene]));
   useTraceSource("dropped", useCallback(() => scene.s.dropped, [scene]));
 
   return (
