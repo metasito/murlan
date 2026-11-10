@@ -8,8 +8,8 @@ import { ambient } from "@/lib/motion";
 import { cardRadius } from "@/components/cardFaceModel";
 import type { ArcCard } from "@/components/tableArc";
 import { bandBox } from "./cardGloss";
-import { backPose, type BackPose, type Placed } from "./glossTrack";
-import { sharedTrack, type Played } from "./fanTrack";
+import type { Placed } from "./glossTrack";
+import { backPose, sharedTrack, trackOf, type BackPose, type Played } from "./fanTrack";
 import type { GlossTracks } from "./glossTrackStore";
 
 interface Props {
@@ -40,13 +40,14 @@ interface Props {
 export const FanGloss = React.memo(function FanGloss({ tracks, s, placed, cards, boxW, boxH, w, h, tilt, onCover }: Props) {
   const lamp = useSyncExternalStore(tracks.subscribe, tracks.get);
   const live = useSyncExternalStore(tracks.subscribe, tracks.live);
+  const track = useMemo(() => trackOf(lamp), [lamp]);
   const baked = useMemo(() => {
-    const shared = sharedTrack(lamp);
+    const shared = sharedTrack(track);
     const delay = tracks.delayOf(lamp);
     const play = (p: Played | null) => (p ? ambient({ keyframes: p.keyframes as never, duration: p.duration, delay }) : undefined);
     return { fades: [shared.fadeA, shared.fadeB].map(play), at: [shared.at.fadeA, shared.at.fadeB] };
-  }, [lamp, tracks]);
-  const poses = useMemo(() => placed.map((p) => backPose(lamp, p, { w: w / s, h: h / s })), [lamp, placed, w, h, s]);
+  }, [lamp, track, tracks]);
+  const poses = useMemo(() => placed.map((p) => backPose(track, p, { w: w / s, h: h / s })), [track, placed, w, h, s]);
   const shapes = useMemo(() => silhouettes(cards, boxW, w, h), [cards, boxW, w, h]);
   const pictures = useMemo(() => [0, 1].map((end) => gossXml(end, shapes, cards, poses, s, w, h, boxW, boxH)), [shapes, cards, poses, s, w, h, boxW, boxH]);
 

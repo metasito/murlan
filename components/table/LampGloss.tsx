@@ -9,7 +9,7 @@ import { cardRadius } from "@/components/cardFaceModel";
 import { bandBox, cardGloss, foilGlint, foilGlintColor, glossSpot } from "./cardGloss";
 import { scopeOf, type CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
-import { backPose, type Placed } from "./glossTrack";
+import { foilPose, type Placed } from "./glossTrack";
 import type { GlossTracks } from "./glossTrackStore";
 import { levelShade } from "./rail";
 import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
@@ -81,7 +81,7 @@ interface TrackedProps {
 
 function useBackPose({ tracks, placed, s, width, height }: TrackedProps) {
   const lamp = useSyncExternalStore(tracks.subscribe, tracks.get);
-  return useMemo(() => backPose(lamp, placed, { w: width / s, h: height / s }), [lamp, placed, s, width, height]);
+  return useMemo(() => foilPose(lamp.snap, placed, { w: width / s, h: height / s }), [lamp, placed, s, width, height]);
 }
 
 const rotated = (e: { x: number; y: number; ang: number }, s: number) => [{ translateX: e.x * s }, { translateY: e.y * s }, { rotate: `${e.ang}rad` }];

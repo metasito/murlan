@@ -2,22 +2,28 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { bakeGlossTrack, glossLive, type GlossTrack, type LampSnap } from "./glossTrack.ts";
+import { glossLive, type LampSnap } from "./glossTrack.ts";
+
+/** A snapshot of the lamp and the `performance.now()` at which it was taken; `fanTrack.ts` bakes the track from it. */
+export interface Published {
+  snap: LampSnap;
+  epoch: number;
+}
 
 export interface GlossTracks {
-  get(): GlossTrack;
+  get(): Published;
   subscribe(listener: () => void): () => void;
-  /** Bakes a track from `snap`, as of now. */
+  /** Takes `snap` as of now. */
   publish(snap: LampSnap): void;
   /** True while the lamp glides, is kicked or dims: the backs are then drawn live, as the mockup's `gloss()`, and the tracks rest. */
   live(): boolean;
   setLive(live: boolean): void;
   /** The delay, in milliseconds, that starts an animation of `track` where the track is now. */
-  delayOf(track: GlossTrack): number;
+  delayOf(of: Published): number;
 }
 
 export function createGlossTracks(initial: LampSnap, now: () => number): GlossTracks {
-  let track = bakeGlossTrack(initial, now());
+  let track: Published = { snap: initial, epoch: now() };
   let live = glossLive(initial);
   const listeners = new Set<() => void>();
   return {
@@ -34,7 +40,7 @@ export function createGlossTracks(initial: LampSnap, now: () => number): GlossTr
     },
     delayOf: (of) => -(now() - of.epoch),
     publish: (snap) => {
-      track = bakeGlossTrack(snap, now());
+      track = { snap, epoch: now() };
       for (const listener of listeners) listener();
     },
   };

@@ -3,9 +3,120 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { FRAME, swayAmplitude, type GlossTrack } from "./glossTrack.ts";
+import { cardGloss, glossSpot } from "./cardGloss.ts";
+import { stepLamp, SWAY, type Lamp } from "./lampRig.ts";
+import { GLOSS_HORIZON_S, settledLamp, type BackBox, type LampPose, type LampSnap, type Placed } from "./glossTrack.ts";
+import type { Published } from "./glossTrackStore.ts";
+
+/** Most a linear stretch between two stops may differ from the lamp's own path, in design points. */
+const TOLERANCE_PT = 0.4;
+/** One level counted as this many points when it sets how finely the stops fall. */
+const LEVEL_PT = 40;
+export const FRAME = 1 / 60;
+const LONGEST_STRETCH = 30;
+
 
 const seconds = (n: number) => n * FRAME;
+
+const FREE_LAMP: Lamp = {
+  x: 0, y: 0, tx: 0, ty: 0, r: 1, tr: 1, ph: 0, kick: 0, flare: 0, lvl: 1, lvlT: 1, lvlRate: 1,
+  holds: { lost: 1, breath: 1, link: 1 }, freeze: 0, t: 0, lx: 0, ly: 0, level: 1, f: 0,
+  drawn: { lx: 0, ly: 0, level: 1, f: 0, r: 1 },
+};
+
+/** The sway's reach from the lamp, in points, at `kick`: the rig's own, read off one of its steps. */
+function amplitudeAt(kick: number): number {
+  const probe: Lamp = { ...FREE_LAMP, holds: { ...FREE_LAMP.holds }, drawn: { ...FREE_LAMP.drawn }, ph: Math.PI / 2, kick, freeze: 1 };
+  stepLamp(probe, 0, false);
+  return probe.lx - probe.x;
+}
+const KICK_AMPLITUDE = amplitudeAt(1) - SWAY;
+
+export const swayAmplitude = (kick: number) => SWAY + KICK_AMPLITUDE * kick;
+
+interface Path {
+  frames: number;
+  x: Float64Array;
+  y: Float64Array;
+  r: Float64Array;
+  level: Float64Array;
+  lx: Float64Array;
+  ly: Float64Array;
+  kick: Float64Array;
+}
+
+/** The rig itself, stepped on a copy at 60 Hz from `snap`: frame `n` is `n / 60` seconds on. */
+function simulate(snap: LampSnap, frames: number): Path {
+  const s: Lamp = { ...FREE_LAMP, holds: { ...FREE_LAMP.holds }, drawn: { ...FREE_LAMP.drawn }, ...snap };
+  s.lx = s.x;
+  s.ly = s.y;
+  const path: Path = { frames, ...Object.fromEntries(["x", "y", "r", "level", "lx", "ly", "kick"].map((k) => [k, new Float64Array(frames + 1)])) } as Path;
+  const record = (n: number) => {
+    path.x[n] = s.x;
+    path.y[n] = s.y;
+    path.r[n] = s.r;
+    path.level[n] = s.level;
+    path.lx[n] = s.lx;
+    path.ly[n] = s.ly;
+    path.kick[n] = s.kick;
+  };
+  stepLamp(s, 0, snap.reduced);
+  record(0);
+  for (let n = 1; n <= frames; n++) {
+    stepLamp(s, FRAME, snap.reduced);
+    record(n);
+  }
+  return path;
+}
+
+/** The frames the track stops at: dense where the lamp bends, so a straight line between two stops stays within `TOLERANCE_PT`. */
+function stopsOf(path: Path): number[] {
+  const bend = (n: number) => {
+    const a = Math.max(0, n - 1);
+    const b = Math.min(path.frames, n + 1);
+    const second = (v: Float64Array, k: number) => Math.abs(v[b]! - 2 * v[n]! + v[a]!) * k;
+    return Math.max(second(path.lx, 1), second(path.ly, 1), second(path.level, LEVEL_PT)) / (FRAME * FRAME);
+  };
+  const stops = [0];
+  let n = 0;
+  while (n < path.frames) {
+    const reach = Math.max(bend(n), bend(Math.min(n + 1, path.frames)));
+    const stretch = reach > 0 ? Math.sqrt((8 * TOLERANCE_PT) / reach) / FRAME : LONGEST_STRETCH;
+    n = Math.min(path.frames, n + Math.max(1, Math.min(LONGEST_STRETCH, Math.floor(stretch))));
+    stops.push(n);
+  }
+  return stops;
+}
+
+/** A lamp track: what every back reads, baked off one snapshot. */
+export interface GlossTrack {
+  snap: LampSnap;
+  /** The `performance.now()` at which the snapshot was taken. */
+  epoch: number;
+  stops: readonly number[];
+  path: Path;
+  moves: boolean;
+  /** Frames of the horizon. */
+  frames: number;
+}
+
+const bakes = new WeakMap<object, GlossTrack>();
+
+/** The track baked from a published snapshot, once for the three fans that read it. */
+export function trackOf(published: Published): GlossTrack {
+  let track = bakes.get(published);
+  if (!track) bakes.set(published, (track = bakeGlossTrack(published.snap, published.epoch)));
+  return track;
+}
+
+export function bakeGlossTrack(snap: LampSnap, epoch: number): GlossTrack {
+  const frames = Math.round(GLOSS_HORIZON_S / FRAME);
+  const path = simulate(snap, frames);
+  const stops = stopsOf(path);
+  const still = (v: Float64Array) => v.every((e) => Math.abs(e - v[0]!) < 1e-6);
+  const moves = !(still(path.lx) && still(path.ly) && still(path.level));
+  return { snap, epoch, stops, path, moves, frames };
+}
 
 type Keyframes = Record<string, Record<string, unknown>>;
 
@@ -53,3 +164,38 @@ export function sharedTrack(track: GlossTrack): SharedTrack {
   };
 }
 
+
+/** The spot at the sway's two extremes, centre from the card's top-left in its own axes, in design points: it crosses on the same fades. */
+export interface SpotEnd {
+  x: number;
+  y: number;
+  alpha: number;
+}
+
+export interface StreakEnd {
+  x: number;
+  y: number;
+  ang: number;
+  opacity: number;
+}
+
+export interface BackPose {
+  spot: [SpotEnd, SpotEnd];
+  /** The streak at the sway's two extremes, which the fan's two fades cross between. */
+  streak: [StreakEnd, StreakEnd];
+}
+
+/** Where a back stands in the light the lamp comes to rest in; a glide, a kick or a dim is drawn live (`glossLive`). */
+export function backPose(track: GlossTrack, placed: Placed, box: BackBox): BackPose {
+  const settled = settledLamp(track.snap);
+  const ends: [LampPose, LampPose] = [{ ...settled, lx: settled.lx - SWAY }, { ...settled, lx: settled.lx + SWAY }];
+  const spotAt = (lamp: LampPose): SpotEnd => {
+    const g = glossSpot(placed.x, placed.y, box.w, box.h, lamp);
+    return { x: g.spot.x, y: g.spot.y, alpha: g.spotAlpha };
+  };
+  const streakAt = (lamp: LampPose): StreakEnd => {
+    const g = cardGloss(placed.x, placed.y, box.w, box.h, lamp);
+    return { x: g.band.x, y: g.band.y, ang: g.ang, opacity: g.a };
+  };
+  return { spot: [spotAt(ends[0]), spotAt(ends[1])], streak: [streakAt(ends[0]), streakAt(ends[1])] };
+}
