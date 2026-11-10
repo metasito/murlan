@@ -26,9 +26,23 @@ const BACK = "Di nuovo in linea";
 const OFFLINE = "Nessuna connessione Internet";
 const GREY = `grayscale(${Reconnect.grey}) brightness(${1 - Reconnect.darken * Reconnect.grey})`;
 const TURN = '[data-testid="notice-turn"]';
+const SHOWN_POLL_MS = 20;
 const dotOf = (page: Page, sel: string) => page.evaluate((s) => getComputedStyle(document.querySelector(`${s} [data-testid="turn-chip-dot"], ${s} .dot`)!).backgroundColor, sel);
 
 const plateAndDot = async (side: Stage, page: Page, sel: string) => ({ plate: (await side.plate(sel))!, dot: await dotOf(page, sel) });
+/**
+ * The plate's paint the moment `text` is on it. The pill holds `Reconnect.back` (1.3 s) and then the chip returns to its lit
+ * gold, so a read behind a `toBeVisible`, whose polls back off to a second, lands on the lit chip on a slow runner.
+ */
+async function plateAndDotOnceShown(side: Stage, page: Page, sel: string, text: string) {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    if ((await page.locator(sel).textContent({ timeout: 1000 }).catch(() => null))?.includes(text)) return plateAndDot(side, page, sel);
+    if (Date.now() > deadline) throw new Error(`${sel} never showed ${text}`);
+    await page.waitForTimeout(SHOWN_POLL_MS);
+  }
+}
+
 function expectPlate(got: Awaited<ReturnType<typeof plateAndDot>>, want: typeof got, name: string) {
   expect.soft(got.plate.edge, `${name}'s edge`).toBe(want.plate.edge);
   expect.soft(got.plate.ink, `${name}'s ink`).toBe(want.plate.ink);
@@ -151,8 +165,7 @@ test("online — a dropped connection says so, and the table comes back", async 
     pressed = true;
     await retry.click();
     await expect.poll(() => held.length, "Riprova opens a socket of its own").toBe(2);
-    await expect(page.getByTestId("notice-turn").getByText(BACK)).toBeVisible({ timeout: 30_000 });
-    const back = await plateAndDot(app, page, TURN);
+    const back = await plateAndDotOnceShown(app, page, TURN, BACK);
     const backMockup = await mockupAt(browser, "reconnect", 3600);
     expectPlate(back, await plateAndDot(backMockup, backMockup.page, "#turn.ok"), "#turn.ok");
     await backMockup.close();
