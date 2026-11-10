@@ -141,3 +141,16 @@ export function placeOf(track: Pick<EndTrack, "t">, rigT: number): number {
 export function driftPt(sway: readonly number[], playing: number, place: number): number {
   return Math.abs(trackAt(sway, playing) - trackAt(sway, place)) * SWAY;
 }
+
+export type Steering = { kind: "none" } | { kind: "rebake" } | { kind: "steer"; place: number };
+
+/**
+ * What each check of a playing track does: bake another when the animation is gone or the rig has run out of the track,
+ * move the animation to the rig's place when the light is `DRIFT_PT` off, nothing otherwise. `playing` is the animation's
+ * place in its pass, null if it has none; `rigT` the rig's clock.
+ */
+export function steering(track: Pick<EndTrack, "sway" | "t">, playing: number | null, rigT: number): Steering {
+  const place = placeOf(track, rigT);
+  if (playing === null || place > TRACK_SECONDS - REBAKE_BEFORE) return { kind: "rebake" };
+  return driftPt(track.sway, playing, place) > DRIFT_PT ? { kind: "steer", place } : { kind: "none" };
+}

@@ -7,9 +7,8 @@ import Animated, { useAnimatedReaction } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames, ambientPlace, steerAmbient, useAmbient } from "@/lib/motion";
-import { TRACK_SECONDS } from "@/lib/swayTable";
 import type { EndsProps } from "./feltCanvas";
-import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endTrack, isRested, placeOf, QUIET_MS, REBAKE_BEFORE, type EndTrack } from "./restEnds";
+import { DRIFT_CHECK_MS, endTrack, isRested, placeOf, QUIET_MS, steering, type EndTrack } from "./restEnds";
 
 function copyOf(host: unknown, into: HTMLCanvasElement): boolean {
   const from = (host as HTMLElement | null)?.querySelector("canvas");
@@ -91,8 +90,10 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
     cancels.push(
       afterFrames(3, () => {
         if (!live) return;
+        const mapperRun = (globalThis as { __mapperRun?: unknown }).__mapperRun;
+        if (typeof mapperRun !== "function") return side.set(0);
         side.set(1);
-        (globalThis as { __mapperRun?: () => void }).__mapperRun?.();
+        mapperRun();
         skia.current?.makeImageSnapshot()?.dispose();
         if (copyOf(host.current, canvas)) {
           canvas.style.visibility = "visible";
@@ -103,10 +104,9 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
     const check = setInterval(() => {
       const element = canvas.parentElement;
       if (!element || !baked) return;
-      const at = ambientPlace(element);
-      const place = placeOf(baked, lamp.get().t);
-      if (at === null || place > TRACK_SECONDS - REBAKE_BEFORE) bake();
-      else if (driftPt(baked.sway, at, place) > DRIFT_PT) steer();
+      const next = steering(baked, ambientPlace(element), lamp.get().t);
+      if (next.kind === "rebake") bake();
+      else if (next.kind === "steer") steerAmbient(element, { place: next.place });
     }, DRIFT_CHECK_MS);
     // A hidden page steps no rig while its animation keeps the clock: hold it, and put it where the rig is on return.
     const visibility = () => {

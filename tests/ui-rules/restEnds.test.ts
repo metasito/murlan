@@ -3,7 +3,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { lampControls, restingLamp, stepLamp, SWAY, type Lamp, type Pool } from "../../components/table/lampRig.ts";
-import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endTrack, isRested, leanOf, NOT_SHOWN, nextShown, placeOf, shownLamp } from "../../components/table/restEnds.ts";
+import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endTrack, isRested, leanOf, NOT_SHOWN, nextShown, placeOf, shownLamp, steering } from "../../components/table/restEnds.ts";
 import { TRACK_SECONDS, trackAt } from "../../lib/swayTable.ts";
 
 const DT = 1 / 60;
@@ -106,7 +106,7 @@ describe("a rig that falls behind the wall clock", () => {
     let caught = -1;
     for (let ms = 1000; ms <= TRACK_SECONDS * 1000 && caught < 0; ms += 250) {
       for (let i = 0; i < 15; i++) stepLamp(rig, DT * 0.986, false);
-      if (driftPt(track.sway, ms / 1000, placeOf(track, rig.t)) > DRIFT_PT) caught = ms;
+      if (steering(track, ms / 1000, rig.t).kind === "steer") caught = ms;
     }
     assert.ok(caught > 0 && caught <= 8000, `caught at ${caught} ms`);
     assert.ok(driftPt(track.sway, placeOf(track, rig.t), placeOf(track, rig.t)) < 1e-9);
@@ -114,6 +114,17 @@ describe("a rig that falls behind the wall clock", () => {
     const fresh = endTrack(steady.ph, steady.t);
     for (let i = 0; i < 600; i++) stepLamp(steady, DT, false);
     assert.ok(driftPt(fresh.sway, 10, placeOf(fresh, steady.t)) < DRIFT_PT, "a rig that keeps up is never steered");
+  });
+
+  test("is baked again when its animation is gone or the rig is two seconds from the end of the track, and left alone when it keeps up", () => {
+    const rig = restedLamp();
+    const track = endTrack(rig.ph, rig.t);
+    assert.deepEqual(steering(track, null, rig.t), { kind: "rebake" });
+    assert.deepEqual(steering(track, 0, rig.t + TRACK_SECONDS - 1), { kind: "rebake" });
+    assert.deepEqual(steering(track, 5, rig.t + 5), { kind: "none" });
+    const steer = steering(track, 5.2, rig.t + 5);
+    assert.equal(steer.kind, "steer");
+    assert.ok(steer.kind === "steer" && Math.abs(steer.place - 5) < 1e-9);
   });
 
   test("is never half a point off, checked every DRIFT_CHECK_MS and steered over DRIFT_PT, for a rig 5% slow", () => {
@@ -127,7 +138,10 @@ describe("a rig that falls behind the wall clock", () => {
       const playing = frame * DT + moved;
       const place = placeOf(track, rig.t);
       worst = Math.max(worst, driftPt(track.sway, playing, place));
-      if (frame % every === 0 && driftPt(track.sway, playing, place) > DRIFT_PT) moved += place - playing;
+      if (frame % every === 0) {
+        const next = steering(track, playing, rig.t);
+        if (next.kind === "steer") moved += next.place - playing;
+      }
     }
     assert.ok(worst < 0.5, `${worst} pt off between checks`);
   });
