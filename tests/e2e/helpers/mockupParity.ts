@@ -598,31 +598,34 @@ interface Capture {
   atRest?: { frames: Capture["frames"]; regions: Trace["regions"] };
 }
 
-/** The app's particle layer alone: what it drew, and whether it drew anything. At rest that is the air, whose motes are views, not canvas pixels. */
+/** The app's particle layer alone: what it drew, and whether it drew anything. At rest the canvas is blank and the air, whose motes are views, is the layer. */
 const appLayer = async (page: Page): Promise<Omit<LayerSample, "t"> | null> => {
   const drawn = await page.evaluate(() => {
     const c = document.querySelector<HTMLCanvasElement>('[data-testid="particles"]');
-    if (!c) {
-      const air = document.querySelector<HTMLElement>('[data-testid="air"]');
-      if (!air) return null;
-      let lit = false;
-      const state = new Set<string>();
-      for (const mote of air.querySelectorAll<HTMLElement>('[data-testid="air-mote"]')) {
-        let alpha = 1;
-        for (let at: HTMLElement | null = mote; at && at !== air; at = at.parentElement) {
-          const s = getComputedStyle(at);
-          alpha *= Number(s.opacity);
-          state.add(`${s.transform}|${s.opacity}`);
-        }
-        if (alpha >= 0.017) lit = true;
-      }
-      return { url: [...state].join(";"), drawn: lit };
+    let sample: { url: string; drawn: boolean } | null = null;
+    if (c) {
+      // A copy: reading the app's own context back every frame makes Chromium warn on the app's page.
+      const copy = new OffscreenCanvas(c.width, c.height).getContext("2d", { willReadFrequently: true })!;
+      copy.drawImage(c, 0, 0);
+      const px = copy.getImageData(0, 0, c.width, c.height).data;
+      sample = { url: c.toDataURL(), drawn: px.some((v, i) => i % 4 === 3 && v > 0) };
+      if (sample.drawn) return sample;
     }
-    // A copy: reading the app's own context back every frame makes Chromium warn on the app's page.
-    const copy = new OffscreenCanvas(c.width, c.height).getContext("2d", { willReadFrequently: true })!;
-    copy.drawImage(c, 0, 0);
-    const px = copy.getImageData(0, 0, c.width, c.height).data;
-    return { url: c.toDataURL(), drawn: px.some((v, i) => i % 4 === 3 && v > 0) };
+    // Nothing on the canvas: the rest air is views, not pixels, and its moth is no mote.
+    const air = document.querySelector<HTMLElement>('[data-testid="air"]');
+    if (!air) return sample;
+    let lit = false;
+    const state = new Set<string>();
+    for (const mote of air.querySelectorAll<HTMLElement>('[data-testid="air-mote"]')) {
+      let alpha = 1;
+      for (let at: HTMLElement | null = mote; at && at !== air; at = at.parentElement) {
+        const s = getComputedStyle(at);
+        alpha *= Number(s.opacity);
+        state.add(`${s.transform}|${s.opacity}`);
+      }
+      if (alpha >= 0.017) lit = true;
+    }
+    return { url: [...state].join(";"), drawn: lit };
   });
   return drawn && { sha1: createHash("sha1").update(drawn.url).digest("hex"), drawn: drawn.drawn };
 };
