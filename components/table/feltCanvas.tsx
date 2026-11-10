@@ -63,7 +63,7 @@ export interface FeltCanvasProps {
   cards: CardTable;
   /** `useLinkHold`'s grey: drawn here on iOS only, where the view filter is not. */
   grey?: SharedValue<number>;
-  /** The settled felt's second end, laid over this canvas (web only: `feltEnds.web.tsx`). */
+  /** The settled felt's second end, laid over this canvas (web only: `feltEndB.tsx`, reached only through `skiaCanvases.ts`, so no native import names it). */
   Ends?: ComponentType<EndsProps>;
 }
 
