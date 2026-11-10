@@ -44,7 +44,6 @@ test("online — a dropped connection says so, and the table comes back", async 
 
   const context = await browser.newContext({ locale: "it-IT" });
   const page: Page = await context.newPage();
-  await page.clock.install();
   await page.emulateMedia({ reducedMotion: "reduce" });
 
   // Everything the browser reports while the network is up. The offline window
@@ -150,16 +149,12 @@ test("online — a dropped connection says so, and the table comes back", async 
     // table says so, lets go of the grey and is the same table.
     await expect.poll(() => held.length, { message: "the app's own attempt, held", timeout: 10_000 }).toBe(1);
     pressed = true;
-    // The "back" pill holds `Reconnect.back` (1.3 s) and then the chip returns to its lit gold: a read behind the poll that
-    // finds the text, on a slow runner, lands after it. Time held, the pill holds until the read is done.
-    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
     await retry.click();
     await expect.poll(() => held.length, "Riprova opens a socket of its own").toBe(2);
     await expect(page.getByTestId("notice-turn").getByText(BACK)).toBeVisible({ timeout: 30_000 });
     const back = await plateAndDot(app, page, TURN);
     const backMockup = await mockupAt(browser, "reconnect", 3600);
     expectPlate(back, await plateAndDot(backMockup, backMockup.page, "#turn.ok"), "#turn.ok");
-    await page.clock.resume();
     await backMockup.close();
     await mockup.close();
     await expect(page.getByTestId("notice-turn").getByText(BACK)).toBeHidden({ timeout: 10_000 });
