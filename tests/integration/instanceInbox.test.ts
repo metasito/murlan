@@ -186,6 +186,40 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     }
   });
 
+  test("a stream lost mid-batch is made anew past the whole batch, not only the part handled", { timeout: 20_000 }, async () => {
+    const target = randomUUID();
+    const to = openInbox({ id: target });
+    const seen: number[] = [];
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const held = new Promise<void>((resolve) => (release = resolve));
+    to.on("probe", async (m: InstanceMessage) => {
+      if (m.n === 0) {
+        entered();
+        await held;
+      }
+      seen.push(m.n as number);
+    });
+    try {
+      await opened(target);
+      const ahead = Date.now() + 3_600_000;
+      const batch = redis.multi();
+      for (let n = 0; n < 3; n++) batch.xAdd(inboxOf(target), `${ahead + n}-0`, { m: JSON.stringify({ kind: "probe", n }) });
+      await batch.exec();
+      await started;
+      await redis.del(inboxOf(target));
+      await opened(target);
+      await sender.send(target, { kind: "probe", n: 3 });
+      release();
+      await eventually(() => seen.length === 4, "the batch and the message sent after the loss");
+      assert.deepEqual(seen, [0, 1, 2, 3]);
+    } finally {
+      release();
+      await to.close();
+    }
+  });
+
   test("a message to an unreachable Redis is refused at once, not queued", async () => {
     const offline = openInbox({ id: randomUUID(), url: viaProxy(redisUrl, proxy) });
     try {

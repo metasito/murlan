@@ -92,14 +92,18 @@ export function openInbox({
   const reader = openRedis("inbox", { url });
   const own = inboxKey(id);
   let closed = false;
-  /** The last entry id handed to a handler; a stream made anew must hold only ids past it. */
+  /** The last entry id handed to a handler: where a read resumes. */
   let cursor = "0-0";
+  /** The highest entry id fetched, set before any handler runs: a stream made anew must hold only ids past it. */
+  let fetched = "0-0";
 
-  // Pipelined in one write, so the stream is never left without its expiry. Its id is past the
-  // cursor even when this store's clock is behind it (failover, restore), or every later `*` id
-  // would sit below what the reader has seen and be skipped.
+  // Pipelined in one write, so the stream is never left without its expiry. When the stream was
+  // lost entirely, its first id is past every one fetched even if the store's clock is behind
+  // them, or each later `*` id would sit below the cursor and be skipped. Not covered: a stream that
+  // survives with an older top id, and a reply already served but not yet processed when the
+  // keep-alive recreates the stream.
   const create = () => {
-    const seen = Number(cursor.split("-")[0]);
+    const seen = Number(fetched.split("-")[0]);
     const id = seen > 0 ? `${seen + 1}-*` : "*";
     return Promise.all([writer.xAdd(own, id, { m: BOOT }, { TRIM: inboxTrim() }), writer.pExpire(own, INBOX_TTL_MS)]);
   };
@@ -141,7 +145,9 @@ export function openInbox({
     while (reader.isOpen) {
       try {
         const reply = await reader.xRead({ key: inboxKey(id), id: cursor }, { BLOCK: BLOCK_MS, COUNT: READ_COUNT });
-        for (const { messages } of (reply ?? []) as { messages: { id: string; message: Record<string, string> }[] }[]) {
+        const streams = (reply ?? []) as { messages: { id: string; message: Record<string, string> }[] }[];
+        fetched = streams.at(-1)?.messages.at(-1)?.id ?? fetched;
+        for (const { messages } of streams) {
           for (const entry of messages) {
             noteStreamRead("inbox", entry.id);
             await deliver(entry.message.m);
