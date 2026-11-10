@@ -143,11 +143,11 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & 
     setTracks(buildMoteTracks(air, light));
   }, [air, elapsed, lightNow, reduced, rng]);
 
+  // Not on a thaw: the tracks and the air's clock were paused together, and a rebuild is the one long task the air has.
   useEffect(() => {
-    if (frozen) return;
     const first = setTimeout(rebuild, 0);
     return () => clearTimeout(first);
-  }, [rebuild, frozen]);
+  }, [rebuild]);
 
   useEffect(() => {
     if (!tracks || frozen) return;
