@@ -15,7 +15,6 @@ import {
   swayAt,
   swayPhase,
   trackAt,
-  swayTimeOf,
 } from "../../lib/swayTable.ts";
 
 const omega = (t: number) => 0.84 * (1 + 0.14 * Math.sin(t * 0.11 + 1.3) + 0.06 * Math.sin(t * 0.37));
@@ -56,12 +55,6 @@ describe("the sway table", () => {
       assert.ok(Math.abs(Math.sin(ph) - swayAt(t)) < 1e-3, `at ${t}`);
       last = ph;
     }
-  });
-
-  test("swayTimeOf is the inverse of swayPhase, for any number of loops in", () => {
-    for (let t = 0; t < SWAY_LOOP; t += 0.37) assert.ok(Math.abs(swayTimeOf(swayPhase(t)) - t) < 1e-6, `at ${t}`);
-    assert.ok(Math.abs(swayTimeOf(swayPhase(12.5) + 80 * Math.PI) - 12.5) < 1e-6);
-    assert.ok(Math.abs(swayTimeOf(0) - SWAY_REST_AT) < 1e-12);
   });
 });
 

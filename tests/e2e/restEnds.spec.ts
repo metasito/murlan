@@ -76,7 +76,7 @@ test("the end-B layer's opacity follows the lamp's light to within half a point"
   test.setTimeout(3 * 60_000);
   const { page, context, shown } = await restedTable(browser, baseURL!);
   // The rig steps after the seek in the frame the layer shows, so the animation is a frame behind its clock, never more.
-  expect(Math.abs(shown.at! - (shown.clock - shown.t0)), "seconds the animation is from the rig's place the frame its layer first shows").toBeLessThan((1.5 * STEP_MS) / 1000);
+  expect((Math.abs(shown.at! - (shown.clock - shown.t0)) * 1000) / STEP_MS, "frames the animation is from the rig's place the frame its layer first shows").toBeLessThan(1.5);
   const samples = [shown, ...(await sampled(page, WINDOW - 1))];
   expect(Math.min(...samples.map((s) => s.playing)), "frames the end-B layer had no playing animation").toBeGreaterThanOrEqual(1);
 

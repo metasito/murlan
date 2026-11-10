@@ -9,7 +9,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { afterFrames, ambientPlace, steerAmbient, useAmbient } from "@/lib/motion";
 import type { EndsProps } from "./feltCanvas";
-import { DRIFT_CHECK_MS, endTrack, isRested, placeOf, QUIET_MS, START_WAIT_FRAMES, steering, type EndTrack } from "./restEnds";
+import { DRIFT_CHECK_MS, endTrack, isRested, placeOf, QUIET_MS, steering, type EndTrack } from "./restEnds";
 
 function copyOf(host: unknown, into: HTMLCanvasElement): boolean {
   const from = (host as HTMLElement | null)?.querySelector("canvas");
@@ -24,6 +24,9 @@ function copyOf(host: unknown, into: HTMLCanvasElement): boolean {
   context.drawImage(from, 0, 0);
   return true;
 }
+
+/** Frames a mounted track may take to start before the layer is given up: past it the table draws live instead. */
+const START_WAIT_FRAMES = 30;
 
 export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsProps) {
   const reduceMotion = usePrefersReducedMotion();
@@ -88,13 +91,15 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
       cancels.push(afterFrames(2, () => whenPlaying(steer)));
     };
     // A table whose animation never starts shows no layer and draws live (rule 51 catches the cost), rather than waiting for it every frame.
+    let gaveUp = false;
     const giveUp = () => {
+      gaveUp = true;
       clearInterval(check);
       setPlaying(null);
       hide();
     };
     const whenPlaying = (then: () => void, left = START_WAIT_FRAMES) => {
-      if (!live) return;
+      if (!live || gaveUp) return;
       if (!canvas.parentElement || ambientPlace(canvas.parentElement) !== null) return then();
       if (left <= 0) return giveUp();
       cancels.push(afterFrames(1, () => whenPlaying(then, left - 1)));
@@ -103,7 +108,7 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
     // The felt draws from a shared value through a mapper run and a redraw, each a microtask of its own, and an unpresented drawing buffer reads back blank: so end B is drawn now, by hand, before the copy, and end A drawn back by the redraw the write queues. Never presented.
     cancels.push(
       afterFrames(3, () => whenPlaying(() => {
-        if (!live || !isRested(lamp.get())) return;
+        if (!live || gaveUp || !isRested(lamp.get())) return;
         steer();
         const mapperRun = (globalThis as { __mapperRun?: unknown }).__mapperRun;
         if (typeof mapperRun !== "function") return giveUp();

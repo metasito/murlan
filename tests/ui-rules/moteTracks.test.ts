@@ -2,8 +2,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MOTES, createAir, type Air } from "../../components/table/air.ts";
-import { advanceAir, buildFlight, buildMoteTracks, buildMoth, rebuildTracks, REBUILD_LEAD_S, mothAt, mothKeyframes, FLIGHT_S, litAt, SPAN_S, stillAlphas, trackAlpha, moteKeyframes, type MoteTrack, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
-import { swayTimeOf, SWAY_REST_AT } from "../../lib/swayTable.ts";
+import { lightAt, swayFrom, advanceAir, buildFlight, buildMoteTracks, buildMoth, rebuildTracks, REBUILD_LEAD_S, mothAt, mothKeyframes, FLIGHT_S, litAt, SPAN_S, stillAlphas, trackAlpha, moteKeyframes, type MoteTrack, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
+import { lampControls, restingLamp, stepLamp } from "../../components/table/lampRig.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 import { mulberry32 } from "../support/game.ts";
 
@@ -67,7 +67,7 @@ function trackAt(track: MoteTrack, s: number): { x: number; y: number } {
   return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
 }
 
-const LIGHT: RestLight = { x: 437, ly: 292 - 40, level: 1, r: 1, tt: SWAY_REST_AT };
+const LIGHT: RestLight = { x: 437, ly: 292 - 40, level: 1, r: 1, ph: 0, t: 0 };
 
 /** The worst a mote's alpha track is off `drawAir`, over every mote at each of `at` seconds, with the build at `from`. */
 function worstAlpha(seed: number, from: number, at: number[], plant?: (t: MoteTracks) => void): number {
@@ -75,7 +75,7 @@ function worstAlpha(seed: number, from: number, at: number[], plant?: (t: MoteTr
   const air: Air = createAir(mulberry32(seed));
   advanceAir(air, from);
   for (let n = 0; n < Math.round(from / DT); n++) m.frame();
-  const tracks = buildMoteTracks(air, { ...LIGHT, tt: swayTimeOf(m.lamp.ph) });
+  const tracks = buildMoteTracks(air, { ...LIGHT, ph: m.lamp.ph, t: m.time() });
   plant?.(tracks);
   const byMote = new Map(tracks.motes.map((t) => [t.i, t]));
   let worst = 0;
@@ -180,6 +180,7 @@ describe("the moth's flight against drawAir", () => {
     const m = mockup(7);
     let onset = -1;
     let phase = 0;
+    let phaseAt = 0;
     const body: { s: number; x: number; y: number }[] = [];
     for (let n = 1; n < 60 * 40 && (onset < 0 || body.length < 60 * FLIGHT_S - 2); n++) {
       const drawn = m.frame();
@@ -187,13 +188,17 @@ describe("the moth's flight against drawAir", () => {
       if (wings.length === 2) {
         if (onset < 0) {
           onset = m.time();
-          phase = m.lamp.ph - (m.lamp.ph - phase) * 0;
+          phase = m.lamp.ph;
+          phaseAt = m.time();
         }
         body.push({ s: m.time() - onset, x: (wings[0].x + wings[1].x) / 2, y: wings[0].y });
-      } else if (onset < 0) phase = m.lamp.ph;
+      } else if (onset < 0) {
+        phase = m.lamp.ph;
+        phaseAt = m.time();
+      }
     }
     assert.ok(onset > 0, "the mockup sent no moth");
-    const stops = buildFlight({ x: 437, ly: 252, tt: swayTimeOf(phase) });
+    const stops = buildFlight({ x: 437, ly: 252, ph: phase, t: phaseAt });
     let worst = 0;
     for (const b of body) {
       const p = mothAt([{ s: 0, stops }], Math.min(FLIGHT_S, b.s))!;
@@ -244,5 +249,24 @@ describe("the moth's flight against drawAir", () => {
       compared++;
     }
     assert.ok(compared > 20, `${compared} motes compared`);
+  });
+});
+
+describe("the mote light after a freeze", () => {
+  test("is the rig's light within half a point over a track, once the lamp has frozen for 2.7 s and settled", () => {
+    const rig = restingLamp([437, 292, 1]);
+    for (let n = 0; n < 60 * 20; n++) stepLamp(rig, DT, false);
+    lampControls.freeze(rig, 1);
+    for (let n = 0; n < 60 * 2.7; n++) stepLamp(rig, DT, false);
+    lampControls.freeze(rig, 0);
+    for (let n = 0; n < 60 * 5; n++) stepLamp(rig, DT, false);
+    const light: RestLight = { x: rig.tx, ly: rig.ty - 40, level: 1, r: 1, ph: rig.ph, t: rig.t };
+    const sway = swayFrom(light);
+    let worst = 0;
+    for (let n = 1; n <= 60 * 40; n++) {
+      stepLamp(rig, DT, false);
+      worst = Math.max(worst, Math.abs(rig.lx - lightAt(light, sway, n * DT).lx));
+    }
+    assert.ok(worst < 0.5, `${worst} pt off the rig`);
   });
 });
