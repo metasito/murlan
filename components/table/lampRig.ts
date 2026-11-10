@@ -73,7 +73,7 @@ export const SWAY_KICKED = 80;
 const KICK_DECAY = 1.1;
 const FLARE_DECAY = 2.4;
 const DEFAULT_LEVEL_RATE = 3;
-const MAX_DT = 0.05;
+export const MAX_DT = 0.05;
 
 /** Who may hold the lamp's level down: the lost round, the deal's breath, the viewer's lost link. */
 export type LevelOwner = "lost" | "breath" | "link";

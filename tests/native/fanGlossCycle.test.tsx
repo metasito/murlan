@@ -1,5 +1,5 @@
-// tests/native/fanGlossCycle.test.tsx — the fan's gloss is made transparent, never stopped, while the lamp moves
-// (`GlossTracks.live`), so a CSS animation is not restarted at the settle and its place in the track stays the rig's.
+// tests/native/fanGlossCycle.test.tsx — the fan's gloss is held to the rig as the felt's end B is (`restEnds.steering`): moved to
+// the rig's place when the page stalls, rebaked when the track runs out, made transparent and never stopped while the lamp moves.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
@@ -8,15 +8,17 @@ import { makeMutable } from 'react-native-reanimated';
 
 import { FanGloss } from '@/components/table/FanGloss';
 import { createGlossTracks } from '@/components/table/glossTrackStore';
-import { snapOf } from '@/components/table/glossTrack';
-import { restingLamp } from '@/components/table/lampRig';
+import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endTrack, placeOf } from '@/components/table/restEnds';
+import { restingLamp, MAX_DT } from '@/components/table/lampRig';
 import { bootFeedback } from './helpers/feedback';
 
 beforeEach(async () => {
+  (globalThis as { document?: unknown }).document = { hidden: false, addEventListener: () => {}, removeEventListener: () => {} };
   jest.useFakeTimers();
   await bootFeedback();
 });
 afterEach(() => {
+  delete (globalThis as { document?: unknown }).document;
   jest.useRealTimers();
 });
 
@@ -25,57 +27,90 @@ const at = { x: 0, y: 0 };
 const felt = { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at };
 const drawn = cards.map((c) => ({ cx: 437 + c.x, cy: 60 + c.y, w: 24, h: 34, rot: c.rot, back: true, lift: 0, glow: 0 }));
 
-const mockAmbient = jest.fn();
+/** The animation's clock as CSS keeps it: `playing` seconds into its pass, moved only by the wall and by `steerAmbient`. */
+const css = { playing: 0, steered: [] as number[], started: 0 };
 jest.mock('@/lib/motion', () => {
   const actual = jest.requireActual('@/lib/motion') as typeof import('@/lib/motion');
   return {
     ...actual,
     ambient: (spec: Parameters<typeof actual.ambient>[0]) => {
-      mockAmbient(spec);
+      css.started += 1;
       return actual.ambient(spec);
+    },
+    ambientPlace: () => css.playing,
+    steerAmbient: (_: unknown, to: { place?: number; paused?: boolean }) => {
+      if (to.place !== undefined) {
+        css.playing = to.place;
+        css.steered.push(to.place);
+      }
     },
   };
 });
 
 const props = { felt, drawn, cards, box: { w: 80, h: 60 }, backScale: 0.5, tilt: {} };
-const lamp = () => snapOf(restingLamp([437, 180, 1]), false);
+const rested = () => {
+  const lamp = makeMutable(restingLamp([437, 180, 1]));
+  lamp.value.t = 12;
+  lamp.value.ph = 1.1;
+  return lamp;
+};
+const light = makeMutable({ lx: 437, ly: 140, level: 1, r: 1, t: 0 });
+const root = () => StyleSheet.flatten(screen.getByTestId('card-gloss', { includeHiddenElements: true }).props.style);
 
-describe('the fan\'s gloss through a glide', () => {
-  it('stays drawn and on its tracks, and is only transparent while the lamp moves', async () => {
-    mockAmbient.mockClear();
-    const tracks = createGlossTracks(lamp(), makeMutable(lamp()));
+describe('the fan\'s gloss against the rig', () => {
+  it('is put where the rig is the frame it starts, and kept there through stalls under a second', async () => {
+    css.playing = 0;
+    css.steered = [];
+    const lamp = rested();
+    const tracks = createGlossTracks(lamp, light);
+    await render(<FanGloss tracks={tracks} {...props} onCover={() => {}} />);
+    const track = endTrack(lamp.get().ph, lamp.get().t);
+    await act(async () => void jest.advanceTimersByTime(100));
+    expect(css.steered.at(-1)).toBeCloseTo(0, 6);
+
+    // Frames of 400 ms: the rig steps at most MAX_DT of each, the animation keeps the wall's clock.
+    let worst = 0;
+    for (let n = 0; n < 40; n++) {
+      css.playing += 0.4;
+      lamp.value.t += MAX_DT;
+      await act(async () => void jest.advanceTimersByTime(400));
+      worst = Math.max(worst, driftPt(track.sway, css.playing, placeOf(track, lamp.get().t)));
+    }
+    expect(css.steered.length).toBeGreaterThan(1);
+    expect(worst).toBeLessThanOrEqual(DRIFT_PT + 0.5);
+    expect(DRIFT_CHECK_MS).toBeLessThanOrEqual(400);
+  });
+
+  it('bakes anew before the track wraps, and at the settle', async () => {
+    css.playing = 0;
+    const lamp = rested();
+    const tracks = createGlossTracks(lamp, light);
+    await render(<FanGloss tracks={tracks} {...props} onCover={() => {}} />);
+    await act(async () => void jest.advanceTimersByTime(100));
+    const before = css.started;
+    lamp.value.t += 29;
+    css.playing = 29;
+    await act(async () => void jest.advanceTimersByTime(DRIFT_CHECK_MS + 10));
+    expect(css.started).toBeGreaterThan(before);
+    expect(css.steered.at(-1)).toBeCloseTo(0, 6);
+  });
+
+  it('stays drawn through a glide, transparent, and is covered only while the lamp rests', async () => {
+    const lamp = rested();
+    const tracks = createGlossTracks(lamp, light);
     const covered = jest.fn();
     await render(<FanGloss tracks={tracks} {...props} onCover={covered} />);
-    const root = () => StyleSheet.flatten(screen.getByTestId('card-gloss', { includeHiddenElements: true }).props.style);
     expect(covered).toHaveBeenLastCalledWith(true);
     expect(root().opacity).not.toBe(0);
-    const started = mockAmbient.mock.calls.length;
-    expect(started).toBe(3);
-    expect(mockAmbient.mock.calls.every(([spec]) => (spec as { delay: number }).delay === 0)).toBe(true);
-
-    await act(async () => tracks.update(null, true));
+    await act(async () => tracks.update(false));
     expect(covered).toHaveBeenLastCalledWith(false);
     expect(root().opacity).toBe(0);
     expect(root().display).not.toBe('none');
-    jest.advanceTimersByTime(3000);
-    await act(async () => tracks.update(null, false));
+    lamp.value.t += 3;
+    await act(async () => tracks.update(true));
     expect(covered).toHaveBeenLastCalledWith(true);
     expect(root().opacity).not.toBe(0);
-    expect(mockAmbient.mock.calls.length).toBe(started);
-  });
-
-  it('is placed in the track where the rig is when the rig bakes anew', async () => {
-    mockAmbient.mockClear();
-    const tracks = createGlossTracks(lamp(), makeMutable(lamp()));
-    await render(<FanGloss tracks={tracks} {...props} onCover={() => {}} />);
-    mockAmbient.mockClear();
-    jest.advanceTimersByTime(2500);
-    await act(async () => tracks.update(lamp(), false));
-    expect(mockAmbient.mock.calls.length).toBe(3);
-    jest.advanceTimersByTime(700);
-    await act(async () => tracks.update(null, true));
-    await act(async () => tracks.update(null, false));
-    expect(mockAmbient.mock.calls.length).toBe(3);
-    expect(mockAmbient.mock.calls.map(([spec]) => Math.abs((spec as { delay: number }).delay))).toEqual([0, 0, 0]);
+    await act(async () => void jest.advanceTimersByTime(100));
+    expect(css.steered.at(-1)).toBeCloseTo(0, 6);
   });
 });

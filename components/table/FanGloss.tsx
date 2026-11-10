@@ -1,18 +1,20 @@
-import React, { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { StyleSheet, View, type ViewStyle } from "react-native";
 import Animated from "react-native-reanimated";
 import { SvgXml } from "react-native-svg";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { CardGloss } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
-import { ambient } from "@/lib/motion";
+import { afterFrames, ambient, ambientPlace, steerAmbient } from "@/lib/motion";
 import { CARD_BACK_H, CARD_BACK_W, cardRadius } from "@/components/cardFaceModel";
 import type { ArcCard } from "@/components/tableArc";
 import { bandBox } from "./cardGloss";
-import { SPOT_STOPS, STREAK_STOPS } from "./glossStops";
 import { designRect, TABLE_AT_REST, type DrawnCard, type Felt } from "./cardRects";
-import type { Placed } from "./glossTrack";
-import { delayOf, sharedTrack, spotPose, spotTrack, streakPose, trackOf, type Played, type StreakEnd } from "./fanTrack";
+import { fadeA, spotPose, spotSlide, streakPose, type Placed, type StreakEnd } from "./fanTrack";
+import { SPOT_STOPS, STREAK_STOPS } from "./glossStops";
 import type { GlossTracks } from "./glossTrackStore";
+import { SWAY } from "./lampRig";
+import { DRIFT_CHECK_MS, endLamp, endTrack, placeOf, steering, type Shown } from "./restEnds";
 
 interface Props {
   tracks: GlossTracks;
@@ -44,28 +46,75 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
   const { w: boxW, h: boxH } = box;
   const w = CARD_BACK_W(backScale);
   const h = CARD_BACK_H(backScale);
-  const published = useSyncExternalStore(tracks.subscribe, tracks.get);
+  const epoch = useSyncExternalStore(tracks.subscribe, tracks.get);
   const live = useSyncExternalStore(tracks.subscribe, tracks.live);
-  const track = useMemo(() => trackOf(published), [published]);
-  const delay = useMemo(() => delayOf(published), [published]);
-  const shared = useMemo(() => sharedTrack(track), [track]);
-  const fades = useMemo(() => [shared.fadeA, shared.fadeB].map((p) => play(p, delay)), [shared, delay]);
+  const reduceMotion = usePrefersReducedMotion();
+  // Baked where the lamp rests, as the felt's end B is: the settle moves `epoch`, and so does a track that has run out.
+  const baked = useMemo(() => {
+    const s = tracks.lamp.get();
+    return { epoch, track: endTrack(s.ph, s.t), ends: [endLamp(s, -SWAY), endLamp(s, SWAY)] as const, centre: endLamp(s, 0) };
+  }, [tracks, epoch]);
+  const { track } = baked;
   const shapes = useMemo(() => silhouettes(cards, boxW, w, h), [cards, boxW, w, h]);
-  const streaks = useMemo(() => placed.map((p) => streakPose(track, p, { w: w / s, h: h / s })), [track, placed, w, h, s]);
+  const streaks = useMemo(() => placed.map((p) => streakPose(baked.ends, p, { w: w / s, h: h / s })), [baked, placed, w, h, s]);
   const pictures = useMemo(() => [0, 1].map((end) => streakXml(end, shapes, cards, streaks, s, w, h, boxW, boxH)), [shapes, cards, streaks, s, w, h, boxW, boxH]);
-  const spot = useMemo(() => spotOf(track, placed, cards, shapes, s, w, h), [track, placed, cards, shapes, s, w, h]);
-  const slide = useMemo(() => play(spotTrack(track, s, spot.rot), delay), [track, s, spot.rot, delay]);
+  const spot = useMemo(() => spotOf(baked.centre, placed, cards, shapes, s, w, h), [baked, placed, cards, shapes, s, w, h]);
+  const motion = useMemo(
+    () => (reduceMotion ? [] : [fadeA(track.sway), track.keyframes, spotSlide(track.sway, s, spot.rot)].map((keyframes) => ambient({ keyframes, duration: track.duration }))),
+    [reduceMotion, track, s, spot.rot]
+  );
+  // Motionless, the lamp is at the centre: the ends cross half and half and the spot stands.
+  const lean = reduceMotion ? 0.5 : 0.5 + 0.5 * track.sway[0]!;
+  const [fadeANode, fadeBNode, spotNode] = [useRef<NodeRef>(null), useRef<NodeRef>(null), useRef<NodeRef>(null)];
 
   useLayoutEffect(() => {
     onCover(!live);
     return () => onCover(false);
   }, [live, onCover]);
 
+  useLayoutEffect(() => {
+    if (reduceMotion) return;
+    const elements = () => [fadeANode, fadeBNode, spotNode].map((n) => n.current as unknown as Element | null).filter((e): e is Element => !!e);
+    const steer = (to: { place: number } | { paused: boolean }) => elements().forEach((e) => steerAmbient(e, to));
+    const place = () => ({ place: placeOf(track, tracks.lamp.get().t) });
+    // The animation starts when the commit does, not when the track was baked: it is moved to where the rig is the frame it exists.
+    let left = START_WAIT_FRAMES;
+    let cancel = () => {};
+    const start = () => {
+      const first = elements()[0];
+      if (first && ambientPlace(first) !== null) return steer(place());
+      if (--left > 0) cancel = afterFrames(1, start);
+    };
+    cancel = afterFrames(2, start);
+    // The rig steps at most `MAX_DT` a frame, so a page that stalls runs it behind the clock the animation keeps: hold them together.
+    const check = setInterval(() => {
+      const first = elements()[0];
+      if (!first || tracks.live()) return;
+      const next = steering(track, ambientPlace(first), tracks.lamp.get().t);
+      if (next.kind === "rebake") tracks.rebake();
+      else if (next.kind === "steer") steer({ place: next.place });
+    }, DRIFT_CHECK_MS);
+    // A hidden page steps no rig while its animation keeps the clock: hold it, and put it where the rig is on return.
+    const visibility = () => {
+      if (document.hidden) steer({ paused: true });
+      else {
+        steer(place());
+        steer({ paused: false });
+      }
+    };
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      cancel();
+      clearInterval(check);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [reduceMotion, track, tracks, fadeANode, fadeBNode, spotNode]);
+
   const radius = CardGloss.spot.radius * s;
   return (
     <View testID="card-gloss" pointerEvents="none" style={[StyleSheet.absoluteFill, live && styles.live]} {...a11yHidden()}>
       {pictures.map((xml, end) => (
-        <Animated.View key={end} pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: end ? shared.at.fadeB : shared.at.fadeA }, fades[end]]}>
+        <Animated.View key={end} ref={end ? fadeBNode : fadeANode} pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: end ? lean : 1 - lean }, motion[end]]}>
           <View pointerEvents="none" style={tilt}>
             <SvgXml xml={xml} width={boxW + 2 * w} height={boxH + 2 * w} style={{ position: "absolute", left: -w, top: -w }} />
           </View>
@@ -73,7 +122,7 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
       ))}
       <View pointerEvents="none" style={tilt}>
         <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width: boxW, height: boxH, ...maskOf(shapes, boxW, boxH) }}>
-          <Animated.View pointerEvents="none" style={[{ position: "absolute", left: spot.x - radius, top: spot.y - radius, width: 2 * radius, height: 2 * radius, opacity: spot.alpha }, slide]}>
+          <Animated.View ref={spotNode} pointerEvents="none" style={[{ position: "absolute", left: spot.x - radius, top: spot.y - radius, width: 2 * radius, height: 2 * radius, opacity: spot.alpha }, motion[2]]}>
             <SvgXml xml={blobXml()} width={2 * radius} height={2 * radius} />
           </Animated.View>
         </View>
@@ -87,7 +136,10 @@ function sameGloss(a: Props, b: Props): boolean {
   return (Object.keys(a) as (keyof Props)[]).every((k) => a[k] === b[k] || (typeof a[k] === "object" && JSON.stringify(a[k]) === JSON.stringify(b[k])));
 }
 
-const play = (p: Played | null, delay: number) => (p ? ambient({ keyframes: p.keyframes as never, duration: p.duration, delay }) : undefined);
+type NodeRef = React.ComponentRef<typeof Animated.View>;
+
+/** Frames a mounted track may take to start before it is left where the rig put it. */
+const START_WAIT_FRAMES = 30;
 
 interface Shape {
   cx: number;
@@ -116,11 +168,9 @@ const rect = (r: Shape["rect"], fill: string) => `<rect x='${r.x}' y='${r.y}' wi
 const stops = (list: typeof SPOT_STOPS | typeof STREAK_STOPS) => list.map((s) => `<stop offset='${s.at}' stop-color='${s.color}' stop-opacity='${s.alpha}'/>`).join("");
 
 /** The back nearest the lamp where it rests: the spot's slide is posed in its frame, which is the frame the mockup lights it in. */
-function spotOf(track: ReturnType<typeof trackOf>, placed: readonly Placed[], cards: readonly ArcCard[], shapes: Shape[], s: number, w: number, h: number) {
-  const lx = track.snap.tx;
-  const ly = track.snap.ty;
-  const near = placed.reduce((best, p, i) => (Math.hypot(p.x - lx, p.y - ly) < Math.hypot(placed[best]!.x - lx, placed[best]!.y - ly) ? i : best), 0);
-  const pose = spotPose(track, placed[near]!, { w: w / s, h: h / s });
+function spotOf(centre: Shown, placed: readonly Placed[], cards: readonly ArcCard[], shapes: Shape[], s: number, w: number, h: number) {
+  const near = placed.reduce((best, p, i) => (Math.hypot(p.x - centre.lx, p.y - centre.ly) < Math.hypot(placed[best]!.x - centre.lx, placed[best]!.y - centre.ly) ? i : best), 0);
+  const pose = spotPose(centre, placed[near]!, { w: w / s, h: h / s });
   const rot = cards[near]!.rot;
   const t = (rot * Math.PI) / 180;
   const dx = pose.x * s - w / 2;
@@ -137,7 +187,7 @@ function maskOf(shapes: Shape[], boxW: number, boxH: number): ViewStyle {
 }
 
 /** One end's streaks as a single picture: each back's band, in the back's own frame, masked by the backs painted over it. As XML, so that a rebake redraws one picture per end and no per-back element. */
-function streakXml(end: number, shapes: Shape[], cards: readonly ArcCard[], poses: readonly [StreakEnd, StreakEnd][], s: number, w: number, h: number, boxW: number, boxH: number): string {
+function streakXml(end: number, shapes: Shape[], cards: readonly ArcCard[], poses: readonly (readonly [StreakEnd, StreakEnd])[], s: number, w: number, h: number, boxW: number, boxH: number): string {
   const band = bandBox(w, h, CardGloss.streak.width);
   const masks = shapes
     .map((shape, i) => `<mask id='v${end}_${i}' maskUnits='userSpaceOnUse' x='${-w}' y='${-h}' width='${boxW + 2 * w}' height='${boxH + 2 * h}'>${rect(shape.rect, "#fff")}${shape.over.map((j) => rect(shapes[j]!.rect, "#000")).join("")}</mask>`)

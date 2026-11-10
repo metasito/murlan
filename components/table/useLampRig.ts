@@ -8,7 +8,7 @@ import { Platform } from "react-native";
 import { flareKindFor } from "@/components/impact";
 import { designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
 import { createGlossTracks, type GlossTracks } from "./glossTrackStore";
-import { glossLive, nextGlossBake, snapOf, type LampSnap } from "./glossTrack";
+import { endLamp, isRested } from "./restEnds";
 import { glossLightOf, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
@@ -28,7 +28,7 @@ export interface LampRig {
   glossLight: SharedValue<GlossLight>;
   /** The same light without the sway: where the lamp points, written when its target or level moves (`nextStillLight`). */
   stillLight: SharedValue<GlossLight>;
-  /** Web only: the track the fans' gloss plays, rebaked when the lamp's course changes (`nextGlossBake`). Native draws every back live. */
+  /** Web only: the track the fans' gloss plays, baked where the lamp rests (`FanGloss`). Native draws every back live. */
   tracks?: GlossTracks;
   /** The lamp's level alone, in the steps the card shades follow: written when the level moves, never for the sway (`nextShadeLevel`). */
   shadeLevel: SharedValue<number>;
@@ -50,10 +50,10 @@ function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight
     if (gloss) glossLight.value = gloss;
     const still = nextStillLight(stillLight.value, s);
     if (still) stillLight.value = still;
+    // Called as the page, not scheduled onto it: on web a worklet runs on the JS thread, and `tracks` is undefined on native, which never gets here.
     if (tracks) {
-      const bake = nextGlossBake(tracks.baked.value, s, reduced.value, frame.timeSincePreviousFrame ?? 0);
-      const moving = glossLive(s);
-      if (bake || moving !== tracks.live()) tracks.update(bake, moving);
+      const rested = isRested(s);
+      if (rested === tracks.live()) tracks.update(rested);
     }
     const level = nextShadeLevel(shadeLevel.value, s);
     if (level !== null) shadeLevel.value = level;
@@ -87,8 +87,8 @@ export function useLampRig({
   const stillLight = useSharedValue<GlossLight>(glossLightOf(resting));
   const shadeLevel = useSharedValue(resting.level);
   const [px, py, reach] = pool;
-  const baked = useSharedValue<LampSnap>(snapOf(resting, reduceMotion));
-  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(snapOf(resting, reduceMotion), baked) : undefined));
+  const rest = useSharedValue<GlossLight>({ ...glossLightOf(resting), lx: endLamp(resting, 0).lx });
+  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(lamp, rest) : undefined));
 
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.

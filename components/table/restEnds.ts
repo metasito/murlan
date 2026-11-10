@@ -62,6 +62,19 @@ export function leanOf(s: Lamp): number {
   return clamp01(0.5 + (s.lx - s.tx) / (2 * SWAY));
 }
 
+/** The light of a rested lamp with its sway at `sway` points: end A at `-SWAY`, end B at `SWAY`, the centre at 0. */
+export function endLamp(s: Lamp, sway: number): Shown {
+  "worklet";
+  return {
+    lx: lightX(s.tx, sway),
+    ly: lightY(s.ty),
+    f: 0,
+    r: s.tr,
+    level: clamp01(s.lvlT),
+    lean: 0.5 + sway / (2 * SWAY),
+  };
+}
+
 /** `side` -1 draws end A of a rested lamp and 1 end B; 0, or a lamp that has moved, the lamp as it is. */
 export function shownLamp(s: Lamp, side: number): Shown {
   "worklet";
@@ -74,14 +87,7 @@ export function shownLamp(s: Lamp, side: number): Shown {
       level: s.level,
       lean: leanOf(s),
     };
-  return {
-    lx: lightX(s.tx, side * SWAY),
-    ly: lightY(s.ty),
-    f: 0,
-    r: s.tr,
-    level: clamp01(s.lvlT),
-    lean: (side + 1) / 2,
-  };
+  return endLamp(s, side * SWAY);
 }
 
 /** `held` while the canvas would draw what it drew, so that nothing redraws for a sway the compositor carries. */
@@ -108,15 +114,20 @@ export interface EndTrack {
   t: number;
 }
 
+/** A style per stop of a baked sway, keyed as a CSS animation's keyframes: `of` takes the sway, -1 to 1. */
+export function swayKeyframes(sway: readonly number[], of: (v: number) => object): CSSAnimationKeyframes {
+  const last = sway.length - 1;
+  const keyframes: Record<string, object> = {};
+  sway.forEach((v, i) => {
+    keyframes[`${((i / last) * 100).toFixed(4)}%`] = of(v);
+  });
+  return keyframes as CSSAnimationKeyframes;
+}
+
 /** End B's opacity from the rig's `ph` and `t`, sampled `TRACK_STEP` apart for `TRACK_SECONDS`. */
 export function endTrack(ph: number, t: number): EndTrack {
   const sway = bakeSway({ ph, t }, TRACK_SECONDS);
-  const last = sway.length - 1;
-  const keyframes: Record<string, { opacity: number }> = {};
-  sway.forEach((v, i) => {
-    keyframes[`${((i / last) * 100).toFixed(4)}%`] = { opacity: 0.5 + 0.5 * v };
-  });
-  return { sway, keyframes: keyframes as CSSAnimationKeyframes, duration: last * TRACK_STEP * 1000, t };
+  return { sway, keyframes: swayKeyframes(sway, (v) => ({ opacity: 0.5 + 0.5 * v })), duration: (sway.length - 1) * TRACK_STEP * 1000, t };
 }
 
 /** Seconds before a track ends that the next is baked: an animation loops back to its start. */
