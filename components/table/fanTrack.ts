@@ -1,9 +1,8 @@
-// What every back of a fan shares: the spot's move and the two fades that cross as the lamp sways, as
+// What every back of a fan shares: the two fades that cross as the lamp sways, as
 // keyframes (`FanGloss`). Kept beside `glossTrack.ts`, off the first load with the component that plays it.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CardGloss } from "../../lib/tokens.ts";
 import { FRAME, swayAmplitude, type GlossTrack } from "./glossTrack.ts";
 
 const seconds = (n: number) => n * FRAME;
@@ -26,9 +25,8 @@ export interface Played {
   duration: number;
 }
 
-/** What every back shares: the spot's move off where it stands now, and the two fades that cross as the lamp sways. */
+/** What every back shares: the two fades that cross as the lamp sways. */
 export interface SharedTrack {
-  spot: Played | null;
   fadeA: Played | null;
   fadeB: Played | null;
   /** The fades as the track begins. */
@@ -41,8 +39,7 @@ export const crossAt = (kick: number, lx: number, x: number) => {
   return Math.min(1, Math.max(0, (lx - x) / (2 * reach) + 0.5));
 };
 
-/** `s` the felt's points-to-pixels scale. */
-export function sharedTrack(track: GlossTrack, s: number): SharedTrack {
+export function sharedTrack(track: GlossTrack): SharedTrack {
   const p = track.path;
   const last = track.stops.length - 1;
   const cross = (n: number) => crossAt(p.kick[n]!, p.lx[n]!, p.x[n]!);
@@ -50,10 +47,6 @@ export function sharedTrack(track: GlossTrack, s: number): SharedTrack {
   const duration = seconds(track.stops[last]!) * 1000;
   const play = (frame: (n: number) => Record<string, unknown>): Played | null => (track.moves ? { keyframes: keyframesOf(track, last, frame), duration } : null);
   return {
-    spot: play((n) => ({
-      transform: [{ translateX: (p.lx[n]! - p.lx[0]!) * s }, { translateY: (p.ly[n]! - p.ly[0]!) * s }],
-      opacity: CardGloss.spot.alpha * p.level[n]!,
-    })),
     fadeA: play((n) => ({ opacity: 1 - cross(n) })),
     fadeB: play((n) => ({ opacity: cross(n) })),
     at,

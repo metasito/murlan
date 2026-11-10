@@ -20,6 +20,10 @@ export const GLOSS_HORIZON_S = 300;
 const REBAKE_BEFORE_S = 10;
 /** A level this near the baked one is the baked level (`nextGlossBake`). */
 const OVER_LEVEL = 1 / 256;
+/** The glide, a kick or a level change is over when the lamp is within these of where it ends. */
+const OVER_PT = 0.25;
+const OVER_REACH = 0.004;
+const OVER_KICK = 0.02;
 /** Most a linear stretch between two stops may differ from the lamp's own path, in design points. */
 const TOLERANCE_PT = 0.4;
 /** One level counted as this many points when it sets how finely the stops fall. */
@@ -45,6 +49,18 @@ export function nextGlossBake(baked: LampSnap | null, lamp: Lamp, reduced: boole
     Math.abs(lamp.lvl - lvl) > OVER_LEVEL ||
     elapsed > GLOSS_HORIZON_S - REBAKE_BEFORE_S;
   return changed ? snapOf(lamp, reduced) : null;
+}
+
+/** True while the lamp glides, is kicked or dims: the gloss follows it live, as the mockup's `gloss()`, and goes back to the track at the settle. */
+export function glossLive(s: Pick<Lamp, "x" | "y" | "tx" | "ty" | "r" | "tr" | "lvl" | "lvlT" | "kick">): boolean {
+  "worklet";
+  return (
+    Math.abs(s.x - s.tx) > OVER_PT ||
+    Math.abs(s.y - s.ty) > OVER_PT ||
+    Math.abs(s.r - s.tr) > OVER_REACH ||
+    Math.abs(s.lvl - s.lvlT) > OVER_LEVEL ||
+    s.kick > OVER_KICK
+  );
 }
 
 interface Path {
@@ -138,11 +154,8 @@ export function bakeGlossTrack(snap: LampSnap, epoch: number): GlossTrack {
   return { snap, epoch, stops, path, moves, frames };
 }
 
-/** The lamp at stop `i`, in the light a gloss reads. */
-function lampAt(track: GlossTrack, n: number) {
-  const p = track.path;
-  return { lx: p.lx[n]!, ly: p.ly[n]!, level: p.level[n]!, r: p.r[n]! };
-}
+/** The lamp as a gloss reads it. */
+type LampPose = Pick<Lamp, "lx" | "ly" | "level" | "r">;
 
 /** The place and size of a back as the table lays it out: its centre in design points, its own box and turn. */
 export interface Placed {
@@ -158,14 +171,19 @@ export interface BackBox {
 }
 
 export interface BackPose {
-  /** The spot's centre from the card's top-left, in design points, as the track begins. */
-  spot: { x: number; y: number };
-  spotAlpha: number;
+  /** The spot at the sway's two extremes, centre from the card's top-left in its own axes, in design points: it crosses on the same fades. */
+  spot: [SpotEnd, SpotEnd];
   /** The streak at the sway's two extremes where the lamp comes to rest, which the fan's two fades cross between. */
   streak: [StreakEnd, StreakEnd];
   /** The foil's glint where the lamp comes to rest: it is masked and blended, so no track plays under it. */
   foil: FoilEnd;
   foilEdge: number;
+}
+
+export interface SpotEnd {
+  x: number;
+  y: number;
+  alpha: number;
 }
 
 export interface StreakEnd {
@@ -182,25 +200,29 @@ export interface FoilEnd {
   opacity: number;
 }
 
-const streakAt = (placed: Placed, box: BackBox, lamp: ReturnType<typeof lampAt>): StreakEnd => {
+const streakAt = (placed: Placed, box: BackBox, lamp: LampPose): StreakEnd => {
   const g = cardGloss(placed.x, placed.y, box.w, box.h, lamp);
   return { x: g.band.x, y: g.band.y, ang: g.ang, opacity: g.a };
 };
 
-const foilAt = (placed: Placed, box: BackBox, lamp: ReturnType<typeof lampAt>): FoilEnd => {
+const foilAt = (placed: Placed, box: BackBox, lamp: LampPose): FoilEnd => {
   const g = foilGlint(placed.x, placed.y, placed.rot, box.w, box.h, lamp);
   return { x: g.band.x, y: g.band.y, ang: g.ang, opacity: (g.peak - g.edge) / (1 - g.edge) };
 };
 
 /** Where a back stands in the light the lamp comes to rest in, after a glide, a kick or a level change; the track plays no event on a back. */
 export function backPose(track: GlossTrack, placed: Placed, box: BackBox): BackPose {
-  const { snap } = track;
-  const spot = glossSpot(placed.x, placed.y, box.w, box.h, lampAt(track, 0));
-  const settled = { lx: snap.tx, ly: snap.ty, level: snap.lvlT, r: snap.tr };
+  const p = track.path;
+  const end = p.frames;
+  const settled = { lx: p.x[end]!, ly: p.ly[end]!, level: p.level[end]!, r: p.r[end]! };
+  const ends = [{ ...settled, lx: settled.lx - SWAY }, { ...settled, lx: settled.lx + SWAY }] as const;
+  const spotAt = (lamp: (typeof ends)[number]): SpotEnd => {
+    const g = glossSpot(placed.x, placed.y, box.w, box.h, lamp);
+    return { x: g.spot.x, y: g.spot.y, alpha: g.spotAlpha };
+  };
   return {
-    spot: spot.spot,
-    spotAlpha: spot.spotAlpha,
-    streak: [streakAt(placed, box, { ...settled, lx: snap.tx - SWAY }), streakAt(placed, box, { ...settled, lx: snap.tx + SWAY })],
+    spot: [spotAt(ends[0]), spotAt(ends[1])],
+    streak: [streakAt(placed, box, ends[0]), streakAt(placed, box, ends[1])],
     foil: foilAt(placed, box, settled),
     foilEdge: foilGlint(placed.x, placed.y, placed.rot, box.w, box.h, settled).edge,
   };

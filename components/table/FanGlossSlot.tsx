@@ -1,6 +1,9 @@
-import type { ComponentProps } from "react";
-import { FanGloss } from "./FanGloss";
+import type { ComponentProps, ReactElement } from "react";
+import type { FanGloss } from "./FanGloss";
 
-export function FanGlossSlot(props: ComponentProps<typeof FanGloss>) {
-  return <FanGloss {...props} />;
+/** Native draws every back's gloss itself (ADR-0020, decision 4): there is no fan gloss to slot in. */
+export function FanGlossSlot(_props: ComponentProps<typeof FanGloss>): ReactElement | null {
+  return null;
 }
+
+export function preloadFanGloss(): void {}

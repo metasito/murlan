@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Platform, View, StyleSheet, type TextProps, type TextStyle, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
@@ -131,6 +131,9 @@ function FanBack({ id, rects, placed, at, boxW, backScale, zIndex }: {
   );
 }
 
+const NEVER_SUBSCRIBED = () => () => {};
+const NEVER_LIVE = () => false;
+
 function CardFan({
   count,
   side,
@@ -159,7 +162,7 @@ function CardFan({
   const fanRects = useStaticCardRects(table, `fan:${side}:`, drawn);
   const placed = useMemo(
     () =>
-      table
+      table?.tracks
         ? drawn.map((card) => {
             const rect = designRect(card, table.felt, TABLE_AT_REST);
             return { x: rect.x, y: rect.y, rot: rect.rot };
@@ -167,8 +170,12 @@ function CardFan({
         : [],
     [table, drawn]
   );
+  const [covered, setCovered] = useState(false);
+  const live = useSyncExternalStore(table?.tracks?.subscribe ?? NEVER_SUBSCRIBED, table?.tracks?.live ?? NEVER_LIVE);
   if (count === 0) return null;
 
+  // Until the fan's gloss is drawn, and while the lamp glides, kicks or dims, each back draws its own.
+  const tracked = covered && !live;
   const backScale = scale * BACK_SCALE;
   // A fan is never width-budgeted: the seat's own column bounds it, and it is the rise that binds.
   const full = seatFanArc(fanCounts(count, FAN_DRAWN_CARDS[side]), backScale);
@@ -195,7 +202,7 @@ function CardFan({
     <View style={{ width: wrapW, height: wrapH }}>
       <View style={tilt as never}>
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} placed={placed[i]} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} placed={tracked ? placed[i] : undefined} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
       {table?.tracks ? (
@@ -209,6 +216,7 @@ function CardFan({
           w={CARD_BACK_W(backScale)}
           h={CARD_BACK_H(backScale)}
           tilt={tilt as never}
+          onCover={setCovered}
         />
       ) : null}
     </View>

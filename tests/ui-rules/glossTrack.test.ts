@@ -4,12 +4,11 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { GLIDE, lampControls, restingLamp, stepLamp, type Lamp } from "../../components/table/lampRig.ts";
 import { cardGloss, glossSpot } from "../../components/table/cardGloss.ts";
-import { backPose, bakeGlossTrack, GLOSS_HORIZON_S, nextGlossBake, snapOf, swayAmplitude, type GlossTrack, type LampSnap } from "../../components/table/glossTrack.ts";
+import { backPose, bakeGlossTrack, glossLive, GLOSS_HORIZON_S, nextGlossBake, snapOf, swayAmplitude, type GlossTrack, type LampSnap } from "../../components/table/glossTrack.ts";
 import { crossAt, sharedTrack } from "../../components/table/fanTrack.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
 const FRAME = 1 / 60;
-const S = 1.4;
 const BACK = { placed: { x: 420, y: 70, rot: 12 }, box: { w: 40, h: 58 } };
 
 type Frames = Record<string, Record<string, unknown>>;
@@ -26,9 +25,6 @@ function valueAt(keyframes: Frames, duration: number, seconds: number, read: (fr
   const [t1, v1] = stops[i]!;
   return v0 + ((v1 - v0) * (t - t0)) / (t1 - t0);
 }
-
-const moveOf = (frame: Record<string, unknown>, axis: "translateX" | "translateY") =>
-  (frame.transform as Record<string, number>[]).find((t) => axis in t)![axis]!;
 
 /** The rig itself, stepped frame by frame from `snap`: what the track must equal. */
 function rigFrom(snap: LampSnap): Lamp {
@@ -54,26 +50,30 @@ const gliding = (): LampSnap => {
 
 const track = (snap: LampSnap): GlossTrack => bakeGlossTrack(snap, 0);
 
-describe("the spot's keyframes are glossSpot along the lamp's path", () => {
-  for (const [name, snap] of [
-    ["gliding, kicked and dimmed", gliding()],
-    ["at rest", snapOf(restingLamp([437, 180, 1]), false)],
+/** The spot as the fan crosses its two ends on the fades: the centre they average to, and the alpha. */
+function crossed(t: GlossTrack, lamp: Lamp) {
+  const pose = backPose(t, BACK.placed, BACK.box);
+  const w = crossAt(lamp.kick, lamp.lx, lamp.x);
+  const [a, b] = pose.spot;
+  return { x: a.x + (b.x - a.x) * w, y: a.y + (b.y - a.y) * w, alpha: a.alpha + (b.alpha - a.alpha) * w };
+}
+
+describe("the spot's two ends, crossed on the fades, are glossSpot once the lamp has settled", () => {
+  for (const [name, snap, from] of [
+    ["after a glide, a kick and a dim", gliding(), 20],
+    ["at rest", snapOf(restingLamp([437, 180, 1]), false), 0],
   ] as const) {
     test(name, () => {
       const t = track(snap);
-      const shared = sharedTrack(t, S);
-      const pose = backPose(t, BACK.placed, BACK.box);
       const { w, h } = BACK.box;
-      for (const at of [0, 0.1, 0.37, 0.8, 1.5, 2.9, 4.3, 6, 11, 40, 123.4, 290]) {
+      for (const at of [0, 0.37, 1.5, 4.3, 11, 40, 123.4, 290].map((s) => s + from)) {
         const sec = Math.round(at / FRAME) * FRAME;
         const lamp = rigAfter(snap, Math.round(sec / FRAME));
         const want = glossSpot(BACK.placed.x, BACK.placed.y, w, h, lamp);
-        const dx = shared.spot ? valueAt(shared.spot.keyframes as Frames, shared.spot.duration, sec, (f) => moveOf(f, "translateX")) : 0;
-        const dy = shared.spot ? valueAt(shared.spot.keyframes as Frames, shared.spot.duration, sec, (f) => moveOf(f, "translateY")) : 0;
-        const alpha = shared.spot ? valueAt(shared.spot.keyframes as Frames, shared.spot.duration, sec, (f) => f.opacity as number) : pose.spotAlpha;
-        assert.ok(Math.abs((pose.spot.x * S + dx) / S - want.spot.x) < 0.5, `x at ${sec}s: ${(pose.spot.x * S + dx) / S} against ${want.spot.x}`);
-        assert.ok(Math.abs((pose.spot.y * S + dy) / S - want.spot.y) < 0.5, `y at ${sec}s`);
-        assert.ok(Math.abs(alpha - want.spotAlpha) < 0.004, `alpha at ${sec}s`);
+        const got = crossed(t, lamp);
+        assert.ok(Math.abs(got.x - want.spot.x) < 0.5, `x at ${sec}s: ${got.x} against ${want.spot.x}`);
+        assert.ok(Math.abs(got.y - want.spot.y) < 0.5, `y at ${sec}s`);
+        assert.ok(Math.abs(got.alpha - want.spotAlpha) < 0.004, `alpha at ${sec}s`);
       }
     });
   }
@@ -97,11 +97,9 @@ describe("the spot against the mockup's own gloss()", () => {
   const paint = fixtureLine("    c._gl.style.background=");
   const [, sx, sy] = /circle \d+px at \$\{\((.+?)\)\.toFixed\(1\)\}px \$\{\((.+?)\)\.toFixed\(1\)\}px/.exec(paint)!;
 
-  test("is within a point along a glide with a kick", () => {
-    const snap = gliding();
+  test("is within a point along the sway at rest", () => {
+    const snap = snapOf(restingLamp([437, 180, 1]), false);
     const t = track(snap);
-    const shared = sharedTrack(t, S);
-    const pose = backPose(t, BACK.placed, BACK.box);
     for (const at of [0, 0.25, 0.9, 2, 3.5, 8]) {
       const sec = Math.round(at / FRAME) * FRAME;
       const lamp = rigAfter(snap, Math.round(sec / FRAME));
@@ -113,29 +111,47 @@ describe("the spot against the mockup's own gloss()", () => {
         ly: lamp.ly,
         lamp: { L: lamp.level },
       }) as Record<string, number>;
-      const x = (pose.spot.x * S + valueAt(shared.spot!.keyframes as Frames, shared.spot!.duration, sec, (f) => moveOf(f, "translateX"))) / S;
-      const y = (pose.spot.y * S + valueAt(shared.spot!.keyframes as Frames, shared.spot!.duration, sec, (f) => moveOf(f, "translateY"))) / S;
+      const { x, y } = crossed(t, lamp);
       assert.ok(Math.abs(x - got.spotX!) <= 1, `x at ${sec}s: ${x} against the mockup's ${got.spotX}`);
       assert.ok(Math.abs(y - got.spotY!) <= 1, `y at ${sec}s: ${y} against the mockup's ${got.spotY}`);
     }
   });
 });
 
+describe("the gloss follows the lamp live while it moves", () => {
+  test("a glide, a kick and a dim are live, and the settled lamp is not", () => {
+    const snap = gliding();
+    assert.equal(glossLive(rigFrom(snap)), true, "mid-glide");
+    assert.equal(glossLive(rigAfter(snap, 60)), true, "a second into the glide");
+    assert.equal(glossLive(rigAfter(snap, 60 * 25)), false, "settled");
+    const resting = restingLamp([437, 180, 1]);
+    assert.equal(glossLive(resting), false, "at rest");
+    lampControls.kick(resting, false);
+    assert.equal(glossLive(resting), true, "kicked");
+    const dim = restingLamp([437, 180, 1]);
+    lampControls.hold(dim, "lost", 0.4, 3);
+    stepLamp(dim, FRAME, false);
+    assert.equal(glossLive(dim), true, "dimming");
+  });
+});
+
 describe("the streak pair", () => {
-  test("stands where the lamp comes to rest after a glide, not where it set out", () => {
+  test("stands where the lamp comes to rest, which the live gloss hands over to once the glide is over", () => {
     const snap = gliding();
     const pose = backPose(track(snap), BACK.placed, BACK.box);
     const { placed, box } = BACK;
+    const settled = rigAfter(snap, 60 * 25);
+    assert.equal(glossLive(settled), false);
     for (const [end, side] of [[pose.streak[0], -1], [pose.streak[1], 1]] as const) {
-      const g = cardGloss(placed.x, placed.y, box.w, box.h, { lx: snap.tx + side * swayAmplitude(0), ly: snap.ty, level: snap.lvlT, r: snap.tr });
-      assert.ok(Math.abs(end.x - g.band.x) < 1e-9 && Math.abs(end.y - g.band.y) < 1e-9 && Math.abs(end.opacity - g.a) < 1e-9, `end ${side}`);
+      const g = cardGloss(placed.x, placed.y, box.w, box.h, { lx: settled.x + side * swayAmplitude(0), ly: settled.ly, level: settled.level, r: settled.r });
+      assert.ok(Math.abs(end.x - g.band.x) < 0.5 && Math.abs(end.y - g.band.y) < 0.5 && Math.abs(end.opacity - g.a) < 0.004, `end ${side}`);
     }
   });
 
   test("crossfades to within a quarter of the exact streak, in its half-width and its opacity, along a sway", () => {
     const snap = snapOf(restingLamp([437, 180, 1]), false);
     const t = track(snap);
-    const shared = sharedTrack(t, S);
+    const shared = sharedTrack(t);
     const pose = backPose(t, BACK.placed, BACK.box);
     let worst = 0;
     for (let n = 0; n < 1800; n += 22) {

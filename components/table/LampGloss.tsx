@@ -6,13 +6,13 @@ import { CardBacks, CardGloss, Layer, Scrim, withAlpha } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
 import type { CardBackId } from "@/lib/cosmetics";
 import { cardRadius } from "@/components/cardFaceModel";
-import { cardGloss, foilGlint, foilGlintColor, glossSpot } from "./cardGloss";
+import { bandBox, cardGloss, foilGlint, foilGlintColor, glossSpot } from "./cardGloss";
 import { scopeOf, type CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
 import { backPose, type Placed } from "./glossTrack";
 import type { GlossTracks } from "./glossTrackStore";
 import { levelShade } from "./rail";
-import { useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
+import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
 
 export const GLOSS_SPOT_ART = () => require("../../assets/images/cards/gloss_spot.webp") as number;
 
@@ -38,12 +38,10 @@ export function LampGloss({ rectKey, rects, width, height, placed }: Props) {
 
 function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTable; rectKey: string; rects: OwnedRects }) {
   const { felt } = table;
-  const light = table.glossLight;
+  const light = glossLightFor(table, rectKey);
   const s = felt.s;
   const radius = CardGloss.spot.radius * s;
-  const diag = Math.hypot(width, height);
-  const bandW = 2 * diag;
-  const bandH = CardGloss.streak.width * diag;
+  const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.streak.width);
 
   const spotStyle = useAnimatedStyle(() => {
     const rect = rects.value[rectKey];
@@ -117,9 +115,7 @@ export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }
 function TrackedGlint(props: TrackedProps & { color: string }) {
   const { s, width, height, color } = props;
   const pose = useBackPose(props);
-  const diag = Math.hypot(width, height);
-  const bandW = 2 * diag;
-  const bandH = CardGloss.foil.width * diag;
+  const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.foil.width);
   return (
     <>
       <Animated.View testID="card-foil-ink" pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: pose.foilEdge }]} />
@@ -136,11 +132,9 @@ function TrackedGlint(props: TrackedProps & { color: string }) {
 
 function Glint({ table, rectKey, rects, width, height, color }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string }) {
   const { felt } = table;
-  const light = table.glossLight;
+  const light = glossLightFor(table, rectKey);
   const s = felt.s;
-  const diag = Math.hypot(width, height);
-  const bandW = 2 * diag;
-  const bandH = CardGloss.foil.width * diag;
+  const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.foil.width);
 
   const glint = useDerivedValue(() => {
     const rect = rects.value[rectKey];
