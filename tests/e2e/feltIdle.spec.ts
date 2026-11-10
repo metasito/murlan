@@ -4,7 +4,7 @@
 import { test, expect } from "./fixtures";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
-import { COUNTED, countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
+import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 import type { TraceFrame } from "../../lib/e2eTrace";
 
@@ -27,15 +27,21 @@ for (const motion of ["reduce", "no-preference"] as const) {
     await page.waitForTimeout(3_000);
     await startRenderCounts(page);
 
-    // fixed wait on purpose: the window is the measurement
-    await page.waitForTimeout(WINDOW_MS);
+    const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
+    for (let half = 0; half < 2; half++) {
+      // fixed wait on purpose: the window is the measurement
+      await page.waitForTimeout(WINDOW_MS / 2);
+      sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
+    }
+    const picture = await page.evaluate<EndBLean | null>(END_B_LEAN);
     const counts = await page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
     const draws = counts.draws[COUNTED.felt] ?? 0;
     const feltFrames = counts.drewIn[COUNTED.felt] ?? 0;
     console.log(`felt (${motion}): ${draws} draws in ${feltFrames} of ${counts.frames} frames over ${WINDOW_MS} ms`);
 
     if (motion === "reduce") expect(draws, "the felt redrew a lamp that had not moved").toBe(0);
-    else expect(draws, "the counter saw no Skia felt frame while the lamp swayed").toBeGreaterThan(10);
+    // The sway rides the compositor, so the floor is its layer showing, not canvas redraws: docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md
+    else expect(draws > 10 || swayShows(sway, picture), "the counter saw no Skia felt frame, and no end-B layer swayed, while the lamp swayed").toBe(true);
     expect(consoleErrors.entries, "the felt warned while it drew").toEqual([]);
   });
 }

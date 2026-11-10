@@ -6,7 +6,7 @@ import { test, expect } from "./fixtures";
 import { botMove, heldTurnTable, playLowest } from "./helpers/mockupParity";
 import { installVirtualClock, stepThen, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS } from "./helpers/traceDiff";
-import { COUNTED, countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
+import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { HAND_CARD_BOXES } from "./helpers/selectors";
 import { BUDGETS, type WindowBudget } from "./helpers/skiaPerfBudgets";
 import type { TraceFrame } from "../../lib/e2eTrace";
@@ -21,12 +21,12 @@ const WINDOW = 240;
 const BOT_MOVES = [60, 120, 180];
 /** The lamp's glide redraws the felt nearly every frame between moves; fewer and the bots never moved. */
 const TURN_FELT_FLOOR = 0.8;
-/** Of the turn's card style budget: the hand and the throws restyle the cards; fewer and the turn never played. */
-const TURN_CARD_STYLE_FLOOR = 0.5;
 
 interface Measured {
   frames: number;
   feltFrames: number;
+  /** The settled felt's end-B layer ran an animation and its opacity moved across the window. */
+  swayShown: boolean;
   glDrawsPerFrame: number;
   canvas2dDraws: number;
   offscreenDraws: number;
@@ -57,8 +57,12 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
   await stepThen(page, null, TAKE_RENDER_COUNTS);
   const from = await metrics(cdp);
   const frames: RenderCounts[] = [];
+  const sway: (EndBSample | null)[] = [];
+  let picture: EndBLean | null = null;
   for (let i = 1; i <= WINDOW; i++) {
     frames.push(await stepThen<RenderCounts>(page, STEP_MS, TAKE_RENDER_COUNTS));
+    if (i === 1 || i === 60 || i === 120) sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
+    if (i === 120) picture = await page.evaluate<EndBLean | null>(END_B_LEAN);
     await at[i]?.(page);
   }
   const to = await metrics(cdp);
@@ -71,6 +75,7 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
   const per = (x: number) => +(x / WINDOW).toFixed(2);
   return {
     frames: frames.reduce((s, f) => s + f.frames, 0),
+    swayShown: swayShows(sway, picture),
     feltFrames: frames.filter((f) => (f.drewIn[COUNTED.felt] ?? 0) > 0).length,
     glDrawsPerFrame: per(drawn(" webgl")),
     canvas2dDraws: drawn(" 2d"),
@@ -88,7 +93,8 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
 function holds(m: Measured, budget: WindowBudget, what: string) {
   expect.soft(m.frames, `frames the counter saw through ${what}`).toBe(WINDOW);
   expect.soft(m.felts, `the felts the trace saw through ${what}`).toEqual(["skia"]);
-  expect.soft(m.feltFrames, `the felt never drew through ${what}`).toBeGreaterThan(0);
+  // The sway rides the compositor, so the floor is its layer showing, not canvas redraws: docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md
+  expect.soft(m.feltFrames > 0 || m.swayShown, `the felt never drew, and no end-B layer swayed, through ${what}`).toBe(true);
   expect.soft(m.glDrawsPerFrame, `WebGL draws a frame through ${what}`).toBeLessThanOrEqual(budget.glDrawsPerFrame);
   expect.soft(m.canvas2dDraws, `2D canvas draws through ${what}`).toBeLessThanOrEqual(budget.canvas2dDraws);
   expect.soft(m.offscreenDraws, `offscreen draws through ${what}`).toBeLessThanOrEqual(budget.offscreenDraws);
@@ -123,7 +129,7 @@ test("the Skia table at a phone's CPU stays inside its budgets, at rest and thro
   console.log(`skia perf at 4x: ${report}`);
   holds(rest, BUDGETS.rest, "the settled table");
   holds(turn, BUDGETS.turn, "the turn");
-  expect.soft(turn.cardStyles, "style writes inside cards while the turn played").toBeGreaterThanOrEqual(BUDGETS.turn.cardStyles * TURN_CARD_STYLE_FLOOR);
+  expect.soft(turn.cardStyles, "style writes inside cards while the turn played").toBeGreaterThanOrEqual(BUDGETS.turn.cardStylesFloor);
   expect.soft(turn.feltFrames, "frames the felt drew while the lamp glided to each bot").toBeGreaterThanOrEqual(WINDOW * TURN_FELT_FLOOR);
   await context.close();
 });

@@ -13,11 +13,17 @@ export interface WindowBudget {
   styleWrites: number;
   /** Of `styleWrites`, those inside a card's view. */
   cardStyles?: number;
+  /** Of `cardStyles`, the least a window that played must show: fewer and nothing moved. */
+  cardStylesFloor?: number;
   /** Frames, of the window's, the felt's canvas drew in. */
   feltFrames?: number;
 }
 
+/**
+ * The turn's 2D, offscreen and readback counts are widened for the felt's two ends (docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md): a glide
+ * bakes its target's two ends offscreen, each read back to the CPU, and a rested table copies end B once. The rest window is unchanged.
+ */
 export const BUDGETS = {
   rest: { feltFrames: 89, glDrawsPerFrame: 5.1, canvas2dDraws: 1580, offscreenDraws: 0, readPixels: 0, styleWrites: 0 },
-  turn: { glDrawsPerFrame: 35.5, canvas2dDraws: 11850, offscreenDraws: 4, readPixels: 0, styleWrites: 17700, cardStyles: 16800 },
+  turn: { glDrawsPerFrame: 35.5, canvas2dDraws: 11854, offscreenDraws: 12, readPixels: 8, styleWrites: 17700, cardStyles: 16800, cardStylesFloor: 400 },
 } as const satisfies Record<string, WindowBudget>;
