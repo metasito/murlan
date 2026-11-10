@@ -78,14 +78,13 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
     const steer = (to: { place: number } | { paused: boolean }) => elements().forEach((e) => steerAmbient(e, to));
     const place = () => ({ place: placeOf(track, tracks.lamp.get().t) });
     // The animation starts when the commit does, not when the track was baked: it is moved to where the rig is the frame it exists.
-    let left = START_WAIT_FRAMES;
     let cancel = () => {};
-    const start = () => {
+    const start = (left: number) => {
       const first = elements()[0];
       if (first && ambientPlace(first) !== null) return steer(place());
-      if (--left > 0) cancel = afterFrames(1, start);
+      if (left > 1) cancel = afterFrames(1, () => start(left - 1));
     };
-    cancel = afterFrames(2, start);
+    cancel = afterFrames(2, () => start(START_WAIT_FRAMES));
     // The rig steps at most `MAX_DT` a frame, so a page that stalls runs it behind the clock the animation keeps: hold them together.
     const check = setInterval(() => {
       const first = elements()[0];
