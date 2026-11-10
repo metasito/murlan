@@ -149,6 +149,7 @@ export const COUNTED = { felt: "table-felt webgl",handShade: "card-shade webgl",
 const DESIGN_WIDTH = 874;
 const SWAY_PT = 20;
 const LEAN_REACH_PT = 120;
+/** Levels end B must lean: end B reads +5.4 at 874 x 402, DPR 1, a copy of end A -1.3 and a blank canvas 0. */
 const LEAN_FLOOR = 1;
 
 /** The settled felt's end-B layer, when it has one: its opacity now and how many of its animations run. In-page, for `page.evaluate`. */
