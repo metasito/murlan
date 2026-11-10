@@ -57,7 +57,7 @@ export function lightUniforms(reach: number): { uPoolR: number; uVigR: number } 
 
 export const GLIDE = 2.2;
 export const SWAY = 20;
-const SWAY_KICKED = 80;
+export const SWAY_KICKED = 80;
 const KICK_DECAY = 1.1;
 const FLARE_DECAY = 2.4;
 const DEFAULT_LEVEL_RATE = 3;

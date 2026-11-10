@@ -1,8 +1,8 @@
 // The felt, the rail and the lamp on them (#1252 § The felt, § The rail): one Skia canvas for the
 // whole table. On web it is only ever reached through `feltSkia.web.tsx`'s lazy boundary, once
 // CanvasKit has loaded — `Skia` is bound to it when this module is evaluated.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PixelRatio, Platform, StyleSheet } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { PixelRatio, Platform, StyleSheet, View } from "react-native";
 import {
   AlphaType,
   BlurStyle,
@@ -40,7 +40,10 @@ import { E2E_FAST } from "@/lib/e2eConfig";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { afterFrames } from "@/lib/motion";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
+import { useFeltEnds } from "./feltEnds";
+import { NOT_SHOWN, nextShown, type Shown } from "./restEnds";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
@@ -414,6 +417,12 @@ interface Weave {
   cloths: ClothCache;
 }
 
+/** The cloth lit with the lamp `lean` points off the target `aim` names, from the weave's cache or baked into it. */
+function endCloth(weave: Weave, aim: string, stops: FeltStops, base: ClothUniforms, gx: number, gy: number, lean: number): SkImage | null {
+  const target = aim.split(",").map(Number) as unknown as Pool;
+  return weave.cloths.get(`${aim}|${stops.join()}|${lean}`, () => bakeSettled(target, base, weave.planes, gx, gy, lean));
+}
+
 const freeWeave = ({ planes, cloths }: Weave) => {
   planes?.forEach(free);
   cloths.dispose();
@@ -500,13 +509,24 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
       scheduleOnRN(setAim, now);
     }
   );
+  const [target, setTarget] = useState("");
+  useAnimatedReaction(
+    () => `${lamp.value.tx},${lamp.value.ty},${lamp.value.tr}`,
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setTarget, now);
+    }
+  );
   const rest = useMemo(() => {
     if (!aim || !weave) return null;
-    const target = aim.split(",").map(Number) as unknown as Pool;
-    const lit = (lean: number) => weave.cloths.get(`${aim}|${stops.join()}|${lean}`, () => bakeSettled(target, base, weave.planes, gx, gy, lean));
-    const [left, right] = CLOTH_ENDS.map(lit);
+    const [left, right] = CLOTH_ENDS.map((lean) => endCloth(weave, aim, stops, base, gx, gy, lean));
     return left && right ? { aim, left, right } : null;
   }, [weave, aim, gx, gy, stops, base]);
+  // The ends of the lamp's next target, one a frame while it glides there, so settling bakes nothing.
+  useEffect(() => {
+    if (!weave || !target) return;
+    const cancels = CLOTH_ENDS.map((lean, i) => afterFrames(i + 1, () => endCloth(weave, target, stops, base, gx, gy, lean)));
+    return () => cancels.forEach((cancel) => cancel());
+  }, [weave, target, gx, gy, stops, base]);
   const reduceMotion = usePrefersReducedMotion();
   useEffect(() => {
     if (!rest) return void settle.set(1);
@@ -518,22 +538,32 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     });
   }, [rest, lamp, settle, reduceMotion]);
 
+  const content = useSharedValue(0);
+  const host = useRef<ComponentRef<typeof View>>(null);
+  const ends = useFeltEnds({ lamp, settle, content, host });
+  const side = ends.side;
+  const held = useSharedValue<Shown>(NOT_SHOWN);
+  const view = useDerivedValue(() => {
+    const next = nextShown(held.value, lamp.value, side.value);
+    if (next !== held.value) held.value = next;
+    return next;
+  });
   const uniforms = useDerivedValue(() => ({
     ...base,
-    uLamp: [lamp.value.lx, lamp.value.ly],
-    uFlare: lamp.value.f,
-    ...lightUniforms(lamp.value.r),
+    uLamp: [view.value.lx, view.value.ly],
+    uFlare: view.value.f,
+    ...lightUniforms(view.value.r),
   }));
-  const lean = useDerivedValue(() => ({ uLean: Math.min(1, Math.max(0, 0.5 + (lamp.value.lx - lamp.value.tx) / (2 * SWAY))) }));
-  const weight = useDerivedValue(() => Math.max(settle.value, flareShare(lamp.value.f)));
+  const lean = useDerivedValue(() => ({ uLean: view.value.lean }));
+  const weight = useDerivedValue(() => Math.max(settle.value, flareShare(view.value.f)));
   const draws = useDerivedValue(() => settledDraws(weight.value));
   const cross = useDerivedValue(() => draws.value.cross);
   const hand = useDerivedValue(() => draws.value.hand);
   const handing = useDerivedValue(() => ({ ...uniforms.value, ...lean.value, uW: weight.value }));
-  const light = useDerivedValue(() => ({ x: lamp.value.lx, y: lamp.value.ly }));
-  const soft = useDerivedValue(() => RAIL_LIGHT.soft(lamp.value.f));
-  const coat = useDerivedValue(() => RAIL_LIGHT.coat(lamp.value.f));
-  const shade = useDerivedValue(() => levelShade(lamp.value.level));
+  const light = useDerivedValue(() => ({ x: view.value.lx, y: view.value.ly }));
+  const soft = useDerivedValue(() => RAIL_LIGHT.soft(view.value.f));
+  const coat = useDerivedValue(() => RAIL_LIGHT.coat(view.value.f));
+  const shade = useDerivedValue(() => levelShade(view.value.level));
 
   const { rects, felt } = cards;
   const shape = useShadowShape(rects);
@@ -541,7 +571,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const contacts = useShadowPicture(CONTACT, shape, rects, felt, cards.hand.x);
   const glow = useGlow(rects, felt, cards.hand.x);
   const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };
-  const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: lamp.value.lx, y: lamp.value.ly }), felt));
+  const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: view.value.lx, y: view.value.ly }), felt));
   const contact = shadowTransform(shadowFall("face", pile, pile), felt);
   const flat = shadowTransform({ x: 0, y: 0 }, felt);
   // State, not a group's opacity: a picture is drawn without the group's paint.
@@ -556,6 +586,16 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
     };
   }, []);
 
+  useAnimatedReaction(
+    () => [cast.value, contacts.value, glow.value],
+    () => {
+      content.value += 1;
+    }
+  );
+  useEffect(() => {
+    content.set(content.get() + 1);
+  }, [content, rail, rest, shadows, glows, stops, sx, sy, pile.x, pile.y]);
+
   useEffect(() => {
     if (!onReady) return;
     let id = requestAnimationFrame(() => {
@@ -566,6 +606,8 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
 
   const { width, height } = DESIGN;
   return (
+    <>
+    <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">
     <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
       <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={greyLayer}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
@@ -638,5 +680,8 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
         <Rect x={0} y={0} width={width} height={height} color="black" opacity={shade} />
       </Group>
     </Canvas>
+    </View>
+    {ends.layer}
+    </>
   );
 }

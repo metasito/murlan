@@ -151,3 +151,18 @@ export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): (
   }, [frames]);
   return wake;
 }
+
+/** `step` on the frame `frames` ahead; returns the cancel. */
+export function afterFrames(frames: number, step: () => void): () => void {
+  let id = requestAnimationFrame(function arrive() {
+    if (--frames > 0) id = requestAnimationFrame(arrive);
+    else step();
+  });
+  return () => cancelAnimationFrame(id);
+}
+
+/** `steps` in order on the next frame, each its own frame callback: the microtasks one queues, such as a canvas drawn from a shared value it wrote, run before the next. Returns the cancel. */
+export function inOneFrame(steps: readonly (() => void)[]): () => void {
+  const ids = steps.map((step) => requestAnimationFrame(step));
+  return () => ids.forEach(cancelAnimationFrame);
+}

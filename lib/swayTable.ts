@@ -1,6 +1,6 @@
 // The lamp's sway baked as a table: 80 half-swings sampled at equal steps of the mockup's sway phase,
 // linear between stops, as a baked animation curve is. Times come from the exact integral of the
-// mockup's sway speed.
+// mockup's sway speed. `bakeSway` bakes the same curve from the rig's own state instead.
 //
 // JSX-free, no imports — docs/agents/checks.md, "Node's TypeScript loader".
 
@@ -98,3 +98,34 @@ export function swayPhase(t: number): number {
   const u = (s - SWAY_TIMES[n]!) / (SWAY_TIMES[n + 1]! - SWAY_TIMES[n]!);
   return SWAY_PHASES[n]! + (SWAY_PHASES[n + 1]! - SWAY_PHASES[n]!) * u;
 }
+
+/** Seconds between the stops of a track: linear between stops this far apart is off a sine by at most `(1.01 * TRACK_STEP)^2 / 8`, the speed's top being 1.008 rad/s, about 0.001. */
+export const TRACK_STEP = 0.1;
+
+/** The rig's `ph` and `t` at the moment a track starts: its speed follows `t`, which a freeze does not stop, so the table's one loop cannot stand for it. */
+export interface SwayStart {
+  ph: number;
+  t: number;
+}
+
+/** The sway, -1 to 1, at `TRACK_STEP` intervals over `seconds` from `start`, carrying the rig's phase forward on the exact integral of its speed. */
+export function bakeSway({ ph, t }: SwayStart, seconds: number): number[] {
+  const from = phaseOf(t);
+  const stops = Math.ceil(seconds / TRACK_STEP);
+  return Array.from({ length: stops + 1 }, (_, i) =>
+    Math.sin(ph + phaseOf(t + i * TRACK_STEP) - from),
+  );
+}
+
+/** A baked track at `s` seconds from its start, linear between its stops. */
+export function trackAt(track: readonly number[], s: number): number {
+  const at = Math.min(Math.max(s, 0) / TRACK_STEP, track.length - 1);
+  const n = Math.min(Math.floor(at), track.length - 2);
+  return track[n]! + (track[n + 1]! - track[n]!) * (at - n);
+}
+
+/** The most a track differs from the mockup's 60 Hz stepping over `TRACK_SECONDS` from any state, measured by tests/ui-rules/swayTable.test.ts; it scales with the swing's amplitude. */
+export const TRACK_VS_EULER = 0.0024;
+
+/** How long a track is baked for: past it the animation would loop, so the felt bakes another before. */
+export const TRACK_SECONDS = 30;
