@@ -2,6 +2,9 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
+// The rest air is a lazy chunk the test runner cannot import dynamically; its layer is tested in particleLayerTrace.
+jest.mock('react', () => ({ ...jest.requireActual<typeof import('react')>('react'), lazy: () => () => null }));
+
 import { makeMutable } from 'react-native-reanimated';
 import { ParticleLayer } from '@/components/table/particleLayer.web';
 import { glossLightOf } from '@/components/table/cardGloss';

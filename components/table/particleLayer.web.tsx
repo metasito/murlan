@@ -1,6 +1,6 @@
 // The web's particle layer: the rest air (moteLayer) and a 2D canvas that mounts only while a burst flies, whether or not
 // CanvasKit has loaded — the felt swaps renderers, this never does (#1252).
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import type { FrameInfo, SharedValue } from "react-native-reanimated";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -8,13 +8,15 @@ import { useDuring } from "@/lib/motion";
 import { DESIGN, type Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { bombFx, landingDust, spawn, tableRng, type ParticleEmitter, type Rng } from "./particles";
-import { MoteLayer } from "./moteLayer";
 import { startEmber } from "./ember";
 import { startRain } from "./coneRain";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
 import { CELLS, createScene, D, DRAW_STRIDE, sceneIdle, SHEET, SPARK_LEN, SPRITE_R, stepScene, type Scene } from "./particleSprites";
+
+// A chunk of its own: the rest air is not on the first paint's path, and the web first load is budgeted.
+const MoteLayer = lazy(() => import("./moteLayer").then((m) => ({ default: m.MoteLayer })));
 
 function bakeSheet(): HTMLCanvasElement {
   const sheet = document.createElement("canvas");
@@ -178,7 +180,9 @@ export function ParticleLayer({ ref, rig, landing }: {
 
   return (
     <>
-      <MoteLayer rig={rig} />
+      <Suspense fallback={null}>
+        <MoteLayer rig={rig} />
+      </Suspense>
       {bursting && <BurstCanvas scene={scene} lamp={lamp} rng={rng} sx={sx} sy={sy} wakeRef={wakeRef} onIdle={idle} />}
     </>
   );
