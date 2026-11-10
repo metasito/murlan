@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ViewStyle } from "react-native";
+import { AppState, Platform, type ViewStyle } from "react-native";
 import {
   cancelAnimation,
   cubicBezier,
@@ -150,4 +150,20 @@ export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): (
     controller.current = frames;
   }, [frames]);
   return wake;
+}
+
+/** No frames are drawn: a hidden page (react-native-web maps visibility here) or a backgrounded app. */
+export const inBackground = () => AppState.currentState === "background";
+
+/** When a change happened, on the clock `startOf` reads, taken on the JS thread; `Infinity` while no frames are drawn, so the first frame back starts the motion rather than finding it half over. */
+export const stampChange = () => (inBackground() ? Infinity : performance.now());
+
+/**
+ * When a motion that began at `at` (`stampChange`) starts, given its first frame's timestamp. Web hands a woken frame
+ * callback its first frame two frames late, so it runs on the change's clock; native starts on the first drawn frame, so a
+ * mount hitch is not taken out of the motion. `web` is `Platform.OS === "web"` and is a parameter for the tests.
+ */
+export function startOf(frameTimestamp: number, at: number, web = Platform.OS === "web"): number {
+  "worklet";
+  return web ? Math.min(frameTimestamp, at) : frameTimestamp;
 }
