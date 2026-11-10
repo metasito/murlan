@@ -594,7 +594,7 @@ export const OpponentSeat = memo(function OpponentSeat({
   focusMode = false,
   dealArrivals,
   nameInset = 0,
-  badgeRoom,
+  badgeRoom = Infinity,
   ...marking
 }: SlotMark & {
   place: OpponentSide;
@@ -681,7 +681,7 @@ function SeatWho({
   countdown,
   place,
   nameInset = 0,
-  badgeRoom,
+  badgeRoom = Infinity,
   focusMode = false,
   mark,
 }: {

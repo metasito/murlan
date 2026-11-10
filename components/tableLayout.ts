@@ -7,11 +7,10 @@
 import type { Player } from "@/lib/game/gameEngine";
 import { CARD_H, cardScale, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
-import { actionBtnSize, CHIP_H, FAN_DRAWN_CARDS, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatGap, seatLabelH } from "./seatLayout.ts";
+import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatGap, seatLabelH } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
-import { fanCorners, fanPoint } from "./fanGeometry.ts";
-import { BACK_SCALE } from "./cardFaceModel.ts";
+import { drawnFanBounds } from "./fanGeometry.ts";
 import { sideNameInset } from "./table/legibilityRing.ts";
 import { pillAnchorFor, scorePillBox, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot, noticeBox, pileNoteBelowPile } from "./table/noticeModel.ts";
@@ -108,14 +107,8 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     left: sideNameInset("left", anchors.left.x, ring, width),
     right: sideNameInset("right", anchors.right.x, ring, width),
   };
-  const topFan = fanCorners(
-    { x: anchors.top.x + fanPoint({ dx: 0, dy: 0 }, "top", scale, FAN_DRAWN_CARDS.top).x, y: anchors.top.y + fanPoint({ dx: 0, dy: 0 }, "top", scale, FAN_DRAWN_CARDS.top).y },
-    "top",
-    FAN_DRAWN_CARDS.top,
-    scale * BACK_SCALE
-  ).flat();
-  const fanLeft = Math.min(...topFan.map(([x]) => x));
-  const fanRight = Math.max(...topFan.map(([x]) => x));
+  const topW = drawnFanBounds(scale).topW;
+  const [fanLeft, fanRight] = [anchors.top.x - topW / 2, anchors.top.x + topW / 2];
   const badgeRoom = {
     top: Infinity,
     left: fanLeft - seatGap(scale) - (anchors.left.x - ring / 2 + nameInset.left),

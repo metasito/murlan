@@ -43,7 +43,7 @@ describe("a seat's name sits where tableRects places it", () => {
       const r = await render(<OpponentSeat place={place} player={PLAYER} isActive={false} cardCount={13} scale={SCALE} nameInset={INSET} vacated />);
       const height = seatBadgeH('vacated', SCALE);
       const rise = seatLabelRise(place, SCALE);
-      const slot = seatBadgeSlot(place, SCALE, INSET, height, rise);
+      const slot = seatBadgeSlot(place, SCALE, INSET, height, rise, Infinity);
       const anchor = seatAnchor(place);
       const name = placedAt(screen.getByTestId('seat-name'));
       const badge = placedAt(screen.getByTestId('seat-vacated-chip'));
