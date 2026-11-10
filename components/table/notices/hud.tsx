@@ -24,24 +24,12 @@ export function OfflinePill({ scale, shown = true }: { scale: number; shown?: bo
   );
 }
 
-/** The last play, or, while an exchange runs, the exchange's note in its place: the pill lights to carry it. */
-export function HudComboPill({
-  scale,
-  room,
-  play,
-  note = null,
-}: {
-  scale: number;
-  room?: number;
-  play: { name: string; combo: string } | null;
-  note?: PillNote | null;
-}) {
+/** The last play, or the empty table. */
+export function HudComboPill({ scale, room, play }: { scale: number; room?: number; play: { name: string; combo: string } | null }) {
   const { t } = useTranslation();
   return (
-    <TableNotice kind="hudCombo" tone={note ? "lit" : "neutral"} scale={scale} room={room}>
-      {note ? (
-        <NoticeText testID={note.testID}>{note.text}</NoticeText>
-      ) : play === null ? (
+    <TableNotice kind="hudCombo" tone="neutral" scale={scale} room={room}>
+      {play === null ? (
         <NoticeText>{t("gameShared.emptyTable")}</NoticeText>
       ) : (
         <>
@@ -49,6 +37,15 @@ export function HudComboPill({
           <NoticeText strong>{play.combo}</NoticeText>
         </>
       )}
+    </TableNotice>
+  );
+}
+
+/** What an exchange's card did, under the pile it rests on. */
+export function PileNote({ scale, room, note }: { scale: number; room?: number; note: PillNote }) {
+  return (
+    <TableNotice kind="pileNote" tone="lit" scale={scale} room={room} still>
+      <NoticeText testID={note.testID}>{note.text}</NoticeText>
     </TableNotice>
   );
 }

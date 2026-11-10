@@ -3,140 +3,29 @@
 // ties the solver to it.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { DEAL_SIZE, exchangeSave, offlineSave, seedSave } from "./helpers/offlineSeed";
+import { DEAL_SIZE, exchangeSave, offlineSave, resumeOnVirtualClock, seedSave } from "./helpers/offlineSeed";
+import { installVirtualClock, stepUntil } from "./helpers/virtualClock";
 import { openApp } from "./helpers/navigation";
 import { openOnlineTable } from "./helpers/onlineTable";
 import { PHONES } from "./helpers/phones";
 import { setSafeArea } from "./helpers/safeArea";
 import { INSETS } from "../helpers/phoneTable";
-import { fits, type Box, type Fit } from "../helpers/drawnFit";
+import { DRAWN, misfits, RAIL, settled } from "./helpers/drawnRects";
 import { captureGameState, captureStateById, type CaptureState } from "../../lib/captureStates";
-import { createDeck } from "../../lib/game/gameEngine";
+import { createDeck, type Card } from "../../lib/game/gameEngine";
 import type { OfflineSave } from "../../lib/offlineSave";
 import { LOCALE_KEY } from "../../lib/storageKeys";
 import { catalogs, type Locale } from "../../shared/i18n";
 import { USERNAME_MAX } from "../../shared/username";
 import type { EdgeInsets } from "../../components/tableFrame";
-import { brokenRules, tableRects, type Rect, type RectName, type TableRects } from "../../components/tableRects";
+import { brokenRules, tableRects } from "../../components/tableRects";
 import { drawnChips, gameTable, TABLETS, type DrawnTable } from "../helpers/tableScenes";
+import { readHandArrival } from "../../components/table/exchangeModel";
 
 const VIEWPORTS = [...PHONES, ...TABLETS];
 const PHONE_INSETS = Object.entries(INSETS);
 const LOCALES: readonly Locale[] = ["it", "en", "sq"];
 const STATES: readonly CaptureState[] = ["held", "pile-right", "bomb-landed"].map((id) => captureStateById(id)!);
-
-const DRAWN: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
-  rail: { sel: '[data-testid="control-rail"]', fit: "same" },
-  railMenu: { sel: '[data-testid="control-rail"] > div:first-child [role="button"]', fit: "same" },
-  hudCombo: { sel: '[data-testid="notice-hudCombo"]', fit: "words" },
-  hudTurn: { sel: '[data-testid="notice-turn"]', fit: "words" },
-  scorePill: { sel: '[data-testid="score-pill-plate"]', fit: "same" },
-  seatTop: { sel: '[data-testid="top-seat"] [data-testid="seat-ring"]', fit: "same" },
-  seatLeft: { sel: '[data-testid="side-seat-left"] [data-testid="seat-ring"]', fit: "same" },
-  seatRight: { sel: '[data-testid="side-seat-right"] [data-testid="seat-ring"]', fit: "same" },
-  nameTop: { sel: '[data-testid="top-seat"] [data-testid="seat-name"]', fit: "line" },
-  nameLeft: { sel: '[data-testid="side-seat-left"] [data-testid="seat-name"]', fit: "line" },
-  nameRight: { sel: '[data-testid="side-seat-right"] [data-testid="seat-name"]', fit: "line" },
-  fanTop: { sel: '[data-testid="top-seat"] [data-testid="seat-back"]', fit: "same" },
-  fanLeft: { sel: '[data-testid="side-seat-left"] [data-testid="seat-back"]', fit: "same" },
-  fanRight: { sel: '[data-testid="side-seat-right"] [data-testid="seat-back"]', fit: "same" },
-  pile: { sel: '[data-testid="pile-card"]', fit: "same" },
-  handZone: { sel: '[data-testid="hand-zone"]', fit: "same" },
-  passa: { sel: '[data-testid="btn-passa-box"]', fit: "same" },
-  gioca: { sel: '[data-testid="btn-gioca-box"]', fit: "same" },
-  hand: { sel: '[data-testid="hand-row"] [data-testid="card-box"]', fit: "same" },
-};
-/** The rail's foot holds a knob only on the online table, where the reactions trigger takes it. */
-const RAIL: Partial<Record<RectName, { sel: string; fit: Fit }>> = {
-  rail: DRAWN.rail,
-  railMenu: DRAWN.railMenu,
-  railFoot: { sel: '[data-testid="control-rail"] > div:last-child [role="button"]', fit: "same" },
-};
-interface Drawn { boxes: Partial<Record<RectName, Box>>; clip: Rect | null; texts: { combo: string; turn: string } }
-
-/** Each rect as the union of what its selector matched; a scrolled hand as the part its window shows. */
-async function drawn(page: Page, rects: Partial<Record<RectName, { sel: string; fit: Fit }>>): Promise<Drawn> {
-  return page.evaluate((specs: Record<string, { sel: string; fit: Fit }>) => {
-    /** Words at linear advances: set LARGE times over in the same face, case, tracking and features, a hinted advance is off by a LARGEth of a pixel. */
-    const LARGE = 64;
-    const linear = (el: Element, words: string) => {
-      const cs = getComputedStyle(el);
-      const probe = document.createElement("span");
-      Object.assign(probe.style, {
-        position: "absolute",
-        visibility: "hidden",
-        whiteSpace: "pre",
-        fontFamily: cs.fontFamily,
-        fontWeight: cs.fontWeight,
-        fontStyle: cs.fontStyle,
-        fontVariantNumeric: cs.fontVariantNumeric,
-        fontFeatureSettings: cs.fontFeatureSettings,
-        fontKerning: cs.fontKerning,
-        textTransform: cs.textTransform,
-        fontSize: `${parseFloat(cs.fontSize) * LARGE}px`,
-        letterSpacing: `${(parseFloat(cs.letterSpacing) || 0) * LARGE}px`,
-      });
-      probe.lang = el.closest("[lang]")?.getAttribute("lang") ?? "";
-      probe.textContent = words;
-      document.body.appendChild(probe);
-      const w = probe.getBoundingClientRect().width / LARGE;
-      probe.remove();
-      return w;
-    };
-    const union = (rs: DOMRect[]) => {
-      const live = rs.filter((r) => r.width > 0 && r.height > 0);
-      if (live.length === 0) return null;
-      const x = Math.min(...live.map((r) => r.left));
-      const y = Math.min(...live.map((r) => r.top));
-      return { x, y, w: Math.max(...live.map((r) => r.right)) - x, h: Math.max(...live.map((r) => r.bottom)) - y };
-    };
-    const boxes: Record<string, Box> = {};
-    for (const [name, { sel, fit }] of Object.entries(specs)) {
-      const els = [...document.querySelectorAll(sel)];
-      const r = union(els.map((e) => e.getBoundingClientRect()));
-      if (!r) continue;
-      boxes[name] = r;
-      if (fit === "same") continue;
-      const sizes = els.flatMap((e) => [e, ...e.querySelectorAll("*")]).map((e) => parseFloat(getComputedStyle(e).fontSize));
-      let [drawnW, linearW] = [0, 0];
-      for (const e of els)
-        for (let walk = document.createTreeWalker(e, NodeFilter.SHOW_TEXT), node = walk.nextNode(); node; node = walk.nextNode()) {
-          if (!node.textContent) continue;
-          const range = document.createRange();
-          range.selectNodeContents(node);
-          drawnW += range.getBoundingClientRect().width;
-          linearW += linear(node.parentElement!, node.textContent);
-        }
-      boxes[name].text = { words: els.map((e) => e.textContent ?? "").join(""), em: Math.max(...sizes), drawn: drawnW, linear: linearW };
-    }
-    const window = document.querySelector('[data-testid="hand-pan"]')?.parentElement;
-    const c = window && getComputedStyle(window).overflowX !== "visible" ? window.getBoundingClientRect() : null;
-    return {
-      boxes,
-      clip: c && { x: c.left, y: c.top, w: c.width, h: c.height },
-      texts: {
-        combo: document.querySelector('[data-testid="notice-hudCombo"]')?.textContent ?? "",
-        turn: document.querySelector('[data-testid="notice-turn"]')?.textContent ?? "",
-      },
-    };
-  }, rects as Record<string, { sel: string; fit: Fit }>) as Promise<Drawn>;
-}
-
-async function settled(page: Page, rects = DRAWN): Promise<Drawn> {
-  let previous = "";
-  await expect
-    .poll(
-      async () => {
-        const now = JSON.stringify(await drawn(page, rects));
-        const still = now === previous;
-        previous = now;
-        return still;
-      },
-      { message: "the table never came to rest", timeout: 15_000, intervals: [250] }
-    )
-    .toBe(true);
-  return drawn(page, rects);
-}
 
 async function open(page: Page, baseURL: string, save: OfflineSave, locale: Locale, insets: EdgeInsets) {
   await seedSave(page, save, { holdTurn: true });
@@ -144,40 +33,15 @@ async function open(page: Page, baseURL: string, save: OfflineSave, locale: Loca
   await openApp(page, baseURL);
   await page.getByRole("button", { name: catalogs[locale]["home.resumeGame"] }).click({ timeout: 60_000 });
   await expect(page.getByTestId("hand-zone")).toBeVisible({ timeout: 30_000 });
-  await setSafeArea(page, insets.left, insets.bottom, insets.right);
+  await setSafeArea(page, insets.left, insets.bottom, insets.right, insets.top);
 }
 
-const clipTo = (r: Rect, c: Rect | null): Rect => {
-  if (!c) return r;
-  const x = Math.max(r.x, c.x);
-  const y = Math.max(r.y, c.y);
-  return { x, y, w: Math.min(r.x + r.w, c.x + c.w) - x, h: Math.min(r.y + r.h, c.y + c.h) - y };
-};
-const at = (r: Rect) => `${r.x.toFixed(1)},${r.y.toFixed(1)} ${r.w.toFixed(1)}x${r.h.toFixed(1)}`;
-
-function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
-  const bad: string[] = [];
-  const combo = [want.rects.hudCombo, got.boxes.hudCombo];
-  const drift = combo[0] && combo[1] ? Math.max(0, combo[0].w - combo[1].w) : 0;
-  for (const [name, spec] of Object.entries(rects) as [RectName, { fit: Fit }][]) {
-    const solved = want.rects[name];
-    const raw = got.boxes[name];
-    const box = raw && name === "hand" ? { ...raw, ...clipTo(raw, got.clip) } : raw;
-    if (!solved !== !box) bad.push(`${name}: drawn ${box ? at(box) : "nothing"}, solver ${solved ? at(solved) : "nothing"}`);
-    else if (solved && box && !fits[spec.fit](box, solved, { align: want.aligns[name], overcount: want.overcount[name], capped: want.capped[name], drift: name === "hudTurn" && want.aligns.hudTurn !== "center" ? drift : undefined })) {
-      const words = box.text && ` (words ${box.text.drawn.toFixed(1)} drawn, ${box.text.linear.toFixed(1)} linear; overcount ${want.overcount[name]?.toFixed(1)})`;
-      bad.push(`${name}: drawn ${at(box)}, solver ${at(solved)}${words ?? ""}`);
-    }
-  }
-  return bad;
-}
-
-async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false) {
-  const got = await settled(page);
-  const chips = drawnChips(table, locale, got.texts, exchangeName);
-  expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn})`).toEqual({ combo: expect.anything(), turn: expect.anything() });
-  const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn! } } });
-  expect(misfits(got, solved), where).toEqual([]);
+async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false, exchangeCards?: { received: Card; given?: Card }, rects = DRAWN) {
+  const got = await settled(page, rects);
+  const chips = drawnChips(table, locale, got.texts, exchangeName, exchangeCards);
+  expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn} | ${got.texts.note})`).toEqual({ combo: expect.anything(), turn: expect.anything(), note: got.texts.note === "" ? null : expect.anything() });
+  const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn!, note: chips.note ?? undefined } } });
+  expect(misfits(got, solved, rects), where).toEqual([]);
   if (keepsRules) expect(brokenRules(solved), `${where}: the solved table breaks its rules`).toEqual([]);
 }
 
@@ -212,6 +76,28 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
       await open(page, baseURL!, save, "it", insets);
       await expect(page.getByTestId("exchange-prompt"), "the winner's hand lifts once the exchange asks").toBeVisible({ timeout: 15_000 });
       await check(page, `${vp.name}, exchange`, vp, insets, "it", gameTable(save.gameState), EXCHANGE_NAME);
+    });
+
+    test(`an exchange's note under the pile: ${vp.name}`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await installVirtualClock(page, 1833);
+      await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [LOCALE_KEY, "it"]);
+      const save = exchangeSave({ seats: 3, hand: DEAL_SIZE[3], winner: 0, loser: 1, names: [EXCHANGE_NAME, EXCHANGE_NAME, EXCHANGE_NAME] });
+      await resumeOnVirtualClock(page, baseURL!, save);
+      await stepUntil(page, () => page.getByTestId("exchange-pill-note").isVisible(), "the received card resting on the pile", { chunkMs: 100 });
+      const phase = save.gameState.exchangePhase;
+      if (phase?.kind !== "open") throw new Error("the save opens no exchange");
+      const dealt = gameTable(save.gameState);
+      const hand = save.gameState.players[0].hand;
+      const { withheldIds } = readHandArrival({
+        hand,
+        announced: { winnerName: EXCHANGE_NAME, loserName: EXCHANGE_NAME, winnerIdx: 0, loserIdx: 1, twoJokers: false, oneWay: false, cardReceived: phase.cardFromLoser },
+        stages: { key: "", receive: "rest", give: "waiting", ready: false },
+        viewerSeat: 0,
+      });
+      const resting: DrawnTable = { ...dealt, base: { ...dealt.base, hand: { ...dealt.base.hand, cards: hand.length - withheldIds.length } } };
+      await check(page, `${vp.name}, the note under the pile`, vp, INSETS["0/0"], "it", resting, EXCHANGE_NAME, false, { received: phase.cardFromLoser });
     });
 
     test(`a thirteen-card straight over an eighteen-card hand: ${vp.name}`, async ({ page, baseURL }) => {
@@ -278,3 +164,4 @@ test("the rail's knobs are drawn in the solver's rects: online", async ({ browse
     await table.close();
   }
 });
+
