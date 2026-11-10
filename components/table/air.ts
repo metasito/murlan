@@ -13,8 +13,11 @@ export const MOTE_STRIDE = 6;
 
 const TAU = Math.PI * 2;
 const CROSSING_S = 4;
-export const UNSEEN = 0.02;
+const UNSEEN = 0.02;
 export const MOTE_ALPHA = 0.85;
+
+/** Whether a mote at `alpha` (`MOTE_ALPHA` included) is bright enough for `drawAir` to draw. */
+export const isDrawn = (alpha: number): boolean => alpha >= UNSEEN * MOTE_ALPHA;
 /** Radians a second: a twinkle's period is 2 PI over this. */
 export const TWINKLE_RATE = 1.3;
 
@@ -29,6 +32,18 @@ export interface Air {
 
 export type AirLight = Pick<Lamp, "lx" | "ly" | "level" | "f" | "r" | "freeze">;
 export type MoteLight = Omit<AirLight, "freeze">;
+
+/** Whether `l` lights the motes otherwise than `seen` did; `seen` takes its values. */
+export function relit(seen: MoteLight, l: AirLight): boolean {
+  "worklet";
+  if (seen.lx === l.lx && seen.ly === l.ly && seen.level === l.level && seen.f === l.f && seen.r === l.r) return false;
+  seen.lx = l.lx;
+  seen.ly = l.ly;
+  seen.level = l.level;
+  seen.f = l.f;
+  seen.r = l.r;
+  return true;
+}
 
 export function createAir(rng: Rng): Air {
   const R = (a: number, b: number) => a + rng() * (b - a);

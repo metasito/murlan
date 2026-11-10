@@ -9,12 +9,13 @@ import { MOTES } from "./air";
 import { DESIGN } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { bombFx, landingDust, spawn, tableRng, type ParticleEmitter } from "./particles";
+import { burstIdle, createBurstScene, stepBurst, type BurstScene } from "./burstScene";
 import { startEmber } from "./ember";
 import { startRain } from "./coneRain";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
-import { CELLS, createScene, D, DRAW_STRIDE, sceneIdle, SHEET, SPARK_LEN, SPRITE_R, stepScene, type Scene } from "./particleSprites";
+import { CELLS, D, DRAW_STRIDE, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
 
 // A chunk of its own: the rest air is not on the first paint's path, and the web first load is budgeted.
 const MoteLayer = lazy(() => import("./moteLayer").then((m) => ({ default: m.MoteLayer })));
@@ -64,7 +65,7 @@ function tinted(white: HTMLCanvasElement, rgb: string): HTMLCanvasElement {
   return out;
 }
 
-function paintScene(c: CanvasRenderingContext2D, cv: HTMLCanvasElement, scene: Scene, paint: { white: HTMLCanvasElement | null; sheets: Map<string, HTMLCanvasElement> }, sx: number, sy: number) {
+function paintScene(c: CanvasRenderingContext2D, cv: HTMLCanvasElement, scene: BurstScene, paint: { white: HTMLCanvasElement | null; sheets: Map<string, HTMLCanvasElement> }, sx: number, sy: number) {
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, cv.width, cv.height);
   const white = paint.white!;
@@ -85,22 +86,24 @@ function paintScene(c: CanvasRenderingContext2D, cv: HTMLCanvasElement, scene: S
 
 export function ParticleLayer({ ref, rig, landing }: {
   ref?: Ref<ParticleEmitter>;
-  rig: Pick<LampRig, "lamp" | "stillLight" | "sx" | "sy">;
+  rig: Pick<LampRig, "lamp" | "sx" | "sy"> & Partial<Pick<LampRig, "stillLight">>;
   landing: SharedValue<LandingSignal>;
+  /** Native's iOS grey layer; the web greys its whole table with a view filter. */
+  grey?: SharedValue<number>;
 }) {
   const { lamp, sx, sy } = rig;
-  const [scene] = useState(() => createScene());
+  const [scene] = useState(() => createBurstScene());
   const [rng] = useState(tableRng);
   const paint = useRef({ white: null as HTMLCanvasElement | null, sheets: new Map<string, HTMLCanvasElement>() });
   const reduced = usePrefersReducedMotion();
   const canvas = useRef<HTMLCanvasElement | null>(null);
   // The canvas stays mounted and the frame callback released: a throw wakes it on the contact frame, and it releases itself when nothing flies.
   const [frame] = useState(() => (info: FrameInfo): boolean => {
-    stepScene(scene, lamp.value, Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000), rng);
+    stepBurst(scene, lamp.value, Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000), rng);
     const cv = canvas.current;
     const c = cv?.getContext?.("2d");
     if (cv && c) paintScene(c, cv, scene, paint.current, cv.width / DESIGN.width, cv.height / DESIGN.height);
-    return !sceneIdle(scene);
+    return !burstIdle(scene);
   });
   const wake = useDuring(frame, false);
   // Baked at mount, outside any burst: the offscreen draws it takes are not a turn's.

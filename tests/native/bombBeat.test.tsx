@@ -9,19 +9,11 @@ import { getAnimatedStyle } from './harness/animatedStyle';
 const mockOnsets: string[] = [];
 const mockSources = new Map<string, () => unknown>();
 const mockTrauma: number[] = [];
-const mockLive = new Set<() => number>();
 
 jest.mock('@/lib/e2eTrace', () => ({
   ...jest.requireActual<object>('@/lib/e2eTrace'),
   traceOnset: (kind: string, name: string) => mockOnsets.push(`${kind}:${name}`),
-  useTraceSource: (field: string, read: () => unknown) => {
-    const React = require('react') as typeof import('react');
-    React.useEffect(() => {
-      if (field !== 'live') return void mockSources.set(field, read);
-      mockLive.add(read as () => number);
-      return () => void mockLive.delete(read as () => number);
-    }, [field, read]);
-  },
+  useTraceSource: (field: string, read: () => unknown) => void mockSources.set(field, read),
 }));
 jest.mock('@/components/impact', () => {
   const actual = jest.requireActual<typeof import('@/components/impact')>('@/components/impact');
@@ -86,7 +78,7 @@ const asideX = () =>
   ((getAnimatedStyle(screen.getByTestId('pile-prev-layer', { includeHiddenElements: true })) as { transform?: Record<string, number>[] }).transform ?? []).find((t) => 'translateX' in t)?.translateX ?? 0;
 const lampFlare = () => (mockSources.get('lamp')?.() as { flare: number }).flare;
 const lampKick = () => (mockSources.get('lamp')?.() as { kick: number }).kick;
-const live = () => [...mockLive].reduce((n, read) => n + read(), 0);
+const live = () => mockSources.get('live')?.() as number;
 const scrim = () => opacity('felt-scrim');
 
 async function advance(ms: number) {

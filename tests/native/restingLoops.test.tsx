@@ -186,11 +186,11 @@ describe('a table with motion', () => {
     await view.unmount();
   });
 
-  it('keeps the lamp running, and releases the link hold and the particles', async () => {
+  it('keeps the lamp and the particles running, and releases the link hold', async () => {
     await setMotion('off');
     const view = await render(<Table link="up" dim={false} />);
     await frames(60);
-    expect(running()).toBe(1);
+    expect(running()).toBe(2);
     await view.unmount();
   });
 });

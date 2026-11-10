@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createParticles, spawn } from "../../components/table/particles.ts";
-import { CELLS, createScene, D, DRAW_STRIDE, SHEET, SPRITE_R, layout, sceneIdle, stepScene } from "../../components/table/particleSprites.ts";
+import { CELLS, createScene, D, DRAW_STRIDE, SHEET, SPRITE_R, layout, sceneAsleep, stepDue, stepScene } from "../../components/table/particleSprites.ts";
 import { restingLamp, TABLE_CENTRE } from "../../components/table/lampRig.ts";
 
 function drawOf(p: Parameters<typeof spawn>[1]) {
@@ -62,23 +62,47 @@ test("a spark runs from its head back along −v·0.035, as wide as its size", (
   close(out[D.w], cell.cx + len / scale + SPRITE_R, "sprite cut past the tail's cap");
 });
 
-test("a scene with nothing flying is idle, and a spawn, an ember or rain wakes it", () => {
+test("a still scene with nothing flying sleeps, and a spawn wakes it", () => {
   const lamp = restingLamp(TABLE_CENTRE);
-  const scene = createScene();
-  assert.equal(sceneIdle(scene), true);
+  const scene = createScene(() => 0.5);
+  assert.equal(sceneAsleep(scene, lamp, true), false, "the first frame draws");
+  stepScene(scene, lamp, 0.016, true, () => 0.5);
+  assert.equal(sceneAsleep(scene, lamp, true), true);
   spawn(scene.s, { x: 100, y: 100, life: 0.1, size: 4 });
-  assert.equal(sceneIdle(scene), false);
-  stepScene(scene, lamp, 0.5, () => 0.5);
-  assert.equal(sceneIdle(scene), true, "a spent particle leaves it idle");
-  scene.ember.t = 0;
-  assert.equal(sceneIdle(scene), false, "an ember keeps it awake");
-  const rain = createScene();
-  rain.rain.t = 0;
-  assert.equal(sceneIdle(rain), false, "rain keeps it awake");
+  assert.equal(sceneAsleep(scene, lamp, true), false);
+  stepScene(scene, lamp, 0.016, true, () => 0.5);
+  stepScene(scene, lamp, 0.5, true, () => 0.5);
+  assert.equal(scene.shown, 0);
+  assert.equal(sceneAsleep(scene, lamp, true), true);
+  assert.equal(sceneAsleep(scene, { ...lamp, level: lamp.level / 2 }, true), false, "a relight wakes it");
 });
 
 test("a soft puff carries its colour's own alpha", () => {
   const { out, cell } = drawOf({ x: 0, y: 0, size: 12, col: "rgba(230,215,180,.1)", shape: "soft" });
   assert.equal(cell.shape, "soft");
   close(out[D.a], 0.1, "alpha");
+});
+
+test("an ambient-only scene steps once 33 ms are owed; a burst, ember, rain or moth steps every frame", () => {
+  const lamp = restingLamp(TABLE_CENTRE);
+  const rng = () => 0.5;
+  const scene = createScene(rng);
+  stepScene(scene, lamp, 0.016, false, rng);
+  assert.equal(stepDue(scene, 0.0165, 0.0165, false), false, "one 60 Hz frame is not enough for motes");
+  assert.equal(stepDue(scene, 0.034, 0.017, false), true);
+  assert.equal(stepDue(scene, 0.0164 + 0.0165, 0.0165, false), true, "two jittered 60 Hz frames make a step, never three");
+  assert.equal(stepDue(scene, 0.025, 0.0083, false), false, "three 120 Hz frames are not yet a step");
+  assert.equal(stepDue(scene, 0.0332, 0.0083, false), true, "four 120 Hz frames are");
+  spawn(scene.s, { x: 100, y: 100, life: 1, size: 4 });
+  assert.equal(stepDue(scene, 0.001, 0.001, false), true, "a live particle runs at full rate");
+  assert.equal(stepDue(scene, 0.001, 0.001, true), true, "a still scene is gated by sceneAsleep alone");
+  const flying = createScene(rng);
+  flying.air.mothT = 1;
+  assert.equal(stepDue(flying, 0.001, 0.001, false), true, "a moth runs at full rate");
+  const ember = createScene(rng);
+  ember.ember.t = 0;
+  assert.equal(stepDue(ember, 0.001, 0.001, false), true, "an ember runs at full rate");
+  const rain = createScene(rng);
+  rain.rain.t = 0;
+  assert.equal(stepDue(rain, 0.001, 0.001, false), true, "rain runs at full rate");
 });

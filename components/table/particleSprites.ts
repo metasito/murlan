@@ -2,10 +2,12 @@
 // white sprite per shape and glow radius, tinted per particle, so nothing is blurred per frame.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { alpha, createParticles, P, PARTICLE_BUDGET, SHAPES, spawn, step, STRIDE, type ParticleShape, type Particles, type Rng } from "./particles.ts";
+import { alpha, createParticles, P, PARTICLE_BUDGET, rgba, SHAPES, spawn, step, STRIDE, type ParticleShape, type Particles, type Rng } from "./particles.ts";
+import { createAir, M, MOTE_STRIDE, MOTES, moteAlpha, mothPose, relit, stepAir, type Air, type AirLight, type MothPose, type MoteLight } from "./air.ts";
 import { coneRainFrame, idleRain, type RainRun } from "./coneRain.ts";
 import { emberFrame, idleEmber, type EmberRun } from "./ember.ts";
 import type { Lamp } from "./lampRig.ts";
+import { RestAir } from "../../lib/tokens.ts";
 
 /** A dot's or a soft puff's radius on the sheet, and a spark's half-width. */
 export const SPRITE_R = 6;
@@ -95,29 +97,96 @@ export function layout(s: Particles, out: Float32Array): void {
   }
 }
 
-/** Everything one frame of the burst layer steps and draws from; both adapters hold one. */
+const MOTE_CELL = CELLS[SHAPES.indexOf("dot") * GLOWS.length];
+const [MOTE_R, MOTE_G, MOTE_B] = rgba(RestAir.mote);
+
+/** Writes the motes' draws into `out` from draw `from` on, and returns how many are lit: an unlit one draws at alpha 0. */
+export function layoutMotes(a: Air, l: AirLight, out: Float32Array, from: number): number {
+  "worklet";
+  let lit = 0;
+  for (let i = 0; i < MOTES; i++) {
+    const d = (from + i) * DRAW_STRIDE;
+    const o = i * MOTE_STRIDE;
+    const scale = a.m[o + M.r] / SPRITE_R;
+    out[d + D.x] = MOTE_CELL.x;
+    out[d + D.y] = MOTE_CELL.y;
+    out[d + D.w] = MOTE_CELL.w;
+    out[d + D.h] = MOTE_CELL.h;
+    out[d + D.scos] = scale;
+    out[d + D.ssin] = 0;
+    out[d + D.tx] = a.m[o + M.x] - scale * MOTE_CELL.cx;
+    out[d + D.ty] = a.m[o + M.y] - scale * MOTE_CELL.cy;
+    out[d + D.r] = MOTE_R;
+    out[d + D.g] = MOTE_G;
+    out[d + D.b] = MOTE_B;
+    out[d + D.a] = moteAlpha(a, i, l);
+    if (out[d + D.a] > 0) lit++;
+  }
+  return lit;
+}
+
+/** Everything one frame of the particle layer steps and draws from; both adapters hold one. */
 export interface Scene {
   s: Particles;
   d: Float32Array;
+  air: Air;
+  lit: number;
+  shown: number;
+  light: MoteLight;
   ember: EmberRun;
   rain: RainRun;
+  moth: MothPose | null;
 }
 
-export function createScene(): Scene {
-  return { s: createParticles(), d: new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE), ember: idleEmber(), rain: idleRain() };
+export function createScene(rng: Rng): Scene {
+  return {
+    s: createParticles(),
+    d: new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE),
+    air: createAir(rng),
+    lit: 0,
+    shown: 0,
+    light: { lx: NaN, ly: NaN, level: NaN, f: NaN, r: NaN },
+    ember: idleEmber(),
+    rain: idleRain(),
+    moth: null,
+  };
 }
 
-/** Nothing is flying: no particle live, no ember or rain still to throw. */
+/** Nothing is flying or was drawn last frame. */
 export function sceneIdle(v: Scene): boolean {
   "worklet";
-  return !v.s.live && v.ember.t < 0 && v.rain.t < 0;
+  return !v.s.live && !v.shown && v.ember.t < 0 && v.rain.t < 0;
 }
 
-/** Steps the scene `dt` seconds and lays it out into `v.d`. */
-export function stepScene(v: Scene, l: Pick<Lamp, "lx" | "ly">, dt: number, rng: Rng): void {
+/** Idle, and nothing in the air moves or relights: a frame would draw what the last one did. */
+export function sceneAsleep(v: Scene, l: Lamp, still: boolean): boolean {
+  "worklet";
+  return sceneIdle(v) && still && v.air.mothT < 0 && !relit(v.light, l);
+}
+
+/** What an ambient-only scene, whose motes drift slowly, waits between steps. */
+const AMBIENT_STEP_S = 0.033;
+
+/**
+ * Whether a frame steps the scene: always while anything but the motes moves or they hold still, else once `owed` seconds
+ * reach a step, within half of this frame's `frameS` so a jittered frame never stretches the step by one more.
+ */
+export function stepDue(v: Scene, owed: number, frameS: number, still: boolean): boolean {
+  "worklet";
+  return (still ? owed > 0 : owed >= AMBIENT_STEP_S - frameS / 2) || !sceneIdle(v) || v.air.mothT >= 0;
+}
+
+/** Steps the scene `dt` seconds and lays it out into `v.d`; true when a moth sets off. */
+export function stepScene(v: Scene, l: Lamp, dt: number, still: boolean, rng: Rng): boolean {
   "worklet";
   for (const p of emberFrame(v.ember, dt, rng)) spawn(v.s, p);
   for (const p of coneRainFrame(v.rain, l, dt, rng)) spawn(v.s, p);
   step(v.s, dt);
+  const onset = stepAir(v.air, dt, l, still, rng);
   layout(v.s, v.d);
+  v.lit = layoutMotes(v.air, l, v.d, v.s.live);
+  relit(v.light, l);
+  v.shown = v.s.live;
+  v.moth = mothPose(v.air, l);
+  return onset;
 }
