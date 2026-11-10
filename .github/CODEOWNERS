@@ -67,6 +67,9 @@ jest.config.js                                       @rotonmeta
 /tests/native/helpers/frames.ts                      @rotonmeta
 /tests/native/harness/env.ts                         @rotonmeta
 /tests/native/mocks/*                                @rotonmeta
+/tests/helpers/processWorlds.ts                      @rotonmeta
+/tests/tooling/proc.test.ts                          @rotonmeta
+/tests/tooling/testHangs.test.ts                     @rotonmeta
 /tests/e2e/seatNameContrast.spec.ts                  @rotonmeta
 /tests/tooling/litFloor.test.ts                      @rotonmeta
 /docs/GAME-RULES.md                                  @rotonmeta

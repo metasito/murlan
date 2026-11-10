@@ -104,6 +104,16 @@ function runWidth(kind: NoticeKind, locale: NoticeLocale, box: NoticeBox, id: st
   return role === "key" ? text + 2 * mockupPx(NOTICE_KEY.padX, scale) : text;
 }
 
+/**
+ * The widest `count` digits a notice's words may read in its own face: Rajdhani sets no tabular
+ * digits, so a countdown changes width as it ticks and is priced at its widest.
+ */
+export function widestDigits(kind: NoticeKind, scale: number, count: number): string {
+  const { digits } = glyphs(noticeBox(kind, scale), "text", scale);
+  const widest = Object.entries(digits).reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+  return widest.repeat(count);
+}
+
 /** The plate's outer width: border, padding, then its children a `gap` apart. */
 export function noticeWidth(kind: NoticeKind, locale: NoticeLocale, scale: number, content: NoticeContent, pricing: Pricing = "snapped", room?: number): number {
   const box = noticeBox(kind, scale, room);

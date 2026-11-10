@@ -540,10 +540,7 @@ jobs:
       - name: Generate the native project, on the NDK React Native pins
         run: |
           npx expo prebuild --platform android --no-install
-          want=$(sed -n 's/^ndkVersion = "\(.*\)"$/\1/p' node_modules/react-native/gradle/libs.versions.toml)
-          have=$(ls "$ANDROID_HOME/ndk" | grep "^${want%%.*}\." | sort -V | tail -1)
-          [ -n "$have" ] || { echo "::error::No NDK ${want%%.*}.x under $ANDROID_HOME/ndk to build with."; exit 1; }
-          sed -i "1i ext.ndkVersion = \"$have\"" android/build.gradle
+          bash tools/ci/pin-ndk.sh
       - name: The audio library's downloads are off
         run: |
           grep -qx "disableAudioapiFFmpeg=true" android/gradle.properties

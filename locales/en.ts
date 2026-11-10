@@ -303,12 +303,12 @@ export const en = {
   // The turn chip once the received card is read and the winner holds nothing from 3 to 10 to give back; `name` is the winner; the viewer winner reads the second-person form.
   "exchange.chipOneWay": "{{name}} can't give back",
   "exchange.chipOneWayYou": "You can't give back",
-  "exchange.chipGive": "Choose a card from 3 to 10 for {{name}}",
+  "exchange.chipGive": "Pick 3 to 10 for {{name}}",
   // Murlan's 3-to-10 rule is this game's own; every other game in the family
   // lets the winner give any card. The glow says which cards; this says why.
   // What the other two seats read while the winner decides.
-  "exchange.watching": "{{winner}} is choosing a card for {{loser}}",
-  "exchange.waitingForYou": "{{winner}} is choosing a card for you",
+  "exchange.watching": "{{winner}} picks a card for {{loser}}",
+  "exchange.waitingForYou": "{{winner}} picks a card for you",
   "exchange.confirm": "Give",
   "exchange.confirmA11yReady": "Give {{card}} to {{name}}",
   "exchange.confirmA11yWaiting": "Give a card to {{name}}. Choose one of the highlighted cards first.",

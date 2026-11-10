@@ -346,6 +346,17 @@ async function stillMeasure(page: Page, kind: "ONLINE" | "OFFLINE"): Promise<Mea
 
 const rows: string[] = [];
 
+const audited = (key: string) => VIEWPORTS.some((vp) => vp.name === key.split("\t")[1]);
+
+test("the record holds rows for the audited viewports only", () => {
+  const orphans = [...recorded().keys()].filter((key) => !audited(key));
+  expect(
+    orphans,
+    "tests/e2e/57-polish-audit/online-table.txt holds rows for a viewport VIEWPORTS no longer lists; " +
+      "regenerate it with AUDIT_UPDATE=1, which drops them"
+  ).toEqual([]);
+});
+
 test.describe("the online table, at the audit's viewports", () => {
   for (const vp of VIEWPORTS) {
     // Not the fixture `page`: every seat here is its own browser context (see
@@ -366,12 +377,8 @@ test.describe("the online table, at the audit's viewports", () => {
       const { page } = table;
       try {
         const online = await stillMeasure(page, "ONLINE");
-        if (UPDATING) mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
-        await page.screenshot({
-          path: UPDATING
-            ? path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`)
-            : test.info().outputPath(`online-table__${vp.name}.png`),
-        });
+        const capture = await page.screenshot();
+        writeFileSync(test.info().outputPath(`online-table__${vp.name}.png`), capture);
 
         // Dealt the same number of cards the server just dealt, not the seed
         // helper's default: the hand row sizes its cards to fit however many it
@@ -439,12 +446,20 @@ test.describe("the online table, at the audit's viewports", () => {
         // two tables agreed.
         const measured = [line("ONLINE", vp, online), line("OFFLINE", vp, offline)];
         rows.push(...measured);
+        if (UPDATING) {
+          mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
+          writeFileSync(path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`), capture);
+        }
 
         if (!UPDATING) {
           const record = recorded();
           for (const row of measured) {
             const was = record.get(keyOf(row));
-            if (was === undefined) continue;
+            expect(
+              was,
+              `tests/e2e/57-polish-audit/ records no row for ${keyOf(row).replaceAll("\t", " ")}, so ` +
+                `nothing holds this table to anything. Regenerate the record with AUDIT_UPDATE=1.`
+            ).toBeDefined();
             expect(
               row,
               `the table no longer lays out the way tests/e2e/57-polish-audit/ records it ` +
@@ -469,6 +484,7 @@ test.describe("the online table, at the audit's viewports", () => {
     // -verified table this run had no occasion to redeal — would be lost by
     // a plain overwrite rather than left standing.
     const merged = recorded();
+    for (const key of [...merged.keys()]) if (!audited(key)) merged.delete(key);
     for (const row of rows) merged.set(keyOf(row), row);
     writeFileSync(RECORD, [...merged.values()].join("\n") + "\n", "utf8");
   });

@@ -42,15 +42,16 @@ export function seatFanArc(count: number, backScale: number) {
 }
 
 /**
- * The top fan's height, a side fan's vertical extent, and how far a side fan reaches inboard of its
+ * The top fan's height and width, a side fan's vertical extent, and how far a side fan reaches inboard of its
  * ring's centre, each at its drawn cap.
  */
-export function drawnFanBounds(scale: number): { topH: number; sideH: number; sideReach: number } {
+export function drawnFanBounds(scale: number): { topH: number; topW: number; sideH: number; sideReach: number } {
   const backScale = scale * BACK_SCALE;
   const count = FAN_DRAWN_CARDS.left;
   const at = fanPoint({ dx: 0, dy: 0 }, "left", scale, count);
   return {
     topH: seatFanArc(FAN_DRAWN_CARDS.top, backScale).bounds.h,
+    topW: seatFanArc(FAN_DRAWN_CARDS.top, backScale).bounds.w,
     sideH: seatFanArc(Math.max(FAN_DRAWN_CARDS.left, FAN_DRAWN_CARDS.right), backScale).bounds.w,
     sideReach: Math.max(...fanCorners(at, "left", count, backScale).flat().map(([x]) => x)),
   };

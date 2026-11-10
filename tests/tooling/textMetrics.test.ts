@@ -124,24 +124,24 @@ const NOT_NOTICE_TEXT: Record<string, { why: string; keys: string[]; opaque: str
     why: "the match board's own words; its BoardButton is imported by the vote notices",
     keys: [
       "matchBoard.notRecorded", "matchBoard.provisional", "matchBoard.ratingLabel", "matchBoard.tooManyBots", "matchBoard.wins", "matchBoard.youWon",
-      "result.home", "result.matchDrawTitle", "result.matchOverTitle", "result.newMatch", "result.tableStops", "matchBoard.notRecordedSpoken", "matchBoard.ratingSpoken",
+      "roundOverOverlay.newMatchA11yLabel", "roundOverOverlay.waitingA11yLabel", "result.home", "result.matchDrawTitle", "result.matchOverTitle", "result.newMatch", "result.tableStops", "matchBoard.notRecordedSpoken", "matchBoard.ratingSpoken",
     ],
     opaque: [],
   },
-  "components/CardView.tsx": { why: "a card's spoken hint", keys: [], opaque: [] },
-  "lib/cardNames.ts": { why: "spoken card names", keys: ["cardView.jokerBlack", "cardView.jokerColored", "cards.nameFormat"], opaque: ["key", "key"] },
+  "components/CardView.tsx": { why: "a card's spoken hint", keys: ["cardView.selectedA11yHint"], opaque: [] },
+  "lib/cardNames.ts": { why: "spoken card names", keys: ["cardView.jokerBlack", "cardView.jokerColored", "cards.nameFormat"], opaque: ["rankSpokenName: t(key)", "suitSpokenName: t(key)"] },
   "lib/game/scorePill.ts": { why: "the score pill's rows, which are no notice kind", keys: ["lobby.team", "result.singleRoundFormat", "scorePill.race"], opaque: [] },
-  "lib/table/playRefusal.ts": { why: "RejectFloat's words, a runtime run bounded by noticeBox", keys: [], opaque: ["key"] },
+  "lib/table/playRefusal.ts": { why: "RejectFloat's words, a runtime run bounded by noticeBox", keys: [], opaque: ['playRefusalLabel: t(key, { rank: card ? getCardDisplayRank(card.rank) : "", suit: card ? getSuitSymbol(card.suit) : "", card: card ? cardSpokenName(card, t) : "", })'] },
   "components/table/hand.tsx": { why: "the hand's spoken move actions", keys: ["gameTable.moveCardLeft", "gameTable.moveCardRight"], opaque: [] },
   "app/tutorial.tsx": {
     why: "the tutorial's own card words; its chip text is CHIP_KEYS, measured through its owner",
     keys: [
       "tutorial.progressText", "tutorial.skip", "tutorial.cardTitleComplete", "tutorial.cardTitleQuickGuide", "tutorial.onTable", "tutorial.yourHand", "tutorial.pass",
-      "tutorial.playCombination", "tutorial.continue", "tutorial.yourHandAfterReceiving", "tutorial.justReceived", "tutorial.giveback", "tutorial.rereadRules", "tutorial.backToHome",
+      "tutorial.playCombination", "tutorial.continue", "tutorial.yourHandAfterReceiving", "tutorial.justReceived", "tutorial.giveback", "tutorial.rereadRules", "tutorial.backToHome", "tutorial.backA11yLabel", "tutorial.skipA11yLabel", "gameTable.a11yYourTurn",
     ],
-    opaque: ["CHIP_KEYS.yourTurn"],
+    opaque: ["renderBody: t(CHIP_KEYS.yourTurn)"],
   },
-  "lib/i18n.ts": { why: "the translator itself", keys: ["common.unknownError"], opaque: ["pluralKey(base, count)"] },
+  "lib/i18n.ts": { why: "the translator itself", keys: ["common.unknownError"], opaque: ["tn: t(pluralKey(base, count), { count, ...params })"] },
 };
 
 /** Words a notice's source translates that are not a Text run it draws, with what carries them instead. */
@@ -152,12 +152,47 @@ const NOT_A_RUN: Record<string, string> = {
   "game.endMatchVoteTally": "A11yStatus, spoken",
   "game.endMatchVoteTallyVoted": "A11yStatus, spoken",
   "game.endMatchWithdrawButton": "the vote's accessibility label",
+  "gameTable.a11yCardMoved": "spoken to a screen reader, never drawn",
+  "gameTable.a11yDealing": "spoken to a screen reader, never drawn",
+  "gameTable.a11yEmptyTable": "spoken to a screen reader, never drawn",
+  "gameTable.a11yExchangeGive": "spoken to a screen reader, never drawn",
+  "gameTable.a11yExchangeWait": "spoken to a screen reader, never drawn",
+  "gameTable.a11yHandCount": "spoken to a screen reader, never drawn",
+  "gameTable.a11yHandSelected": "spoken to a screen reader, never drawn",
+  "gameTable.a11yLastPlayBomb": "spoken to a screen reader, never drawn",
+  "gameTable.a11yLastPlayPair": "spoken to a screen reader, never drawn",
+  "gameTable.a11yLastPlayRoyalStraight": "spoken to a screen reader, never drawn",
+  "gameTable.a11yLastPlayStraight": "spoken to a screen reader, never drawn",
+  "gameTable.a11yLastPlayTriple": "spoken to a screen reader, never drawn",
+  "gameTable.a11yMatchOver": "spoken to a screen reader, never drawn",
+  "gameTable.a11yOpponentCards": "spoken to a screen reader, never drawn",
+  "gameTable.a11yPlayerPlayed": "spoken to a screen reader, never drawn",
+  "gameTable.a11yRoundOver": "spoken to a screen reader, never drawn",
+  "gameTable.a11ySecondsLeft": "spoken to a screen reader, never drawn",
+  "gameTable.a11yTurnOf": "spoken to a screen reader, never drawn",
+  "gameTable.a11yYouPlayed": "spoken to a screen reader, never drawn",
+  "gameTable.a11yYourCards": "spoken to a screen reader, never drawn",
+  "gameTable.a11yYourTurn": "spoken to a screen reader, never drawn",
+  "gameTable.passA11yLabel": "spoken to a screen reader, never drawn",
+  "gameTable.settingsA11yLabel": "spoken to a screen reader, never drawn",
+  "roundOverOverlay.nextRoundA11yLabel": "spoken to a screen reader, never drawn",
+  "roundOverOverlay.waitingA11yLabel": "spoken to a screen reader, never drawn",
+  "seat.finishedA11yLabel": "spoken to a screen reader, never drawn",
 };
 /** A `t(...)` whose key the source cannot show, and the owner's export the spec takes it from. */
 const KEY_FROM_OWNER: Record<string, { owner: string; calls: string[] }> = {
-  "lib/comboName.ts": { owner: "COMBO_NAME_KEYS", calls: ["COMBO_NAME_KEYS[type]"] },
-  "components/turnTimerUi.ts": { owner: "CHIP_KEYS", calls: ["key", "key"] },
+  "lib/comboName.ts": { owner: "COMBO_NAME_KEYS", calls: ["comboName: t(COMBO_NAME_KEYS[type])"] },
+  "components/turnTimerUi.ts": { owner: "CHIP_KEYS", calls: ["say: i.t(key)", "say: i.t(key, { name: i.onMoveName })"] },
 };
+
+/** The nearest named function or variable around `n`, so a call is pinned to where it is made, not to an expression another function could share. */
+function enclosingName(n: ts.Node): string {
+  for (let p = n.parent; p; p = p.parent) {
+    if ((ts.isFunctionDeclaration(p) || ts.isMethodDeclaration(p)) && p.name) return p.name.getText();
+    if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) return p.name.text;
+  }
+  return "(module)";
+}
 
 /** Every catalogue key `text` passes to `t`/`tn` as a literal or a choice of literals, and each call whose key it cannot read. */
 function translated(file: string, text: string): { keys: Set<string>; opaque: string[] } {
@@ -178,7 +213,7 @@ function translated(file: string, text: string): { keys: Set<string>; opaque: st
       if ((callee === "t" || callee === "tn") && n.arguments[0]) {
         const found = literals(n.arguments[0]);
         if (found) found.forEach((k) => keys.add(k));
-        else opaque.push(n.arguments[0].getText().replace(/\s+/g, " "));
+        else opaque.push(`${enclosingName(n)}: ${n.getText().replace(/\s+/g, " ")}`);
       }
     }
     ts.forEachChild(n, visit);
@@ -197,8 +232,8 @@ function opaqueDrift(file: string, actual: string[], allowed: string[]): string[
     return false;
   });
   return [
-    ...extra.map((call) => `${file}: t(${call}) passes a key this scan cannot read`),
-    ...left.map((call) => `${file} is allowed t(${call}) and no longer makes it`),
+    ...extra.map((call) => `${file}: ${call} passes a key this scan cannot read`),
+    ...left.map((call) => `${file} is allowed ${call} and no longer makes it`),
   ];
 }
 
@@ -210,7 +245,7 @@ function unmeasured(sources: Record<string, string>): string[] {
     const { keys, opaque } = translated(file, text);
     const excused = NOT_NOTICE_TEXT[file];
     if (excused) {
-      for (const key of keys) if (!spec.has(key) && !/a11y/i.test(key) && !excused.keys.includes(key)) stale.push(`${file}: t("${key}") is not measured, and ${file} is excused only for ${excused.why}`);
+      for (const key of keys) if (!spec.has(key) && !excused.keys.includes(key)) stale.push(`${file}: t("${key}") is not measured, and ${file} is excused only for ${excused.why}`);
       for (const key of excused.keys) {
         if (!keys.has(key)) stale.push(`${file} is excused for ${key} and no longer translates it`);
         else if (spec.has(key)) stale.push(`${file}: ${key} is measured, so it is not excused`);
@@ -222,7 +257,7 @@ function unmeasured(sources: Record<string, string>): string[] {
     const owner = KEY_FROM_OWNER[file];
     stale.push(...opaqueDrift(file, opaque, owner?.calls ?? []));
   }
-  const problems = [...found].flatMap(([key, file]) => (spec.has(key) || /a11y/i.test(key) || key in NOT_A_RUN ? [] : [`${file}: t("${key}") is not measured`]));
+  const problems = [...found].flatMap(([key, file]) => (spec.has(key) || key in NOT_A_RUN ? [] : [`${file}: t("${key}") is not measured`]));
   for (const [key, why] of Object.entries(NOT_A_RUN)) {
     if (spec.has(key)) stale.push(`${key} is measured, so it is not "${why}"`);
     else if (!found.has(key)) stale.push(`${key} is listed as "${why}" and no notice source translates it`);
@@ -231,25 +266,39 @@ function unmeasured(sources: Record<string, string>): string[] {
   return [...problems, ...stale];
 }
 
-/** Every file under the shipped source roots that imports a notice renderer, whatever it passes it. */
+/** Every file under the shipped source roots that imports a notice renderer, `TableNotice` or a file that re-exports one, whatever it passes it. */
 function importersOfNotices(added: Record<string, string>): Record<string, string> {
   const rel = (abs: string) => path.relative(repoRoot, abs).split(path.sep).join("/");
   const host: ts.ModuleResolutionHost = { ...ts.sys, fileExists: (f) => rel(f) in added || ts.sys.fileExists(f) };
-  const found: Record<string, string> = {};
+  const files: Record<string, string> = {};
   for (const root of ["app", "components", "context", "lib"]) {
     for (const f of readdirSync(path.join(repoRoot, root), { recursive: true, encoding: "utf8" })) {
       const file = `${root}/${f.split(path.sep).join("/")}`;
       if (!/\.tsx?$/.test(file) || file.endsWith(".d.ts") || file.startsWith("components/table/notices/")) continue;
-      const text = added[file] ?? read(file);
-      if (!text.includes("notices")) continue;
-      const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-      const imports = source.statements.some((st) => {
-        if (!(ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) || !st.moduleSpecifier) return false;
-        const hit = ts.resolveModuleName((st.moduleSpecifier as ts.StringLiteral).text, path.join(repoRoot, file), COMPILER_OPTIONS, host).resolvedModule;
-        return !!hit && rel(hit.resolvedFileName).startsWith("components/table/notices/");
-      });
-      if (imports) found[file] = text;
+      files[file] = added[file] ?? read(file);
     }
+  }
+  for (const file of Object.keys(added)) if (/^(app|components|context|lib)\//.test(file) && !file.startsWith("components/table/notices/")) files[file] ??= added[file]!;
+  const imports = (file: string, reached: (target: string) => boolean) => {
+    const source = ts.createSourceFile(file, files[file]!, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    return source.statements.some((st) => {
+      if (!(ts.isImportDeclaration(st) || ts.isExportDeclaration(st)) || !st.moduleSpecifier) return false;
+      const hit = ts.resolveModuleName((st.moduleSpecifier as ts.StringLiteral).text, path.join(repoRoot, file), COMPILER_OPTIONS, host).resolvedModule;
+      return !!hit && reached(rel(hit.resolvedFileName));
+    });
+  };
+  const found: Record<string, string> = {};
+  let reached = (target: string) => target.startsWith("components/table/notices/") || target === "components/table/TableNotice.tsx";
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const file of Object.keys(files)) {
+      if (file in found || !imports(file, reached)) continue;
+      found[file] = files[file]!;
+      grew = true;
+    }
+    const barrels = new Set(Object.keys(found).filter((file) => /\bexport\s+(\*|\{[^}]*\})\s+from\b/.test(found[file]!)));
+    const before = reached;
+    reached = (target) => before(target) || barrels.has(target);
   }
   return found;
 }
@@ -273,6 +322,12 @@ test("a key a notice starts translating that nobody measured fails the scan", ()
   const sources = noticeSources();
   sources["components/table/notices/tableLines.tsx"] += '\nexport const planted = (t: (k: string) => string) => t("game.newlyAdded");\n';
   assert.deepEqual(unmeasured(sources), ['components/table/notices/tableLines.tsx: t("game.newlyAdded") is not measured']);
+});
+
+test("a key named for accessibility is not exempt by its name", () => {
+  const sources = noticeSources();
+  sources["components/table/notices/tableLines.tsx"] += '\nexport const planted = (t: (k: string) => string) => t("game.newA11yLabel");\n';
+  assert.deepEqual(unmeasured(sources), ['components/table/notices/tableLines.tsx: t("game.newA11yLabel") is not measured']);
 });
 
 test("a model a notice starts importing is scanned for the keys it translates", () => {
@@ -303,10 +358,32 @@ test("a file that hands a notice its words as a prop is scanned, .tsx included",
   assert.deepEqual(unmeasured(planted), [`${seats}: t("game.passedShort") is not measured`]);
 });
 
+test("a caller that reaches a notice through a re-export barrel is scanned", () => {
+  const barrel = "components/table/noticeBarrel.ts";
+  const caller = "components/table/barrelCaller.tsx";
+  const planted = noticeSources({
+    [barrel]: 'export * from "./notices/tableLines";\n',
+    [caller]: 'import { TableLines } from "./noticeBarrel";\nexport const planted = (t: (k: string) => string) => t("game.viaBarrel");\n',
+  });
+  assert.ok(caller in planted, "the scan stopped at the barrel");
+  assert.deepEqual(unmeasured(planted), [`${caller}: t("game.viaBarrel") is not measured`]);
+});
+
+test("a file that renders TableNotice directly, outside notices/, is scanned", () => {
+  const caller = "components/table/directNotice.tsx";
+  assert.ok("components/BenchScreen.tsx" in noticeSources(), "BenchScreen renders TableNotice and is not scanned");
+  const planted = noticeSources({
+    [caller]: 'import { TableNotice } from "./TableNotice";\nexport const planted = (t: (k: string) => string) => t("game.viaDirect");\n',
+  });
+  assert.deepEqual(unmeasured(planted), [`${caller}: t("game.viaDirect") is not measured`]);
+});
+
 test("a runtime-keyed call is pinned by its expression, so a swap fails", () => {
   const chips = "components/turnTimerUi.ts";
+  const sameName = noticeSources({ "lib/cardNames.ts": read("lib/cardNames.ts").replace("return key ? t(key) : rank;", "return key ? t(key) : rank;\n}\nfunction elsewhere(t: (k: string) => string, key: string) {\n  return t(key);") });
+  assert.deepEqual(unmeasured(sameName), ["lib/cardNames.ts: elsewhere: t(key) passes a key this scan cannot read"]);
   const swapped = noticeSources({ [chips]: read(chips).replace("i.t(key, { name: i.onMoveName })", "i.t(otherKey, { name: i.onMoveName })") });
-  assert.deepEqual(unmeasured(swapped).sort(), [`${chips} is allowed t(key) and no longer makes it`, `${chips}: t(otherKey) passes a key this scan cannot read`].sort());
+  assert.deepEqual(unmeasured(swapped).sort(), [`${chips} is allowed say: i.t(key, { name: i.onMoveName }) and no longer makes it`, `${chips}: say: i.t(otherKey, { name: i.onMoveName }) passes a key this scan cannot read`].sort());
 });
 
 test("an excused file is excused for its listed keys only", () => {
