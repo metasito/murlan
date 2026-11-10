@@ -1,6 +1,6 @@
 // The web's particle layer: the rest air (moteLayer) and a 2D canvas that mounts only while a burst flies, whether or not
 // CanvasKit has loaded — the felt swaps renderers, this never does (#1252).
-import { lazy, Suspense, useCallback, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import type { FrameInfo, SharedValue } from "react-native-reanimated";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -91,28 +91,24 @@ export function ParticleLayer({ ref, rig, landing }: {
   const [scene] = useState(() => createScene());
   const [rng] = useState(tableRng);
   const [paint] = useState(() => ({ white: null as HTMLCanvasElement | null, sheets: new Map<string, HTMLCanvasElement>() }));
-  const [bursting, setBursting] = useState(false);
   const reduced = usePrefersReducedMotion();
   const canvas = useRef<HTMLCanvasElement | null>(null);
-  // The simulation steps from the throw, whatever the canvas is doing: only the canvas waits for the render.
+  // The canvas stays mounted and the frame callback released: a throw wakes it on the contact frame, and it releases itself when nothing flies.
   const [frame] = useState(() => (info: FrameInfo): boolean => {
     stepScene(scene, lamp.value, Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000), rng);
     const cv = canvas.current;
     const c = cv?.getContext?.("2d");
-    if (cv && c) {
-      const [w, h] = [Math.round(DESIGN.width * sx), Math.round(DESIGN.height * sy)];
-      if (cv.width !== w || cv.height !== h) [cv.width, cv.height] = [w, h];
-      paintScene(c, cv, scene, paint, sx, sy);
-    }
-    if (!sceneIdle(scene)) return true;
-    setBursting(false);
-    return false;
+    if (cv && c) paintScene(c, cv, scene, paint, cv.width / DESIGN.width, cv.height / DESIGN.height);
+    return !sceneIdle(scene);
   });
   const wake = useDuring(frame, false);
-  const poke = useCallback(() => {
-    setBursting(true);
-    wake();
-  }, [wake]);
+  const poke = wake;
+  useEffect(() => {
+    const cv = canvas.current;
+    if (!cv) return;
+    cv.width = Math.round(DESIGN.width * sx);
+    cv.height = Math.round(DESIGN.height * sy);
+  }, [sx, sy]);
   useLandingReaction(landing, (l) => {
     "worklet";
     for (const p of landingDust(l, reduced, sx, sy, rng)) spawn(scene.s, p);
@@ -150,13 +146,11 @@ export function ParticleLayer({ ref, rig, landing }: {
       <Suspense fallback={null}>
         <MoteLayer rig={rig} />
       </Suspense>
-      {bursting && (
-        <canvas
-          ref={canvas}
-          data-testid="particles"
-          style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-        />
-      )}
+      <canvas
+        ref={canvas}
+        data-testid="particles"
+        style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+      />
     </>
   );
 }

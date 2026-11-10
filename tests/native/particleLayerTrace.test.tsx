@@ -91,17 +91,20 @@ describe('ParticleLayer', () => {
     await view.unmount();
   });
 
-  it('mounts its canvas for a burst only, and takes it down once the burst is spent', async () => {
+  it('keeps its canvas mounted, and has nothing live once a burst is spent', async () => {
     const ref = React.createRef<ParticleEmitter>();
     const view = await render(<ParticleLayer ref={ref} rig={rigOf()} landing={makeMutable(NO_LANDING)} />);
     await act(async () => jest.advanceTimersByTime(2000));
-    expect(view.queryByTestId('particle-skia')).toBeNull();
+    expect(view.queryByTestId('particle-skia')).not.toBeNull();
+    expect(mockSources.get('dropped')?.()).toBe(0);
+    expect(live()).toBe(40);
 
     await act(async () => ref.current!.emit([{ ...DUST, life: 0.2 }]));
-    expect(view.queryByTestId('particle-skia')).not.toBeNull();
+    expect(live()).toBe(41);
 
     for (let t = 0; t < 1000; t += 16) await act(async () => jest.advanceTimersByTime(16));
-    expect(view.queryByTestId('particle-skia')).toBeNull();
+    expect(live()).toBe(40);
+    expect(view.queryByTestId('particle-skia')).not.toBeNull();
     await view.unmount();
   });
 

@@ -67,15 +67,13 @@ function bakeSheet(): SkImage | null {
   return surface.makeImageSnapshot();
 }
 
-function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, onIdle: () => void) {
+function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>) {
   return (frame: FrameInfo): boolean => {
     "worklet";
     const v = field.value;
     stepScene(v, lamp.value, Math.min(0.05, (frame.timeSincePreviousFrame ?? 0) / 1000), Math.random);
     field.modify(undefined, true);
-    if (!sceneIdle(v)) return true;
-    scheduleOnRN(onIdle);
-    return false;
+    return !sceneIdle(v);
   };
 }
 
@@ -129,14 +127,10 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
   const [sheet] = useState(bakeSheet);
   const [initial] = useState<Field>(() => createScene());
   const field = useSharedValue(initial);
-  const [bursting, setBursting] = useState(false);
   const reduced = usePrefersReducedMotion();
-  const idle = useCallback(() => {
-    if (sceneIdle(field.get())) setBursting(false);
-  }, [field]);
   // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
-  const [onFrame] = useState(() => stepper(field, lamp, idle));
-  // The simulation steps from the throw, whatever the canvas is doing: only the canvas waits for the render.
+  const [onFrame] = useState(() => stepper(field, lamp));
+  // The canvas stays mounted and the frame callback released: a throw wakes it on the contact frame, and it releases itself when nothing flies.
   const wake = useDuring(onFrame, false);
   const throwInto = (spawns: readonly ParticleSpawn[]) => {
     "worklet";
@@ -150,12 +144,10 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
   useLandingReaction(landing, (l) => {
     "worklet";
     throwInto(landingDust(l, reduced, sx, sy, Math.random));
-    scheduleOnRN(setBursting, true);
   });
   useBombBeat(landing, reduced, (l) => {
     "worklet";
     throwInto(bombFx(l, reduced, sx, sy, Math.random));
-    scheduleOnRN(setBursting, true);
     scheduleOnRN(traceOnset, "moment", "bombFx");
   });
 
@@ -170,7 +162,6 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         return v;
       }, true);
       wake();
-      setBursting(true);
     },
     ember(from, to) {
       if (reduced) return;
@@ -180,7 +171,6 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         return v;
       }, true);
       wake();
-      setBursting(true);
     },
     rain() {
       if (reduced) return;
@@ -190,14 +180,13 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
         return v;
       }, true);
       wake();
-      setBursting(true);
     },
   }), [field, reduced, wake]);
 
   return (
     <>
       <MoteLayer rig={rig} />
-      {bursting && sheet && <BurstField field={field} sx={sx} sy={sy} sheet={sheet} greyLayer={greyLayer} />}
+      {sheet && <BurstField field={field} sx={sx} sy={sy} sheet={sheet} greyLayer={greyLayer} />}
     </>
   );
 }

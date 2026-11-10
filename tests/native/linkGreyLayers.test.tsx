@@ -129,9 +129,9 @@ describe("the table while the viewer's own link is down", () => {
   it.each<[OwnLink, boolean]>([
     ['lost', true],
     ['up', false],
-  ])('with the link %s, the felt draws its own grey on iOS alone, from the first render: %s', async (link, held) => {
+  ])('with the link %s, the felt and the particles draw their own grey on iOS alone, from the first render: %s', async (link, held) => {
     const view = await render(table(link));
-    for (const canvas of ['felt-skia']) {
+    for (const canvas of ['felt-skia', 'particle-skia']) {
       const matrix = within(screen.getByTestId(canvas, { includeHiddenElements: true })).queryByTestId('grey-matrix', { includeHiddenElements: true });
       if (held && Platform.OS === 'ios') expect(matrix?.props.accessibilityHint).toBe(greyMatrix(Reconnect.grey).join(','));
       else expect(matrix).toBeNull();
@@ -163,9 +163,9 @@ describe("the table while the viewer's own link is down", () => {
       const z = (c: TestInstance[]) => c.slice(i).map((n) => StyleSheet.flatten(n.props.style)?.zIndex).find((v) => v !== undefined) ?? 0;
       return [z(ca), z(cb)];
     };
-    const [particles, cards] = peers('table-particles', 'game-table');
+    const [particles, cards] = peers('particle-skia', 'game-table');
     expect(particles).toBeGreaterThan(cards);
-    const [under, hud] = peers('table-particles', 'game-top-bar');
+    const [under, hud] = peers('particle-skia', 'game-top-bar');
     expect(under).toBeLessThan(hud);
     await view.unmount();
   });
