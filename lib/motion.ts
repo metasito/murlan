@@ -15,7 +15,6 @@ import {
 } from "react-native-reanimated";
 import { isRNRuntime, scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { SWAY_EASE } from "./swayTable";
 
 /** A shared value whose animation stops with the component: Reanimated keeps driving one past unmount. */
 export function useOwnedValue<T>(initial: T): SharedValue<T> {
@@ -58,7 +57,7 @@ export function useLoop(value: SharedValue<number>, loop: (() => Loop) | null, k
 }
 
 /** Penner's easeInOutSine, the ease every ambient loop in the app breathes on. */
-export const SINE_EASE = cubicBezier(...SWAY_EASE);
+export const SINE_EASE = cubicBezier(0.445, 0.05, 0.55, 0.95);
 
 /** A keyframe set that goes `from` to `to` and back on `SINE_EASE`: one loop is there and back, so it needs no reversed direction. */
 export function thereAndBack(from: ViewStyle, to: ViewStyle): CSSAnimationKeyframes {

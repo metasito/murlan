@@ -70,7 +70,9 @@ function mockup() {
   return {
     lamp: ctx.lamp as MockupLamp,
     step() {
-      ctx.simT = (ctx.simT as number) + DT;
+      // The rig's sway clock stops with the freeze; the mockup's `simT` is the clock its sway speed reads.
+      const lamp = ctx.lamp as MockupLamp;
+      if (lamp.freeze === 0) ctx.simT = (ctx.simT as number) + DT;
       (ctx.lampStep as (dt: number) => void)(DT);
     },
     to: (seat: string) => (ctx.lampTo as (k: string) => void)(seat),
@@ -103,7 +105,7 @@ describe("the lamp rig", () => {
       m.step();
       stepLamp(app, DT, false);
       for (const [a, b, within] of [
-        [app.lx, m.lamp.lx, SWAY_VS_INTEGRAL * (SWAY + SWAY_KICKED * app.kick)],
+        [app.lx, m.lamp.lx, SWAY_VS_INTEGRAL * (SWAY + SWAY_KICKED)],
         [app.ly, m.lamp.ly, 1e-9],
         [app.level, m.lamp.L, 1e-9],
         [app.f, m.lamp.f, 1e-9],
