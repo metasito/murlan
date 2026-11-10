@@ -250,12 +250,11 @@ export interface BackPose {
   /** The spot's centre from the card's top-left, in design points, as the track begins. */
   spot: { x: number; y: number };
   spotAlpha: number;
+  /** The streak at the sway's two extremes where the lamp comes to rest, which the fan's two fades cross between. */
   streak: [StreakEnd, StreakEnd];
   /** The foil's glint where the lamp comes to rest: it is masked and blended, so no track plays under it. */
   foil: FoilEnd;
   foilEdge: number;
-  /** Only while the glide, a kick or a level change runs; null once the back's ends hold still. */
-  played: { streak: [Played, Played] } | null;
 }
 
 export interface StreakEnd {
@@ -293,34 +292,18 @@ function endsAt(track: GlossTrack, n: number): [ReturnType<typeof lampAt>, Retur
   ];
 }
 
-/** `s` the felt's points-to-pixels scale. */
-export function backPose(track: GlossTrack, placed: Placed, box: BackBox, s: number): BackPose {
+/** Where a back stands in the light the lamp comes to rest in, after a glide, a kick or a level change; the track plays no event on a back. */
+export function backPose(track: GlossTrack, placed: Placed, box: BackBox): BackPose {
   const lamp0 = lampAt(track, 0);
   const spot = glossSpot(placed.x, placed.y, box.w, box.h, lamp0);
-  const [a0, b0] = endsAt(track, 0);
   const rest = track.stops[Math.min(track.eventStops, track.stops.length - 1)]!;
   const settled = { ...lampAt(track, rest), lx: track.path.x[rest]! };
-  const edge = foilGlint(placed.x, placed.y, placed.rot, box.w, box.h, settled).edge;
-  const pose: BackPose = {
+  const [a, b] = endsAt(track, rest);
+  return {
     spot: spot.spot,
     spotAlpha: spot.spotAlpha,
-    streak: [streakAt(placed, box, a0), streakAt(placed, box, b0)],
+    streak: [streakAt(placed, box, a), streakAt(placed, box, b)],
     foil: foilAt(placed, box, settled),
-    foilEdge: edge,
-    played: null,
+    foilEdge: foilGlint(placed.x, placed.y, placed.rot, box.w, box.h, settled).edge,
   };
-  if (track.eventStops > 0) {
-    const upTo = Math.min(track.eventStops, track.stops.length - 1);
-    const duration = seconds(track.stops[upTo]!) * 1000;
-    const ends = (n: number) => endsAt(track, n);
-    const one = (make: (l: ReturnType<typeof lampAt>) => StreakEnd, side: 0 | 1): Played => ({
-      keyframes: keyframesOf(track, upTo, (n) => {
-        const e = make(ends(n)[side]);
-        return { transform: [{ translateX: e.x * s }, { translateY: e.y * s }, { rotate: `${e.ang}rad` }], opacity: e.opacity };
-      }),
-      duration,
-    });
-    pose.played = { streak: [one((l) => streakAt(placed, box, l), 0), one((l) => streakAt(placed, box, l), 1)] };
-  }
-  return pose;
 }

@@ -61,7 +61,7 @@ describe("the spot's keyframes are glossSpot along the lamp's path", () => {
     test(name, () => {
       const t = track(snap);
       const shared = sharedTrack(t, S);
-      const pose = backPose(t, BACK.placed, BACK.box, S);
+      const pose = backPose(t, BACK.placed, BACK.box);
       const { w, h } = BACK.box;
       for (const at of [0, 0.1, 0.37, 0.8, 1.5, 2.9, 4.3, 6, 11, 40, 123.4, 290]) {
         const sec = Math.round(at / FRAME) * FRAME;
@@ -100,7 +100,7 @@ describe("the spot against the mockup's own gloss()", () => {
     const snap = gliding();
     const t = track(snap);
     const shared = sharedTrack(t, S);
-    const pose = backPose(t, BACK.placed, BACK.box, S);
+    const pose = backPose(t, BACK.placed, BACK.box);
     for (const at of [0, 0.25, 0.9, 2, 3.5, 8]) {
       const sec = Math.round(at / FRAME) * FRAME;
       const lamp = rigAfter(snap, Math.round(sec / FRAME));
@@ -125,7 +125,7 @@ describe("the streak pair", () => {
     const snap = snapOf(restingLamp([437, 180, 1]), false);
     const t = track(snap);
     const shared = sharedTrack(t, S);
-    const pose = backPose(t, BACK.placed, BACK.box, S);
+    const pose = backPose(t, BACK.placed, BACK.box);
     let worst = 0;
     for (let n = 0; n < 1800; n += 22) {
       const sec = n * FRAME;
@@ -191,13 +191,11 @@ describe("a track that has nothing to play", () => {
     assert.equal(track(snapOf(s, false)).moves, false);
     const r = restingLamp([437, 180, 1]);
     assert.equal(track(snapOf(r, true)).moves, false);
-    assert.equal(backPose(track(snapOf(r, true)), BACK.placed, BACK.box, S).played, null);
   });
 
   test("a resting lamp plays its sway for the whole horizon", () => {
     const t = track(snapOf(restingLamp([437, 180, 1]), false));
     assert.equal(t.moves, true);
     assert.equal(t.stops[t.stops.length - 1], GLOSS_HORIZON_S * 60);
-    assert.equal(backPose(t, BACK.placed, BACK.box, S).played, null);
   });
 });

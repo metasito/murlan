@@ -50,13 +50,6 @@ export function nextGlossLight(shown: GlossLight, lamp: GlossLight): GlossLight 
   return withinStep(shown, lamp.lx, lamp.ly, lamp.level, lamp.r) ? null : glossLightOf(lamp);
 }
 
-/** The light an opponent's back reads: the lamp where it points, unswayed (`x`, not `lx`), so it moves with a target or a level and never with the sway. */
-export function nextStillLight(shown: GlossLight, lamp: Pick<Lamp, "x" | "ly" | "level" | "r" | "t">): GlossLight | null {
-  "worklet";
-  if (lamp.t - shown.t < GLOSS_FRAME_S) return null;
-  return withinStep(shown, lamp.x, lamp.ly, lamp.level, lamp.r) ? null : glossLightOf({ ...lamp, lx: lamp.x });
-}
-
 /** The level the cards' shade should now read, or null while `lamp` is within a step of `shown`: a shade needs the level alone, so it hears nothing of the sway. The glide never reaches `lvlT`, so within a step of it the shade lands on it exactly, where the mockup's shade rests. */
 export function nextShadeLevel(shown: number, lamp: Pick<Lamp, "level" | "lvlT">): number | null {
   "worklet";

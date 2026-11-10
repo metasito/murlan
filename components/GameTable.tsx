@@ -759,7 +759,6 @@ export function GameTable({
     },
     tableMotion,
     rig.glossLight,
-    rig.stillLight,
     rig.shadeLevel,
     rig.tracks
   );

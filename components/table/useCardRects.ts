@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useMemo } from "
 import { makeMutable, startMapper, stopMapper, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { OpponentSide } from "@/components/seatLayout";
 import { E2E_FAST } from "@/lib/e2eConfig";
-import { designRect, sameRect, scopeOf, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
+import { designRect, sameRect, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
 import type { GlossLight } from "./cardGloss";
 import type { GlossTracks } from "./glossTrackStore";
 
@@ -20,8 +20,6 @@ export interface CardTable {
   hand: Point;
   seats: Record<OpponentSide, Point>;
   glossLight: SharedValue<GlossLight>;
-  /** The lamp's pose without its sway, which an opponent's back reads (`glossLightFor`). */
-  stillLight: SharedValue<GlossLight>;
   /** The track an opponent's back plays on the compositor, where the lamp rig supplies one. */
   tracks?: GlossTracks;
   /** The lamp's level alone, which a card's shade reads (`LevelShade`). */
@@ -42,14 +40,9 @@ export function useCardTable(): CardTable | null {
   return useContext(CardTableContext);
 }
 
-/** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway. */
-export function glossLightFor(table: CardTable, rectKey: string): SharedValue<GlossLight> {
-  return scopeOf(rectKey) === "fan" ? table.stillLight : table.glossLight;
-}
-
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
 
-export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, tracks?: GlossTracks): CardTable {
+export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, tracks?: GlossTracks): CardTable {
   const rects = useSharedValue<CardRects>({});
   const handOrder = useSharedValue<readonly string[]>([]);
   const pileOrder = useSharedValue<readonly string[]>([]);
@@ -69,7 +62,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
       if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, stillLight, tracks, shadeLevel, handOrder, pileOrder }), [key, rects, motion, glossLight, stillLight, tracks, shadeLevel, handOrder, pileOrder]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, tracks, shadeLevel, handOrder, pileOrder }), [key, rects, motion, glossLight, tracks, shadeLevel, handOrder, pileOrder]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {

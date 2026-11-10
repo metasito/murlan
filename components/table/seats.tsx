@@ -21,6 +21,7 @@ import {
 import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc, seatLabelRise } from "@/components/fanGeometry";
 import { designRect, fanBacks, TABLE_AT_REST } from "./cardRects";
 import type { Placed } from "./glossTrack";
+import { FanGloss } from "./FanGloss";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
 import { handCountOf } from "@/shared/protocol";
@@ -46,7 +47,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
-import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
+import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W, tableFontSize } from "@/components/cardFaceModel";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
@@ -180,27 +181,36 @@ function CardFan({
   const wrapW = turn === 0 ? bounds.w : bounds.h;
   const wrapH = turn === 0 ? bounds.h : bounds.w;
 
+  const tilt = {
+    position: "absolute" as const,
+    width: full.box.w,
+    height: full.box.h,
+    left: wrapW / 2 - bounds.cx,
+    top: wrapH / 2 - bounds.cy,
+    transformOrigin: [bounds.cx, bounds.cy, 0],
+    transform: [{ perspective: FAN_PERSPECTIVE * backScale }, { rotate: `${turn}deg` }, { rotateX: `${FAN_LEAN_DEG}deg` }],
+  };
+
   return (
     <View style={{ width: wrapW, height: wrapH }}>
-      <View
-        style={{
-          position: "absolute",
-          width: full.box.w,
-          height: full.box.h,
-          left: wrapW / 2 - bounds.cx,
-          top: wrapH / 2 - bounds.cy,
-          transformOrigin: [bounds.cx, bounds.cy, 0],
-          transform: [
-            { perspective: FAN_PERSPECTIVE * backScale },
-            { rotate: `${turn}deg` },
-            { rotateX: `${FAN_LEAN_DEG}deg` },
-          ],
-        }}
-      >
+      <View style={tilt as never}>
         {full.cards.map((card, i) => (
           <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} placed={placed[i]} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
+      {table?.tracks ? (
+        <FanGloss
+          tracks={table.tracks}
+          s={table.felt.s}
+          placed={placed}
+          cards={full.cards}
+          boxW={full.box.w}
+          boxH={full.box.h}
+          w={CARD_BACK_W(backScale)}
+          h={CARD_BACK_H(backScale)}
+          tilt={tilt as never}
+        />
+      ) : null}
     </View>
   );
 }
