@@ -9,15 +9,16 @@ import { CARD_BACK_H, CARD_BACK_W, cardRadius } from "@/components/cardFaceModel
 import type { ArcCard } from "@/components/tableArc";
 import { bandBox } from "./cardGloss";
 import { SPOT_STOPS, STREAK_STOPS } from "./glossStops";
+import { designRect, TABLE_AT_REST, type DrawnCard, type Felt } from "./cardRects";
 import type { Placed } from "./glossTrack";
 import { delayOf, sharedTrack, spotPose, spotTrack, streakPose, trackOf, type Played, type StreakEnd } from "./fanTrack";
 import type { GlossTracks } from "./glossTrackStore";
 
 interface Props {
   tracks: GlossTracks;
-  /** The felt's points-to-pixels scale. */
-  s: number;
-  placed: readonly Placed[];
+  /** The felt, and the backs as drawn: where each stands in design points is what the gloss is posed from. */
+  felt: Felt;
+  drawn: readonly DrawnCard[];
   cards: readonly ArcCard[];
   /** The fan's box, and the scale of its backs. */
   box: { w: number; h: number };
@@ -37,7 +38,9 @@ interface Props {
  * themselves (`GlossTracks.live`): the fan's gloss is made transparent meanwhile, never stopped, so its tracks
  * stay where the rig's lamp is when it returns.
  */
-export const FanGloss = React.memo(function FanGloss({ tracks, s, placed, cards, box, backScale, tilt, onCover }: Props) {
+export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, cards, box, backScale, tilt, onCover }: Props) {
+  const s = felt.s;
+  const placed = useMemo(() => drawn.map((card) => designRect(card, felt, TABLE_AT_REST)), [drawn, felt]);
   const { w: boxW, h: boxH } = box;
   const w = CARD_BACK_W(backScale);
   const h = CARD_BACK_H(backScale);
@@ -77,7 +80,12 @@ export const FanGloss = React.memo(function FanGloss({ tracks, s, placed, cards,
       </View>
     </View>
   );
-});
+}, sameGloss);
+
+/** The fan lays its places out afresh on every render, so equal places are told by value: a bot's move that leaves this fan alone then redraws none of its gloss. */
+function sameGloss(a: Props, b: Props): boolean {
+  return (Object.keys(a) as (keyof Props)[]).every((k) => a[k] === b[k] || (typeof a[k] === "object" && JSON.stringify(a[k]) === JSON.stringify(b[k])));
+}
 
 const play = (p: Played | null, delay: number) => (p ? ambient({ keyframes: p.keyframes as never, duration: p.duration, delay }) : undefined);
 

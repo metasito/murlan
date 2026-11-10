@@ -8,7 +8,7 @@ import { makeMutable } from 'react-native-reanimated';
 
 import { FanGloss } from '@/components/table/FanGloss';
 import { createGlossTracks } from '@/components/table/glossTrackStore';
-import { restLight, snapOf } from '@/components/table/glossTrack';
+import { snapOf } from '@/components/table/glossTrack';
 import { restingLamp } from '@/components/table/lampRig';
 import { bootFeedback } from './helpers/feedback';
 
@@ -21,7 +21,9 @@ afterEach(() => {
 });
 
 const cards = [0, 1, 2].map((i) => ({ x: i * 12 - 12, y: 4, rot: (i - 1) * 8 }));
-const placed = cards.map((c) => ({ x: 437 + c.x, y: 60 + c.y, rot: c.rot }));
+const at = { x: 0, y: 0 };
+const felt = { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at };
+const drawn = cards.map((c) => ({ cx: 437 + c.x, cy: 60 + c.y, w: 24, h: 34, rot: c.rot, back: true, lift: 0, glow: 0 }));
 
 const mockAmbient = jest.fn();
 jest.mock('@/lib/motion', () => {
@@ -35,13 +37,13 @@ jest.mock('@/lib/motion', () => {
   };
 });
 
-const props = { s: 1, placed, cards, box: { w: 80, h: 60 }, backScale: 0.5, tilt: {} };
+const props = { felt, drawn, cards, box: { w: 80, h: 60 }, backScale: 0.5, tilt: {} };
 const lamp = () => snapOf(restingLamp([437, 180, 1]), false);
 
 describe('the fan\'s gloss through a glide', () => {
   it('stays drawn and on its tracks, and is only transparent while the lamp moves', async () => {
     mockAmbient.mockClear();
-    const tracks = createGlossTracks(lamp(), makeMutable(restLight(lamp())));
+    const tracks = createGlossTracks(lamp(), makeMutable(lamp()));
     const covered = jest.fn();
     await render(<FanGloss tracks={tracks} {...props} onCover={covered} />);
     const root = () => StyleSheet.flatten(screen.getByTestId('card-gloss', { includeHiddenElements: true }).props.style);
@@ -64,7 +66,7 @@ describe('the fan\'s gloss through a glide', () => {
 
   it('is placed in the track where the rig is when the rig bakes anew', async () => {
     mockAmbient.mockClear();
-    const tracks = createGlossTracks(lamp(), makeMutable(restLight(lamp())));
+    const tracks = createGlossTracks(lamp(), makeMutable(lamp()));
     await render(<FanGloss tracks={tracks} {...props} onCover={() => {}} />);
     mockAmbient.mockClear();
     jest.advanceTimersByTime(2500);

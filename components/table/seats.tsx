@@ -19,8 +19,7 @@ import {
   type OpponentSide,
 } from "@/components/seatLayout";
 import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc, seatLabelRise } from "@/components/fanGeometry";
-import { designRect, fanBacks, TABLE_AT_REST } from "./cardRects";
-import type { Placed } from "./glossTrack";
+import { fanBacks } from "./cardRects";
 import { FanGlossSlot } from "./FanGlossSlot";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
@@ -100,10 +99,10 @@ export function usePassedSeats(
 // arc deliberately overflows its box and rotating the box would leave half of
 // it empty and open a phantom gap between the avatar and the cards.
 
-function FanBack({ id, rects, placed, at, boxW, backScale, zIndex }: {
+function FanBack({ id, rects, tracked, at, boxW, backScale, zIndex }: {
   id: string;
   rects: OwnedRects;
-  placed: Placed | undefined;
+  tracked: boolean;
   at: ArcCard;
   boxW: number;
   backScale: number;
@@ -125,7 +124,7 @@ function FanBack({ id, rects, placed, at, boxW, backScale, zIndex }: {
         scale={backScale}
         rectKey={id}
         rects={rects}
-        placed={placed}
+        tracked={tracked}
       />
     </View>
   );
@@ -157,16 +156,6 @@ function CardFan({
     [table, side, count, scale]
   );
   const fanRects = useStaticCardRects(table, `fan:${side}:`, drawn);
-  const placed = useMemo(
-    () =>
-      table?.tracks
-        ? drawn.map((card) => {
-            const rect = designRect(card, table.felt, TABLE_AT_REST);
-            return { x: rect.x, y: rect.y, rot: rect.rot };
-          })
-        : [],
-    [table, drawn]
-  );
   // Until the fan's gloss is drawn, and while the lamp glides, kicks or dims, each back draws its own.
   const [covered, setCovered] = useState(false);
   if (count === 0) return null;
@@ -197,11 +186,11 @@ function CardFan({
     <View style={{ width: wrapW, height: wrapH }}>
       <View style={tilt as never}>
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} placed={covered ? placed[i] : undefined} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} tracked={covered} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
       {table?.tracks ? (
-        <FanGlossSlot tracks={table.tracks} s={table.felt.s} placed={placed} cards={full.cards} box={full.box} backScale={backScale} tilt={tilt as never} onCover={setCovered} />
+        <FanGlossSlot tracks={table.tracks} felt={table.felt} drawn={drawn} cards={full.cards} box={full.box} backScale={backScale} tilt={tilt as never} onCover={setCovered} />
       ) : null}
     </View>
   );

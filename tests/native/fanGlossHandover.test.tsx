@@ -31,14 +31,13 @@ const light = (lx: number): GlossLight => ({ lx, ly: 140, level: 1, r: 1, t: 0 }
 const rect: CardRect = { x: 437, y: 40, w: 40, h: 58, rot: 0, back: true, lift: 0, glow: 0, seen: 1 };
 const fan = () => makeMutable<CardRects>({ 'fan:top:0': rect }) as unknown as OwnedRects;
 const card = { id: '3_spades', rank: '3', suit: 'spades', isJoker: false } as const;
-const placed = { x: 437, y: 40, rot: 0 };
 
 const sway = makeMutable(light(457));
 const still = makeMutable(light(300));
 
 function Table({ tracks, live, children }: { tracks: boolean; live?: boolean; children: React.ReactNode }) {
   const [store] = React.useState(() => {
-    const made = tracks ? createGlossTracks(snapOf(restingLamp([437, 180, 1]), false), makeMutable(light(437))) : undefined;
+    const made = tracks ? createGlossTracks(snapOf(restingLamp([437, 180, 1]), false), makeMutable(snapOf(restingLamp([437, 180, 1]), false))) : undefined;
     made?.update(null, !!live);
     return made;
   });
@@ -50,7 +49,7 @@ const spots = () => screen.queryAllByTestId('card-gloss-spot', { includeHiddenEl
 
 describe('an opponent\'s back on a table with tracks', () => {
   it('draws no gloss of its own once the fan\'s picture is drawn', async () => {
-    await render(<Table tracks><LampGloss rectKey="fan:top:0" rects={fan()} width={40} height={58} placed={placed} /></Table>);
+    await render(<Table tracks><LampGloss rectKey="fan:top:0" rects={fan()} width={40} height={58} tracked /></Table>);
     expect(spots()).toBe(0);
   });
 
@@ -60,7 +59,7 @@ describe('an opponent\'s back on a table with tracks', () => {
   });
 
   it('draws it live without tracks too, as native does', async () => {
-    await render(<Table tracks={false}><CardView card={card} faceDown rectKey="fan:top:0" rects={fan()} placed={placed} /></Table>);
+    await render(<Table tracks={false}><CardView card={card} faceDown rectKey="fan:top:0" rects={fan()} tracked /></Table>);
     expect(spots()).toBe(1);
   });
 

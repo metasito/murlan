@@ -27,13 +27,15 @@ const OVER_KICK = 0.02;
 const COURSE = ["tx", "ty", "tr", "lvlT", "lvlRate", "freeze"] as const;
 
 /** The next snapshot to bake from, or null while `baked` still describes the lamp. */
-export function nextGlossBake(baked: LampSnap, lamp: Lamp, reduced: boolean): LampSnap | null {
+/** `gap`: milliseconds since the last frame; a frame after a second's gap is a tab coming back, whose tracks' CSS clock ran on while the rig stood still. */
+export function nextGlossBake(baked: LampSnap, lamp: Lamp, reduced: boolean, gap = 0): LampSnap | null {
   "worklet";
   const elapsed = lamp.t - baked.t;
   const lvl = baked.lvlT + (baked.lvl - baked.lvlT) * Math.exp(-baked.lvlRate * elapsed);
   const changed =
     COURSE.some((k) => lamp[k] !== baked[k]) ||
     reduced !== baked.reduced ||
+    gap > 1000 ||
     lamp.kick > baked.kick ||
     Math.abs(lamp.lvl - lvl) > OVER_LEVEL ||
     elapsed > GLOSS_HORIZON_S - REBAKE_BEFORE_S;
