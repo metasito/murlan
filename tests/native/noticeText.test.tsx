@@ -202,7 +202,7 @@ function scan(where: string, container: TestInstance, words: boolean, strict: bo
   }
 }
 
-const PLACEHOLDER_WORDS = new Set<NoticeKind>(['hudCombo', 'turn', 'passFloat']);
+const PLACEHOLDER_WORDS = new Set<NoticeKind>(['hudCombo', 'pileNote', 'turn', 'passFloat']);
 
 const card = (rank: Card['rank'], suit: Card['suit']) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false }) as Card;
 const player = (name: string) => ({ id: name, name, hand: [], type: 'human' }) as Player;
