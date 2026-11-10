@@ -6,7 +6,7 @@ import { StyleSheet } from "react-native";
 import Animated, { useAnimatedReaction } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { afterFrames, ambientPlace, inOneFrame, steerAmbient, useAmbient } from "@/lib/motion";
+import { afterFrames, ambientPlace, steerAmbient, useAmbient } from "@/lib/motion";
 import { TRACK_SECONDS } from "@/lib/swayTable";
 import type { EndsProps } from "./feltCanvas";
 import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endTrack, isRested, placeOf, QUIET_MS, REBAKE_BEFORE, type EndTrack } from "./restEnds";
@@ -25,7 +25,7 @@ function copyOf(host: unknown, into: HTMLCanvasElement): boolean {
   return true;
 }
 
-export function EndB({ lamp, settle, content, side, host }: EndsProps) {
+export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsProps) {
   const reduceMotion = usePrefersReducedMotion();
   const [steady, setSteady] = useState(false);
   const [quiet, setQuiet] = useState(false);
@@ -87,21 +87,17 @@ export function EndB({ lamp, settle, content, side, host }: EndsProps) {
       cancels.push(afterFrames(2, () => live && steer()));
     };
     bake();
-    // Both steps in one frame: a microtask checkpoint falls between callbacks of a frame, where the felt draws end B before the second copies it and draws end A back, so end B is never presented.
+    // The felt draws from a shared value through a mapper run and a redraw, each a microtask of its own, and an unpresented drawing buffer reads back blank: so end B is drawn now, by hand, before the copy, and end A drawn back by the redraw the write queues. Never presented.
     cancels.push(
       afterFrames(3, () => {
-        cancels.push(
-          inOneFrame([
-            () => live && side.set(1),
-            () => {
-              if (!live) return;
-              if (copyOf(host.current, canvas)) {
-                canvas.style.visibility = "visible";
-                side.set(-1);
-              } else side.set(0);
-            },
-          ]),
-        );
+        if (!live) return;
+        side.set(1);
+        (globalThis as { __mapperRun?: () => void }).__mapperRun?.();
+        skia.current?.makeImageSnapshot()?.dispose();
+        if (copyOf(host.current, canvas)) {
+          canvas.style.visibility = "visible";
+          side.set(-1);
+        } else side.set(0);
       }),
     );
     const check = setInterval(() => {
@@ -129,7 +125,7 @@ export function EndB({ lamp, settle, content, side, host }: EndsProps) {
       hide();
       setPlaying(null);
     };
-  }, [engaged, lamp, side, host, hide]);
+  }, [engaged, lamp, side, host, hide, skia]);
 
   const style = useAmbient(playing);
   return (

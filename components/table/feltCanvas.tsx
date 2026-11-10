@@ -77,6 +77,7 @@ export interface EndsProps {
   side: SharedValue<number>;
   /** The element holding this canvas. */
   host: RefObject<unknown>;
+  canvas: RefObject<CanvasRef | null>;
 }
 
 const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
@@ -697,7 +698,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, Ends }: 
       <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">
         {drawn}
       </View>
-      <Ends lamp={lamp} settle={settle} content={content} side={side} host={host} />
+      <Ends lamp={lamp} settle={settle} content={content} side={side} host={host} canvas={canvas} />
     </>
   );
 }

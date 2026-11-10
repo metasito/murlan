@@ -161,12 +161,6 @@ export function afterFrames(frames: number, step: () => void): () => void {
   return () => cancelAnimationFrame(id);
 }
 
-/** `steps` in order on the next frame, each its own frame callback: the microtasks one queues, such as a canvas drawn from a shared value it wrote, run before the next. Returns the cancel. */
-export function inOneFrame(steps: readonly (() => void)[]): () => void {
-  const ids = steps.map((step) => requestAnimationFrame(step));
-  return () => ids.forEach(cancelAnimationFrame);
-}
-
 /** Where the CSS animation on `element` is in its pass, in seconds; null where none runs. Web only. */
 export function ambientPlace(element: Element): number | null {
   const timing = element.getAnimations()[0]?.effect?.getComputedTiming();
