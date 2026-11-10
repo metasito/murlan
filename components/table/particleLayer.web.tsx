@@ -66,7 +66,7 @@ function tinted(white: HTMLCanvasElement, rgb: string): HTMLCanvasElement {
 function paintScene(c: CanvasRenderingContext2D, cv: HTMLCanvasElement, scene: Scene, paint: { white: HTMLCanvasElement | null; sheets: Map<string, HTMLCanvasElement> }, sx: number, sy: number) {
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, cv.width, cv.height);
-  const white = (paint.white ??= bakeSheet());
+  const white = paint.white!;
   const draws = scene.d;
   for (let i = 0; i < scene.s.live; i++) {
     const d = i * DRAW_STRIDE;
@@ -90,7 +90,7 @@ export function ParticleLayer({ ref, rig, landing }: {
   const { lamp, sx, sy } = rig;
   const [scene] = useState(() => createScene());
   const [rng] = useState(tableRng);
-  const [paint] = useState(() => ({ white: null as HTMLCanvasElement | null, sheets: new Map<string, HTMLCanvasElement>() }));
+  const paint = useRef({ white: null as HTMLCanvasElement | null, sheets: new Map<string, HTMLCanvasElement>() });
   const reduced = usePrefersReducedMotion();
   const canvas = useRef<HTMLCanvasElement | null>(null);
   // The canvas stays mounted and the frame callback released: a throw wakes it on the contact frame, and it releases itself when nothing flies.
@@ -98,10 +98,14 @@ export function ParticleLayer({ ref, rig, landing }: {
     stepScene(scene, lamp.value, Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000), rng);
     const cv = canvas.current;
     const c = cv?.getContext?.("2d");
-    if (cv && c) paintScene(c, cv, scene, paint, cv.width / DESIGN.width, cv.height / DESIGN.height);
+    if (cv && c) paintScene(c, cv, scene, paint.current, cv.width / DESIGN.width, cv.height / DESIGN.height);
     return !sceneIdle(scene);
   });
   const wake = useDuring(frame, false);
+  // Baked at mount, outside any burst: the offscreen draws it takes are not a turn's.
+  useEffect(() => {
+    if (!paint.current.white) paint.current.white = bakeSheet();
+  }, []);
   const poke = wake;
   useEffect(() => {
     const cv = canvas.current;

@@ -23,6 +23,9 @@ jest.mock('react-native-reanimated', () => {
 });
 
 import { makeMutable } from 'react-native-reanimated';
+
+const g = globalThis as Record<string, unknown>;
+const savedDocument = g.document;
 import { ParticleLayer } from '@/components/table/particleLayer.web';
 import { glossLightOf } from '@/components/table/cardGloss';
 import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
@@ -43,10 +46,13 @@ const canvases = (view: Awaited<ReturnType<typeof render>>) => count(view.toJSON
 
 describe('the web particle layer', () => {
   beforeEach(() => {
+    const ctx: object = new Proxy(function () {}, { get: () => ctx, apply: () => ctx });
+    g.document = { createElement: () => ({ getContext: () => ctx }) };
     mockControllers.length = 0;
     jest.useFakeTimers();
   });
   afterEach(() => {
+    g.document = savedDocument;
     jest.useRealTimers();
   });
 
