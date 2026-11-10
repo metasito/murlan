@@ -87,7 +87,7 @@ const Mote = memo(function Mote({ track, built, paused }: { track: MoteTrack; bu
   return (
     <Animated.View style={[styles.anchor, drift]}>
       <Animated.View style={[styles.anchor, twinkle]}>
-        <Animated.View style={[dot, { opacity: track.cone[0].v }, cone]} />
+        <Animated.View testID="air-mote" style={[dot, { opacity: track.cone[0].v }, cone]} />
       </Animated.View>
     </Animated.View>
   );
@@ -96,7 +96,7 @@ const Mote = memo(function Mote({ track, built, paused }: { track: MoteTrack; bu
 const Still = memo(function Still({ x, y, r, alpha }: { x: number; y: number; r: number; alpha: number }) {
   return (
     <View style={[styles.anchor, { transform: [{ translateX: x }, { translateY: y }] }]}>
-      <View style={[dotOf(r), { opacity: alpha }]} />
+      <View testID="air-mote" style={[dotOf(r), { opacity: alpha }]} />
     </View>
   );
 });
