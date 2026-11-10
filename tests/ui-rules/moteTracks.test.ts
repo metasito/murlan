@@ -269,4 +269,47 @@ describe("the mote light after a freeze", () => {
     }
     assert.ok(worst < 0.5, `${worst} pt off the rig`);
   });
+
+  /** The rig and the sway the layer plays: a track built at 5 s, a link-hold freeze of `hold` s ten seconds into it, the air's clock stopped across it. */
+  function frozenMidTrack(hold: number, rebuildOnThaw: boolean): number {
+    const rig = restingLamp([437, 292, 1]);
+    const lightOf = (): RestLight => ({ x: rig.tx, ly: rig.ty - 40, level: 1, r: 1, ph: rig.ph, t: rig.t });
+    for (let n = 0; n < 60 * 5; n++) stepLamp(rig, DT, false);
+    let light = lightOf();
+    let sway = swayFrom(light);
+    const air = createAir(mulberry32(1261));
+    advanceAir(air, 5);
+    let tracks = buildMoteTracks(air, light);
+    for (let n = 0; n < 60 * 10; n++) stepLamp(rig, DT, false);
+    lampControls.freeze(rig, 1);
+    for (let n = 0; n < Math.round(60 * hold); n++) stepLamp(rig, DT, false);
+    lampControls.freeze(rig, 0);
+    let clock = 10;
+    if (rebuildOnThaw) {
+      const next = rebuildTracks(air, lightOf(), air.t + clock, air.mothAt, mulberry32(2));
+      tracks = next.tracks;
+      light = lightOf();
+      sway = swayFrom(light);
+      clock = 0;
+    }
+    assert.ok(tracks.motes.length > 20);
+    let worst = 0;
+    for (let n = 1; n <= 60 * 40; n++) {
+      stepLamp(rig, DT, false);
+      worst = Math.max(worst, Math.abs(rig.lx - lightAt(light, sway, clock + n * DT).lx));
+    }
+    return worst;
+  }
+
+  for (const hold of [2.7, 10]) {
+    test(`stays the rig's light within half a point when a ${hold} s freeze falls mid-track and the layer rebuilds on the thaw`, () => {
+      const worst = frozenMidTrack(hold, true);
+      assert.ok(worst < 0.5, `${worst} pt off the rig`);
+    });
+
+    test(`is off the rig by more than half a point after a ${hold} s freeze mid-track when nothing is rebuilt`, () => {
+      const worst = frozenMidTrack(hold, false);
+      assert.ok(worst > 0.5, `only ${worst} pt off the rig`);
+    });
+  }
 });
