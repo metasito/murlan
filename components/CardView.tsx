@@ -394,6 +394,8 @@ interface CardViewProps {
   /** The key this view is drawn as in `rects`, its publisher's own: the lamp's gloss reads its centre there. */
   rectKey?: string;
   rects?: OwnedRects;
+  /** The fan it is in lights this back as one, and only its foil glint stays (`LampGloss`). */
+  tracked?: boolean;
   /**
    * Discrete equivalents of a gesture this card also answers, for assistive
    * technology only (WCAG 2.5.7). They cost no pixels and appear to nobody
@@ -423,6 +425,7 @@ function CardViewBase({
   decorative = false,
   rectKey,
   rects,
+  tracked,
   hitWidth,
   testID,
   hint,
@@ -461,8 +464,8 @@ function CardViewBase({
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
         >
           <Image source={BACK_ART[backKey]()} style={ART_FILL} resizeMode="stretch" {...a11yHidden()} />
-          <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
-          <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} />
+          <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} tracked={tracked} />
+          <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} tracked={tracked} />
         </View>
         <LevelShade rectKey={rectKey} rects={rects} width={w} height={h} />
       </View>

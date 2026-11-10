@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { makeMutable, startMapper, stopMapper, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { OpponentSide } from "@/components/seatLayout";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { designRect, sameRect, scopeOf, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
 import type { GlossLight } from "./cardGloss";
+import type { GlossTracks } from "./glossTrackStore";
 
 /**
  * The one registry, and the laid-out places every owner measures its cards from, in window points.
@@ -19,8 +20,10 @@ export interface CardTable {
   hand: Point;
   seats: Record<OpponentSide, Point>;
   glossLight: SharedValue<GlossLight>;
-  /** The lamp's pose without its sway, which an opponent's back reads (`glossLightFor`). */
+  /** The lamp's pose without its sway, which an opponent's back reads where there are no `tracks` (`glossLightFor`). */
   stillLight: SharedValue<GlossLight>;
+  /** On web, what the fans' gloss plays off the compositor (`FanGloss`); native has none and draws every back live. */
+  tracks?: GlossTracks;
   /** The lamp's level alone, which a card's shade reads (`LevelShade`). */
   shadeLevel: SharedValue<number>;
   /** The hand's registry keys in the order its cards paint, bottom first (`handPaintOrder`). */
@@ -39,14 +42,18 @@ export function useCardTable(): CardTable | null {
   return useContext(CardTableContext);
 }
 
-/** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway. */
-export function glossLightFor(table: CardTable, rectKey: string): SharedValue<GlossLight> {
-  return scopeOf(rectKey) === "fan" ? table.stillLight : table.glossLight;
+const NEVER_SUBSCRIBED = () => () => {};
+const NEVER_LIVE = () => false;
+
+/** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway; with `tracks`, a back drawn live through a glide, a kick or a dim follows it too, as the mockup's. */
+export function useGlossLight(table: CardTable, rectKey: string): SharedValue<GlossLight> {
+  const live = useSyncExternalStore(table.tracks?.subscribe ?? NEVER_SUBSCRIBED, table.tracks?.live ?? NEVER_LIVE);
+  return scopeOf(rectKey) === "fan" && !live ? table.stillLight : table.glossLight;
 }
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
 
-export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>): CardTable {
+export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, tracks?: GlossTracks): CardTable {
   const rects = useSharedValue<CardRects>({});
   const handOrder = useSharedValue<readonly string[]>([]);
   const pileOrder = useSharedValue<readonly string[]>([]);
@@ -66,7 +73,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
       if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, stillLight, shadeLevel, handOrder, pileOrder }), [key, rects, motion, glossLight, stillLight, shadeLevel, handOrder, pileOrder]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, stillLight, tracks, shadeLevel, handOrder, pileOrder }), [key, rects, motion, glossLight, stillLight, tracks, shadeLevel, handOrder, pileOrder]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {

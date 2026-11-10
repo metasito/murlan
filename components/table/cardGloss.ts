@@ -71,6 +71,12 @@ const clamp01 = (v: number) => {
   return Math.max(0, Math.min(1, v));
 };
 
+/** The box of a gloss band over a `w` by `h` card: its length, and its width as `fraction` of the card's diagonal. */
+export function bandBox(w: number, h: number, fraction: number): { w: number; h: number } {
+  const diag = Math.hypot(w, h);
+  return { w: 2 * diag, h: fraction * diag };
+}
+
 /** The spot alone, which needs none of the streak's trigonometry: arguments as `cardGloss`'s. */
 export function glossSpot(cx: number, cy: number, w: number, h: number, lamp: Pick<Lamp, "lx" | "ly" | "level">): Pick<Gloss, "spot" | "spotAlpha"> {
   "worklet";

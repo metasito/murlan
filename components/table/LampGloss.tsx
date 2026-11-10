@@ -6,11 +6,11 @@ import { CardBacks, CardGloss, Layer, Scrim, withAlpha } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
 import type { CardBackId } from "@/lib/cosmetics";
 import { cardRadius } from "@/components/cardFaceModel";
-import { cardGloss, foilGlint, foilGlintColor, glossSpot } from "./cardGloss";
+import { bandBox, cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLight } from "./cardGloss";
 import { scopeOf, type CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
 import { levelShade } from "./rail";
-import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
+import { useGlossLight, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
 
 export const GLOSS_SPOT_ART = () => require("../../assets/images/cards/gloss_spot.webp") as number;
 
@@ -22,23 +22,24 @@ interface Props {
   rects: OwnedRects | undefined;
   width: number;
   height: number;
+  /** The fan it is in lights this back as one, and only its foil glint stays. */
+  tracked?: boolean;
 }
 
 /** The lamp's spot and streak on one card, read from its own rect and the lamp on the UI thread: the card never re-renders for it. */
-export function LampGloss({ rectKey, rects, width, height }: Props) {
+export function LampGloss({ rectKey, rects, width, height, tracked }: Props) {
   const table = useCardTable();
   if (!table || !rectKey || !rects) return null;
+  if (table.tracks && tracked) return null;
   return <Lit table={table} rectKey={rectKey} rects={rects} width={width} height={height} />;
 }
 
 function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTable; rectKey: string; rects: OwnedRects }) {
   const { felt } = table;
-  const light = glossLightFor(table, rectKey);
+  const light = useGlossLight(table, rectKey);
   const s = felt.s;
   const radius = CardGloss.spot.radius * s;
-  const diag = Math.hypot(width, height);
-  const bandW = 2 * diag;
-  const bandH = CardGloss.streak.width * diag;
+  const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.streak.width);
 
   const spotStyle = useAnimatedStyle(() => {
     const rect = rects.value[rectKey];
@@ -82,18 +83,18 @@ export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }
   if (!table || !props.rectKey || !props.rects) return null;
   return (
     <FoilMask art={FOIL_ART[backKey]()}>
-      <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />
+      <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} at={table.tracks && props.tracked ? table.tracks.rest : undefined} color={foilGlintColor(CardBacks[backKey].ink)} />
     </FoilMask>
   );
 }
 
-function Glint({ table, rectKey, rects, width, height, color }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string }) {
+/** `at`: where the lamp rests, for a back whose gloss the fan draws as one: its glint then stands still. */
+function Glint({ table, rectKey, rects, width, height, color, at }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string; at?: SharedValue<GlossLight> }) {
   const { felt } = table;
-  const light = glossLightFor(table, rectKey);
+  const lit = useGlossLight(table, rectKey);
+  const light = at ?? lit;
   const s = felt.s;
-  const diag = Math.hypot(width, height);
-  const bandW = 2 * diag;
-  const bandH = CardGloss.foil.width * diag;
+  const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.foil.width);
 
   const glint = useDerivedValue(() => {
     const rect = rects.value[rectKey];

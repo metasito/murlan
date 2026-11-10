@@ -20,6 +20,7 @@ import {
 } from "@/components/seatLayout";
 import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc, seatLabelRise } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
+import { FanGlossSlot } from "./FanGlossSlot";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
 import { handCountOf } from "@/shared/protocol";
@@ -98,9 +99,10 @@ export function usePassedSeats(
 // arc deliberately overflows its box and rotating the box would leave half of
 // it empty and open a phantom gap between the avatar and the cards.
 
-function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
+function FanBack({ id, rects, tracked, at, boxW, backScale, zIndex }: {
   id: string;
   rects: OwnedRects;
+  tracked: boolean;
   at: ArcCard;
   boxW: number;
   backScale: number;
@@ -122,6 +124,7 @@ function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
         scale={backScale}
         rectKey={id}
         rects={rects}
+        tracked={tracked}
       />
     </View>
   );
@@ -153,6 +156,8 @@ function CardFan({
     [table, side, count, scale]
   );
   const fanRects = useStaticCardRects(table, `fan:${side}:`, drawn);
+  // Until the fan's gloss is drawn, and while the lamp glides, kicks or dims, each back draws its own.
+  const [covered, setCovered] = useState(false);
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
@@ -167,27 +172,26 @@ function CardFan({
   const wrapW = turn === 0 ? bounds.w : bounds.h;
   const wrapH = turn === 0 ? bounds.h : bounds.w;
 
+  const tilt = {
+    position: "absolute" as const,
+    width: full.box.w,
+    height: full.box.h,
+    left: wrapW / 2 - bounds.cx,
+    top: wrapH / 2 - bounds.cy,
+    transformOrigin: [bounds.cx, bounds.cy, 0],
+    transform: [{ perspective: FAN_PERSPECTIVE * backScale }, { rotate: `${turn}deg` }, { rotateX: `${FAN_LEAN_DEG}deg` }],
+  };
+
   return (
     <View style={{ width: wrapW, height: wrapH }}>
-      <View
-        style={{
-          position: "absolute",
-          width: full.box.w,
-          height: full.box.h,
-          left: wrapW / 2 - bounds.cx,
-          top: wrapH / 2 - bounds.cy,
-          transformOrigin: [bounds.cx, bounds.cy, 0],
-          transform: [
-            { perspective: FAN_PERSPECTIVE * backScale },
-            { rotate: `${turn}deg` },
-            { rotateX: `${FAN_LEAN_DEG}deg` },
-          ],
-        }}
-      >
+      <View style={tilt as never}>
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} tracked={covered} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
+      {table?.tracks ? (
+        <FanGlossSlot tracks={table.tracks} felt={table.felt} drawn={drawn} cards={full.cards} box={full.box} backScale={backScale} tilt={tilt as never} onCover={setCovered} />
+      ) : null}
     </View>
   );
 }
