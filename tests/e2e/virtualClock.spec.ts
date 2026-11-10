@@ -35,3 +35,61 @@ test("a paused CSS animation holds its phase across steps", async ({ page, baseU
   await stepThen(page, STEP_MS, "0");
   expect(await animationPhase(page)).toEqual([{ name: "slide", currentTime: 0 }]);
 });
+
+const steppers: [string, (page: Page) => Promise<unknown>][] = [
+  ["step", (page) => step(page)],
+  ["stepThen", (page) => stepThen(page, STEP_MS, "0")],
+  ["murlanStep, the in-page loops' step", (page) => page.evaluate((ms) => window.murlanStep(ms), STEP_MS)],
+];
+
+for (const [name, advance] of steppers) {
+  test(`an animation a timer creates during ${name} has not yet been advanced by it`, async ({ page, baseURL }) => {
+    await installVirtualClock(page, 1);
+    await page.goto(`${baseURL}/metadata.json`);
+    await page.setContent(PAGE);
+    await takeOver(page);
+    await page.evaluate(() => setTimeout(() => document.getElementById("box")!.classList.add("late"), 1));
+    await advance(page);
+    const [created] = await animationPhase(page);
+    expect(created.currentTime).toBeGreaterThanOrEqual(0);
+    expect(created.currentTime).toBeLessThan(STEP_MS);
+    await advance(page);
+    expect((await animationPhase(page))[0].currentTime).toBe(STEP_MS);
+  });
+}
+
+test("an animation heavy page costs the Animation domain no event per step", async ({ page, baseURL }) => {
+  await installVirtualClock(page, 1);
+  await page.goto(`${baseURL}/metadata.json`);
+  const frames = Array.from({ length: 300 }, (_, i) => `${(i / 299) * 100}%{transform:translateX(${i}px)}`).join("");
+  await page.setContent(
+    `<!doctype html><style>@keyframes heavy{${frames}}div{animation:heavy 300s linear both}</style>${"<div></div>".repeat(20)}`
+  );
+  await takeOver(page);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Animation.enable");
+  let updates = 0;
+  cdp.on("Animation.animationUpdated", () => updates++);
+  await step(page);
+  const settled = updates;
+  for (let i = 0; i < 10; i++) await step(page);
+  expect(updates - settled, `${updates - settled} animationUpdated events over 10 steps of 20 animations`).toBe(0);
+  expect((await animationPhase(page))[0].currentTime).toBe(11 * STEP_MS);
+});
+
+test("an animation that a step carries to its end still finishes", async ({ page, baseURL }) => {
+  await installVirtualClock(page, 1);
+  await page.goto(`${baseURL}/metadata.json`);
+  await page.setContent(`${PAGE}<style>.short { animation: slide ${STEP_MS * 3}ms linear both }</style>`);
+  await takeOver(page);
+  await page.evaluate(() => {
+    (window as unknown as { ended: number }).ended = 0;
+    const box = document.getElementById("box")!;
+    box.addEventListener("animationend", () => (window as unknown as { ended: number }).ended++);
+    box.classList.add("short");
+  });
+  for (let i = 0; i < 5; i++) await step(page);
+  // The event is queued for the next real frame, which no step waits on.
+  await expect.poll(() => page.evaluate(() => (window as unknown as { ended: number }).ended)).toBe(1);
+  expect(await page.evaluate(() => document.getAnimations().map((a) => a.playState))).toEqual(["finished"]);
+});

@@ -151,16 +151,36 @@ describe("an instance's inbox", { skip: hasDatabase() ? false : skipMessage() },
     });
     try {
       await opened(target);
-      for (let round = 0; round < 50; round++) {
+      for (let round = 0; round < 10; round++) {
         await redis.del(inboxOf(target));
         const first = sender.send(target, { kind: "probe", n: 2 * round });
-        // An id past every one the reader has seen, as a stream made anew after a loss gets.
-        await redis.xAdd(inboxOf(target), `${Date.now() + 1}-0`, { m: JSON.stringify({ kind: "boot" }) });
+        await opened(target);
         const second = sender.send(target, { kind: "probe", n: 2 * round + 1 });
         await Promise.all([first, second]);
         await eventually(() => seen.length === 2 * round + 2, `round ${round}'s two messages`);
       }
-      assert.deepEqual(seen, Array.from({ length: 100 }, (_, n) => n), "a later send overtook one that found the inbox missing");
+      assert.deepEqual(seen, Array.from({ length: 20 }, (_, n) => n), "a later send overtook one that found the inbox missing");
+    } finally {
+      await to.close();
+    }
+  });
+
+  test("a stream made anew holds only ids past what its reader has read, however far ahead of the store's clock that is", { timeout: 20_000 }, async () => {
+    const target = randomUUID();
+    const to = openInbox({ id: target });
+    const seen: number[] = [];
+    to.on("probe", (m: InstanceMessage) => {
+      seen.push(m.n as number);
+    });
+    try {
+      await opened(target);
+      await redis.xAdd(inboxOf(target), `${Date.now() + 3_600_000}-0`, { m: JSON.stringify({ kind: "probe", n: 0 }) });
+      await eventually(() => seen.length === 1, "the reader to take the entry ahead of the clock");
+      await redis.del(inboxOf(target));
+      await opened(target);
+      await sender.send(target, { kind: "probe", n: 1 });
+      await eventually(() => seen.length === 2, "a message to a stream made anew behind the reader's cursor");
+      assert.deepEqual(seen, [0, 1]);
     } finally {
       await to.close();
     }

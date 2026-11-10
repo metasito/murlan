@@ -5,7 +5,7 @@ import { START_CARD } from "@/lib/game/gameEngine";
 import type { KindTone, NoticeKind } from "../noticeModel";
 import { ErrorToast, PassFloat, RejectFloat } from "./floats";
 import { EmptyHandLine, WaitingLine } from "./tableLines";
-import { HudComboPill, OfflinePill, TurnChip } from "./hud";
+import { HudComboPill, OfflinePill, PileNote, TurnChip } from "./hud";
 import { EndMatchVote, LeftTable, RoundVote } from "./netNotes";
 import { WhoStartsCard } from "./panels";
 import { TrickWinnerMark } from "./pileNotices";
@@ -43,11 +43,9 @@ export const NOTICE_GALLERY = {
   hudCombo: [
     { name: "table clear", tone: "neutral", render: (scale) => <HudComboPill scale={scale} play={null} /> },
     { name: "a pair", tone: "neutral", render: (scale) => <HudComboPill scale={scale} play={{ name: "Besnik", combo: "Coppia" }} /> },
-    {
-      name: "an exchange's card resting on the pile",
-      tone: "lit",
-      render: (scale) => <HudComboPill scale={scale} play={null} note={{ text: "Luan dà 2♥ a Ana", testID: "exchange-pill-note" }} />,
-    },
+  ],
+  pileNote: [
+    { name: "an exchange's card resting on the pile", tone: "lit", render: (scale) => <PileNote scale={scale} note={{ text: "Luan dà 2♥ a Ana", testID: "exchange-pill-note" }} /> },
   ],
   turn: [
     { name: "a bot on move", tone: "neutral", render: (scale) => <TurnChip {...turn(scale, false, 30)} /> },

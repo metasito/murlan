@@ -21,8 +21,6 @@ const WINDOW = 240;
 const BOT_MOVES = [60, 120, 180];
 /** The lamp's glide redraws the felt nearly every frame between moves; fewer and the bots never moved. */
 const TURN_FELT_FLOOR = 0.8;
-/** Of the turn's card style budget: the hand and the throws restyle the cards; fewer and the turn never played. */
-const TURN_CARD_STYLE_FLOOR = 0.5;
 
 interface Measured {
   frames: number;
@@ -131,7 +129,7 @@ test("the Skia table at a phone's CPU stays inside its budgets, at rest and thro
   console.log(`skia perf at 4x: ${report}`);
   holds(rest, BUDGETS.rest, "the settled table");
   holds(turn, BUDGETS.turn, "the turn");
-  expect.soft(turn.cardStyles, "style writes inside cards while the turn played").toBeGreaterThanOrEqual(BUDGETS.turn.cardStyles * TURN_CARD_STYLE_FLOOR);
+  expect.soft(turn.cardStyles, "style writes inside cards while the turn played").toBeGreaterThanOrEqual(BUDGETS.turn.cardStylesFloor);
   expect.soft(turn.feltFrames, "frames the felt drew while the lamp glided to each bot").toBeGreaterThanOrEqual(WINDOW * TURN_FELT_FLOOR);
   await context.close();
 });

@@ -92,10 +92,17 @@ export function openInbox({
   const reader = openRedis("inbox", { url });
   const own = inboxKey(id);
   let closed = false;
+  /** The last entry id handed to a handler; a stream made anew must hold only ids past it. */
+  let cursor = "0-0";
 
-  // Pipelined in one write, so the stream is never left without its expiry.
-  const create = () =>
-    Promise.all([writer.xAdd(own, "*", { m: BOOT }, { TRIM: inboxTrim() }), writer.pExpire(own, INBOX_TTL_MS)]);
+  // Pipelined in one write, so the stream is never left without its expiry. Its id is past the
+  // cursor even when this store's clock is behind it (failover, restore), or every later `*` id
+  // would sit below what the reader has seen and be skipped.
+  const create = () => {
+    const seen = Number(cursor.split("-")[0]);
+    const id = seen > 0 ? `${seen + 1}-*` : "*";
+    return Promise.all([writer.xAdd(own, id, { m: BOOT }, { TRIM: inboxTrim() }), writer.pExpire(own, INBOX_TTL_MS)]);
+  };
 
   // The connection's own listener reports an outage; the next tick or reconnect tries again.
   async function keepAlive(): Promise<void> {
@@ -105,7 +112,7 @@ export function openInbox({
   }
 
   writer.on("ready", () => {
-    if (!closed) void create().catch(() => {});
+    if (!closed) void keepAlive();
   });
   const keeper = setInterval(() => void keepAlive(), KEEP_ALIVE_MS);
   (keeper as unknown as { unref?: () => void }).unref?.();
@@ -131,15 +138,14 @@ export function openInbox({
   }
 
   async function read(reader: RedisClient): Promise<void> {
-    let after = "0-0";
     while (reader.isOpen) {
       try {
-        const reply = await reader.xRead({ key: inboxKey(id), id: after }, { BLOCK: BLOCK_MS, COUNT: READ_COUNT });
+        const reply = await reader.xRead({ key: inboxKey(id), id: cursor }, { BLOCK: BLOCK_MS, COUNT: READ_COUNT });
         for (const { messages } of (reply ?? []) as { messages: { id: string; message: Record<string, string> }[] }[]) {
           for (const entry of messages) {
             noteStreamRead("inbox", entry.id);
             await deliver(entry.message.m);
-            after = entry.id;
+            cursor = entry.id;
           }
         }
       } catch {
