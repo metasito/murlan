@@ -18,7 +18,7 @@ export interface WindowBudget {
 }
 
 /**
- * The turn's 2D, offscreen and readback counts are widened for the felt's two ends (docs/agents/RULES.md 51, 52): a glide
+ * The turn's 2D, offscreen and readback counts are widened for the felt's two ends (docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md): a glide
  * bakes its target's two ends offscreen, each read back to the CPU, and a rested table copies end B once. The rest window is unchanged.
  */
 export const BUDGETS = {
