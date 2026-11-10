@@ -15,7 +15,7 @@ import type { Seating, TableLayout } from "@/components/tableLayout";
 import { JOKERS, oneWayWords, readExchangeLegs, type ExchangeStages } from "@/components/table/exchangeModel";
 import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { useDuring } from "@/lib/motion";
+import { stampChange, useDuring } from "@/lib/motion";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { cardSpokenName } from "@/lib/cardNames";
 import { event, withdraw } from "@/lib/device/feedback";
@@ -24,7 +24,6 @@ import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFl
 import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, oneWayEndsAt, type LegPoints, type LegStage } from "@/lib/timeline/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
 import { armGateWatchdog, gateForced } from "./gateForced";
-import { inBackground } from "./useFlightClock";
 import { designRect, legCard } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
 
@@ -70,7 +69,7 @@ function stepper(
     if (goAt.value < 0) return true;
     const times = legTimes(reduced.value);
     if (r.origin < 0) {
-      // On the go's clock, not the first frame's: web hands a new frame callback its first frame two frames late.
+      // On the go's clock on every platform, unlike `startOf`, which native reads from its first drawn frame.
       r.origin = Math.min(frame.timestamp, goAt.value);
       shows.value = legShows(null, reduced.value);
       scheduleOnRN(report.cue, r.origin + shows.value[0]);
@@ -285,11 +284,11 @@ export function ExchangeLegs({
     reduced.set(reduceMotion);
   }, [reduced, reduceMotion]);
   useEffect(() => {
-    if (go && goAt.get() < 0) goAt.set(inBackground() ? Infinity : performance.now());
+    if (go && goAt.get() < 0) goAt.set(stampChange());
   }, [go, goAt]);
   const chosen = announced.cardGiven !== undefined;
   useEffect(() => {
-    if (chosen && choiceAt.get() < 0) choiceAt.set(inBackground() ? Infinity : performance.now());
+    if (chosen && choiceAt.get() < 0) choiceAt.set(stampChange());
   }, [chosen, choiceAt]);
   // Read after commit: the hand publishes where it drew each card then. A leg keeps the points it left with.
   useEffect(() => {
