@@ -81,7 +81,7 @@ describe("the spot's keyframes are glossSpot along the lamp's path", () => {
     assert.equal(GLIDE, 2.2);
     const snap = gliding();
     const t = track(snap);
-    for (const n of t.stops.slice(0, t.eventStops + 1)) {
+    for (const n of t.stops.filter((n) => n * FRAME < 6)) {
       const sec = n * FRAME;
       assert.ok(Math.abs(t.path.x[n]! - (snap.tx + (snap.x - snap.tx) * Math.exp(-GLIDE * sec))) < 1e-6, `x at ${sec}s`);
       assert.ok(Math.abs(t.path.y[n]! - (snap.ty + (snap.y - snap.ty) * Math.exp(-GLIDE * sec))) < 1e-6, `y at ${sec}s`);
@@ -121,6 +121,16 @@ describe("the spot against the mockup's own gloss()", () => {
 });
 
 describe("the streak pair", () => {
+  test("stands where the lamp comes to rest after a glide, not where it set out", () => {
+    const snap = gliding();
+    const pose = backPose(track(snap), BACK.placed, BACK.box);
+    const { placed, box } = BACK;
+    for (const [end, side] of [[pose.streak[0], -1], [pose.streak[1], 1]] as const) {
+      const g = cardGloss(placed.x, placed.y, box.w, box.h, { lx: snap.tx + side * swayAmplitude(0), ly: snap.ty, level: snap.lvlT, r: snap.tr });
+      assert.ok(Math.abs(end.x - g.band.x) < 1e-9 && Math.abs(end.y - g.band.y) < 1e-9 && Math.abs(end.opacity - g.a) < 1e-9, `end ${side}`);
+    }
+  });
+
   test("crossfades to within a quarter of the exact streak, in its half-width and its opacity, along a sway", () => {
     const snap = snapOf(restingLamp([437, 180, 1]), false);
     const t = track(snap);

@@ -19,11 +19,8 @@ export function snapOf(s: Lamp, reduced: boolean): LampSnap {
 /** Seconds a track runs. The aperiodic sway is baked this far and rebaked before it ends. */
 export const GLOSS_HORIZON_S = 300;
 const REBAKE_BEFORE_S = 10;
-/** The glide, a kick or a level change is over when it is within these of where it ends. */
-const OVER_PT = 0.25;
+/** A level this near the baked one is the baked level (`nextGlossBake`). */
 const OVER_LEVEL = 1 / 256;
-const OVER_REACH = 0.004;
-const EVENT_CAP_S = 12;
 /** Most a linear stretch between two stops may differ from the lamp's own path, in design points. */
 const TOLERANCE_PT = 0.4;
 /** One level counted as this many points when it sets how finely the stops fall. */
@@ -59,7 +56,6 @@ interface Path {
   level: Float64Array;
   lx: Float64Array;
   ly: Float64Array;
-  ph: Float64Array;
   kick: Float64Array;
 }
 
@@ -84,7 +80,7 @@ function simulate(snap: LampSnap, frames: number): Path {
   const s: Lamp = { ...FREE_LAMP, holds: { ...FREE_LAMP.holds }, drawn: { ...FREE_LAMP.drawn }, ...snap };
   s.lx = s.x;
   s.ly = s.y;
-  const path: Path = { frames, ...Object.fromEntries(["x", "y", "r", "level", "lx", "ly", "ph", "kick"].map((k) => [k, new Float64Array(frames + 1)])) } as Path;
+  const path: Path = { frames, ...Object.fromEntries(["x", "y", "r", "level", "lx", "ly", "kick"].map((k) => [k, new Float64Array(frames + 1)])) } as Path;
   const record = (n: number) => {
     path.x[n] = s.x;
     path.y[n] = s.y;
@@ -92,7 +88,6 @@ function simulate(snap: LampSnap, frames: number): Path {
     path.level[n] = s.level;
     path.lx[n] = s.lx;
     path.ly[n] = s.ly;
-    path.ph[n] = s.ph;
     path.kick[n] = s.kick;
   };
   stepLamp(s, 0, snap.reduced);
@@ -102,21 +97,6 @@ function simulate(snap: LampSnap, frames: number): Path {
     record(n);
   }
   return path;
-}
-
-function eventFrames(path: Path, snap: LampSnap): number {
-  const cap = Math.min(path.frames, Math.round(EVENT_CAP_S / FRAME));
-  let last = 0;
-  for (let n = 0; n <= cap; n++) {
-    const moving =
-      Math.abs(path.x[n]! - snap.tx) > OVER_PT ||
-      Math.abs(path.y[n]! - snap.ty) > OVER_PT ||
-      Math.abs(swayAmplitude(path.kick[n]!) - SWAY) > OVER_PT ||
-      Math.abs(path.level[n]! - snap.lvlT) > OVER_LEVEL ||
-      Math.abs(path.r[n]! - snap.tr) > OVER_REACH;
-    if (moving) last = n + 1;
-  }
-  return last;
 }
 
 /** The frames the track stops at: dense where the lamp bends, so a straight line between two stops stays within `TOLERANCE_PT`. */
@@ -144,8 +124,6 @@ export interface GlossTrack {
   /** The `performance.now()` at which the snapshot was taken. */
   epoch: number;
   stops: readonly number[];
-  /** Stops up to the first that is past the glide, a kick and a level change; the backs' own tracks run this long. */
-  eventStops: number;
   path: Path;
   moves: boolean;
   /** Frames of the horizon. */
@@ -156,11 +134,9 @@ export function bakeGlossTrack(snap: LampSnap, epoch: number): GlossTrack {
   const frames = Math.round(GLOSS_HORIZON_S / FRAME);
   const path = simulate(snap, frames);
   const stops = stopsOf(path);
-  const eventAt = eventFrames(path, snap);
-  const eventStops = eventAt === 0 ? 0 : stops.findIndex((n) => n >= eventAt) + 1 || stops.length;
   const still = (v: Float64Array) => v.every((e) => Math.abs(e - v[0]!) < 1e-6);
   const moves = !(still(path.lx) && still(path.ly) && still(path.level));
-  return { snap, epoch, stops, eventStops, path, moves, frames };
+  return { snap, epoch, stops, path, moves, frames };
 }
 
 /** The lamp at stop `i`, in the light a gloss reads. */
@@ -196,7 +172,6 @@ export interface SharedTrack {
   fadeB: Played | null;
   /** The fades as the track begins. */
   at: { fadeA: number; fadeB: number };
-  played: boolean;
 }
 
 /** Of the two ends the streak crosses between, the share that the end on the sway's +side holds: 0 at the sway's far side, 1 at the near. */
@@ -205,21 +180,15 @@ export const crossAt = (kick: number, lx: number, x: number) => {
   return Math.min(1, Math.max(0, (lx - x) / (2 * reach) + 0.5));
 };
 
-const sharedCache = new WeakMap<GlossTrack, Map<number, SharedTrack>>();
-
 /** `s` the felt's points-to-pixels scale. */
 export function sharedTrack(track: GlossTrack, s: number): SharedTrack {
-  let bySize = sharedCache.get(track);
-  if (!bySize) sharedCache.set(track, (bySize = new Map()));
-  const known = bySize.get(s);
-  if (known) return known;
   const p = track.path;
   const last = track.stops.length - 1;
   const cross = (n: number) => crossAt(p.kick[n]!, p.lx[n]!, p.x[n]!);
   const at = { fadeA: 1 - cross(0), fadeB: cross(0) };
   const duration = seconds(track.stops[last]!) * 1000;
   const play = (frame: (n: number) => Record<string, unknown>): Played | null => (track.moves ? { keyframes: keyframesOf(track, last, frame), duration } : null);
-  const made: SharedTrack = {
+  return {
     spot: play((n) => ({
       transform: [{ translateX: (p.lx[n]! - p.lx[0]!) * s }, { translateY: (p.ly[n]! - p.ly[0]!) * s }],
       opacity: CardGloss.spot.alpha * p.level[n]!,
@@ -227,10 +196,7 @@ export function sharedTrack(track: GlossTrack, s: number): SharedTrack {
     fadeA: play((n) => ({ opacity: 1 - cross(n) })),
     fadeB: play((n) => ({ opacity: cross(n) })),
     at,
-    played: track.moves,
   };
-  bySize.set(s, made);
-  return made;
 }
 
 /** The place and size of a back as the table lays it out: its centre in design points, its own box and turn. */
@@ -281,28 +247,15 @@ const foilAt = (placed: Placed, box: BackBox, lamp: ReturnType<typeof lampAt>): 
   return { x: g.band.x, y: g.band.y, ang: g.ang, opacity: (g.peak - g.edge) / (1 - g.edge) };
 };
 
-/** The lamp one end of a crossfade stands for at stop `n`: the sway's far or near extreme about where the lamp points. */
-function endsAt(track: GlossTrack, n: number): [ReturnType<typeof lampAt>, ReturnType<typeof lampAt>] {
-  const p = track.path;
-  const reach = swayAmplitude(p.kick[n]!);
-  const here = lampAt(track, n);
-  return [
-    { ...here, lx: p.x[n]! - reach },
-    { ...here, lx: p.x[n]! + reach },
-  ];
-}
-
 /** Where a back stands in the light the lamp comes to rest in, after a glide, a kick or a level change; the track plays no event on a back. */
 export function backPose(track: GlossTrack, placed: Placed, box: BackBox): BackPose {
-  const lamp0 = lampAt(track, 0);
-  const spot = glossSpot(placed.x, placed.y, box.w, box.h, lamp0);
-  const rest = track.stops[Math.min(track.eventStops, track.stops.length - 1)]!;
-  const settled = { ...lampAt(track, rest), lx: track.path.x[rest]! };
-  const [a, b] = endsAt(track, rest);
+  const { snap } = track;
+  const spot = glossSpot(placed.x, placed.y, box.w, box.h, lampAt(track, 0));
+  const settled = { lx: snap.tx, ly: snap.ty, level: snap.lvlT, r: snap.tr };
   return {
     spot: spot.spot,
     spotAlpha: spot.spotAlpha,
-    streak: [streakAt(placed, box, a), streakAt(placed, box, b)],
+    streak: [streakAt(placed, box, { ...settled, lx: snap.tx - SWAY }), streakAt(placed, box, { ...settled, lx: snap.tx + SWAY })],
     foil: foilAt(placed, box, settled),
     foilEdge: foilGlint(placed.x, placed.y, placed.rot, box.w, box.h, settled).edge,
   };

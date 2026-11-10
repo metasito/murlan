@@ -2,13 +2,13 @@ import React, { useMemo, useSyncExternalStore } from "react";
 import { Platform, StyleSheet, View, type ViewStyle } from "react-native";
 import Animated from "react-native-reanimated";
 import MaskedViewUntyped from "@react-native-masked-view/masked-view";
-import Svg, { Defs, G, LinearGradient, Mask, Rect, Stop } from "react-native-svg";
+import { SvgXml } from "react-native-svg";
 import { CardGloss } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
-import { track as playTrack } from "@/lib/motion";
+import { ambient } from "@/lib/motion";
 import { cardRadius } from "@/components/cardFaceModel";
 import type { ArcCard } from "@/components/tableArc";
-import { backPose, sharedTrack, type Placed, type Played } from "./glossTrack";
+import { backPose, sharedTrack, type BackPose, type Placed, type Played } from "./glossTrack";
 import type { GlossTracks } from "./glossTrackStore";
 import { GLOSS_SPOT_ART } from "./LampGloss";
 
@@ -37,14 +37,14 @@ interface Props {
  * one shared track; the spot is one blob under a static mask of the backs' silhouettes. Every pixel of the
  * gloss is linear in these, so it is the per-back crossfade of the mockup's `gloss()`, occlusion included.
  */
-export function FanGloss({ tracks, s, placed, cards, boxW, boxH, w, h, tilt }: Props) {
+export const FanGloss = React.memo(function FanGloss({ tracks, s, placed, cards, boxW, boxH, w, h, tilt }: Props) {
   const lamp = useSyncExternalStore(tracks.subscribe, tracks.get);
-  const shared = sharedTrack(lamp, s);
+  const shared = useMemo(() => sharedTrack(lamp, s), [lamp, s]);
   const delay = tracks.delayOf(lamp);
   const poses = useMemo(() => placed.map((p) => backPose(lamp, p, { w: w / s, h: h / s })), [lamp, placed, w, h, s]);
   const mid = Math.floor(cards.length / 2);
   const shapes = useMemo(() => silhouettes(cards, boxW, w, h), [cards, boxW, w, h]);
-  const play = (p: Played | null) => (p ? playTrack({ keyframes: p.keyframes as never, duration: p.duration, delay }) : undefined);
+  const play = (p: Played | null) => (p ? ambient({ keyframes: p.keyframes as never, duration: p.duration, delay }) : undefined);
   const fades = [shared.fadeA, shared.fadeB] as const;
   const fadeAt = [shared.at.fadeA, shared.at.fadeB] as const;
 
@@ -62,41 +62,12 @@ export function FanGloss({ tracks, s, placed, cards, boxW, boxH, w, h, tilt }: P
       {fades.map((fade, end) => (
         <Animated.View key={end} pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: fadeAt[end] }, play(fade)]}>
           <View pointerEvents="none" style={tilt}>
-            <Svg width={boxW} height={boxH} style={styles.overhang}>
-              <Defs>
-                <LinearGradient id={`streak${end}`} x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={CardGloss.streak.color} stopOpacity={0} />
-                  <Stop offset="0.5" stopColor={CardGloss.streak.color} stopOpacity={1} />
-                  <Stop offset="1" stopColor={CardGloss.streak.color} stopOpacity={0} />
-                </LinearGradient>
-                {shapes.map((shape, i) => (
-                  <Mask key={i} id={`visible${end}_${i}`} maskUnits="userSpaceOnUse" x={-w} y={-h} width={boxW + 2 * w} height={boxH + 2 * h}>
-                    <Rect {...shape.rect} fill="#fff" />
-                    {shape.over.map((j) => (
-                      <Rect key={j} {...shapes[j]!.rect} fill="#000" />
-                    ))}
-                  </Mask>
-                ))}
-              </Defs>
-              {shapes.map((shape, i) => {
-                const e = poses[i]!.streak[end];
-                const diag = Math.hypot(w, h) / s;
-                const bandW = 2 * diag * s;
-                const bandH = CardGloss.streak.width * diag * s;
-                return (
-                  <G key={i} mask={`url(#visible${end}_${i})`}>
-                    <G transform={`translate(${shape.cx} ${shape.cy}) rotate(${cards[i]!.rot}) translate(${e.x * s} ${e.y * s}) rotate(${(e.ang * 180) / Math.PI})`}>
-                      <Rect x={-bandW / 2} y={-bandH / 2} width={bandW} height={bandH} fill={`url(#streak${end})`} opacity={e.opacity} />
-                    </G>
-                  </G>
-                );
-              })}
-            </Svg>
+            <SvgXml xml={streakXml(end, shapes, cards, poses, s, w, h, boxW, boxH)} width={boxW} height={boxH} style={styles.overhang} />
           </View>
         </Animated.View>
       ))}
       <View pointerEvents="none" style={tilt}>
-        <Silhouettes shapes={shapes} boxW={boxW} boxH={boxH} w={w} h={h}>
+        <Silhouettes shapes={shapes} boxW={boxW} boxH={boxH}>
           <View pointerEvents="none" style={{ position: "absolute", left: spotX, top: spotY, width: 0, height: 0 }}>
             <Animated.Image
               testID="card-gloss-spot"
@@ -109,6 +80,34 @@ export function FanGloss({ tracks, s, placed, cards, boxW, boxH, w, h, tilt }: P
       </View>
     </View>
   );
+}, sameGloss);
+
+/** One end's streaks as a single picture, each back's band masked by the backs painted over it. As XML, so that a rebake redraws one picture and no per-back element. */
+const rect = (r: Shape["rect"], fill: string) => `<rect x='${r.x}' y='${r.y}' width='${r.width}' height='${r.height}' rx='${r.rx}' transform='${r.transform}' fill='${fill}'/>`;
+const svgOf = (boxW: number, boxH: number, inner: string) => `<svg xmlns='http://www.w3.org/2000/svg' width='${boxW}' height='${boxH}' overflow='visible'>${inner}</svg>`;
+
+function streakXml(end: number, shapes: Shape[], cards: readonly ArcCard[], poses: readonly BackPose[], s: number, w: number, h: number, boxW: number, boxH: number): string {
+  const { color, width } = CardGloss.streak;
+  const diag = Math.hypot(w, h);
+  const bandW = 2 * diag;
+  const bandH = width * diag;
+  const masks = shapes
+    .map((shape, i) => `<mask id='v${end}_${i}' maskUnits='userSpaceOnUse' x='${-w}' y='${-h}' width='${boxW + 2 * w}' height='${boxH + 2 * h}'>${rect(shape.rect, "#fff")}${shape.over.map((j) => rect(shapes[j]!.rect, "#000")).join("")}</mask>`)
+    .join("");
+  const bands = shapes
+    .map((shape, i) => {
+      const e = poses[i]!.streak[end];
+      const place = `translate(${shape.cx} ${shape.cy}) rotate(${cards[i]!.rot}) translate(${e.x * s} ${e.y * s}) rotate(${(e.ang * 180) / Math.PI})`;
+      return `<g mask='url(#v${end}_${i})'><g transform='${place}'><rect x='${-bandW / 2}' y='${-bandH / 2}' width='${bandW}' height='${bandH}' fill='url(#g${end})' opacity='${e.opacity}'/></g></g>`;
+    })
+    .join("");
+  const gradient = `<linearGradient id='g${end}' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='${color}' stop-opacity='0'/><stop offset='0.5' stop-color='${color}' stop-opacity='1'/><stop offset='1' stop-color='${color}' stop-opacity='0'/></linearGradient>`;
+  return svgOf(boxW, boxH, `<defs>${gradient}${masks}</defs>${bands}`);
+}
+
+/** The fan lays its places out afresh on every render, so equal places are told by value: a bot's move that leaves this fan alone then redraws none of its gloss. */
+function sameGloss(a: Props, b: Props): boolean {
+  return (Object.keys(a) as (keyof Props)[]).every((k) => a[k] === b[k] || (typeof a[k] === "object" && JSON.stringify(a[k]) === JSON.stringify(b[k])));
 }
 
 interface Shape {
@@ -135,21 +134,15 @@ function silhouettes(cards: readonly ArcCard[], boxW: number, w: number, h: numb
 }
 
 /** `children` shown through the backs' silhouettes alone, as one static mask over everything that moves inside it. */
-function Silhouettes({ shapes, boxW, boxH, w, h, children }: { shapes: Shape[]; boxW: number; boxH: number; w: number; h: number; children: React.ReactNode }) {
-  const outline = (
-    <Svg width={boxW} height={boxH} style={styles.overhang}>
-      {shapes.map((shape, i) => (
-        <Rect key={i} {...shape.rect} fill="#000" />
-      ))}
-    </Svg>
-  );
+function Silhouettes({ shapes, boxW, boxH, children }: { shapes: Shape[]; boxW: number; boxH: number; children: React.ReactNode }) {
+  const outline = svgOf(boxW, boxH, shapes.map((shape) => rect(shape.rect, "#000")).join(""));
+  const box = { position: "absolute", left: 0, top: 0, width: boxW, height: boxH } as const;
   if (Platform.OS === "web") {
-    const rects = shapes.map((shape) => `<rect x='${shape.rect.x}' y='${shape.rect.y}' width='${w}' height='${h}' rx='${shape.rect.rx}' transform='${shape.rect.transform}'/>`).join("");
-    const mask = `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${boxW}' height='${boxH}'>${rects}</svg>`)}")`;
-    return <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width: boxW, height: boxH, maskImage: mask, maskSize: "100% 100%", maskRepeat: "no-repeat" } as never}>{children}</View>;
+    const mask = `url("data:image/svg+xml;utf8,${encodeURIComponent(outline)}")`;
+    return <View pointerEvents="none" style={{ ...box, maskImage: mask, maskSize: "100% 100%", maskRepeat: "no-repeat" } as never}>{children}</View>;
   }
   return (
-    <MaskedView style={{ position: "absolute", left: 0, top: 0, width: boxW, height: boxH }} maskElement={outline}>
+    <MaskedView style={box} maskElement={<SvgXml xml={outline} width={boxW} height={boxH} style={styles.overhang} />}>
       {children}
     </MaskedView>
   );
