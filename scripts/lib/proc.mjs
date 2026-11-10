@@ -109,8 +109,14 @@ export function procFor({
    * Stop first, then kill: a running tree forks between one read of the table and the kills, and a
    * stopped one cannot. A pid whose start time changed was reused by a stranger and is let go.
    */
-  function freezeAndKill(roots, identities = new Map()) {
+  function freezeAndKill(roots, identities = new Map(), halted = () => false) {
     const stopped = new Map();
+    // A halt releases what it froze and reads and signals nothing more: it comes from a run that is
+    // ending, whose process table reads must not outlive it.
+    const release = () => {
+      for (const pid of stopped.keys()) signal(pid, "SIGCONT");
+      return false;
+    };
     // On Linux each pid is held to its exact identity from just before its stop to its kill: a
     // stopped process cannot exit, so a stranger can only have taken the pid before the stop.
     const stop = (pid) => {
@@ -123,6 +129,7 @@ export function procFor({
       return false;
     };
     for (;;) {
+      if (halted()) return release();
       const rows = readTable();
       for (const [pid, started] of stopped) {
         if (rows.has(pid) && rows.get(pid).started !== started) {
@@ -134,9 +141,13 @@ export function procFor({
       if (tree.has(selfPid)) throw new Error(`refusing to end pid ${[...roots.keys()][0]}: this process is inside its tree`);
       const fresh = [...tree].filter(([pid]) => !stopped.has(pid));
       if (!fresh.length) break;
-      for (const [pid, started] of fresh) if (stop(pid)) stopped.set(pid, started);
+      for (const [pid, started] of fresh) {
+        if (halted()) return release();
+        if (stop(pid)) stopped.set(pid, started);
+      }
     }
     for (const pid of stopped.keys()) if (platform !== "linux" || identityOf(pid) === identities.get(pid)) signal(pid, "SIGKILL");
+    return true;
   }
 
   function taskkill(pid, force) {
@@ -149,13 +160,15 @@ export function procFor({
     }
   }
 
-  /** "Already gone" is success; anything that leaves the tree in doubt throws. */
+  /** "Already gone" is success; anything that leaves the tree in doubt throws. False only when a halt stopped it first. */
   /** With `identity`, the root is ended only while it is still the process identityOf named so. */
-  function killTree(pid, { identity } = {}) {
-    if (!pid) return;
-    if (win) return taskkill(pid, true);
+  function killTree(pid, /** @type {{ identity?: string, halted?: () => boolean }} */ { identity, halted = () => false } = {}) {
+    if (!pid) return true;
+    if (win) return taskkill(pid, true), true;
+    if (halted()) return false;
     const started = readTable().get(pid)?.started;
-    if (started !== undefined) freezeAndKill(new Map([[pid, started]]), identity === undefined ? new Map() : new Map([[pid, identity]]));
+    if (started === undefined) return true;
+    return freezeAndKill(new Map([[pid, started]]), identity === undefined ? new Map() : new Map([[pid, identity]]), halted);
   }
 
   const alive = (pid) => {
@@ -187,10 +200,9 @@ export function procFor({
   }
 
   /** Ends the tree of `pid` only while it is still the process `identity` names. True when it did. */
-  function endTreeIf(pid, identity) {
-    if (identity == null || identityOf(pid) !== identity) return false;
-    killTree(pid, { identity });
-    return true;
+  function endTreeIf(pid, identity, /** @type {() => boolean} */ halted = () => false) {
+    if (identity == null || halted() || identityOf(pid) !== identity) return false;
+    return killTree(pid, { identity, halted });
   }
 
   /**

@@ -179,6 +179,69 @@ describe("on POSIX, modelled", () => {
     assert.deepEqual(world.stopped(), []);
   });
 
+  test("a halt between two reads of the table runs no further ps and signals no kill", () => {
+    const world = posixWorld({ forks: 2 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    let halted = false;
+    world.afterRead(() => (halted = true));
+    world.proc.killTree(child.pid, { halted: () => halted });
+    assert.equal(world.reads(), 1);
+    assert.deepEqual(world.signals.filter(([, s]) => s === "SIGKILL"), []);
+    assert.deepEqual(world.stopped(), []);
+  });
+
+  const sent = (world: ReturnType<typeof posixWorld>, sig: string) => world.signals.filter(([, s]) => s === sig).map(([p]) => p);
+
+  test("a halt landing after the second read stops nothing new, resumes what it froze and kills nothing", () => {
+    const world = posixWorld({ forks: 2 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    let halted = false;
+    // killTree reads the table once itself, then freezeAndKill reads it: the halt follows the second of the loop's.
+    world.afterRead(
+      () => undefined,
+      () => undefined,
+      () => (halted = true),
+    );
+    world.proc.killTree(child.pid, { halted: () => halted });
+    assert.equal(world.reads(), 3);
+    const frozen = sent(world, "SIGSTOP");
+    assert.equal(frozen.length, 6, "the tree the loop's first read listed was frozen, not the forks its second read listed");
+    assert.deepEqual(sent(world, "SIGCONT").sort(), [...frozen].sort());
+    assert.deepEqual(world.stopped(), []);
+    assert.deepEqual(sent(world, "SIGKILL"), []);
+  });
+
+  test("a halt that lands once the tree is frozen reads no table again, resumes it and kills nothing", () => {
+    const world = posixWorld({ forks: 1 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    world.proc.killTree(child.pid, { halted: () => sent(world, "SIGSTOP").length >= 3 });
+    assert.equal(world.reads(), 2, "killTree's own read and the loop's first, not a second pass of the loop");
+    assert.deepEqual(sent(world, "SIGCONT").sort(), sent(world, "SIGSTOP").sort());
+    assert.deepEqual(world.stopped(), []);
+    assert.deepEqual(sent(world, "SIGKILL"), []);
+  });
+
+  test("a kill a halt stopped half way is not reported as a kill", () => {
+    const world = posixWorld({ forks: 2 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const identity = world.proc.identityOf(child.pid!);
+    let halted = false;
+    world.afterRead(() => (halted = true));
+    assert.equal(world.proc.endTreeIf(child.pid!, identity!, () => halted), false);
+    assert.deepEqual(sent(world, "SIGKILL"), []);
+    assert.equal(world.proc.killTree(child.pid, { halted: () => true }), false);
+    assert.equal(world.proc.killTree(child.pid), true);
+  });
+
+  test("a halt that comes before the first read runs no ps at all", () => {
+    const world = posixWorld();
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const identity = world.proc.identityOf(child.pid!);
+    assert.equal(world.proc.endTreeIf(child.pid!, identity!, () => true), false);
+    world.proc.killTree(child.pid, { halted: () => true });
+    assert.equal(world.reads(), 0);
+  });
+
   test("a process whose identity still matches is ended with its tree", () => {
     const world = posixWorld();
     const child = world.proc.startBin("node", ["a.js"], {});
