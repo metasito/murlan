@@ -221,6 +221,18 @@ describe("on POSIX, modelled", () => {
     assert.deepEqual(sent(world, "SIGKILL"), []);
   });
 
+  test("a kill a halt stopped half way is not reported as a kill", () => {
+    const world = posixWorld({ forks: 2 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const identity = world.proc.identityOf(child.pid!);
+    let halted = false;
+    world.afterRead(() => (halted = true));
+    assert.equal(world.proc.endTreeIf(child.pid!, identity!, () => halted), false);
+    assert.deepEqual(sent(world, "SIGKILL"), []);
+    assert.equal(world.proc.killTree(child.pid, { halted: () => true }), false);
+    assert.equal(world.proc.killTree(child.pid), true);
+  });
+
   test("a halt that comes before the first read runs no ps at all", () => {
     const world = posixWorld();
     const child = world.proc.startBin("node", ["a.js"], {});

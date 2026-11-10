@@ -115,6 +115,7 @@ export function procFor({
     // ending, whose process table reads must not outlive it.
     const release = () => {
       for (const pid of stopped.keys()) signal(pid, "SIGCONT");
+      return false;
     };
     // On Linux each pid is held to its exact identity from just before its stop to its kill: a
     // stopped process cannot exit, so a stranger can only have taken the pid before the stop.
@@ -146,6 +147,7 @@ export function procFor({
       }
     }
     for (const pid of stopped.keys()) if (platform !== "linux" || identityOf(pid) === identities.get(pid)) signal(pid, "SIGKILL");
+    return true;
   }
 
   function taskkill(pid, force) {
@@ -158,14 +160,15 @@ export function procFor({
     }
   }
 
-  /** "Already gone" is success; anything that leaves the tree in doubt throws. */
+  /** "Already gone" is success; anything that leaves the tree in doubt throws. False only when a halt stopped it first. */
   /** With `identity`, the root is ended only while it is still the process identityOf named so. */
   function killTree(pid, /** @type {{ identity?: string, halted?: () => boolean }} */ { identity, halted = () => false } = {}) {
-    if (!pid) return;
-    if (win) return taskkill(pid, true);
-    if (halted()) return;
+    if (!pid) return true;
+    if (win) return taskkill(pid, true), true;
+    if (halted()) return false;
     const started = readTable().get(pid)?.started;
-    if (started !== undefined) freezeAndKill(new Map([[pid, started]]), identity === undefined ? new Map() : new Map([[pid, identity]]), halted);
+    if (started === undefined) return true;
+    return freezeAndKill(new Map([[pid, started]]), identity === undefined ? new Map() : new Map([[pid, identity]]), halted);
   }
 
   const alive = (pid) => {
@@ -199,8 +202,7 @@ export function procFor({
   /** Ends the tree of `pid` only while it is still the process `identity` names. True when it did. */
   function endTreeIf(pid, identity, /** @type {() => boolean} */ halted = () => false) {
     if (identity == null || halted() || identityOf(pid) !== identity) return false;
-    killTree(pid, { identity, halted });
-    return true;
+    return killTree(pid, { identity, halted });
   }
 
   /**
