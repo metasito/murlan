@@ -13,6 +13,7 @@ import {
   withAlpha,
 } from "@/lib/theme";
 import { CardCastContext } from "@/components/table/feltReady";
+import type { Placed } from "@/components/table/glossTrack";
 import { FOIL_ART, FoilGlint, GLOSS_SPOT_ART, LampGloss, LevelShade } from "@/components/table/LampGloss";
 import type { OwnedRects } from "@/components/table/useCardRects";
 import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
@@ -394,6 +395,8 @@ interface CardViewProps {
   /** The key this view is drawn as in `rects`, its publisher's own: the lamp's gloss reads its centre there. */
   rectKey?: string;
   rects?: OwnedRects;
+  /** Where a card that never moves stands, a stable object: its gloss then plays off the lamp's track (`LampGloss`). */
+  placed?: Placed;
   /**
    * Discrete equivalents of a gesture this card also answers, for assistive
    * technology only (WCAG 2.5.7). They cost no pixels and appear to nobody
@@ -423,6 +426,7 @@ function CardViewBase({
   decorative = false,
   rectKey,
   rects,
+  placed,
   hitWidth,
   testID,
   hint,
@@ -461,8 +465,8 @@ function CardViewBase({
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
         >
           <Image source={BACK_ART[backKey]()} style={ART_FILL} resizeMode="stretch" {...a11yHidden()} />
-          <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
-          <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} />
+          <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} placed={placed} />
+          <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} placed={placed} />
         </View>
         <LevelShade rectKey={rectKey} rects={rects} width={w} height={h} />
       </View>

@@ -4,6 +4,7 @@ import type { OpponentSide } from "@/components/seatLayout";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { designRect, sameRect, scopeOf, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
 import type { GlossLight } from "./cardGloss";
+import type { GlossTracks } from "./glossTrackStore";
 
 /**
  * The one registry, and the laid-out places every owner measures its cards from, in window points.
@@ -21,6 +22,8 @@ export interface CardTable {
   glossLight: SharedValue<GlossLight>;
   /** The lamp's pose without its sway, which an opponent's back reads (`glossLightFor`). */
   stillLight: SharedValue<GlossLight>;
+  /** The track an opponent's back plays on the compositor, where the lamp rig supplies one. */
+  tracks?: GlossTracks;
   /** The lamp's level alone, which a card's shade reads (`LevelShade`). */
   shadeLevel: SharedValue<number>;
   /** The hand's registry keys in the order its cards paint, bottom first (`handPaintOrder`). */
@@ -46,7 +49,7 @@ export function glossLightFor(table: CardTable, rectKey: string): SharedValue<Gl
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
 
-export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>): CardTable {
+export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, tracks?: GlossTracks): CardTable {
   const rects = useSharedValue<CardRects>({});
   const handOrder = useSharedValue<readonly string[]>([]);
   const pileOrder = useSharedValue<readonly string[]>([]);
@@ -66,7 +69,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
       if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, stillLight, shadeLevel, handOrder, pileOrder }), [key, rects, motion, glossLight, stillLight, shadeLevel, handOrder, pileOrder]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, stillLight, tracks, shadeLevel, handOrder, pileOrder }), [key, rects, motion, glossLight, stillLight, tracks, shadeLevel, handOrder, pileOrder]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {

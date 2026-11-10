@@ -19,7 +19,8 @@ import {
   type OpponentSide,
 } from "@/components/seatLayout";
 import { FAN_LEAN_DEG, FAN_PERSPECTIVE, FAN_TURN, fanCounts, fanPoint, seatFanArc, seatLabelRise } from "@/components/fanGeometry";
-import { fanBacks } from "./cardRects";
+import { designRect, fanBacks, TABLE_AT_REST } from "./cardRects";
+import type { Placed } from "./glossTrack";
 import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/passes";
 import { handCountOf } from "@/shared/protocol";
@@ -98,9 +99,10 @@ export function usePassedSeats(
 // arc deliberately overflows its box and rotating the box would leave half of
 // it empty and open a phantom gap between the avatar and the cards.
 
-function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
+function FanBack({ id, rects, placed, at, boxW, backScale, zIndex }: {
   id: string;
   rects: OwnedRects;
+  placed: Placed | undefined;
   at: ArcCard;
   boxW: number;
   backScale: number;
@@ -122,6 +124,7 @@ function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
         scale={backScale}
         rectKey={id}
         rects={rects}
+        placed={placed}
       />
     </View>
   );
@@ -153,6 +156,16 @@ function CardFan({
     [table, side, count, scale]
   );
   const fanRects = useStaticCardRects(table, `fan:${side}:`, drawn);
+  const placed = useMemo(
+    () =>
+      table
+        ? drawn.map((card) => {
+            const rect = designRect(card, table.felt, TABLE_AT_REST);
+            return { x: rect.x, y: rect.y, rot: rect.rot };
+          })
+        : [],
+    [table, drawn]
+  );
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
@@ -185,7 +198,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} placed={placed[i]} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
     </View>

@@ -91,6 +91,18 @@ export function ambient({ keyframes, duration, delay = 0 }: AmbientSpec): ViewSt
   } as ViewStyle;
 }
 
+/** One pass of opacity or transform keyframes that then holds its last frame: the same engine as `ambient`, ended. */
+export function track({ keyframes, duration, delay = 0 }: AmbientSpec): ViewStyle {
+  return {
+    animationName: keyframes,
+    animationDuration: `${duration}ms`,
+    animationIterationCount: 1,
+    animationFillMode: "forwards",
+    animationTimingFunction: "linear",
+    animationDelay: `${delay}ms`,
+  } as ViewStyle;
+}
+
 /** `ambient` while `spec` is given and the player has not asked for less motion; undefined otherwise, and the view rests at its own style. */
 export function useAmbient(spec: AmbientSpec | null): ViewStyle | undefined {
   const reduceMotion = usePrefersReducedMotion();

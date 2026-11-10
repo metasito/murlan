@@ -1,14 +1,17 @@
-import React from "react";
-import { StyleSheet, View } from "react-native";
+import React, { useMemo, useSyncExternalStore } from "react";
+import { StyleSheet, View, type ImageStyle, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useDerivedValue, type SharedValue } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardBacks, CardGloss, Layer, Scrim, withAlpha } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
+import { track as playTrack } from "@/lib/motion";
 import type { CardBackId } from "@/lib/cosmetics";
 import { cardRadius } from "@/components/cardFaceModel";
 import { cardGloss, foilGlint, foilGlintColor, glossSpot } from "./cardGloss";
 import { scopeOf, type CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
+import { backPose, sharedTrack, type Played, type Placed } from "./glossTrack";
+import type { GlossTracks } from "./glossTrackStore";
 import { levelShade } from "./rail";
 import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
 
@@ -22,12 +25,15 @@ interface Props {
   rects: OwnedRects | undefined;
   width: number;
   height: number;
+  /** Where the card stands, when it never moves: its gloss then plays off the lamp's track on the compositor (`glossTrack.ts`). */
+  placed?: Placed;
 }
 
 /** The lamp's spot and streak on one card, read from its own rect and the lamp on the UI thread: the card never re-renders for it. */
-export function LampGloss({ rectKey, rects, width, height }: Props) {
+export function LampGloss({ rectKey, rects, width, height, placed }: Props) {
   const table = useCardTable();
   if (!table || !rectKey || !rects) return null;
+  if (table.tracks && placed) return <Tracked tracks={table.tracks} placed={placed} s={table.felt.s} width={width} height={height} />;
   return <Lit table={table} rectKey={rectKey} rects={rects} width={width} height={height} />;
 }
 
@@ -68,6 +74,69 @@ function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTabl
   );
 }
 
+interface TrackedProps {
+  tracks: GlossTracks;
+  placed: Placed;
+  s: number;
+  width: number;
+  height: number;
+}
+
+/** The lamp's track, played from now: a back mounted mid-track starts that far into it. */
+function useBackTrack({ tracks, placed, s, width, height }: TrackedProps) {
+  const lamp = useSyncExternalStore(tracks.subscribe, tracks.get);
+  return useMemo(() => {
+    const delay = tracks.delayOf(lamp);
+    const shared = sharedTrack(lamp, s);
+    const pose = backPose(lamp, placed, { w: width / s, h: height / s }, s);
+    return { shared, pose, delay };
+  }, [tracks, lamp, placed, s, width, height]);
+}
+
+const playing = (played: Played | null | undefined, delay: number): ViewStyle | undefined =>
+  played ? playTrack({ keyframes: played.keyframes as never, duration: played.duration, delay }) : undefined;
+
+const rotated = (e: { x: number; y: number; ang: number }, s: number) => [{ translateX: e.x * s }, { translateY: e.y * s }, { rotate: `${e.ang}rad` }];
+
+function Tracked(props: TrackedProps) {
+  const { s, width, height } = props;
+  const { shared, pose, delay } = useBackTrack(props);
+  const radius = CardGloss.spot.radius * s;
+  const diag = Math.hypot(width, height);
+  const bandW = 2 * diag;
+  const bandH = CardGloss.streak.width * diag;
+  const fades = [shared.fadeA, shared.fadeB];
+  const fadeAt = [shared.at.fadeA, shared.at.fadeB];
+  return (
+    <View testID="card-gloss" pointerEvents="none" style={StyleSheet.absoluteFill} {...a11yHidden()}>
+      <View pointerEvents="none" style={[styles.layer, { left: pose.spot.x * s, top: pose.spot.y * s, width: 0, height: 0 }]}>
+        <Animated.Image
+          testID="card-gloss-spot"
+          source={GLOSS_SPOT_ART()}
+          resizeMode="stretch"
+          style={[styles.layer, { left: -radius, top: -radius, width: 2 * radius, height: 2 * radius, opacity: pose.spotAlpha }, playing(shared.spot, delay) as ImageStyle]}
+        />
+      </View>
+      {pose.streak.map((end, i) => (
+        <Animated.View
+          key={i}
+          testID="card-gloss-streak"
+          pointerEvents="none"
+          style={[
+            styles.layer,
+            { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH, opacity: end.opacity, transform: rotated(end, s) },
+            playing(pose.played?.streak[i], delay),
+          ]}
+        >
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: fadeAt[i] }, playing(fades[i], delay)]}>
+            <LinearGradient colors={STREAK} style={StyleSheet.absoluteFill} />
+          </Animated.View>
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
+
 export const FOIL_ART: Record<CardBackId, () => number> = {
   smeraldo:   () => require("../../assets/images/cards/foil_smeraldo.webp") as number,
   oro:        () => require("../../assets/images/cards/foil_oro.webp") as number,
@@ -80,10 +149,48 @@ export const FOIL_ART: Record<CardBackId, () => number> = {
 export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }) {
   const table = useCardTable();
   if (!table || !props.rectKey || !props.rects) return null;
+  if (table.tracks && props.placed) {
+    return (
+      <FoilMask art={FOIL_ART[backKey]()}>
+        <TrackedGlint tracks={table.tracks} placed={props.placed} s={table.felt.s} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />
+      </FoilMask>
+    );
+  }
   return (
     <FoilMask art={FOIL_ART[backKey]()}>
       <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />
     </FoilMask>
+  );
+}
+
+function TrackedGlint(props: TrackedProps & { color: string }) {
+  const { s, width, height, color } = props;
+  const { shared, pose, delay } = useBackTrack(props);
+  const diag = Math.hypot(width, height);
+  const bandW = 2 * diag;
+  const bandH = CardGloss.foil.width * diag;
+  const fades = [shared.fadeA, shared.fadeB];
+  const fadeAt = [shared.at.fadeA, shared.at.fadeB];
+  return (
+    <>
+      <Animated.View testID="card-foil-ink" pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: pose.foilEdge }, playing(shared.ink, delay)]} />
+      {pose.foil.map((end, i) => (
+        <Animated.View
+          key={i}
+          testID="card-foil-band"
+          pointerEvents="none"
+          style={[
+            styles.layer,
+            { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH, opacity: end.opacity, transform: rotated(end, s) },
+            playing(pose.played?.foil[i], delay),
+          ]}
+        >
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: fadeAt[i] }, playing(fades[i], delay)]}>
+            <LinearGradient colors={[withAlpha(color, 0), color, withAlpha(color, 0)]} style={StyleSheet.absoluteFill} />
+          </Animated.View>
+        </Animated.View>
+      ))}
+    </>
   );
 }
 
