@@ -13,11 +13,13 @@ export interface WindowBudget {
   styleWrites: number;
   /** Of `styleWrites`, those inside a card's view. */
   cardStyles?: number;
+  /** Of `cardStyles`, the least a window that played must show: fewer and nothing moved. */
+  cardStylesFloor?: number;
   /** Frames, of the window's, the felt's canvas drew in. */
   feltFrames?: number;
 }
 
 export const BUDGETS = {
   rest: { feltFrames: 89, glDrawsPerFrame: 5.1, canvas2dDraws: 1580, offscreenDraws: 0, readPixels: 0, styleWrites: 0 },
-  turn: { glDrawsPerFrame: 35.5, canvas2dDraws: 11850, offscreenDraws: 4, readPixels: 0, styleWrites: 17700, cardStyles: 16800 },
+  turn: { glDrawsPerFrame: 35.5, canvas2dDraws: 11850, offscreenDraws: 4, readPixels: 0, styleWrites: 17700, cardStyles: 16800, cardStylesFloor: 400 },
 } as const satisfies Record<string, WindowBudget>;
