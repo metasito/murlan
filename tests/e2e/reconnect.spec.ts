@@ -152,7 +152,7 @@ test("online — a dropped connection says so, and the table comes back", async 
     pressed = true;
     // The "back" pill holds `Reconnect.back` (1.3 s) and then the chip returns to its lit gold: a read behind the poll that
     // finds the text, on a slow runner, lands after it. Time held, the pill holds until the read is done.
-    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1));
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
     await retry.click();
     await expect.poll(() => held.length, "Riprova opens a socket of its own").toBe(2);
     await expect(page.getByTestId("notice-turn").getByText(BACK)).toBeVisible({ timeout: 30_000 });
