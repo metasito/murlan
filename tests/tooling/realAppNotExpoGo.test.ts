@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { parseAllDocuments } from "yaml";
 import { trackedFiles } from "../helpers/trackedFiles.ts";
-import { allSteps, loadWorkflow } from "../helpers/workflow.ts";
+import { allSteps, loadAction, loadWorkflow } from "../helpers/workflow.ts";
 import { emulatorStep } from "../helpers/androidAction.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -76,64 +76,57 @@ function landscapeBlock(rel: string): string {
 
 const DEVICE_JOBS = ["ios.yml", "maestro.yml"];
 
+const INSTALLER = "tools/ci/install-maestro.sh";
+
 /**
- * The one workflow step whose `run:` reaches the Maestro installer.
- *
- * Scoped to the step rather than the file, because an environment variable
- * does not survive one: an `export` in a step of its own and the `curl` in the
- * next reads as "the pin comes first" against the whole file, and installs
- * latest on the runner.
+ * The one place that reaches the Maestro installer: a script, so the iOS and Android jobs and the
+ * diagnostics action cannot pin different versions. Whole-line comments are removed, so a pin
+ * left in a comment is not one.
  */
-function installStep(file: string): string {
-  const runs = allSteps(loadWorkflow(file)).map((s) => (s.run ?? "").replace(/^[ \t]*#.*$/gm, ""));
-  const found = runs.filter((run) => run.includes("get.maestro.mobile.dev"));
-  assert.equal(found.length, 1, `${file} should install Maestro from exactly one step`);
-  return found[0];
+function installScript(): string {
+  const text = code(INSTALLER);
+  assert.equal(text.match(/get\.maestro\.mobile\.dev/g)?.length, 1, `${INSTALLER} should fetch the installer exactly once`);
+  return text;
 }
 
-/** The version each device job asks for, or undefined where it asks for none. */
-const pinnedVersion = (rel: string) =>
-  installStep(rel).match(/export MAESTRO_VERSION=(\d+\.\d+\.\d+)/)?.[1];
+/** Whether a step of the workflow, or of the action, runs the installer script. */
+const runsInstaller = (rel: string) =>
+  rel.endsWith(".yml") && rel.includes("/actions/")
+    ? (loadAction(rel.split("/")[2]).steps ?? []).some((s) => s.run?.includes(INSTALLER))
+    : allSteps(loadWorkflow(path.basename(rel))).some((s) => s.run?.includes(INSTALLER));
+
+const pinnedVersion = () => installScript().match(/export MAESTRO_VERSION=(\d+\.\d+\.\d+)/)?.[1];
 
 describe("both device jobs pin the tool that reads the screen", () => {
   // Maestro decides what "the app rendered" means, and installed unpinned it
   // was the one thing in either job that could change between two runs of the
   // same commit (#701).
-  for (const rel of DEVICE_JOBS) {
-    test(`${rel} asks for a version, before it fetches`, () => {
-      const step = installStep(rel);
-      const pin = step.search(/export MAESTRO_VERSION=\d+\.\d+\.\d+/);
-      assert.notEqual(pin, -1, `${rel} takes whatever version is current`);
-      // The install script reads the variable from its own environment, so a
-      // pin written below the pipe sets nothing and installs latest in silence.
-      assert.ok(
-        pin < step.indexOf("get.maestro.mobile.dev"),
-        `${rel} names the version after fetching, which pins nothing`,
-      );
-    });
-
-    test(`${rel} reads the pin back off the binary that arrived`, () => {
-      // Asking is not getting. A tag that does not resolve leaves the
-      // installer exiting 0 with nothing installed, so the check is what turns
-      // a typo - or a retagged release - into a named failure rather than a
-      // run driven by whatever is on the box.
-      assert.match(
-        installStep(rel),
-        /--version[^\n]*grep -q "\$MAESTRO_VERSION"/,
-        `${rel} never checks which Maestro it actually installed`,
-      );
+  for (const rel of [...DEVICE_JOBS.map((j) => `.github/workflows/${j}`), ".github/actions/diagnostics-ios/action.yml"]) {
+    test(`${rel} installs it through the one pinned script`, () => {
+      assert.ok(runsInstaller(rel), `${rel} does not run ${INSTALLER}`);
+      assert.doesNotMatch(read(rel), /get\.maestro\.mobile\.dev|MAESTRO_VERSION=/, `${rel} carries an install of its own`);
     });
   }
 
-  test("both jobs pin the same version", () => {
-    // Asserted present first: two jobs that have both lost the pin compare
-    // undefined to undefined, and this passes while nothing is pinned at all.
-    for (const rel of DEVICE_JOBS) assert.ok(pinnedVersion(rel), `${rel} pins no version`);
-    assert.equal(
-      pinnedVersion(DEVICE_JOBS[0]),
-      pinnedVersion(DEVICE_JOBS[1]),
-      "the two loops would be reading the screen with different tools",
-    );
+  test("the script asks for a version, before it fetches", () => {
+    const text = installScript();
+    const pin = text.search(/export MAESTRO_VERSION=\d+\.\d+\.\d+/);
+    assert.notEqual(pin, -1, `${INSTALLER} takes whatever version is current`);
+    // The install script reads the variable from its own environment, so a
+    // pin written below the pipe sets nothing and installs latest in silence.
+    assert.ok(pin < text.indexOf("get.maestro.mobile.dev"), `${INSTALLER} names the version after fetching, which pins nothing`);
+  });
+
+  test("the script reads the pin back off the binary that arrived", () => {
+    // Asking is not getting. A tag that does not resolve leaves the
+    // installer exiting 0 with nothing installed, so the check is what turns
+    // a typo - or a retagged release - into a named failure rather than a
+    // run driven by whatever is on the box.
+    assert.match(installScript(), /--version[^\n]*grep -q "\$MAESTRO_VERSION"/, `${INSTALLER} never checks which Maestro it actually installed`);
+  });
+
+  test("the pin is present", () => {
+    assert.ok(pinnedVersion(), `${INSTALLER} pins no version`);
   });
 
   test("the machine a developer reproduces on runs the same version", () => {
@@ -141,7 +134,7 @@ describe("both device jobs pin the tool that reads the screen", () => {
     // mean the same thing". A CI pin that local does not share moves the drift
     // rather than removing it.
     assert.ok(
-      read("docs/agents/device-runs.md").includes(`export MAESTRO_VERSION=${pinnedVersion(DEVICE_JOBS[0])}`),
+      read("docs/agents/device-runs.md").includes(`export MAESTRO_VERSION=${pinnedVersion()}`),
       "docs/agents/device-runs.md installs a different Maestro than CI drives",
     );
   });

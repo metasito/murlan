@@ -53,7 +53,5 @@ runs:
     - name: Install Maestro
       shell: bash -e {0}
       run: |
-        export MAESTRO_VERSION=2.10.0
-        curl -Ls "https://get.maestro.mobile.dev" | bash
+        bash tools/ci/install-maestro.sh
         echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-        "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
