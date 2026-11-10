@@ -160,8 +160,10 @@ export function procFor({
     }
   }
 
-  /** "Already gone" is success; anything that leaves the tree in doubt throws. False only when a halt stopped it first. */
-  /** With `identity`, the root is ended only while it is still the process identityOf named so. */
+  /**
+   * "Already gone" is success; anything that leaves the tree in doubt throws. False only when a halt stopped it first.
+   * With `identity`, the root is ended only while it is still the process identityOf named so.
+   */
   function killTree(pid, /** @type {{ identity?: string, halted?: () => boolean }} */ { identity, halted = () => false } = {}) {
     if (!pid) return true;
     if (win) return taskkill(pid, true), true;
@@ -201,7 +203,7 @@ export function procFor({
 
   /** Ends the tree of `pid` only while it is still the process `identity` names. True when it did. */
   function endTreeIf(pid, identity, /** @type {() => boolean} */ halted = () => false) {
-    if (identity == null || halted() || identityOf(pid) !== identity) return false;
+    if (identity == null || identityOf(pid) !== identity) return false;
     return killTree(pid, { identity, halted });
   }
 

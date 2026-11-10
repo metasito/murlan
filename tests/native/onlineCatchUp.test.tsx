@@ -82,6 +82,26 @@ describe('the online table under a reconnect notice', () => {
     for (const [props] of mockTableProps.mock.calls) expect((props as { catchUp?: boolean }).catchUp ?? false).toBe(false);
     await view.unmount();
   });
+
+  it('drops the away mark from a seat whose player then leaves', async () => {
+    const view = await mount(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <OnlineGameScreen />
+      </SafeAreaProvider>
+    );
+    await view.socket().deliver('game:player_disconnected', {
+      userId: 'carl',
+      username: 'Carl',
+      seatIndex: 1,
+      code: 'NEWER_SERVER_NOTICE',
+      message: 'Carl disconnected',
+      params: { seconds: 30 },
+    });
+    expect(mockTableProps.mock.calls.at(-1)![0]).toMatchObject({ disconnectedSeats: { 1: { seconds: 30 } } });
+    await view.socket().deliver('game:player_left', { userId: 'carl', username: 'Carl', seatIndex: 1 });
+    expect((mockTableProps.mock.calls.at(-1)![0] as { disconnectedSeats: object }).disconnectedSeats).toEqual({});
+    await view.unmount();
+  });
 });
 
 /** The socket down for as long as the table waits before it stops waiting. */
