@@ -94,7 +94,7 @@ const KNOWN: readonly Known[] = [
   {
     defect: "a badge lifts its seat's name a badge row higher, the top seat's into the turn chip",
     ticket: "#1988 item 109",
-    breaks: { "hudTurn overlaps nameTop": 108 },
+    breaks: { "hudTurn overlaps nameTop": 144 },
     where: [on("[^(]+", ANY, ANY, "badged ")],
   },
 ];

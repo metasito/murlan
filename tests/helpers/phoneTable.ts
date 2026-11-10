@@ -6,11 +6,12 @@ import { tableLayout, type TableLayout } from "../../components/tableLayout.ts";
 
 export const NO_INSETS: EdgeInsets = { top: 0, bottom: 0, left: 0, right: 0 };
 
-/** Plan 3 L9: none, a landscape iPhone with its Dynamic Island and home bar, and the island alone. */
+/** Plan 3 L9: none, a landscape iPhone with its Dynamic Island and home bar, and the island alone; then a landscape Android with a status bar over a side cutout. */
 export const INSETS: Record<string, EdgeInsets> = {
   "0/0": NO_INSETS,
   "62/21/62": { top: 0, left: 62, bottom: 21, right: 62 },
   "62/0": { top: 0, left: 62, bottom: 0, right: 0 },
+  "24/48/0/48": { top: 24, left: 48, bottom: 0, right: 48 },
 };
 
 export function phoneTable(width: number, height: number, insets: EdgeInsets = NO_INSETS): TableLayout {
