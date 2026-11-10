@@ -43,7 +43,7 @@ function after(s: Lamp, frames: number): Lamp {
 /** The spot as the compositor draws it: its pose at the centre of the sway and the slide, a card turned 0 so the slide is in the card's own axes. */
 function slid(track: EndTrack, s: Lamp, sec: number) {
   const pose = spotPose(endLamp(s, 0), BACK.placed, BACK.box);
-  const slide = spotSlide(track.sway, S, 0);
+  const slide = spotSlide(track.sway, { a: spotPose(endLamp(s, -SWAY), BACK.placed, BACK.box), b: spotPose(endLamp(s, SWAY), BACK.placed, BACK.box), centre: pose }, S, 0);
   const dx = valueAt(slide as Frames, track.duration, sec, (f) => (f.transform as Record<string, number>[]).find((m) => "translateX" in m)!.translateX!);
   return { x: pose.x + dx / S, y: pose.y, alpha: pose.alpha };
 }

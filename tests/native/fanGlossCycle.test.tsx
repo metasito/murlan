@@ -13,6 +13,7 @@ import { restingLamp, MAX_DT } from '@/components/table/lampRig';
 import { bootFeedback } from './helpers/feedback';
 
 beforeEach(async () => {
+  css.none = false;
   (globalThis as { document?: unknown }).document = { hidden: false, addEventListener: () => {}, removeEventListener: () => {} };
   jest.useFakeTimers();
   await bootFeedback();
@@ -28,7 +29,7 @@ const felt = { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at };
 const drawn = cards.map((c) => ({ cx: 437 + c.x, cy: 60 + c.y, w: 24, h: 34, rot: c.rot, back: true, lift: 0, glow: 0 }));
 
 /** The animation's clock as CSS keeps it: `playing` seconds into its pass, moved only by the wall and by `steerAmbient`. */
-const css = { playing: 0, steered: [] as number[], started: 0 };
+const css = { playing: 0, steered: [] as number[], started: 0, none: false };
 jest.mock('@/lib/motion', () => {
   const actual = jest.requireActual('@/lib/motion') as typeof import('@/lib/motion');
   return {
@@ -37,7 +38,7 @@ jest.mock('@/lib/motion', () => {
       css.started += 1;
       return actual.ambient(spec);
     },
-    ambientPlace: () => css.playing,
+    ambientPlace: () => (css.none ? null : css.playing),
     steerAmbient: (_: unknown, to: { place?: number; paused?: boolean }) => {
       if (to.place !== undefined) {
         css.playing = to.place;
@@ -62,7 +63,7 @@ describe('the fan\'s gloss against the rig', () => {
     css.playing = 0;
     css.steered = [];
     const lamp = rested();
-    const tracks = createGlossTracks(lamp, light);
+    const tracks = createGlossTracks(lamp, light, lamp.get());
     await render(<FanGloss tracks={tracks} {...props} onCover={() => {}} />);
     const track = endTrack(lamp.get().ph, lamp.get().t);
     await act(async () => void jest.advanceTimersByTime(100));
@@ -84,7 +85,7 @@ describe('the fan\'s gloss against the rig', () => {
   it('bakes anew before the track wraps, and at the settle', async () => {
     css.playing = 0;
     const lamp = rested();
-    const tracks = createGlossTracks(lamp, light);
+    const tracks = createGlossTracks(lamp, light, lamp.get());
     await render(<FanGloss tracks={tracks} {...props} onCover={() => {}} />);
     await act(async () => void jest.advanceTimersByTime(100));
     const before = css.started;
@@ -95,9 +96,24 @@ describe('the fan\'s gloss against the rig', () => {
     expect(css.steered.at(-1)).toBeCloseTo(0, 6);
   });
 
+  it('gives up a track that never starts, and the backs draw their own, rather than rebaking at every check', async () => {
+    css.none = true;
+    const lamp = rested();
+    const tracks = createGlossTracks(lamp, light, lamp.get());
+    const covered = jest.fn();
+    await render(<FanGloss tracks={tracks} {...props} onCover={covered} />);
+    await act(async () => void jest.advanceTimersByTime(1500));
+    css.started = 0;
+    await act(async () => void jest.advanceTimersByTime(3000));
+    css.none = false;
+    expect(css.started).toBe(0);
+    expect(covered).toHaveBeenLastCalledWith(false);
+    expect(root().opacity).toBe(0);
+  });
+
   it('stays drawn through a glide, transparent, and is covered only while the lamp rests', async () => {
     const lamp = rested();
-    const tracks = createGlossTracks(lamp, light);
+    const tracks = createGlossTracks(lamp, light, lamp.get());
     const covered = jest.fn();
     await render(<FanGloss tracks={tracks} {...props} onCover={covered} />);
     expect(covered).toHaveBeenLastCalledWith(true);

@@ -7,6 +7,7 @@
 
 import type { CSSAnimationKeyframes } from "react-native-reanimated";
 import { bakeSway, TRACK_SECONDS, TRACK_STEP, trackAt } from "../../lib/swayTable.ts";
+import type { GlossLight } from "./cardGloss.ts";
 import { FLARE_SEEN } from "./feltShader.ts";
 import { lightX, lightY, SWAY, SWAY_KICKED, type Lamp } from "./lampRig.ts";
 
@@ -114,6 +115,16 @@ export interface EndTrack {
   t: number;
 }
 
+/** Where the light of a lamp at rest is, as a gloss reads it: the centre of its sway. */
+export function restLight(s: Lamp): GlossLight {
+  "worklet";
+  const e = endLamp(s, 0);
+  return { lx: e.lx, ly: e.ly, level: e.level, r: e.r, t: s.t };
+}
+
+/** End B's weight at a sway of `v`, -1 to 1: end A's is the rest. */
+export const endWeight = (v: number) => 0.5 + 0.5 * v;
+
 /** A style per stop of a baked sway, keyed as a CSS animation's keyframes: `of` takes the sway, -1 to 1. */
 export function swayKeyframes(sway: readonly number[], of: (v: number) => object): CSSAnimationKeyframes {
   const last = sway.length - 1;
@@ -127,7 +138,7 @@ export function swayKeyframes(sway: readonly number[], of: (v: number) => object
 /** End B's opacity from the rig's `ph` and `t`, sampled `TRACK_STEP` apart for `TRACK_SECONDS`. */
 export function endTrack(ph: number, t: number): EndTrack {
   const sway = bakeSway({ ph, t }, TRACK_SECONDS);
-  return { sway, keyframes: swayKeyframes(sway, (v) => ({ opacity: 0.5 + 0.5 * v })), duration: (sway.length - 1) * TRACK_STEP * 1000, t };
+  return { sway, keyframes: swayKeyframes(sway, (v) => ({ opacity: endWeight(v) })), duration: (sway.length - 1) * TRACK_STEP * 1000, t };
 }
 
 /** Seconds before a track ends that the next is baked: an animation loops back to its start. */

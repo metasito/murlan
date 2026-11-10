@@ -8,7 +8,7 @@ import { Platform } from "react-native";
 import { flareKindFor } from "@/components/impact";
 import { designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
 import { createGlossTracks, type GlossTracks } from "./glossTrackStore";
-import { endLamp, isRested } from "./restEnds";
+import { isRested, restLight } from "./restEnds";
 import { glossLightOf, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
@@ -87,8 +87,8 @@ export function useLampRig({
   const stillLight = useSharedValue<GlossLight>(glossLightOf(resting));
   const shadeLevel = useSharedValue(resting.level);
   const [px, py, reach] = pool;
-  const rest = useSharedValue<GlossLight>({ ...glossLightOf(resting), lx: endLamp(resting, 0).lx });
-  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(lamp, rest) : undefined));
+  const rest = useSharedValue<GlossLight>(restLight(resting));
+  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(lamp, rest, resting) : undefined));
 
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.

@@ -10,7 +10,7 @@ import { bandBox, cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLig
 import { scopeOf, type CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
 import { levelShade } from "./rail";
-import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
+import { useGlossLight, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
 
 export const GLOSS_SPOT_ART = () => require("../../assets/images/cards/gloss_spot.webp") as number;
 
@@ -36,7 +36,7 @@ export function LampGloss({ rectKey, rects, width, height, tracked }: Props) {
 
 function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTable; rectKey: string; rects: OwnedRects }) {
   const { felt } = table;
-  const light = glossLightFor(table, rectKey);
+  const light = useGlossLight(table, rectKey);
   const s = felt.s;
   const radius = CardGloss.spot.radius * s;
   const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.streak.width);
@@ -91,7 +91,8 @@ export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }
 /** `at`: where the lamp rests, for a back whose gloss the fan draws as one: its glint then stands still. */
 function Glint({ table, rectKey, rects, width, height, color, at }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string; at?: SharedValue<GlossLight> }) {
   const { felt } = table;
-  const light = at ?? glossLightFor(table, rectKey);
+  const lit = useGlossLight(table, rectKey);
+  const light = at ?? lit;
   const s = felt.s;
   const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.foil.width);
 

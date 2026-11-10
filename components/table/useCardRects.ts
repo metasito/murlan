@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { makeMutable, startMapper, stopMapper, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { OpponentSide } from "@/components/seatLayout";
 import { E2E_FAST } from "@/lib/e2eConfig";
@@ -42,9 +42,13 @@ export function useCardTable(): CardTable | null {
   return useContext(CardTableContext);
 }
 
+const NEVER_SUBSCRIBED = () => () => {};
+const NEVER_LIVE = () => false;
+
 /** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway; with `tracks`, a back drawn live through a glide, a kick or a dim follows it too, as the mockup's. */
-export function glossLightFor(table: CardTable, rectKey: string): SharedValue<GlossLight> {
-  return scopeOf(rectKey) === "fan" && !table.tracks?.live() ? table.stillLight : table.glossLight;
+export function useGlossLight(table: CardTable, rectKey: string): SharedValue<GlossLight> {
+  const live = useSyncExternalStore(table.tracks?.subscribe ?? NEVER_SUBSCRIBED, table.tracks?.live ?? NEVER_LIVE);
+  return scopeOf(rectKey) === "fan" && !live ? table.stillLight : table.glossLight;
 }
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;

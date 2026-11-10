@@ -5,8 +5,7 @@
 
 import type { CSSAnimationKeyframes } from "react-native-reanimated";
 import { cardGloss, glossSpot } from "./cardGloss.ts";
-import { SWAY } from "./lampRig.ts";
-import { swayKeyframes, type Shown } from "./restEnds.ts";
+import { endWeight, swayKeyframes, type Shown } from "./restEnds.ts";
 
 /** The place and size of a back as the table lays it out: its centre in design points, its own box and turn. */
 export interface Placed {
@@ -38,20 +37,33 @@ export function streakPose(ends: readonly [Shown, Shown], placed: Placed, box: B
 }
 
 /** Where the spot stands with the lamp at the centre of its sway, in a back's own axes from its top-left, in design points, and its alpha. */
-export function spotPose(centre: Shown, placed: Placed, box: BackBox): { x: number; y: number; alpha: number } {
+export interface Spot {
+  x: number;
+  y: number;
+  alpha: number;
+}
+
+export function spotPose(centre: Shown, placed: Placed, box: BackBox): Spot {
   const g = glossSpot(placed.x, placed.y, box.w, box.h, centre);
   return { x: g.spot.x, y: g.spot.y, alpha: g.spotAlpha };
 }
 
 /** End A's opacity, the fade that end B's (`endTrack`) leaves: they sum to one. */
-export const fadeA = (sway: readonly number[]): CSSAnimationKeyframes => swayKeyframes(sway, (v) => ({ opacity: 0.5 - 0.5 * v }));
+export const fadeA = (sway: readonly number[]): CSSAnimationKeyframes => swayKeyframes(sway, (v) => ({ opacity: 1 - endWeight(v) }));
 
 /**
- * The spot's slide off the centre of the sway, in a back's own axes turned by `rot`: the mockup's one spot moves with the
- * lamp, where a crossfade of two spots 40 points apart would dim its core to under half at mid-sway. `s` the felt's
+ * The spot's slide off where it stands with the lamp at the centre of its sway, in a back's own axes turned by `rot`: the
+ * mockup's one spot moves with the lamp, where a crossfade of two spots 40 points apart would dim its core to under half at
+ * mid-sway. It goes from the spot at end A to the spot at end B as the lamp does, by `endWeight`. `s` the felt's
  * points-to-pixels scale.
  */
-export function spotSlide(sway: readonly number[], s: number, rot: number): CSSAnimationKeyframes {
+export function spotSlide(sway: readonly number[], spots: { a: Spot; b: Spot; centre: Spot }, s: number, rot: number): CSSAnimationKeyframes {
   const t = (rot * Math.PI) / 180;
-  return swayKeyframes(sway, (v) => ({ transform: [{ translateX: v * SWAY * s * Math.cos(t) }, { translateY: v * SWAY * s * Math.sin(t) }] }));
+  const { a, b, centre } = spots;
+  return swayKeyframes(sway, (v) => {
+    const w = endWeight(v);
+    const dx = (a.x + w * (b.x - a.x) - centre.x) * s;
+    const dy = (a.y + w * (b.y - a.y) - centre.y) * s;
+    return { transform: [{ translateX: dx * Math.cos(t) - dy * Math.sin(t) }, { translateY: dx * Math.sin(t) + dy * Math.cos(t) }] };
+  });
 }

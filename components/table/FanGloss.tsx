@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { StyleSheet, View, type ViewStyle } from "react-native";
 import Animated from "react-native-reanimated";
 import { SvgXml } from "react-native-svg";
@@ -14,7 +14,7 @@ import { fadeA, spotPose, spotSlide, streakPose, type Placed, type StreakEnd } f
 import { SPOT_STOPS, STREAK_STOPS } from "./glossStops";
 import type { GlossTracks } from "./glossTrackStore";
 import { SWAY } from "./lampRig";
-import { DRIFT_CHECK_MS, endLamp, endTrack, placeOf, steering, type Shown } from "./restEnds";
+import { DRIFT_CHECK_MS, endLamp, endTrack, endWeight, placeOf, steering, type Shown } from "./restEnds";
 
 interface Props {
   tracks: GlossTracks;
@@ -46,51 +46,55 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
   const { w: boxW, h: boxH } = box;
   const w = CARD_BACK_W(backScale);
   const h = CARD_BACK_H(backScale);
-  const epoch = useSyncExternalStore(tracks.subscribe, tracks.get);
+  const taken = useSyncExternalStore(tracks.subscribe, tracks.get);
   const live = useSyncExternalStore(tracks.subscribe, tracks.live);
   const reduceMotion = usePrefersReducedMotion();
-  // Baked where the lamp rests, as the felt's end B is: the settle moves `epoch`, and so does a track that has run out.
-  const baked = useMemo(() => {
-    const s = tracks.lamp.get();
-    return { epoch, track: endTrack(s.ph, s.t), ends: [endLamp(s, -SWAY), endLamp(s, SWAY)] as const, centre: endLamp(s, 0) };
-  }, [tracks, epoch]);
+  const [gaveUp, setGaveUp] = useState(false);
+  // Baked where the lamp rests, as the felt's end B is: from the lamp as the store took it at the settle, or when a track ran out.
+  const baked = useMemo(() => ({ track: endTrack(taken.ph, taken.t), ends: [endLamp(taken, -SWAY), endLamp(taken, SWAY)] as const, centre: endLamp(taken, 0) }), [taken]);
   const { track } = baked;
   const shapes = useMemo(() => silhouettes(cards, boxW, w, h), [cards, boxW, w, h]);
   const streaks = useMemo(() => placed.map((p) => streakPose(baked.ends, p, { w: w / s, h: h / s })), [baked, placed, w, h, s]);
   const pictures = useMemo(() => [0, 1].map((end) => streakXml(end, shapes, cards, streaks, s, w, h, boxW, boxH)), [shapes, cards, streaks, s, w, h, boxW, boxH]);
-  const spot = useMemo(() => spotOf(baked.centre, placed, cards, shapes, s, w, h), [baked, placed, cards, shapes, s, w, h]);
+  const spot = useMemo(() => spotOf(baked, placed, cards, shapes, s, w, h), [baked, placed, cards, shapes, s, w, h]);
   const motion = useMemo(
-    () => (reduceMotion ? [] : [fadeA(track.sway), track.keyframes, spotSlide(track.sway, s, spot.rot)].map((keyframes) => ambient({ keyframes, duration: track.duration }))),
-    [reduceMotion, track, s, spot.rot]
+    () => (reduceMotion ? [] : [fadeA(track.sway), track.keyframes, spotSlide(track.sway, spot.slide, s, spot.rot)].map((keyframes) => ambient({ keyframes, duration: track.duration }))),
+    [reduceMotion, track, s, spot]
   );
   // Motionless, the lamp is at the centre: the ends cross half and half and the spot stands.
-  const lean = reduceMotion ? 0.5 : 0.5 + 0.5 * track.sway[0]!;
+  const lean = reduceMotion ? endWeight(0) : endWeight(track.sway[0]!);
   const fadeANode = useRef<NodeRef>(null);
   const fadeBNode = useRef<NodeRef>(null);
   const spotNode = useRef<NodeRef>(null);
 
   useLayoutEffect(() => {
-    onCover(!live);
+    onCover(!live && !gaveUp);
     return () => onCover(false);
-  }, [live, onCover]);
+  }, [live, gaveUp, onCover]);
 
   useLayoutEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion || gaveUp) return;
     const elements = () => [fadeANode, fadeBNode, spotNode].map((n) => n.current as unknown as Element | null).filter((e): e is Element => !!e);
     const steer = (to: { place: number } | { paused: boolean }) => elements().forEach((e) => steerAmbient(e, to));
     const place = () => ({ place: placeOf(track, tracks.lamp.get().t) });
     // The animation starts when the commit does, not when the track was baked: it is moved to where the rig is the frame it exists.
+    let started = false;
     let cancel = () => {};
     const start = (left: number) => {
       const first = elements()[0];
-      if (first && ambientPlace(first) !== null) return steer(place());
+      if (first && ambientPlace(first) !== null) {
+        started = true;
+        return steer(place());
+      }
+      // A track that never starts is given up, as the felt's end B is: the backs draw their own, rather than rebaking every check for ever.
       if (left > 1) cancel = afterFrames(1, () => start(left - 1));
+      else setGaveUp(true);
     };
     cancel = afterFrames(2, () => start(START_WAIT_FRAMES));
     // The rig steps at most `MAX_DT` a frame, so a page that stalls runs it behind the clock the animation keeps: hold them together.
     const check = setInterval(() => {
       const first = elements()[0];
-      if (!first || tracks.live()) return;
+      if (!started || !first || tracks.live()) return;
       const next = steering(track, ambientPlace(first), tracks.lamp.get().t);
       if (next.kind === "rebake") tracks.rebake();
       else if (next.kind === "steer") steer({ place: next.place });
@@ -109,11 +113,11 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
       clearInterval(check);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [reduceMotion, track, tracks, fadeANode, fadeBNode, spotNode]);
+  }, [reduceMotion, gaveUp, track, tracks, fadeANode, fadeBNode, spotNode]);
 
   const radius = CardGloss.spot.radius * s;
   return (
-    <View testID="card-gloss" pointerEvents="none" style={[StyleSheet.absoluteFill, live && styles.live]} {...a11yHidden()}>
+    <View testID="card-gloss" pointerEvents="none" style={[StyleSheet.absoluteFill, (live || gaveUp) && styles.live]} {...a11yHidden()}>
       {pictures.map((xml, end) => (
         <Animated.View key={end} ref={end ? fadeBNode : fadeANode} pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: end ? lean : 1 - lean }, motion[end]]}>
           <View pointerEvents="none" style={tilt}>
@@ -169,14 +173,21 @@ const rect = (r: Shape["rect"], fill: string) => `<rect x='${r.x}' y='${r.y}' wi
 const stops = (list: typeof SPOT_STOPS | typeof STREAK_STOPS) => list.map((s) => `<stop offset='${s.at}' stop-color='${s.color}' stop-opacity='${s.alpha}'/>`).join("");
 
 /** The back nearest the lamp where it rests: the spot's slide is posed in its frame, which is the frame the mockup lights it in. */
-function spotOf(centre: Shown, placed: readonly Placed[], cards: readonly ArcCard[], shapes: Shape[], s: number, w: number, h: number) {
+function spotOf({ ends, centre }: { ends: readonly [Shown, Shown]; centre: Shown }, placed: readonly Placed[], cards: readonly ArcCard[], shapes: Shape[], s: number, w: number, h: number) {
   const near = placed.reduce((best, p, i) => (Math.hypot(p.x - centre.lx, p.y - centre.ly) < Math.hypot(placed[best]!.x - centre.lx, placed[best]!.y - centre.ly) ? i : best), 0);
-  const pose = spotPose(centre, placed[near]!, { w: w / s, h: h / s });
+  const box = { w: w / s, h: h / s };
+  const pose = spotPose(centre, placed[near]!, box);
   const rot = cards[near]!.rot;
   const t = (rot * Math.PI) / 180;
   const dx = pose.x * s - w / 2;
   const dy = pose.y * s - h / 2;
-  return { x: shapes[near]!.cx + dx * Math.cos(t) - dy * Math.sin(t), y: shapes[near]!.cy + dx * Math.sin(t) + dy * Math.cos(t), alpha: pose.alpha, rot };
+  return {
+    x: shapes[near]!.cx + dx * Math.cos(t) - dy * Math.sin(t),
+    y: shapes[near]!.cy + dx * Math.sin(t) + dy * Math.cos(t),
+    alpha: pose.alpha,
+    rot,
+    slide: { a: spotPose(ends[0], placed[near]!, box), b: spotPose(ends[1], placed[near]!, box), centre: pose },
+  };
 }
 
 const blobXml = () => `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-1 -1 2 2'><defs><radialGradient id='s' cx='0' cy='0' r='1' gradientUnits='userSpaceOnUse'>${stops(SPOT_STOPS)}</radialGradient></defs><circle r='1' fill='url(#s)'/></svg>`;
