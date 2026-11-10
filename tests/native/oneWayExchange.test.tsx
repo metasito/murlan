@@ -1,8 +1,8 @@
-// tests/native/oneWayExchange.test.tsx — a one-way exchange is told through the table's two pills (#1833).
+// tests/native/oneWayExchange.test.tsx — a one-way exchange is told through the label under the pile and the turn pill (#1833).
 //
 // The winner holds nothing from 3 to 10 to give back, so the deal settled the exchange: only the
-// receive plays, and the second step is said by the last-played pill and the turn pill, which carry
-// the two-way exchange's words too. Nothing is drawn on the felt for either.
+// receive plays, and the second step is said by the pile's label and the turn pill, which carry
+// the two-way exchange's words too.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
@@ -84,7 +84,7 @@ const step = async (ms: number) => {
 };
 const words = (testID: string, line: string) =>
   within(screen.getByTestId(testID, { includeHiddenElements: true })).queryAllByText(line, { includeHiddenElements: true }).length;
-const comboPill = (line: string) => words('notice-hudCombo', line);
+const pileNote = (line: string) => (screen.queryByTestId('notice-pileNote', { includeHiddenElements: true }) ? words('notice-pileNote', line) : 0);
 const turnPill = (line: string) => words('game-hud-stack', line);
 
 describe('a one-way exchange on the table', () => {
@@ -95,12 +95,11 @@ describe('a one-way exchange on the table', () => {
     jest.useRealTimers();
   });
 
-  it('draws the receive, with the card said on the last-played pill and nothing tagged on the pile', async () => {
+  it('draws the receive, with the card said on the label under the pile', async () => {
     const r = await render(table(oneWay(), { viewerSeat: 2 }));
     await step(DEAL_END + Motion.exchange.beat + LEG.rest + 96);
-    expect(comboPill(t('exchange.pileGives', { from: LOSER, card: '2♠', to: WINNER }))).toBeGreaterThan(0);
-    expect(screen.queryByTestId('exchange-pile-label')).toBeNull();
-    expect(screen.queryByTestId('notice-pileLabel')).toBeNull();
+    expect(pileNote(t('exchange.pileGives', { from: LOSER, card: '2♠', to: WINNER }))).toBeGreaterThan(0);
+    expect(screen.queryByTestId('notice-hudCombo', { includeHiddenElements: true })).toBeNull();
     expect(turnPill(t('exchange.chipTitle'))).toBeGreaterThan(0);
     await r.unmount();
   });
@@ -109,14 +108,14 @@ describe('a one-way exchange on the table', () => {
     ['the winner', 0, t('exchange.chipOneWayYou')],
     ['the loser', 1, t('exchange.chipOneWay', { name: WINNER })],
     ['a seat outside the exchange', 2, t('exchange.chipOneWay', { name: WINNER })],
-  ])('says to %s that the winner has nothing to give back, on both pills, once the receive is read', async (_who, viewerSeat, chip) => {
+  ])('says to %s that the winner has nothing to give back, on the label and the chip, once the receive is read', async (_who, viewerSeat, chip) => {
     const line = t('exchange.pillNothing');
     const r = await render(table(oneWay(), { viewerSeat }));
     await step(DEAL_END + choiceOpensAt(false) - 96);
-    expect(comboPill(line)).toBe(0);
+    expect(pileNote(line)).toBe(0);
     expect(turnPill(chip)).toBe(0);
     await step(192);
-    expect(comboPill(line)).toBeGreaterThan(0);
+    expect(pileNote(line)).toBeGreaterThan(0);
     expect(turnPill(chip)).toBeGreaterThan(0);
     await r.unmount();
   });
@@ -163,7 +162,7 @@ describe('a one-way exchange on the table', () => {
   });
 });
 
-describe('a two-way exchange on the same pills', () => {
+describe('a two-way exchange on the same label and pill', () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -171,7 +170,7 @@ describe('a two-way exchange on the same pills', () => {
     jest.useRealTimers();
   });
 
-  it('says who gives what to whom on the last-played pill, and not on the pile', async () => {
+  it('says who gives what to whom on the label under the pile, with the empty-table pill gone', async () => {
     const s = twoWay();
     const r = await render(
       <SafeAreaProvider initialMetrics={METRICS}>
@@ -179,8 +178,8 @@ describe('a two-way exchange on the same pills', () => {
       </SafeAreaProvider>
     );
     await step(dealEndMs(counts(s), Motion.duration.reveal) + Motion.exchange.beat + LEG.rest + 96);
-    expect(comboPill(t('exchange.pileGives', { from: LOSER, card: '2♠', to: WINNER }))).toBeGreaterThan(0);
-    expect(screen.queryByTestId('exchange-pile-label')).toBeNull();
+    expect(pileNote(t('exchange.pileGives', { from: LOSER, card: '2♠', to: WINNER }))).toBeGreaterThan(0);
+    expect(screen.queryByTestId('notice-hudCombo', { includeHiddenElements: true })).toBeNull();
     await r.unmount();
   });
 });

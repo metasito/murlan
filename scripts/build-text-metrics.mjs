@@ -31,16 +31,11 @@ export const OUT = path.join(ROOT, "components", "table", "textMetrics.generated
 /** The catalogue keys each notice kind draws, by the `noticeRun` role that sets them. */
 export const TABLE_TEXT = {
   hudCombo: {
-    text: [
-      "gameShared.emptyTable",
-      "exchange.pileGives",
-      "exchange.pileYouGive",
-      "exchange.pileGivesYou",
-      "exchange.pillNothing",
-      "exchangeAnnouncement.noExchangeText",
-      "gameShared.you",
-    ],
+    text: ["gameShared.emptyTable", "gameShared.you"],
     strong: [...Object.values(COMBO_NAME_KEYS), "gameShared.comboMultiplier"],
+  },
+  pileNote: {
+    text: ["exchange.pileGives", "exchange.pileYouGive", "exchange.pileGivesYou", "exchange.pillNothing", "exchangeAnnouncement.noExchangeText"],
   },
   turn: {
     text: [

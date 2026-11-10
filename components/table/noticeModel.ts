@@ -55,7 +55,7 @@ type Spec<S extends NoticeShape> = {
 export type NoticeSpec = { [S in NoticeShape]: Spec<S> }[NoticeShape];
 
 export const NOTICES = {
-  hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral", "lit"], tableChip: true },
+  hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
   turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent", "ok", "bad"], keepsEmber: true },
   offline: { shape: "pill", selector: "#n-offline", tones: ["solid"] },
   whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
@@ -64,6 +64,7 @@ export const NOTICES = {
   reconnecting: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   vacated: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   trickWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
+  pileNote: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   passFloat: { shape: "float", selector: ".floatchip", tones: ["neutral"] },
   rejectFloat: { shape: "float", selector: "#n-reject", tones: ["bad"] },
   errorToast: { shape: "float", selector: "#n-toast", tones: ["bad"] },
@@ -201,6 +202,7 @@ export function markAt(side: keyof typeof MARK_AT, scale: number): { x: number; 
 }
 
 const FLOAT_TOP = 300;
+const PILE_NOTE_BELOW = 57;
 
 /** What a seat's badge row shows under its name. */
 export type SeatBadge = "reconnecting" | "vacated";
@@ -211,6 +213,11 @@ export function seatBadgeH(badge: SeatBadge | undefined, scale: number): number 
   const { height } = noticeBox(badge, scale);
   if (height === undefined) throw new Error(`${badge} is a chip with no height`);
   return height;
+}
+
+/** The exchange's label: `#xcchip`'s centre, down from the pile's, in tests/e2e/fixtures/exchange-legs (`.cchip` at 282 under `PILE` at 222), 3 px higher: at 60 the label meets a raised hand on a phone with a home indicator. */
+export function pileNoteBelowPile(scale: number): number {
+  return at(PILE_NOTE_BELOW, scale);
 }
 
 /** `.floatchip`'s top edge, up from the foot of the stage. */

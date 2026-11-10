@@ -7,7 +7,14 @@ import { mulberry32 } from "../../support/game.ts";
 declare global {
   interface Window {
     murlanStepAnimations(ms: number): void;
+    murlanStep(ms: number): Promise<void>;
   }
+}
+
+/** Animations before timers: one a timer or rAF creates during the step then reads 0, as a browser reads 0 to 15 ms, not the whole step. */
+async function orderedStep(ms: number, animations: (ms: number) => unknown, timers: (ms: number) => Promise<void>): Promise<void> {
+  await animations(ms);
+  await timers(ms);
 }
 
 const EPOCH = new Date("2026-09-24T12:00:00Z");
@@ -22,14 +29,31 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Animation.enable");
   await cdp.send("Animation.setPlaybackRate", { playbackRate: 0 });
-  const install = (generator: typeof mulberry32, seed: number) => {
+  const install = (generator: typeof mulberry32, seed: number, ordered: typeof orderedStep) => {
     Math.random = generator(seed);
-    // A paused animation holds its phase in a browser, so the clock holds it too. In the page so
-    // a spec's own in-page stepping loop calls this one rather than keeping a copy.
+    // Each animation is paused the first time it is seen and only then seeked: every seek of a running
+    // one makes the DevTools Animation domain send its whole keyframe list (75 ms a step at 51 tracks of
+    // 621 keyframes, against 8 paused). A paused animation never finishes on its own, so the seek that
+    // reaches its end finishes it, and `animationend` and Reanimated's completions still fire. One the
+    // app paused itself is not in the set and stays where it is. In the page so a spec's own stepping
+    // loop calls this one rather than keeping a copy.
+    const held = new WeakSet<Animation>();
     window.murlanStepAnimations = (ms) => {
       for (const a of document.getAnimations()) {
-        if (a.playState === "running" && a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
+        if (!held.has(a) && a.playState === "running") {
+          a.pause();
+          held.add(a);
+        }
+        if (!held.has(a) || a.playState !== "paused" || a.currentTime === null) continue;
+        const to = Number(a.currentTime) + ms;
+        if (to >= Number(a.effect?.getComputedTiming().endTime ?? Infinity)) a.finish();
+        else a.currentTime = to;
       }
+    };
+    window.murlanStep = async (ms) => {
+      const clock = (globalThis as unknown as { __pwClock?: { controller: { runFor(ms: number): Promise<void> } } }).__pwClock?.controller;
+      if (!clock) throw new Error("Playwright's in-page clock is not installed");
+      await ordered(ms, window.murlanStepAnimations, (ms) => clock.runFor(ms));
     };
     // `page.clock` fakes performance.now() but not this stamp's performanceTime, which stays on the
     // real clock; the engine maps a moment's `at` through it, so every sound would read seconds late.
@@ -37,7 +61,7 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
       return { contextTime: this.currentTime, performanceTime: performance.now() };
     };
   };
-  await page.addInitScript({ content: `(${String(install)})(${String(mulberry32)}, ${seed});` });
+  await page.addInitScript({ content: `(${String(install)})(${String(mulberry32)}, ${seed}, ${String(orderedStep)});` });
   await page.clock.install({ time: EPOCH });
   await page.clock.pauseAt(EPOCH);
 }
@@ -54,9 +78,9 @@ export async function takeOver(page: Page): Promise<void> {
   if (offGrid > 0) await page.clock.runFor(offGrid);
 }
 
+/** Through `page.clock`, whose replay log carries the step into a document opened after it; `murlanStep` bypasses that log. */
 export async function step(page: Page, ms: number = STEP_MS): Promise<void> {
-  await page.clock.runFor(ms);
-  await page.evaluate((ms) => window.murlanStepAnimations(ms), ms);
+  await orderedStep(ms, (ms) => page.evaluate((ms) => window.murlanStepAnimations(ms), ms), (ms) => page.clock.runFor(ms));
 }
 
 /** Every animation's name and `currentTime` now, in the order the document lists them. */
@@ -77,13 +101,8 @@ export async function animationPhase(page: Page): Promise<{ name: string; curren
  */
 export async function stepThen<T>(page: Page, ms: number | null, read: string): Promise<T> {
   return page.evaluate(`(async () => {
-    const clock = globalThis.__pwClock?.controller;
-    if (!clock) throw new Error("Playwright's in-page clock is not installed");
     const ms = ${ms};
-    if (ms !== null) {
-      await clock.runFor(ms);
-      globalThis.murlanStepAnimations(ms);
-    }
+    if (ms !== null) await globalThis.murlanStep(ms);
     return ${read};
   })()`) as Promise<T>;
 }
