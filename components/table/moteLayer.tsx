@@ -19,17 +19,14 @@ import {
   advanceAir,
   buildMoteTracks,
   buildMoth,
-  coneKeyframes,
-  driftKeyframes,
   litAt,
   mothAt,
+  moteKeyframes,
   mothKeyframes,
   SHADOW_MEAN,
   SPAN_S,
   stillAlphas,
-  TWINKLE_KEYFRAMES,
-  TWINKLE_MS,
-  twinkleDelay,
+  trackAlpha,
   WING_MEAN,
   type Flight,
   type MoteTrack,
@@ -76,19 +73,12 @@ function useAirClock(frozen: boolean) {
   return elapsed;
 }
 
-const Mote = memo(function Mote({ track, built, paused }: { track: MoteTrack; built: number; paused: boolean }) {
-  const drift = useMemo(() => ambient({ keyframes: driftKeyframes(track), duration: SPAN_S * MS, paused }), [track, paused]);
-  const cone = useMemo(() => ambient({ keyframes: coneKeyframes(track), duration: SPAN_S * MS, paused }), [track, paused]);
-  const twinkle = useMemo(
-    () => ambient({ keyframes: TWINKLE_KEYFRAMES, duration: TWINKLE_MS, delay: twinkleDelay(track.ph) - built * MS, paused }),
-    [track.ph, built, paused]
-  );
+const Mote = memo(function Mote({ tracks, track, paused }: { tracks: MoteTracks; track: MoteTrack; paused: boolean }) {
+  const motion = useMemo(() => ambient({ keyframes: moteKeyframes(tracks, track), duration: SPAN_S * MS, paused }), [tracks, track, paused]);
   const dot = useMemo(() => dotOf(track.r), [track.r]);
   return (
-    <Animated.View style={[styles.anchor, drift]}>
-      <Animated.View style={[styles.anchor, twinkle]}>
-        <Animated.View testID="air-mote" style={[dot, { opacity: track.cone[0].v }, cone]} />
-      </Animated.View>
+    <Animated.View style={[styles.anchor, { opacity: trackAlpha(tracks, track, 0) }, motion]}>
+      <View testID="air-mote" style={dot} />
     </Animated.View>
   );
 });
@@ -207,7 +197,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
   return (
     <View testID="air" style={styles.airBox} pointerEvents="none">
       <View style={sized}>
-        {tracks?.motes.map((m) => <Mote key={`${tracks.built}-${m.i}`} track={m} built={tracks.built} paused={frozen} />)}
+        {tracks?.motes.map((m) => <Mote key={`${tracks.built}-${m.i}`} tracks={tracks} track={m} paused={frozen} />)}
         {still?.map((a, i) => (a >= UNSEEN * MOTE_ALPHA ? <Still key={i} x={air.m[i * MOTE_STRIDE + M.x]} y={air.m[i * MOTE_STRIDE + M.y]} r={air.m[i * MOTE_STRIDE + M.r]} alpha={a} /> : null))}
         {tracks && moth && <Moth key={tracks.built} flights={moth} paused={frozen} />}
       </View>

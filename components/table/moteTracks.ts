@@ -5,7 +5,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import type { CSSAnimationKeyframes } from "react-native-reanimated";
 import { SWAY_LOOP, swayAt } from "../../lib/swayTable.ts";
-import { MOTE_ALPHA, MOTE_STRIDE, MOTES, M, moteCone, mothPose, stepAir, twinkle, TWINKLE_RATE, UNSEEN, type Air, type MoteLight } from "./air.ts";
+import { MOTE_ALPHA, MOTE_STRIDE, MOTES, M, moteCone, mothPose, stepAir, twinkle, UNSEEN, type Air, type MoteLight } from "./air.ts";
 import { SWAY } from "./lampRig.ts";
 
 /** The mockup steps at 60 Hz; a track stepped at the same rate wraps its motes on the same frame. */
@@ -141,28 +141,20 @@ export function stillAlphas(air: Air, light: RestLight): number[] {
 
 const percent = (s: number, span: number) => `${((s / span) * 100).toFixed(4)}%`;
 
-export function driftKeyframes(track: MoteTrack): CSSAnimationKeyframes {
+/** Opacity is sampled this often: a twinkle's period is 4.83 s, so a step of 0.5 s keeps linear between stops within 0.03 of it. */
+const ALPHA_STEP_S = 0.5;
+
+/** One mote's whole motion as one keyframe set, so it is one animation and one layer: its place at every drift stop, and its alpha (the cone times the twinkle) there and every 0.5 s between. */
+export function moteKeyframes(tracks: MoteTracks, track: MoteTrack): CSSAnimationKeyframes {
+  const at = new Map<string, number>();
+  for (const p of track.drift) at.set(percent(p.t, SPAN_S), p.t);
+  for (let t = 0; t <= SPAN_S; t += ALPHA_STEP_S) at.set(percent(t, SPAN_S), t);
   const out: Record<string, object> = {};
-  for (const p of track.drift) out[percent(p.t, SPAN_S)] = { transform: [{ translateX: p.x }, { translateY: p.y }] };
+  for (const [key, t] of [...at].sort((x, y) => x[1] - y[1])) {
+    const [a, b, u] = around(track.drift, t);
+    out[key] = { transform: [{ translateX: between(a.x, b.x, u) }, { translateY: between(a.y, b.y, u) }], opacity: trackAlpha(tracks, track, t) };
+  }
   return out as CSSAnimationKeyframes;
-}
-
-export function coneKeyframes(track: MoteTrack): CSSAnimationKeyframes {
-  const out: Record<string, object> = {};
-  for (const c of track.cone) out[percent(c.t, SPAN_S)] = { opacity: c.v };
-  return out as CSSAnimationKeyframes;
-}
-
-const TWINKLE_STOPS = 24;
-export const TWINKLE_MS = ((2 * Math.PI) / TWINKLE_RATE) * 1000;
-/** One twinkle period, shared by every mote: each starts at its own phase through `twinkleDelay`. */
-export const TWINKLE_KEYFRAMES: CSSAnimationKeyframes = Object.fromEntries(
-  Array.from({ length: TWINKLE_STOPS + 1 }, (_, j) => [`${(j / TWINKLE_STOPS) * 100}%`, { opacity: twinkle((j / TWINKLE_STOPS) * (2 * Math.PI / TWINKLE_RATE), 0) }])
-) as CSSAnimationKeyframes;
-
-/** A mote's twinkle starts this far into its period, so it reads the air's clock from the layer's mount. */
-export function twinkleDelay(ph: number): number {
-  return -(ph / TWINKLE_RATE) * 1000;
 }
 
 export interface FlightStop {

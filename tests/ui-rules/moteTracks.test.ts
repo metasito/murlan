@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MOTES, createAir, type Air } from "../../components/table/air.ts";
-import { advanceAir, buildFlight, buildMoteTracks, buildMoth, mothAt, mothKeyframes, FLIGHT_S, litAt, SPAN_S, stillAlphas, trackAlpha, TWINKLE_KEYFRAMES, TWINKLE_MS, twinkleDelay, type MoteTrack, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
+import { advanceAir, buildFlight, buildMoteTracks, buildMoth, mothAt, mothKeyframes, FLIGHT_S, litAt, SPAN_S, stillAlphas, trackAlpha, moteKeyframes, type MoteTrack, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
 import { swayTimeOf, SWAY_REST_AT } from "../../lib/swayTable.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 import { mulberry32 } from "../support/game.ts";
@@ -138,10 +138,38 @@ describe("the mote tracks against drawAir", () => {
     assert.ok(tracks.motes.length <= MOTES);
     assert.ok(SPAN_S > 290);
   });
-  test("the shared twinkle starts each mote at its own phase", () => {
-    assert.equal(Object.keys(TWINKLE_KEYFRAMES).length, 25);
-    assert.ok(Math.abs(TWINKLE_MS - 4833) < 1);
-    assert.ok(twinkleDelay(Math.PI) < 0);
+  test("one keyframe set per mote, as the compositor interpolates it, is within 0.05 of drawAir and 0.5 pt of the mockup's place", () => {
+    const m = mockup(1261);
+    const air = createAir(mulberry32(1261));
+    const tracks = buildMoteTracks(air, LIGHT);
+    const sets = tracks.motes.map((tr) => {
+      const kf = moteKeyframes(tracks, tr) as unknown as Record<string, { opacity: number; transform: { translateX: number; translateY: number }[] }>;
+      return { i: tr.i, stops: Object.entries(kf).map(([k, v]) => ({ t: (parseFloat(k) / 100) * SPAN_S, o: v.opacity, x: v.transform[0].translateX, y: v.transform[1].translateY })).sort((a, b) => a.t - b.t) };
+    });
+    assert.ok(Math.max(...sets.map((s) => s.stops.length)) < 700, "a set grows with the span, not past it");
+    let worstA = 0;
+    let worstP = 0;
+    const times = new Set([1.5, 7.3, 20.2, 45.9, 90.4, 133.3, 200.1, 280.7].map((s) => Math.round(s / DT)));
+    for (let n = 1; n <= Math.max(...times); n++) {
+      const drawn = m.frame();
+      if (!times.has(n)) continue;
+      const s = n * DT;
+      for (const { i, stops } of sets) {
+        let k = 0;
+        while (k < stops.length - 2 && stops[k + 1].t <= s) k++;
+        const [a, b] = [stops[k], stops[k + 1]];
+        const u = b.t > a.t ? Math.min(1, Math.max(0, (s - a.t) / (b.t - a.t))) : 0;
+        const o = a.o + (b.o - a.o) * u;
+        const at = m.lamp.m[i];
+        const hit = drawn.find((d) => d.x === at.x && d.y === at.y);
+        worstA = Math.max(worstA, Math.abs(o - (hit?.alpha ?? 0)));
+        const x = a.x + (b.x - a.x) * u;
+        const y = a.y + (b.y - a.y) * u;
+        if (Math.abs(x - at.x) < 100 && Math.abs(y - at.y) < 100) worstP = Math.max(worstP, Math.hypot(x - at.x, y - at.y));
+      }
+    }
+    assert.ok(worstA <= ALPHA_WITHIN, `${worstA} off drawAir`);
+    assert.ok(worstP < 0.5, `${worstP} pt`);
   });
   test("under reduced motion the same motes are lit, still", () => {
     const air = createAir(mulberry32(1261));
