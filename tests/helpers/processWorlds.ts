@@ -128,6 +128,7 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
   const signals: [number, string | number][] = [];
   let psFails = false;
   let reads = 0;
+  let statReads = 0;
   const afterRead: (() => void)[] = [];
 
   const kill = (pid: number, sig: string | number) => {
@@ -167,6 +168,7 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
   // Linux's /proc/<pid>/stat: a command name that holds spaces and parentheses, the state third, the
   // start in clock ticks twenty-second.
   const readProcStat = (pid: number) => {
+    statReads++;
     const row = t.rows.get(pid);
     if (!row?.alive) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     return `${pid} (node (a) b) ${row.zombie ? "Z" : "S"} ${"0 ".repeat(18)}${Date.parse(row.started) / 10} 0 0\n`;
@@ -190,6 +192,8 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
     failPs: (fails = true) => (psFails = fails),
     /** How many times `ps` has been run. */
     reads: () => reads,
+    /** How many times a process's /proc stat has been read. */
+    statReads: () => statReads,
     /** Each step runs right after one read of the table, in order. */
     afterRead: (...steps: (() => void)[]) => afterRead.push(...steps),
   };
