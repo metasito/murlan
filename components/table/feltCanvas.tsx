@@ -524,8 +524,9 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, Ends }: 
     }
   );
   const [target, setTarget] = useState("");
+  const ends = !!Ends;
   useAnimatedReaction(
-    () => `${lamp.value.tx},${lamp.value.ty},${lamp.value.tr}`,
+    () => (ends ? `${lamp.value.tx},${lamp.value.ty},${lamp.value.tr}` : ""),
     (now, before) => {
       if (now !== before) scheduleOnRN(setTarget, now);
     }

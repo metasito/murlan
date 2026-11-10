@@ -16,6 +16,8 @@ const SEED = 1255;
 const HANDOFF_PT = 0.5;
 /** Past one whole swing at its slowest, 9.3 s, so the track's centre is read off its two extremes. */
 const WINDOW = 640;
+/** Frames after the layer shows before it is measured: the virtual clock holds a new animation at its first step, and a seek of one it has not yet held lands then (the committed `steer` is right at the frame it shows: place 0.048 against the rig's 0.048). */
+const CLOCK_HOLDS_AFTER = 8;
 /** Milliseconds the animation is stepped ahead of the rig, and the frames watched after: past two checks of `DRIFT_CHECK_MS`, and a second more. */
 const STALL_MS = 300;
 const STALL_FRAMES = 150;
@@ -26,7 +28,7 @@ const READ = `(() => {
   const f = window.murlanTrace.frames.at(-1);
   if (!canvas || canvas.style.visibility !== "visible" || !f) return null;
   const layer = canvas.parentElement;
-  return { lx: f.lamp.x, o: Number(getComputedStyle(layer).opacity), running: layer.getAnimations().filter((a) => a.playState === "running").length };
+  return { lx: f.lamp.x, o: Number(getComputedStyle(layer).opacity), running: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
 })()`;
 
 interface Sample {
@@ -59,8 +61,8 @@ async function sampled(page: Page, frames: number): Promise<Sample[]> {
 
 const centreOf = (samples: Sample[]) => (Math.max(...samples.map((s) => s.lx)) + Math.min(...samples.map((s) => s.lx))) / 2;
 
-/** The layer is read after the frame's animation step and the trace before it: each light is paired with the opacity of the frame before. */
-const offBy = (samples: Sample[], centre: number) => samples.slice(1).map((s, i) => Math.abs(s.lx - centre - SWAY * (2 * samples[i].o - 1)));
+/** The clock steps the animations before the frame's timers, so a read after a step has both at the frame's end. */
+const offBy = (samples: Sample[], centre: number) => samples.map((s) => Math.abs(s.lx - centre - SWAY * (2 * s.o - 1)));
 
 test("the end-B layer's opacity follows the lamp's light to within half a point", async ({ browser, baseURL }) => {
   test.setTimeout(3 * 60_000);
@@ -75,7 +77,7 @@ test("the end-B layer's opacity follows the lamp's light to within half a point"
 
   const lows = samples.map((s) => s.lx);
   expect((Math.max(...lows) - Math.min(...lows)) / 2, "the swing the rig made").toBeGreaterThan(SWAY - 1);
-  const worst = Math.max(...offBy(samples, centreOf(samples)));
+  const worst = Math.max(...offBy(samples.slice(CLOCK_HOLDS_AFTER), centreOf(samples)));
   console.log(`the baked light is at most ${worst.toFixed(3)} pt off the rig's over ${WINDOW} frames`);
   expect(worst, "points the end-B layer's light is off the rig's").toBeLessThan(HANDOFF_PT);
   await context.close();

@@ -73,6 +73,7 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
     let live = true;
     let baked: EndTrack | null = null;
     const cancels: (() => void)[] = [];
+    let check: ReturnType<typeof setInterval> | undefined;
     const steer = (to?: { paused: boolean }) => {
       const element = canvas.parentElement;
       if (!element || !baked) return;
@@ -82,16 +83,27 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
       const s = lamp.get();
       baked = endTrack(s.ph, s.t);
       setPlaying(baked);
-      // The animation starts when the commit does, not when the track was read: it is moved to where the rig is.
-      cancels.push(afterFrames(2, () => live && steer()));
+      // The animation starts when the commit does, not when the track was read: it is moved to where the rig is, the frame it exists.
+      cancels.push(afterFrames(2, steerOnceStarted));
+    };
+    const steerOnceStarted = () => {
+      if (!live) return;
+      if (canvas.parentElement && ambientPlace(canvas.parentElement) === null) cancels.push(afterFrames(1, steerOnceStarted));
+      else steer();
     };
     bake();
     // The felt draws from a shared value through a mapper run and a redraw, each a microtask of its own, and an unpresented drawing buffer reads back blank: so end B is drawn now, by hand, before the copy, and end A drawn back by the redraw the write queues. Never presented.
     cancels.push(
-      afterFrames(3, () => {
-        if (!live) return;
+      afterFrames(3, function copyEnd() {
+        if (!live || !isRested(lamp.get())) return;
+        if (canvas.parentElement && ambientPlace(canvas.parentElement) === null) return void cancels.push(afterFrames(1, copyEnd));
+        steer();
         const mapperRun = (globalThis as { __mapperRun?: unknown }).__mapperRun;
-        if (typeof mapperRun !== "function") return side.set(0);
+        if (typeof mapperRun !== "function") {
+          clearInterval(check);
+          setPlaying(null);
+          return side.set(0);
+        }
         side.set(1);
         mapperRun();
         skia.current?.makeImageSnapshot()?.dispose();
@@ -101,7 +113,7 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
         } else side.set(0);
       }),
     );
-    const check = setInterval(() => {
+    check = setInterval(() => {
       const element = canvas.parentElement;
       if (!element || !baked) return;
       const next = steering(baked, ambientPlace(element), lamp.get().t);
