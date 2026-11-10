@@ -5,10 +5,10 @@ Branch `claude/render-spike` (pushed, no PR, never merged). Workflow: PR 0a, #20
 
 Emulator GPU numbers stand in for devices; there is no real-device run (owner, 2026-11-09).
 
-Web rig: Playwright Chromium, the real RN web export of the spike route (`app/spike.tsx`, Reanimated 4.7.1
+Web rig: Playwright Chromium, the real RN web export of the spike route (app/spike.tsx on the spike branch, Reanimated 4.7.1
 CSS animations on `Animated.View`, 874x402 DOM canvases), SwiftShader. Cost runs use 4x CPU throttle,
 median of 3, load below 5. SwiftShader overstates pixel cost; the ratios are the evidence.
-The harness is `tests/e2e/zzSwaySpike.spec.ts` on the spike branch.
+The harness is tests/e2e/zzSwaySpike.spec.ts on the spike branch.
 
 ## Per-platform table
 
@@ -32,7 +32,7 @@ Q6 on native, by source only (RN 0.88.1): `BlendModeHelper.kt` maps `plus-lighte
 1. **The clock must be the keyframe easing, not a sine.** The standard `easeInOutSine` bezier
    `(0.445, 0.05, 0.55, 0.95)` is 0.70 pt off a sine at amplitude 20. A rig on `sin(ph)` and a CSS
    animation on that bezier jump by up to 0.70 pt at a handoff, over the 0.5 pt line. `swayTable`
-   (spike: `components/table/spike/swayTable.ts`) therefore defines each half-swing as that bezier
+   (spike branch: components/table/spike/swayTable.ts) therefore defines each half-swing as that bezier
    and the live rig reads the table. The result above is for that single curve. The sway differs
    from the lamp rig's sine by at most 0.7 pt, which is below sight.
 2. **A handoff needs a value on the element in the frame the animation goes.** The first cut

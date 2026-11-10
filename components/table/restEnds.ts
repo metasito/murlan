@@ -80,7 +80,7 @@ export function shownLamp(s: Lamp, side: number): Shown {
     f: 0,
     r: s.tr,
     level: clamp01(s.lvlT),
-    lean: side > 0 ? 1 : 0,
+    lean: (side + 1) / 2,
   };
 }
 
