@@ -1,5 +1,5 @@
 // tests/e2e/exchangeNoOverlap.spec.ts — the two exchanged cards never share the table, and the note
-// that names each exchange sits whole in the last-played pill. Only a browser can say where
+// that names each exchange sits whole in its label under the pile. Only a browser can say where
 // transformed views and a pill actually land (docs/agents/checks.md).
 import { expectNoteFits, NEIGHBOUR_IDS, readPillFacts } from "./helpers/pillNote";
 import { test, expect } from "./fixtures";
@@ -61,7 +61,7 @@ test("the give shows only once the receive has landed: never two cards in the ai
 });
 
 for (const size of [{ width: 667, height: 375 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
-  test(`the exchange note sits whole in the last-played pill, clear of the turn pill and the HUD — ${size.width}px`, async ({ page, baseURL }) => {
+  test(`the exchange note sits whole in its label under the pile, clear of the turn pill and the HUD — ${size.width}px`, async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(size);
     await resumeSaved(page, baseURL!, midExchangeSave());

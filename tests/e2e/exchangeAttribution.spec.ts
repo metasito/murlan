@@ -118,7 +118,7 @@ function checkLeg(frames: Frame[], leg: { id: string; giver: string; receiver: s
   expect(i0, `${leg.id} was never drawn`).toBeGreaterThan(0);
   const f0 = frames[i0].t;
   const rest = frames.findIndex((f, i) => i > i0 && f.label?.text === leg.label);
-  expect(rest, `the last-played pill never read "${leg.label}"`).toBeGreaterThan(i0);
+  expect(rest, `the pile's label never read "${leg.label}"`).toBeGreaterThan(i0);
   const landed = frames.findIndex((f, i) => i > rest && !f.fliers[leg.id]);
   expect(landed, `${leg.id} never landed`).toBeGreaterThan(rest);
   expect(Math.abs(frames[rest].t - f0 - LEG.rest), "the rest starts one lift and flight after the first frame").toBeLessThanOrEqual(FRAME);
@@ -131,10 +131,10 @@ function checkLeg(frames: Frame[], leg: { id: string; giver: string; receiver: s
     if (resting) {
       expect(near(f.fliers[leg.id], f.pile!, 4), `${leg.id} at ${at} ms is off the pile centre`).toBe(true);
       expect(f.fliers[leg.id].face, `${leg.id} at ${at} ms rests face down`).toBe(true);
-      expect(f.label?.text, `the pill at ${at} ms`).toBe(leg.label);
+      expect(f.label?.text, `the pile's label at ${at} ms`).toBe(leg.label);
       expectNoteFits(f.facts, WINDOW, `${leg.id} at ${at} ms`);
     }
-    if (flying) expect(f.label, `the pill note at ${at} ms, outside the rest`).toBeNull();
+    if (flying) expect(f.label, `the pile's label at ${at} ms, outside the rest`).toBeNull();
   }
   const seat = (name: string, f: Frame) => name !== leg.viewer && f.lit.includes(name);
   if (leg.giver !== leg.viewer) {

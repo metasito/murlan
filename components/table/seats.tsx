@@ -8,7 +8,8 @@ import {
   SEAT_DISC,
   seatGap,
   seatLabelH,
-  seatLabelRows,
+  seatBadgeSlot,
+  seatNameRise,
   SEAT_LABEL_ALIGN,
   seatAnchor,
   seatLabelLeft,
@@ -559,20 +560,20 @@ function SeatBadges({
   reconnecting,
   name,
   scale,
-  maxW,
+  room,
 }: {
   badge: SeatBadge;
   reconnecting?: { seconds: number; resetKey: string };
   name: string;
   scale: number;
-  maxW: number;
+  room: number;
 }) {
   return (
-    <View style={[seatStyles.seatBadgeRow, { maxWidth: maxW }]}>
+    <View style={seatStyles.seatBadgeRow}>
       {badge === "reconnecting" && reconnecting ? (
-        <ReconnectingMark seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} />
+        <ReconnectingMark seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} room={room} />
       ) : (
-        <VacatedMark username={name} scale={scale} />
+        <VacatedMark username={name} scale={scale} room={room} />
       )}
     </View>
   );
@@ -593,6 +594,7 @@ export const OpponentSeat = memo(function OpponentSeat({
   focusMode = false,
   dealArrivals,
   nameInset = 0,
+  badgeRoom = Infinity,
   ...marking
 }: SlotMark & {
   place: OpponentSide;
@@ -615,6 +617,8 @@ export const OpponentSeat = memo(function OpponentSeat({
   dealArrivals?: DealArrivals;
   /** A side seat's name slides this far inboard of the disc's outer edge (`sideNameInset`). */
   nameInset?: number;
+  /** How wide the seat's badge may run (`layout.badgeRoom`). */
+  badgeRoom?: number;
 }) {
   const arrived = useArrivedCount(dealArrivals);
   const held = cardCount ?? player.hand.length;
@@ -646,6 +650,7 @@ export const OpponentSeat = memo(function OpponentSeat({
         countdown={countdown}
         place={place}
         nameInset={nameInset}
+        badgeRoom={badgeRoom}
         focusMode={focusMode}
         mark={mark}
       />
@@ -676,6 +681,7 @@ function SeatWho({
   countdown,
   place,
   nameInset = 0,
+  badgeRoom = Infinity,
   focusMode = false,
   mark,
 }: {
@@ -695,6 +701,8 @@ function SeatWho({
   /** Which seat this is. Its label's edge pins to the disc by `seatAnchor`: the top seat centres, a side seat sits flush against its own column. */
   place: OpponentSide;
   nameInset?: number;
+  /** How wide the seat's badge may run (`layout.badgeRoom`). */
+  badgeRoom?: number;
   focusMode?: boolean;
 }) {
   const anchor = seatAnchor(place);
@@ -704,12 +712,13 @@ function SeatWho({
   const labelLeft = seatLabelLeft(anchor, scale, nameInset);
   const nameSet = seatNameSet(scale);
   const badge: SeatBadge | undefined = reconnecting ? "reconnecting" : vacated ? "vacated" : undefined;
-  const rows = seatLabelRows(scale, seatBadgeH(badge, scale), seatLabelRise(place, scale));
-  const row = (above: number) => [seatStyles.whoLabel, { width: labelW, left: labelLeft, bottom: disc + above, alignItems: SEAT_LABEL_ALIGN[anchor] }];
+  const badgeH = seatBadgeH(badge, scale);
+  const rise = seatLabelRise(place, scale);
+  const slot = seatBadgeSlot(place, scale, nameInset, badgeH, rise, badgeRoom);
   return (
     <View style={seatStyles.who}>
       {!focusMode && (
-        <View style={row(rows.name)} pointerEvents="none">
+        <View style={[seatStyles.whoLabel, { width: labelW, left: labelLeft, bottom: disc + seatNameRise(place, scale, badgeH, rise), alignItems: SEAT_LABEL_ALIGN[anchor] }]} pointerEvents="none">
           <TableText
             testID="seat-name"
             {...({ dataSet: { lit: String(lit) } } as TextProps)}
@@ -733,8 +742,8 @@ function SeatWho({
         </View>
       )}
       {!focusMode && badge && (
-        <View style={row(rows.badges)} pointerEvents="none">
-          <SeatBadges badge={badge} reconnecting={reconnecting} name={name} scale={scale} maxW={labelW} />
+        <View style={[seatStyles.whoLabel, { width: slot.width, left: slot.left, bottom: disc - slot.top - badgeH, alignItems: slot.align }]} pointerEvents="none">
+          <SeatBadges badge={badge} reconnecting={reconnecting} name={name} scale={scale} room={slot.width} />
         </View>
       )}
       <SeatRing
@@ -802,7 +811,7 @@ const seatStyles = StyleSheet.create({
   // caller supplies width and both insets in points, worked out from the disc
   // it hangs over — centring it on a percentage translate instead leaves the
   // label beside the disc on any renderer that does not resolve one.
-  // Each row's bottom comes from `seatLabelRows`, which `tableRects` reads too.
+  // The rows come from `seatNameRise` and `seatBadgeSlot`, which `tableRects` reads too.
   whoLabel: { position: "absolute" },
 
   // Bare on the felt, as the mockup's `.nm`: unlit, its ink is held to 4.5:1 over
@@ -814,13 +823,7 @@ const seatStyles = StyleSheet.create({
   },
   oppNameActive: { color: Colors.goldLit, ...SEAT_NAME_HALO },
 
-  seatBadgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    maxWidth: OPP_LABEL_MAX_W,
-    gap: Spacing.xs,
-  },
+  seatBadgeRow: { flexDirection: "row" },
 
   disc: {
     alignItems: "center",

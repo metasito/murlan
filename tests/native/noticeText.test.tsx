@@ -11,7 +11,7 @@ import type { TFn } from '@/lib/i18n';
 import { TEXT_METRICS } from '@/components/table/textMetrics.generated';
 import { NOTICES, NOTICE_FACES, type NoticeKind, type NoticeRole } from '@/components/table/noticeModel';
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
-import { HudComboPill, TurnChip } from '@/components/table/notices/hud';
+import { HudComboPill, PileNote, TurnChip } from '@/components/table/notices/hud';
 import { WhoStartsCard } from '@/components/table/notices/panels';
 import { PassFloat } from '@/components/table/notices/floats';
 import { EndMatchVote, RoundVote } from '@/components/table/notices/netNotes';
@@ -202,7 +202,7 @@ function scan(where: string, container: TestInstance, words: boolean, strict: bo
   }
 }
 
-const PLACEHOLDER_WORDS = new Set<NoticeKind>(['hudCombo', 'turn', 'passFloat']);
+const PLACEHOLDER_WORDS = new Set<NoticeKind>(['hudCombo', 'pileNote', 'turn', 'passFloat']);
 
 const card = (rank: Card['rank'], suit: Card['suit']) => ({ id: `${rank}_${suit}`, rank, suit, isJoker: false }) as Card;
 const player = (name: string) => ({ id: name, name, hand: [], type: 'human' }) as Player;
@@ -283,7 +283,7 @@ async function renderEverything() {
       await collect(`a ${type} on the pile`, <HudComboPill scale={1} play={{ name: playerLabel(viewers, 'Besnik', t), combo }} />);
     }
   for (const [i, notes] of exchanges().entries()) {
-    if (notes.pillNote) await collect(`exchange ${i}'s pill note`, <HudComboPill scale={1} play={null} note={notes.pillNote} />);
+    if (notes.pillNote) await collect(`exchange ${i}'s pill note`, <PileNote scale={1} note={notes.pillNote} />);
     if (notes.chip) await collect(`exchange ${i}'s chip`, chip(presented({ exchange: { chip: notes.chip, choiceOpen: true, viewerIsWinner: false, open: true, winnerSeat: 1 } })));
   }
 

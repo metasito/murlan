@@ -41,6 +41,8 @@ export interface OnlineTableSetup extends RoomSetup {
 export interface OpenedOnlineTable {
   /** The one seat's page the deal actually gave the lead. */
   page: Page;
+  /** Every other seat's page, in seat order: the contexts to take offline to make the table show a badge. */
+  others: Page[];
   /** Every console error/warning/crash any of this table's seats reported, not just the one returned. */
   errors: string[];
   /** Closes every seat's browser context, including the ones never returned. */
@@ -153,7 +155,7 @@ export async function openOnlineTable(
 
     const winner = seats[leaderIdx].page;
     await settled(winner, DEAL_CEILING_MS);
-    return { page: winner, errors, close };
+    return { page: winner, others: seats.filter((_, i) => i !== leaderIdx).map((s) => s.page), errors, close };
   } catch (err) {
     await close();
     throw err;

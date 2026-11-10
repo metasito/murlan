@@ -10,8 +10,8 @@ import { createRoom, goToOnlineLobby, joinRoom, startRoom } from "./helpers/onli
 import { driveGameToCompletion } from "./helpers/bot";
 
 const nextRoundVote = (page: Page) => page.getByRole("button", { name: "Pronto per la prossima manche", exact: true });
-/** The prompt's wrapper is on both seats' chips; only the winner's reads "Scegli una carta". */
-const WINNER_PROMPT = '[data-testid="exchange-prompt"]:has-text("Scegli una carta")';
+/** The prompt's wrapper is on both seats' chips; only the winner's reads "Scegli da 3 a 10". */
+const WINNER_PROMPT = '[data-testid="exchange-prompt"]:has-text("Scegli da 3 a 10")';
 const CHIP_COUNT = '[data-testid="turn-chip-count"]';
 const TURN_PILL = '[data-testid="notice-turn"]';
 const JOLLY = '[data-testid="hand-row"] [aria-label^="Jolly"]';

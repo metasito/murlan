@@ -7,12 +7,13 @@
 import type { Player } from "@/lib/game/gameEngine";
 import { CARD_H, cardScale, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
-import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatLabelH } from "./seatLayout.ts";
+import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatGap, seatLabelH } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
+import { drawnFanBounds } from "./fanGeometry.ts";
 import { sideNameInset } from "./table/legibilityRing.ts";
 import { pillAnchorFor, scorePillBox, type PillAnchor } from "./table/scorePillModel.ts";
-import { floatAboveFoot } from "./table/noticeModel.ts";
+import { floatAboveFoot, noticeBox, pileNoteBelowPile } from "./table/noticeModel.ts";
 import { computeTableFrame, SIDE_SEAT_GAP, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
 
 /** Where the rail holds each knob across its width: `rail`'s slots and `ControlRail` both read it. */
@@ -40,6 +41,8 @@ export interface TableLayout {
   chips: number;
   /** The chip row for pills drawn `widths` wide: the combo pill from the left, the score pill at rest on the right, and the turn chip between, a gap clear of both. */
   chipRow(widths: ChipWidths): ChipRow;
+  /** The exchange's note, centred under the pile, which is empty while an exchange runs. */
+  pileNote: { centreX: number; top: number; h: number; room: number };
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
   /** The hand zone at its designed place, and the padding its row and buttons stand on. */
@@ -48,6 +51,8 @@ export interface TableLayout {
   buttons: { passa: Rect; gioca: Rect };
   /** How far each seat's name slides inboard of its disc's outer edge. */
   nameInset: Record<OpponentSide, number>;
+  /** How wide a badge may run from each seat: a side seat's stops a gap short of the top fan, which its row meets on a wide table. */
+  badgeRoom: Record<OpponentSide, number>;
   /**
    * The table overlay's box, as distances from each window edge. Its bottom is the table's own
    * edge, not the felt's: the hand runs to it and past it, which is what buys the table the height
@@ -97,6 +102,18 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     left: { x: frame.tableLeft + SIDE_SEAT_GAP + ring / 2, y: sideY },
     right: { x: width - frame.tableRight - SIDE_SEAT_GAP - ring / 2, y: sideY },
   };
+  const nameInset = {
+    top: 0,
+    left: sideNameInset("left", anchors.left.x, ring, width),
+    right: sideNameInset("right", anchors.right.x, ring, width),
+  };
+  const topW = drawnFanBounds(scale).topW;
+  const [fanLeft, fanRight] = [anchors.top.x - topW / 2, anchors.top.x + topW / 2];
+  const badgeRoom = {
+    top: Infinity,
+    left: fanLeft - seatGap(scale) - (anchors.left.x - ring / 2 + nameInset.left),
+    right: anchors.right.x + ring / 2 - nameInset.right - (fanRight + seatGap(scale)),
+  };
   return {
     scale,
     window: { width, height },
@@ -109,6 +126,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     chipsBottom: frame.tableTop + CHIP_H(scale) + frame.pad,
     chips,
     chipRow: (widths) => chipRow(frame, pill, widths),
+    pileNote: pileNote(x, anchors.pile.y, scale, frame.fieldRoomW),
     rail: {
       width: frame.rail,
       menu: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: frame.tableTop, w: knob, h: knob },
@@ -119,14 +137,16 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
       passa: { x: frame.tableLeft, y: btnY, w: btn, h: btn },
       gioca: { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn },
     },
-    nameInset: {
-      top: 0,
-      left: sideNameInset("left", anchors.left.x, ring, width),
-      right: sideNameInset("right", anchors.right.x, ring, width),
-    },
+    nameInset,
+    badgeRoom,
     tableBox: { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus },
     pill,
   };
+}
+
+function pileNote(centreX: number, pileY: number, scale: number, room: number): TableLayout["pileNote"] {
+  const h = noticeBox("pileNote", scale).height ?? 0;
+  return { centreX, top: pileY + pileNoteBelowPile(scale) - h / 2, h, room };
 }
 
 /** What the chip row's two pills measure as drawn: the widths they come to inside the rooms `chipRow` gave them. */
