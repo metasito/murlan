@@ -127,7 +127,6 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
   const self = t.add(INIT);
   const signals: [number, string | number][] = [];
   let psFails = false;
-  let reads = 0;
   const afterRead: (() => void)[] = [];
 
   const kill = (pid: number, sig: string | number) => {
@@ -151,7 +150,6 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
   const execFileSync = (file: string) => {
     if (file !== "ps") throw new Error(`unexpected ${file}`);
     if (psFails) throw new Error("ps: command not found");
-    reads++;
     const listing = [...t.rows].filter(([, r]) => r.alive).map(([p, r]) => `${p} ${r.ppid} ${r.started}`).join("\n");
     // After the listing, as in life: what a read shows is already behind what runs.
     for (const [pid, row] of [...t.rows]) {
@@ -188,8 +186,6 @@ export function posixWorld({ depth = 2, forks = 0, ignoresTerm = false } = {}) {
     zombie: (pid: number) => (t.rows.get(pid)!.zombie = true),
     stopped: () => [...t.rows].filter(([, r]) => r.alive && r.stopped).map(([p]) => p),
     failPs: (fails = true) => (psFails = fails),
-    /** How many times `ps` has been run. */
-    reads: () => reads,
     /** Each step runs right after one read of the table, in order. */
     afterRead: (...steps: (() => void)[]) => afterRead.push(...steps),
   };

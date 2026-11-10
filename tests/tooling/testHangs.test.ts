@@ -823,20 +823,15 @@ describe("a run that stops hearing from its files fails by name", { concurrency:
     const calls: string[] = [];
     const table = {
       identityOf: (_pid: number) => (calls.push("identityOf"), "1"),
-      endTreeIf: (_pid: number, _identity: string, halted?: () => boolean) => (calls.push("endTreeIf"), (seen = halted), true),
+      endTreeIf: (_pid: number, _identity: string) => (calls.push("endTreeIf"), true),
       alive: (_pid: number) => (calls.push("alive"), true),
     };
     let stopped = false;
-    let seen: (() => boolean) | undefined;
     const proc = haltable(table, () => stopped);
     proc.identityOf(1);
     proc.endTreeIf(1, "1");
     proc.alive(1);
     assert.deepEqual(calls, ["identityOf", "endTreeIf", "alive"]);
-    assert.equal(seen?.(), false, "the kill is handed the stop flag, so a halt reaches it mid-kill");
-    stopped = true;
-    assert.equal(seen?.(), true);
-    stopped = false;
     stopped = true;
     calls.length = 0;
     assert.equal(proc.identityOf(1), undefined);

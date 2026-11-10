@@ -15,7 +15,7 @@ const NOTICE_EVERY_MS = 60_000;
 /**
  * A process table that answers nothing once `stopped()`: a tick the clock delivers late must not
  * spawn a read that outlives the run.
- * @template {{ identityOf(pid: number): unknown, endTreeIf(pid: number, identity: string, halted?: () => boolean): boolean, alive(pid: number): boolean }} P
+ * @template {{ identityOf(pid: number): unknown, endTreeIf(pid: number, identity: string): boolean, alive(pid: number): boolean }} P
  * @param {P} proc
  * @param {() => boolean} stopped
  * @returns {P}
@@ -23,7 +23,7 @@ const NOTICE_EVERY_MS = 60_000;
 export function haltable(proc, stopped) {
   return /** @type {P} */ ({
     identityOf: (pid) => (stopped() ? undefined : proc.identityOf(pid)),
-    endTreeIf: (pid, identity) => !stopped() && proc.endTreeIf(pid, identity, stopped),
+    endTreeIf: (pid, identity) => !stopped() && proc.endTreeIf(pid, identity),
     alive: (pid) => !stopped() && proc.alive(pid),
   });
 }
