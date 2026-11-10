@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { CardBacks, CardFaceGradient, CardGloss } from "../lib/tokens.ts";
+import { SPOT_STOPS } from "../components/table/glossStops.ts";
 import { CARD_BACK_H, CARD_BACK_W, CARD_H, CARD_W } from "../components/cardFaceModel.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -157,13 +158,11 @@ function drawStock(canvas, w, h) {
 
 // At full alpha: the overlay's opacity carries the mockup's `.3·L`, so the mid stop is `.1 / .3` of it.
 function drawGlossSpot(canvas, w) {
-  const { spot } = CardGloss;
-  const mid = spot.mid.alpha / spot.alpha;
   const p = new CK.Paint();
   p.setShader(CK.Shader.MakeRadialGradient(
     [w / 2, w / 2], w / 2,
-    [color(rgb(spot.color)), color(rgb(spot.mid.color), mid), color(rgb(spot.mid.color), 0)],
-    [0, spot.mid.at, 1], CK.TileMode.Clamp, undefined, 1,
+    SPOT_STOPS.map((s) => color(rgb(s.color), s.alpha)),
+    SPOT_STOPS.map((s) => s.at), CK.TileMode.Clamp, undefined, 1,
   ));
   canvas.drawRect(CK.XYWHRect(0, 0, w, w), p);
 }

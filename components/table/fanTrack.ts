@@ -5,7 +5,7 @@
 
 import { cardGloss, glossSpot } from "./cardGloss.ts";
 import { stepLamp, SWAY, type Lamp } from "./lampRig.ts";
-import { GLOSS_HORIZON_S, settledLamp, type BackBox, type LampPose, type LampSnap, type Placed } from "./glossTrack.ts";
+import { GLOSS_HORIZON_S, restLight, type BackBox, type LampPose, type LampSnap, type Placed } from "./glossTrack.ts";
 import type { Published } from "./glossTrackStore.ts";
 
 /** Most a linear stretch between two stops may differ from the lamp's own path, in design points. */
@@ -136,6 +136,12 @@ export interface Played {
   duration: number;
 }
 
+const playOf = (track: GlossTrack, frame: (n: number) => Record<string, unknown>): Played | null => {
+  if (!track.moves) return null;
+  const last = track.stops.length - 1;
+  return { keyframes: keyframesOf(track, last, frame), duration: seconds(track.stops[last]!) * 1000 };
+};
+
 /** What every back shares: the two fades that cross as the lamp sways. */
 export interface SharedTrack {
   fadeA: Played | null;
@@ -152,24 +158,28 @@ export const crossAt = (kick: number, lx: number, x: number) => {
 
 export function sharedTrack(track: GlossTrack): SharedTrack {
   const p = track.path;
-  const last = track.stops.length - 1;
   const cross = (n: number) => crossAt(p.kick[n]!, p.lx[n]!, p.x[n]!);
-  const at = { fadeA: 1 - cross(0), fadeB: cross(0) };
-  const duration = seconds(track.stops[last]!) * 1000;
-  const play = (frame: (n: number) => Record<string, unknown>): Played | null => (track.moves ? { keyframes: keyframesOf(track, last, frame), duration } : null);
   return {
-    fadeA: play((n) => ({ opacity: 1 - cross(n) })),
-    fadeB: play((n) => ({ opacity: cross(n) })),
-    at,
+    fadeA: playOf(track, (n) => ({ opacity: 1 - cross(n) })),
+    fadeB: playOf(track, (n) => ({ opacity: cross(n) })),
+    at: { fadeA: 1 - cross(0), fadeB: cross(0) },
   };
 }
 
-
-/** The spot at the sway's two extremes, centre from the card's top-left in its own axes, in design points: it crosses on the same fades. */
-export interface SpotEnd {
-  x: number;
-  y: number;
-  alpha: number;
+/**
+ * The spot's slide off where it stands at rest, in a card's own axes turned by `rot`: the lamp's path as the
+ * mockup's `gloss()` moves one spot, a translate the compositor plays (a crossfade of two spots 40 points apart
+ * would dim its core to under half at mid-sway). `s` the felt's points-to-pixels scale.
+ */
+export function spotTrack(track: GlossTrack, s: number, rot: number): Played | null {
+  const p = track.path;
+  const { lx, ly } = restLight(track.snap);
+  const t = (rot * Math.PI) / 180;
+  return playOf(track, (n) => {
+    const dx = (p.lx[n]! - lx) * s;
+    const dy = (p.ly[n]! - ly) * s;
+    return { transform: [{ translateX: dx * Math.cos(t) - dy * Math.sin(t) }, { translateY: dx * Math.sin(t) + dy * Math.cos(t) }] };
+  });
 }
 
 export interface StreakEnd {
@@ -179,23 +189,21 @@ export interface StreakEnd {
   opacity: number;
 }
 
-export interface BackPose {
-  spot: [SpotEnd, SpotEnd];
-  /** The streak at the sway's two extremes, which the fan's two fades cross between. */
-  streak: [StreakEnd, StreakEnd];
-}
-
-/** Where a back stands in the light the lamp comes to rest in; a glide, a kick or a dim is drawn live (`glossLive`). */
-export function backPose(track: GlossTrack, placed: Placed, box: BackBox): BackPose {
-  const settled = settledLamp(track.snap);
-  const ends: [LampPose, LampPose] = [{ ...settled, lx: settled.lx - SWAY }, { ...settled, lx: settled.lx + SWAY }];
-  const spotAt = (lamp: LampPose): SpotEnd => {
-    const g = glossSpot(placed.x, placed.y, box.w, box.h, lamp);
-    return { x: g.spot.x, y: g.spot.y, alpha: g.spotAlpha };
-  };
-  const streakAt = (lamp: LampPose): StreakEnd => {
+/** The streak at the sway's two extremes where the lamp comes to rest, which the fan's two fades cross between; a glide, a kick or a dim is drawn live (`glossLive`). */
+export function streakPose(track: GlossTrack, placed: Placed, box: BackBox): [StreakEnd, StreakEnd] {
+  const settled = restLight(track.snap);
+  const at = (lamp: LampPose): StreakEnd => {
     const g = cardGloss(placed.x, placed.y, box.w, box.h, lamp);
     return { x: g.band.x, y: g.band.y, ang: g.ang, opacity: g.a };
   };
-  return { spot: [spotAt(ends[0]), spotAt(ends[1])], streak: [streakAt(ends[0]), streakAt(ends[1])] };
+  return [at({ ...settled, lx: settled.lx - SWAY }), at({ ...settled, lx: settled.lx + SWAY })];
 }
+
+/** Where the spot stands at rest in a card's own axes, from its top-left, in design points, and its alpha. */
+export function spotPose(track: GlossTrack, placed: Placed, box: BackBox): { x: number; y: number; alpha: number } {
+  const g = glossSpot(placed.x, placed.y, box.w, box.h, restLight(track.snap));
+  return { x: g.spot.x, y: g.spot.y, alpha: g.spotAlpha };
+}
+
+/** The delay, in milliseconds, that starts an animation of a published track where the track is now. */
+export const delayOf = (published: Published) => published.epoch - performance.now();

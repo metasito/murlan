@@ -42,9 +42,9 @@ export function useCardTable(): CardTable | null {
   return useContext(CardTableContext);
 }
 
-/** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway; with `tracks`, a back drawn live follows the sway too, as the mockup's. */
+/** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway; with `tracks`, a back drawn live through a glide, a kick or a dim follows it too, as the mockup's. */
 export function glossLightFor(table: CardTable, rectKey: string): SharedValue<GlossLight> {
-  return scopeOf(rectKey) === "fan" && !table.tracks ? table.stillLight : table.glossLight;
+  return scopeOf(rectKey) === "fan" && !table.tracks?.live() ? table.stillLight : table.glossLight;
 }
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;

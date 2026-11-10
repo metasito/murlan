@@ -4,8 +4,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { GLIDE, lampControls, restingLamp, stepLamp, type Lamp } from "../../components/table/lampRig.ts";
 import { cardGloss, glossSpot } from "../../components/table/cardGloss.ts";
+import { SPOT_STOPS } from "../../components/table/glossStops.ts";
 import { glossLive, GLOSS_HORIZON_S, nextGlossBake, snapOf, type LampSnap } from "../../components/table/glossTrack.ts";
-import { backPose, bakeGlossTrack, crossAt, sharedTrack, swayAmplitude, type GlossTrack } from "../../components/table/fanTrack.ts";
+import { bakeGlossTrack, crossAt, sharedTrack, spotPose, spotTrack, streakPose, swayAmplitude, type GlossTrack } from "../../components/table/fanTrack.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
 const FRAME = 1 / 60;
@@ -50,15 +51,27 @@ const gliding = (): LampSnap => {
 
 const track = (snap: LampSnap): GlossTrack => bakeGlossTrack(snap, 0);
 
-/** The spot as the fan crosses its two ends on the fades: the centre they average to, and the alpha. */
-function crossed(t: GlossTrack, lamp: Lamp) {
-  const pose = backPose(t, BACK.placed, BACK.box);
-  const w = crossAt(lamp.kick, lamp.lx, lamp.x);
-  const [a, b] = pose.spot;
-  return { x: a.x + (b.x - a.x) * w, y: a.y + (b.y - a.y) * w, alpha: a.alpha + (b.alpha - a.alpha) * w };
+const S = 1.4;
+
+/** The spot as the compositor draws it: its pose at rest and the slide the track plays, read the way CSS reads them (a card turned `rot`: 0 here, so the slide is in the card's own axes). */
+function slid(t: GlossTrack, sec: number) {
+  const pose = spotPose(t, BACK.placed, BACK.box);
+  const slide = spotTrack(t, S, 0)!;
+  const dx = valueAt(slide.keyframes as Frames, slide.duration, sec, (f) => (f.transform as Record<string, number>[]).find((m) => "translateX" in m)!.translateX!);
+  const dy = valueAt(slide.keyframes as Frames, slide.duration, sec, (f) => (f.transform as Record<string, number>[]).find((m) => "translateY" in m)!.translateY!);
+  return { x: pose.x + dx / S, y: pose.y + dy / S, alpha: pose.alpha };
 }
 
-describe("the spot's two ends, crossed on the fades, are glossSpot once the lamp has settled", () => {
+/** A spot's brightness at `r` from its centre, as its gradient paints it, at full alpha. */
+function profile(r: number): number {
+  const at = r / 85;
+  const i = SPOT_STOPS.findIndex((s) => s.at >= at);
+  if (i <= 0) return SPOT_STOPS[0].alpha;
+  const [a, b] = [SPOT_STOPS[i - 1]!, SPOT_STOPS[i]!];
+  return a.alpha + ((b.alpha - a.alpha) * (at - a.at)) / (b.at - a.at);
+}
+
+describe("the spot slides along the lamp's path, as the mockup's one spot", () => {
   for (const [name, snap, from] of [
     ["after a glide, a kick and a dim", gliding(), 20],
     ["at rest", snapOf(restingLamp([437, 180, 1]), false), 0],
@@ -66,17 +79,23 @@ describe("the spot's two ends, crossed on the fades, are glossSpot once the lamp
     test(name, () => {
       const t = track(snap);
       const { w, h } = BACK.box;
-      for (const at of [0, 0.37, 1.5, 4.3, 11, 40, 123.4, 290].map((s) => s + from)) {
+      for (const at of [0, 0.37, 1.5, 4.3, 11, 40, 123.4, 270].map((s) => s + from)) {
         const sec = Math.round(at / FRAME) * FRAME;
-        const lamp = rigAfter(snap, Math.round(sec / FRAME));
-        const want = glossSpot(BACK.placed.x, BACK.placed.y, w, h, lamp);
-        const got = crossed(t, lamp);
+        const want = glossSpot(BACK.placed.x, BACK.placed.y, w, h, rigAfter(snap, Math.round(sec / FRAME)));
+        const got = slid(t, sec);
         assert.ok(Math.abs(got.x - want.spot.x) < 0.5, `x at ${sec}s: ${got.x} against ${want.spot.x}`);
         assert.ok(Math.abs(got.y - want.spot.y) < 0.5, `y at ${sec}s`);
         assert.ok(Math.abs(got.alpha - want.spotAlpha) < 0.004, `alpha at ${sec}s`);
       }
     });
   }
+
+  test("a crossfade of the two ends, 40 points apart, would dim the core at mid-sway to under 60%: the reason it slides", () => {
+    const apart = 2 * swayAmplitude(0);
+    const core = 1 - (1 - 0.5 * profile(apart / 2)) ** 2;
+    assert.ok(core < 0.6, `a crossfade would leave ${core} of the spot's peak`);
+    assert.equal(profile(0), 1);
+  });
 
   test("a glide's stops follow the exponential at 2.2 a second", () => {
     assert.equal(GLIDE, 2.2);
@@ -111,7 +130,7 @@ describe("the spot against the mockup's own gloss()", () => {
         ly: lamp.ly,
         lamp: { L: lamp.level },
       }) as Record<string, number>;
-      const { x, y } = crossed(t, lamp);
+      const { x, y } = slid(t, sec);
       assert.ok(Math.abs(x - got.spotX!) <= 1, `x at ${sec}s: ${x} against the mockup's ${got.spotX}`);
       assert.ok(Math.abs(y - got.spotY!) <= 1, `y at ${sec}s: ${y} against the mockup's ${got.spotY}`);
     }
@@ -138,34 +157,47 @@ describe("the gloss follows the lamp live while it moves", () => {
 describe("the streak pair", () => {
   test("stands where the lamp comes to rest, which the live gloss hands over to once the glide is over", () => {
     const snap = gliding();
-    const pose = backPose(track(snap), BACK.placed, BACK.box);
+    const ends = streakPose(track(snap), BACK.placed, BACK.box);
     const { placed, box } = BACK;
     const settled = rigAfter(snap, 60 * 25);
     assert.equal(glossLive(settled), false);
-    for (const [end, side] of [[pose.streak[0], -1], [pose.streak[1], 1]] as const) {
+    for (const [end, side] of [[ends[0], -1], [ends[1], 1]] as const) {
       const g = cardGloss(placed.x, placed.y, box.w, box.h, { lx: settled.x + side * swayAmplitude(0), ly: settled.ly, level: settled.level, r: settled.r });
       assert.ok(Math.abs(end.x - g.band.x) < 0.5 && Math.abs(end.y - g.band.y) < 0.5 && Math.abs(end.opacity - g.a) < 0.004, `end ${side}`);
     }
   });
 
-  test("crossfades to within a quarter of the exact streak, in its half-width and its opacity, along a sway", () => {
+  test("crossfaded, draws a band within a quarter of the exact one's half-width, and at 85% of its brightness, along a sway", () => {
     const snap = snapOf(restingLamp([437, 180, 1]), false);
     const t = track(snap);
     const shared = sharedTrack(t);
-    const pose = backPose(t, BACK.placed, BACK.box);
-    let worst = 0;
+    const ends = streakPose(t, BACK.placed, BACK.box);
+    let place = 0;
+    let bright = 1;
     for (let n = 0; n < 1800; n += 22) {
       const sec = n * FRAME;
       const lamp = rigAfter(snap, n);
       const exact = cardGloss(BACK.placed.x, BACK.placed.y, BACK.box.w, BACK.box.h, lamp);
       const fadeB = valueAt(shared.fadeB!.keyframes as Frames, shared.fadeB!.duration, sec, (f) => f.opacity as number);
       assert.ok(Math.abs(fadeB - crossAt(0, lamp.lx, lamp.x)) < 0.02, "the fade is the sway's share");
-      const [a, b] = pose.streak;
-      const x = a.x * (1 - fadeB) + b.x * fadeB;
-      const opacity = a.opacity * (1 - fadeB) + b.opacity * fadeB;
-      worst = Math.max(worst, Math.abs(x - exact.band.x) / exact.band.half, Math.abs(opacity - exact.a) / exact.a);
+      // Rendered: both bands over a line across the exact band's axis, each at its own fade, as the compositor lays them.
+      const axis = [Math.sin(exact.ang), -Math.cos(exact.ang)] as const;
+      const centre = (e: { x: number; y: number }) => e.x * axis[0] + e.y * axis[1];
+      const alphaAt = (u: number) => {
+        const one = (e: { x: number; y: number; opacity: number }, share: number) => share * e.opacity * Math.max(0, 1 - Math.abs(u - centre(e)) / exact.band.half);
+        return 1 - (1 - one(ends[0], 1 - fadeB)) * (1 - one(ends[1], fadeB));
+      };
+      let peak = 0;
+      let at = 0;
+      for (let u = -4 * exact.band.half; u <= 4 * exact.band.half + 260; u += exact.band.half / 20) {
+        const a = alphaAt(centre({ x: exact.band.x, y: exact.band.y }) + u);
+        if (a > peak) [peak, at] = [a, u];
+      }
+      place = Math.max(place, Math.abs(at) / exact.band.half);
+      bright = Math.min(bright, peak / exact.a);
     }
-    assert.ok(worst < 0.25, `worst relative error ${worst}`);
+    assert.ok(place < 0.25, `the drawn peak is ${place} half-widths off`);
+    assert.ok(bright > 0.85, `the drawn peak is ${bright} of the exact one`);
   });
 
   test("a kick's sway is the rig's, far past the resting twenty points", () => {

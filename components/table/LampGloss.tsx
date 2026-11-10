@@ -1,4 +1,4 @@
-import React, { useMemo, useSyncExternalStore } from "react";
+import React from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useDerivedValue, type SharedValue } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
@@ -6,11 +6,10 @@ import { CardBacks, CardGloss, Layer, Scrim, withAlpha } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
 import type { CardBackId } from "@/lib/cosmetics";
 import { cardRadius } from "@/components/cardFaceModel";
-import { bandBox, cardGloss, foilGlint, foilGlintColor, glossSpot } from "./cardGloss";
+import { bandBox, cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLight } from "./cardGloss";
 import { scopeOf, type CardScope } from "./cardRects";
 import { FoilMask } from "./FoilMask";
-import { foilPose, type Placed } from "./glossTrack";
-import type { GlossTracks } from "./glossTrackStore";
+import type { Placed } from "./glossTrack";
 import { levelShade } from "./rail";
 import { glossLightFor, useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
 
@@ -71,21 +70,6 @@ function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTabl
   );
 }
 
-interface TrackedProps {
-  tracks: GlossTracks;
-  placed: Placed;
-  s: number;
-  width: number;
-  height: number;
-}
-
-function useBackPose({ tracks, placed, s, width, height }: TrackedProps) {
-  const lamp = useSyncExternalStore(tracks.subscribe, tracks.get);
-  return useMemo(() => foilPose(lamp.snap, placed, { w: width / s, h: height / s }), [lamp, placed, s, width, height]);
-}
-
-const rotated = (e: { x: number; y: number; ang: number }, s: number) => [{ translateX: e.x * s }, { translateY: e.y * s }, { rotate: `${e.ang}rad` }];
-
 export const FOIL_ART: Record<CardBackId, () => number> = {
   smeraldo:   () => require("../../assets/images/cards/foil_smeraldo.webp") as number,
   oro:        () => require("../../assets/images/cards/foil_oro.webp") as number,
@@ -98,41 +82,17 @@ export const FOIL_ART: Record<CardBackId, () => number> = {
 export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }) {
   const table = useCardTable();
   if (!table || !props.rectKey || !props.rects) return null;
-  if (table.tracks && props.placed) {
-    return (
-      <FoilMask art={FOIL_ART[backKey]()}>
-        <TrackedGlint tracks={table.tracks} placed={props.placed} s={table.felt.s} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />
-      </FoilMask>
-    );
-  }
   return (
     <FoilMask art={FOIL_ART[backKey]()}>
-      <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />
+      <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} at={table.tracks && props.placed ? table.tracks.rest : undefined} color={foilGlintColor(CardBacks[backKey].ink)} />
     </FoilMask>
   );
 }
 
-function TrackedGlint(props: TrackedProps & { color: string }) {
-  const { s, width, height, color } = props;
-  const pose = useBackPose(props);
-  const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.foil.width);
-  return (
-    <>
-      <Animated.View testID="card-foil-ink" pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: pose.foilEdge }]} />
-      <Animated.View
-        testID="card-foil-band"
-        pointerEvents="none"
-        style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH, opacity: pose.foil.opacity, transform: rotated(pose.foil, s) }]}
-      >
-        <LinearGradient colors={[withAlpha(color, 0), color, withAlpha(color, 0)]} style={StyleSheet.absoluteFill} />
-      </Animated.View>
-    </>
-  );
-}
-
-function Glint({ table, rectKey, rects, width, height, color }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string }) {
+/** `at`: where the lamp rests, for a back whose gloss the fan draws as one: its glint then stands still. */
+function Glint({ table, rectKey, rects, width, height, color, at }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string; at?: SharedValue<GlossLight> }) {
   const { felt } = table;
-  const light = glossLightFor(table, rectKey);
+  const light = at ?? glossLightFor(table, rectKey);
   const s = felt.s;
   const { w: bandW, h: bandH } = bandBox(width, height, CardGloss.foil.width);
 

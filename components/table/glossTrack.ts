@@ -4,8 +4,8 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { foilGlint } from "./cardGloss.ts";
 import { LIGHT_ABOVE, type Lamp } from "./lampRig.ts";
+import type { GlossLight } from "./cardGloss.ts";
 
 /** What a track is baked from: the rig's state at an instant. */
 export type LampSnap = Pick<Lamp, "x" | "y" | "tx" | "ty" | "r" | "tr" | "ph" | "kick" | "lvl" | "lvlT" | "lvlRate" | "freeze" | "t"> & { reduced: boolean };
@@ -22,21 +22,17 @@ const REBAKE_BEFORE_S = 10;
 const OVER_LEVEL = 1 / 256;
 /** The glide, a kick or a level change is over when the lamp is within these of where it ends. */
 const OVER_PT = 0.25;
-const OVER_REACH = 0.004;
 const OVER_KICK = 0.02;
+/** What a bake is of: where the lamp aims and how it dims, whose change makes the track stale. */
+const COURSE = ["tx", "ty", "tr", "lvlT", "lvlRate", "freeze"] as const;
+
 /** The next snapshot to bake from, or null while `baked` still describes the lamp. */
-export function nextGlossBake(baked: LampSnap | null, lamp: Lamp, reduced: boolean): LampSnap | null {
+export function nextGlossBake(baked: LampSnap, lamp: Lamp, reduced: boolean): LampSnap | null {
   "worklet";
-  if (!baked) return snapOf(lamp, reduced);
   const elapsed = lamp.t - baked.t;
   const lvl = baked.lvlT + (baked.lvl - baked.lvlT) * Math.exp(-baked.lvlRate * elapsed);
   const changed =
-    lamp.tx !== baked.tx ||
-    lamp.ty !== baked.ty ||
-    lamp.tr !== baked.tr ||
-    lamp.lvlT !== baked.lvlT ||
-    lamp.lvlRate !== baked.lvlRate ||
-    lamp.freeze !== baked.freeze ||
+    COURSE.some((k) => lamp[k] !== baked[k]) ||
     reduced !== baked.reduced ||
     lamp.kick > baked.kick ||
     Math.abs(lamp.lvl - lvl) > OVER_LEVEL ||
@@ -45,12 +41,10 @@ export function nextGlossBake(baked: LampSnap | null, lamp: Lamp, reduced: boole
 }
 
 /** True while the lamp glides, is kicked or dims: the gloss follows it live, as the mockup's `gloss()`, and goes back to the track at the settle. */
-export function glossLive(s: Pick<Lamp, "x" | "y" | "tx" | "ty" | "r" | "tr" | "lvl" | "lvlT" | "kick">): boolean {
+export function glossLive(s: Pick<Lamp, "x" | "y" | "tx" | "ty" | "lvl" | "lvlT" | "kick">): boolean {
   "worklet";
   return (
-    Math.abs(s.x - s.tx) > OVER_PT ||
-    Math.abs(s.y - s.ty) > OVER_PT ||
-    Math.abs(s.r - s.tr) > OVER_REACH ||
+    Math.hypot(s.x - s.tx, s.y - s.ty) > OVER_PT ||
     Math.abs(s.lvl - s.lvlT) > OVER_LEVEL ||
     s.kick > OVER_KICK
   );
@@ -58,6 +52,12 @@ export function glossLive(s: Pick<Lamp, "x" | "y" | "tx" | "ty" | "r" | "tr" | "
 
 /** The lamp as a gloss reads it. */
 export type LampPose = Pick<Lamp, "lx" | "ly" | "level" | "r">;
+
+/** The light where the lamp comes to rest, which the gloss at rest is posed in. */
+export function restLight(snap: LampSnap): GlossLight {
+  "worklet";
+  return { lx: snap.tx, ly: snap.ty - LIGHT_ABOVE, level: snap.lvlT, r: snap.tr, t: snap.t };
+}
 
 /** The place and size of a back as the table lays it out: its centre in design points, its own box and turn. */
 export interface Placed {
@@ -70,22 +70,4 @@ export interface Placed {
 export interface BackBox {
   w: number;
   h: number;
-}
-
-/** The foil's glint where the lamp comes to rest: it is masked and blended, so no track plays under it. */
-export interface FoilEnd {
-  x: number;
-  y: number;
-  ang: number;
-  opacity: number;
-}
-
-/** The lamp where a glide, a kick or a level change leaves it, which the gloss at rest is posed in. */
-export function settledLamp(snap: LampSnap): LampPose {
-  return { lx: snap.tx, ly: snap.ty - LIGHT_ABOVE, level: snap.lvlT, r: snap.tr };
-}
-
-export function foilPose(snap: LampSnap, placed: Placed, box: BackBox): { foil: FoilEnd; foilEdge: number } {
-  const g = foilGlint(placed.x, placed.y, placed.rot, box.w, box.h, settledLamp(snap));
-  return { foil: { x: g.band.x, y: g.band.y, ang: g.ang, opacity: (g.peak - g.edge) / (1 - g.edge) }, foilEdge: g.edge };
 }

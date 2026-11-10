@@ -5,5 +5,3 @@ import type { FanGloss } from "./FanGloss";
 export function FanGlossSlot(_props: ComponentProps<typeof FanGloss>): ReactElement | null {
   return null;
 }
-
-export function preloadFanGloss(): void {}

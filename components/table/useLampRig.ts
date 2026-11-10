@@ -8,9 +8,8 @@ import { Platform } from "react-native";
 import { scheduleOnRN } from "react-native-worklets";
 import { flareKindFor } from "@/components/impact";
 import { designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
-import { preloadFanGloss } from "./FanGlossSlot";
 import { createGlossTracks, type GlossTracks } from "./glossTrackStore";
-import { glossLive, nextGlossBake, snapOf, type LampSnap } from "./glossTrack";
+import { glossLive, nextGlossBake, restLight, snapOf, type LampSnap } from "./glossTrack";
 import { glossLightOf, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
@@ -53,15 +52,16 @@ function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight
     const still = nextStillLight(stillLight.value, s);
     if (still) stillLight.value = still;
     if (tracks) {
-      const bake = nextGlossBake(baked.value, s, reduced.value);
-      if (bake) {
-        baked.value = bake;
-        scheduleOnRN(tracks.publish, bake);
-      }
+      // A frame after a second's gap is a tab coming back: the tracks' CSS clock ran on while the rig stood still, so bake from the rig where it is.
+      const bake = (frame.timeSincePreviousFrame ?? 0) > 1000 ? snapOf(s, reduced.value) : nextGlossBake(baked.value, s, reduced.value);
       const moving = glossLive(s);
-      if (moving !== live.value) {
+      if (bake || moving !== live.value) {
+        if (bake) {
+          baked.value = bake;
+          tracks.rest.value = restLight(bake);
+        }
         live.value = moving;
-        scheduleOnRN(tracks.setLive, moving);
+        scheduleOnRN(tracks.update, bake, moving);
       }
     }
     const level = nextShadeLevel(shadeLevel.value, s);
@@ -96,12 +96,10 @@ export function useLampRig({
   const stillLight = useSharedValue<GlossLight>(glossLightOf(resting));
   const shadeLevel = useSharedValue(resting.level);
   const [px, py, reach] = pool;
-  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(snapOf(resting, reduceMotion), () => performance.now()) : undefined));
-  useEffect(() => {
-    if (tracks) preloadFanGloss();
-  }, [tracks]);
+  const rest = useSharedValue<GlossLight>(restLight(snapOf(resting, reduceMotion)));
+  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(snapOf(resting, reduceMotion), rest) : undefined));
   const baked = useSharedValue<LampSnap>(snapOf(resting, reduceMotion));
-  const live = useSharedValue(glossLive(resting));
+  const live = useSharedValue(false);
 
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, View, StyleSheet, type TextProps, type TextStyle, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
@@ -47,7 +47,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
-import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W, tableFontSize } from "@/components/cardFaceModel";
+import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
@@ -131,9 +131,6 @@ function FanBack({ id, rects, placed, at, boxW, backScale, zIndex }: {
   );
 }
 
-const NEVER_SUBSCRIBED = () => () => {};
-const NEVER_LIVE = () => false;
-
 function CardFan({
   count,
   side,
@@ -170,12 +167,10 @@ function CardFan({
         : [],
     [table, drawn]
   );
+  // Until the fan's gloss is drawn, and while the lamp glides, kicks or dims, each back draws its own.
   const [covered, setCovered] = useState(false);
-  const live = useSyncExternalStore(table?.tracks?.subscribe ?? NEVER_SUBSCRIBED, table?.tracks?.live ?? NEVER_LIVE);
   if (count === 0) return null;
 
-  // Until the fan's gloss is drawn, and while the lamp glides, kicks or dims, each back draws its own.
-  const tracked = covered && !live;
   const backScale = scale * BACK_SCALE;
   // A fan is never width-budgeted: the seat's own column bounds it, and it is the rise that binds.
   const full = seatFanArc(fanCounts(count, FAN_DRAWN_CARDS[side]), backScale);
@@ -202,22 +197,11 @@ function CardFan({
     <View style={{ width: wrapW, height: wrapH }}>
       <View style={tilt as never}>
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} placed={tracked ? placed[i] : undefined} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} placed={covered ? placed[i] : undefined} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
       {table?.tracks ? (
-        <FanGlossSlot
-          tracks={table.tracks}
-          s={table.felt.s}
-          placed={placed}
-          cards={full.cards}
-          boxW={full.box.w}
-          boxH={full.box.h}
-          w={CARD_BACK_W(backScale)}
-          h={CARD_BACK_H(backScale)}
-          tilt={tilt as never}
-          onCover={setCovered}
-        />
+        <FanGlossSlot tracks={table.tracks} s={table.felt.s} placed={placed} cards={full.cards} box={full.box} backScale={backScale} tilt={tilt as never} onCover={setCovered} />
       ) : null}
     </View>
   );

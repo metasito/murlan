@@ -395,7 +395,7 @@ interface CardViewProps {
   /** The key this view is drawn as in `rects`, its publisher's own: the lamp's gloss reads its centre there. */
   rectKey?: string;
   rects?: OwnedRects;
-  /** Where a card that never moves stands, a stable object: its gloss then plays off the lamp's track (`LampGloss`). */
+  /** Where a card that never moves stands, a stable object: the fan it is in then lights it as one, and only its foil glint stays (`LampGloss`). */
   placed?: Placed;
   /**
    * Discrete equivalents of a gesture this card also answers, for assistive
