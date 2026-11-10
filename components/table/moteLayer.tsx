@@ -56,18 +56,23 @@ const dotOf = (r: number): ViewStyle => ({ position: "absolute", left: -r, top: 
 
 /** The air's own clock: seconds since mount, stopped while the lamp is frozen. */
 function useAirClock(frozen: boolean) {
-  const clock = useRef<{ run: number; acc: number; on: boolean } | null>(null);
-  const elapsed = useCallback(() => {
-    const c = (clock.current ??= { run: performance.now(), acc: 0, on: true });
-    return c.acc + (c.on ? (performance.now() - c.run) / MS : 0);
+  const clock = useRef({ run: -1, acc: 0, on: true });
+  const started = useCallback(() => {
+    const c = clock.current;
+    if (c.run < 0) c.run = performance.now();
+    return c;
   }, []);
+  const elapsed = useCallback(() => {
+    const c = started();
+    return c.acc + (c.on ? (performance.now() - c.run) / MS : 0);
+  }, [started]);
   useEffect(() => {
-    const c = (clock.current ??= { run: performance.now(), acc: 0, on: true });
+    const c = started();
     if (frozen === !c.on) return;
     if (frozen) c.acc = elapsed();
     else c.run = performance.now();
     c.on = !frozen;
-  }, [frozen, elapsed]);
+  }, [frozen, elapsed, started]);
   return elapsed;
 }
 
