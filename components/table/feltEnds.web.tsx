@@ -12,6 +12,9 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames, inOneFrame, useAmbient } from "@/lib/motion";
 import { TRACK_SECONDS } from "@/lib/swayTable";
 import {
+  DRIFT_CHECK_MS,
+  DRIFT_PT,
+  driftPt,
   endTrack,
   isRested,
   QUIET_MS,
@@ -83,9 +86,12 @@ export function useFeltEnds({
     const canvas = layer.current;
     if (!engaged || !canvas) return;
     let live = true;
+    let baked = { sway: [] as readonly number[], at: 0 };
     const bake = () => {
       const s = lamp.get();
-      setPlaying(endTrack(s.ph, s.t, 0));
+      const track = endTrack(s.ph, s.t, 0);
+      baked = { sway: track.sway, at: performance.now() };
+      setPlaying(track);
     };
     bake();
     let cancelFrame = () => {};
@@ -102,7 +108,10 @@ export function useFeltEnds({
         },
       ]);
     });
-    const again = setInterval(bake, TRACK_SECONDS * 1000 - REBAKE_BEFORE_MS);
+    const again = setInterval(() => {
+      const since = performance.now() - baked.at;
+      if (since > TRACK_SECONDS * 1000 - REBAKE_BEFORE_MS || driftPt(baked.sway, since, lamp.get().ph) > DRIFT_PT) bake();
+    }, DRIFT_CHECK_MS);
     return () => {
       live = false;
       cancelWait();
@@ -124,6 +133,7 @@ export function useFeltEnds({
       >
         <canvas
           ref={layer}
+          data-testid="felt-end-b"
           style={{ visibility: "hidden", width: "100%", height: "100%" }}
         />
       </Animated.View>

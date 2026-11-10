@@ -3,7 +3,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { lampControls, restingLamp, stepLamp, SWAY, type Lamp, type Pool } from "../../components/table/lampRig.ts";
-import { endTrack, isRested, leanOf, NOT_SHOWN, nextShown, shownLamp, START_LAG_MS } from "../../components/table/restEnds.ts";
+import { DRIFT_PT, driftPt, endTrack, isRested, leanOf, NOT_SHOWN, nextShown, shownLamp, START_LAG_MS } from "../../components/table/restEnds.ts";
 import { TRACK_SECONDS, TRACK_STEP, trackAt } from "../../lib/swayTable.ts";
 
 const DT = 1 / 60;
@@ -96,6 +96,27 @@ describe("nextShown", () => {
     });
     assert.equal(redrawn, 0);
     assert.ok(liveRedrawn > 100, `the live light changed only ${liveRedrawn} times`);
+  });
+});
+
+describe("a rig that falls behind the wall clock", () => {
+  test("is no drift while it keeps up, and is caught within seconds once it runs 1.4% slow, and gone after a bake", () => {
+    const rig = restedLamp();
+    const track = endTrack(rig.ph, rig.t, 0);
+    let caught = -1;
+    let level = 0;
+    for (let ms = 0; ms < TRACK_SECONDS * 1000 && caught < 0; ms += 1000) {
+      for (let i = 0; i < 60; i++) stepLamp(rig, (DT * 0.986), false);
+      level = driftPt(track.sway, ms + 1000, rig.ph);
+      if (level > DRIFT_PT) caught = ms + 1000;
+    }
+    assert.ok(caught > 0 && caught <= 8000, `caught at ${caught} ms`);
+    const again = endTrack(rig.ph, rig.t, 0);
+    assert.ok(driftPt(again.sway, 0, rig.ph) < DRIFT_PT / 2);
+    const steady = restedLamp();
+    const fresh = endTrack(steady.ph, steady.t, 0);
+    for (let i = 0; i < 600; i++) stepLamp(steady, DT, false);
+    assert.ok(driftPt(fresh.sway, 10_000, steady.ph) < DRIFT_PT, "a rig that keeps up is never rebaked");
   });
 });
 

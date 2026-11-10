@@ -6,7 +6,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { CSSAnimationKeyframes } from "react-native-reanimated";
-import { bakeSway, TRACK_SECONDS, TRACK_STEP } from "../../lib/swayTable.ts";
+import { bakeSway, TRACK_SECONDS, TRACK_STEP, trackAt } from "../../lib/swayTable.ts";
 import { FLARE_SEEN } from "./feltShader.ts";
 import { LIGHT_ABOVE, SWAY, SWAY_KICKED, type Lamp } from "./lampRig.ts";
 
@@ -102,6 +102,8 @@ export function nextShown(held: Shown, s: Lamp, side: number): Shown {
 export const START_LAG_MS = 8;
 
 export interface EndTrack {
+  /** The sway, -1 to 1, at each `TRACK_STEP`: what `keyframes` are the opacity of. */
+  sway: readonly number[];
   keyframes: CSSAnimationKeyframes;
   /** One pass, in milliseconds. */
   duration: number;
@@ -118,6 +120,7 @@ export function endTrack(ph: number, t: number, sinceMs: number): EndTrack {
     keyframes[`${((i / last) * 100).toFixed(4)}%`] = { opacity: 0.5 + 0.5 * v };
   });
   return {
+    sway,
     keyframes: keyframes as CSSAnimationKeyframes,
     duration: last * TRACK_STEP * 1000,
     delay: -(sinceMs + START_LAG_MS),
@@ -128,3 +131,16 @@ export function endTrack(ph: number, t: number, sinceMs: number): EndTrack {
 export const REBAKE_BEFORE_MS = 2000;
 /** How long what an end draws holds still before the table is shown as ends again: a debounce, not a motion step. */
 export const QUIET_MS = 250;
+
+/** Points the compositor's light may lie off the rig's before the track is baked again from the rig. */
+export const DRIFT_PT = 0.4;
+/** How often the track is held against the rig. */
+export const DRIFT_CHECK_MS = 1000;
+
+/**
+ * How far the light the track plays `sinceMs` after its bake is from the rig's, in points. The rig steps at most
+ * `MAX_DT` a frame, so a page that stalls runs it behind the wall clock the animation keeps.
+ */
+export function driftPt(sway: readonly number[], sinceMs: number, ph: number): number {
+  return Math.abs(Math.sin(ph) - trackAt(sway, (sinceMs + START_LAG_MS) / 1000)) * SWAY;
+}
