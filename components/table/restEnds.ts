@@ -1,4 +1,4 @@
-// The felt at rest (#1252 § The lamp): a lamp that has come to rest sways ±SWAY about its target, and the
+// The felt at rest (#1252 § The lamp): a lamp that has come to rest sways SWAY points either side about its target, and the
 // felt shows that as two baked frames, the light at either end of the sway, A drawn and B laid over it at an
 // opacity the compositor moves. This is the decisions: when the table is at rest, what the canvas draws for
 // it, and the track B's opacity follows.
