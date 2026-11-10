@@ -6,9 +6,10 @@ import { StyleSheet } from "react-native";
 import Animated, { useAnimatedReaction } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { E2E_FAST } from "@/lib/e2eConfig";
 import { afterFrames, ambientPlace, steerAmbient, useAmbient } from "@/lib/motion";
 import type { EndsProps } from "./feltCanvas";
-import { DRIFT_CHECK_MS, endTrack, isRested, placeOf, QUIET_MS, steering, type EndTrack } from "./restEnds";
+import { DRIFT_CHECK_MS, endTrack, isRested, placeOf, QUIET_MS, START_WAIT_FRAMES, steering, type EndTrack } from "./restEnds";
 
 function copyOf(host: unknown, into: HTMLCanvasElement): boolean {
   const from = (host as HTMLElement | null)?.querySelector("canvas");
@@ -84,26 +85,32 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
       baked = endTrack(s.ph, s.t);
       setPlaying(baked);
       // The animation starts when the commit does, not when the track was read: it is moved to where the rig is, the frame it exists.
-      cancels.push(afterFrames(2, steerOnceStarted));
+      cancels.push(afterFrames(2, () => whenPlaying(steer)));
     };
-    const steerOnceStarted = () => {
-      if (!live) return;
-      if (canvas.parentElement && ambientPlace(canvas.parentElement) === null) cancels.push(afterFrames(1, steerOnceStarted));
-      else steer();
+    // A table whose animation never starts shows no layer and draws live (rule 51 catches the cost), rather than waiting for it every frame.
+    const giveUp = () => {
+      clearInterval(check);
+      setPlaying(null);
+      hide();
+    };
+    const whenPlaying = (then: () => void) => {
+      let waited = 0;
+      const wait = () => {
+        if (!live) return;
+        if (!canvas.parentElement || ambientPlace(canvas.parentElement) !== null) return then();
+        if (++waited > START_WAIT_FRAMES) return giveUp();
+        cancels.push(afterFrames(1, wait));
+      };
+      wait();
     };
     bake();
     // The felt draws from a shared value through a mapper run and a redraw, each a microtask of its own, and an unpresented drawing buffer reads back blank: so end B is drawn now, by hand, before the copy, and end A drawn back by the redraw the write queues. Never presented.
     cancels.push(
-      afterFrames(3, function copyEnd() {
+      afterFrames(3, () => whenPlaying(() => {
         if (!live || !isRested(lamp.get())) return;
-        if (canvas.parentElement && ambientPlace(canvas.parentElement) === null) return void cancels.push(afterFrames(1, copyEnd));
         steer();
         const mapperRun = (globalThis as { __mapperRun?: unknown }).__mapperRun;
-        if (typeof mapperRun !== "function") {
-          clearInterval(check);
-          setPlaying(null);
-          return side.set(0);
-        }
+        if (typeof mapperRun !== "function") return giveUp();
         side.set(1);
         mapperRun();
         skia.current?.makeImageSnapshot()?.dispose();
@@ -111,7 +118,7 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
           canvas.style.visibility = "visible";
           side.set(-1);
         } else side.set(0);
-      }),
+      })),
     );
     check = setInterval(() => {
       const element = canvas.parentElement;
@@ -142,7 +149,7 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
   const style = useAmbient(playing);
   return (
     <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
-      <canvas ref={layer} data-testid="felt-end-b" style={{ visibility: "hidden", width: "100%", height: "100%" }} />
+      <canvas ref={layer} data-testid="felt-end-b" data-track-t={E2E_FAST ? playing?.t : undefined} style={{ visibility: "hidden", width: "100%", height: "100%" }} />
     </Animated.View>
   );
 }

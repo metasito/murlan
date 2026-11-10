@@ -16,8 +16,6 @@ const SEED = 1255;
 const HANDOFF_PT = 0.5;
 /** Past one whole swing at its slowest, 9.3 s, so the track's centre is read off its two extremes. */
 const WINDOW = 640;
-/** Frames after the layer shows before it is measured: the virtual clock holds a new animation at its first step, and a seek of one it has not yet held lands then (the committed `steer` is right at the frame it shows: place 0.048 against the rig's 0.048). */
-const CLOCK_HOLDS_AFTER = 8;
 /** Milliseconds the animation is stepped ahead of the rig, and the frames watched after: past two checks of `DRIFT_CHECK_MS`, and a second more. */
 const STALL_MS = 300;
 const STALL_FRAMES = 150;
@@ -28,16 +26,21 @@ const READ = `(() => {
   const f = window.murlanTrace.frames.at(-1);
   if (!canvas || canvas.style.visibility !== "visible" || !f) return null;
   const layer = canvas.parentElement;
-  return { lx: f.lamp.x, o: Number(getComputedStyle(layer).opacity), running: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
+  const timing = layer.getAnimations()[0]?.effect?.getComputedTiming();
+  return { clock: f.lamp.clock, t0: Number(canvas.dataset.trackT), at: timing ? (timing.progress * timing.duration) / 1000 : null, lx: f.lamp.x, o: Number(getComputedStyle(layer).opacity), playing: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
 })()`;
 
 interface Sample {
+  /** The rig's clock, the clock it was when the track was baked, and where the animation is in its pass, in seconds. */
+  clock: number;
+  t0: number;
+  at: number | null;
   lx: number;
   o: number;
-  running: number;
+  playing: number;
 }
 
-async function restedTable(browser: Browser, baseURL: string): Promise<{ page: Page; context: BrowserContext }> {
+async function restedTable(browser: Browser, baseURL: string): Promise<{ page: Page; context: BrowserContext; shown: Sample }> {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, locale: "it-IT", baseURL });
   const page = await context.newPage();
   await installVirtualClock(page, SEED);
@@ -45,8 +48,13 @@ async function restedTable(browser: Browser, baseURL: string): Promise<{ page: P
   await heldTurnTable(page, baseURL);
   await stepUntil(page, () => page.locator(HAND_CARD_BOXES).first().isVisible(), "the viewer's hand");
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
-  await stepUntil(page, async () => (await stepThen<Sample | null>(page, null, READ)) !== null, "the table resting on its two ends", { chunkMs: STEP_MS * 12, realMs: 120_000 });
-  return { page, context };
+  // One frame at a time, so the frame the layer first shows is the first sample. A chunk of frames steps the animations its whole length before the rig's frames, which skews the two by up to 2.4 pt for the next few frames, so the light would be measured against a harness artifact.
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    const shown = await stepThen<Sample | null>(page, STEP_MS, READ);
+    if (shown) return { page, context, shown };
+    if (Date.now() > deadline) throw new Error("the table resting on its two ends: not shown after 120000 ms");
+  }
 }
 
 async function sampled(page: Page, frames: number): Promise<Sample[]> {
@@ -66,9 +74,11 @@ const offBy = (samples: Sample[], centre: number) => samples.map((s) => Math.abs
 
 test("the end-B layer's opacity follows the lamp's light to within half a point", async ({ browser, baseURL }) => {
   test.setTimeout(3 * 60_000);
-  const { page, context } = await restedTable(browser, baseURL!);
-  const samples = await sampled(page, WINDOW);
-  expect(Math.min(...samples.map((s) => s.running)), "frames the end-B layer had no running animation").toBeGreaterThanOrEqual(1);
+  const { page, context, shown } = await restedTable(browser, baseURL!);
+  // The rig steps after the seek in the frame the layer shows, so the animation is a frame behind its clock, never more.
+  expect(Math.abs(shown.at! - (shown.clock - shown.t0)), "seconds the animation is from the rig's place the frame its layer first shows").toBeLessThan((1.5 * STEP_MS) / 1000);
+  const samples = [shown, ...(await sampled(page, WINDOW - 1))];
+  expect(Math.min(...samples.map((s) => s.playing)), "frames the end-B layer had no playing animation").toBeGreaterThanOrEqual(1);
 
   const layer = [await stepThen<EndBSample | null>(page, 60 * STEP_MS, END_B_SAMPLE), await stepThen<EndBSample | null>(page, 60 * STEP_MS, END_B_SAMPLE), await stepThen<EndBSample | null>(page, 60 * STEP_MS, END_B_SAMPLE)];
   const picture = await page.evaluate<EndBLean | null>(END_B_LEAN);
@@ -77,7 +87,7 @@ test("the end-B layer's opacity follows the lamp's light to within half a point"
 
   const lows = samples.map((s) => s.lx);
   expect((Math.max(...lows) - Math.min(...lows)) / 2, "the swing the rig made").toBeGreaterThan(SWAY - 1);
-  const worst = Math.max(...offBy(samples.slice(CLOCK_HOLDS_AFTER), centreOf(samples)));
+  const worst = Math.max(...offBy(samples, centreOf(samples)));
   console.log(`the baked light is at most ${worst.toFixed(3)} pt off the rig's over ${WINDOW} frames`);
   expect(worst, "points the end-B layer's light is off the rig's").toBeLessThan(HANDOFF_PT);
   await context.close();

@@ -154,3 +154,6 @@ export function steering(track: Pick<EndTrack, "sway" | "t">, playing: number | 
   if (playing === null || place > TRACK_SECONDS - REBAKE_BEFORE) return { kind: "rebake" };
   return driftPt(track.sway, playing, place) > DRIFT_PT ? { kind: "steer", place } : { kind: "none" };
 }
+
+/** Frames a mounted track may take to start before the layer is given up: past it the table draws live instead. */
+export const START_WAIT_FRAMES = 30;
