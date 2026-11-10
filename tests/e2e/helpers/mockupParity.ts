@@ -606,17 +606,17 @@ const appLayer = async (page: Page): Promise<Omit<LayerSample, "t"> | null> => {
       const air = document.querySelector<HTMLElement>('[data-testid="air"]');
       if (!air) return null;
       let lit = false;
-      const state: string[] = [];
-      for (const el of air.querySelectorAll<HTMLElement>("*")) {
-        const s = getComputedStyle(el);
-        state.push(`${s.transform}|${s.opacity}`);
-        if (el.children.length === 0) {
-          let alpha = 1;
-          for (let at: HTMLElement | null = el; at && at !== air; at = at.parentElement) alpha *= Number(getComputedStyle(at).opacity);
-          if (alpha >= 0.017) lit = true;
+      const state = new Set<string>();
+      for (const mote of air.querySelectorAll<HTMLElement>('[data-testid="air-mote"]')) {
+        let alpha = 1;
+        for (let at: HTMLElement | null = mote; at && at !== air; at = at.parentElement) {
+          const s = getComputedStyle(at);
+          alpha *= Number(s.opacity);
+          state.add(`${s.transform}|${s.opacity}`);
         }
+        if (alpha >= 0.017) lit = true;
       }
-      return { url: state.join(";"), drawn: lit };
+      return { url: [...state].join(";"), drawn: lit };
     }
     // A copy: reading the app's own context back every frame makes Chromium warn on the app's page.
     const copy = new OffscreenCanvas(c.width, c.height).getContext("2d", { willReadFrequently: true })!;
