@@ -267,12 +267,12 @@ export function seatNameRise(place: OpponentSide, scale: number, height: number,
 /**
  * The strip a seat's badge row is laid out in: `left` off the disc's left edge, `top` off the disc's
  * top edge (negative above it), `width` wider than any badge so the badge is never cut, and `align`
- * where in the strip it holds. A side seat's runs inward from the disc under its name; the top
+ * where in the strip it holds. `room` is what the table leaves it inboard (`badgeRoom`), at most the strip. A side seat's runs inward from the disc under its name; the top
  * seat's stands to the disc's right, centred on its height.
  */
-export function seatBadgeSlot(place: OpponentSide, scale: number, inset: number, height: number, rise: number): { left: number; top: number; width: number; align: Align } {
+export function seatBadgeSlot(place: OpponentSide, scale: number, inset: number, height: number, rise: number, room = Infinity): { left: number; top: number; width: number; align: Align } {
   const disc = SEAT_DISC * scale;
-  const width = SEAT_BADGE_SLOT_W * scale;
+  const width = Math.min(SEAT_BADGE_SLOT_W * scale, room);
   if (place === "top") return { left: disc + seatGap(scale), top: (disc - height) / 2, width, align: "flex-start" };
   const anchor = seatAnchor(place);
   return { left: stripLeft(anchor, scale, inset, width), top: -(SEAT_LABEL_PAD * scale + rise + height), width, align: SEAT_LABEL_ALIGN[anchor] };

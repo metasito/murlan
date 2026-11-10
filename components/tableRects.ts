@@ -184,7 +184,7 @@ export function tableRects(input: {
         : [{ runs: [{ run: "text:gameTable.seatReconnecting", slots: [words] }] }];
     const shown = who.badge.kind === "reconnecting" ? String(who.badge.seconds) : "";
     const h = seatBadgeH(kind, scale);
-    const slot = seatBadgeSlot(dir, scale, layout.nameInset[dir], h, rise(dir));
+    const slot = seatBadgeSlot(dir, scale, layout.nameInset[dir], h, rise(dir), layout.badgeRoom[dir]);
     const widest = counted(widestDigits(kind, scale, shown.length));
     const w = noticeWidth(kind, locale, scale, widest, "snapped", slot.width);
     overcount[as] = w - noticeWidth(kind, locale, scale, counted(shown), "linear", slot.width);

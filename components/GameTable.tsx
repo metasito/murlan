@@ -889,6 +889,7 @@ export function GameTable({
           {...seatView(opponent.seat, opponent.player, seatTable)}
           dealArrivals={deal.arrivalsFor(opponent.seat)}
           nameInset={layout.nameInset[place]}
+          badgeRoom={layout.badgeRoom[place]}
           scale={scale}
           countdown={turn.clockSeat === opponent.seat ? countdown : undefined}
           focusMode={focusMode}

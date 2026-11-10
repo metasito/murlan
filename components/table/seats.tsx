@@ -594,6 +594,7 @@ export const OpponentSeat = memo(function OpponentSeat({
   focusMode = false,
   dealArrivals,
   nameInset = 0,
+  badgeRoom,
   ...marking
 }: SlotMark & {
   place: OpponentSide;
@@ -616,6 +617,8 @@ export const OpponentSeat = memo(function OpponentSeat({
   dealArrivals?: DealArrivals;
   /** A side seat's name slides this far inboard of the disc's outer edge (`sideNameInset`). */
   nameInset?: number;
+  /** How wide the seat's badge may run (`layout.badgeRoom`). */
+  badgeRoom?: number;
 }) {
   const arrived = useArrivedCount(dealArrivals);
   const held = cardCount ?? player.hand.length;
@@ -647,6 +650,7 @@ export const OpponentSeat = memo(function OpponentSeat({
         countdown={countdown}
         place={place}
         nameInset={nameInset}
+        badgeRoom={badgeRoom}
         focusMode={focusMode}
         mark={mark}
       />
@@ -677,6 +681,7 @@ function SeatWho({
   countdown,
   place,
   nameInset = 0,
+  badgeRoom,
   focusMode = false,
   mark,
 }: {
@@ -696,6 +701,8 @@ function SeatWho({
   /** Which seat this is. Its label's edge pins to the disc by `seatAnchor`: the top seat centres, a side seat sits flush against its own column. */
   place: OpponentSide;
   nameInset?: number;
+  /** How wide the seat's badge may run (`layout.badgeRoom`). */
+  badgeRoom?: number;
   focusMode?: boolean;
 }) {
   const anchor = seatAnchor(place);
@@ -707,7 +714,7 @@ function SeatWho({
   const badge: SeatBadge | undefined = reconnecting ? "reconnecting" : vacated ? "vacated" : undefined;
   const badgeH = seatBadgeH(badge, scale);
   const rise = seatLabelRise(place, scale);
-  const slot = seatBadgeSlot(place, scale, nameInset, badgeH, rise);
+  const slot = seatBadgeSlot(place, scale, nameInset, badgeH, rise, badgeRoom);
   return (
     <View style={seatStyles.who}>
       {!focusMode && (

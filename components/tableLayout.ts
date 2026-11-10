@@ -7,9 +7,11 @@
 import type { Player } from "@/lib/game/gameEngine";
 import { CARD_H, cardScale, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
-import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatLabelH } from "./seatLayout.ts";
+import { actionBtnSize, CHIP_H, FAN_DRAWN_CARDS, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatGap, seatLabelH } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
+import { fanCorners, fanPoint } from "./fanGeometry.ts";
+import { BACK_SCALE } from "./cardFaceModel.ts";
 import { sideNameInset } from "./table/legibilityRing.ts";
 import { pillAnchorFor, scorePillBox, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot, noticeBox, pileNoteBelowPile } from "./table/noticeModel.ts";
@@ -50,6 +52,8 @@ export interface TableLayout {
   buttons: { passa: Rect; gioca: Rect };
   /** How far each seat's name slides inboard of its disc's outer edge. */
   nameInset: Record<OpponentSide, number>;
+  /** How wide a badge may run from each seat: a side seat's stops a gap short of the top fan, which its row meets on a wide table. */
+  badgeRoom: Record<OpponentSide, number>;
   /**
    * The table overlay's box, as distances from each window edge. Its bottom is the table's own
    * edge, not the felt's: the hand runs to it and past it, which is what buys the table the height
@@ -99,6 +103,24 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     left: { x: frame.tableLeft + SIDE_SEAT_GAP + ring / 2, y: sideY },
     right: { x: width - frame.tableRight - SIDE_SEAT_GAP - ring / 2, y: sideY },
   };
+  const nameInset = {
+    top: 0,
+    left: sideNameInset("left", anchors.left.x, ring, width),
+    right: sideNameInset("right", anchors.right.x, ring, width),
+  };
+  const topFan = fanCorners(
+    { x: anchors.top.x + fanPoint({ dx: 0, dy: 0 }, "top", scale, FAN_DRAWN_CARDS.top).x, y: anchors.top.y + fanPoint({ dx: 0, dy: 0 }, "top", scale, FAN_DRAWN_CARDS.top).y },
+    "top",
+    FAN_DRAWN_CARDS.top,
+    scale * BACK_SCALE
+  ).flat();
+  const fanLeft = Math.min(...topFan.map(([x]) => x));
+  const fanRight = Math.max(...topFan.map(([x]) => x));
+  const badgeRoom = {
+    top: Infinity,
+    left: fanLeft - seatGap(scale) - (anchors.left.x - ring / 2 + nameInset.left),
+    right: anchors.right.x + ring / 2 - nameInset.right - (fanRight + seatGap(scale)),
+  };
   return {
     scale,
     window: { width, height },
@@ -122,11 +144,8 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
       passa: { x: frame.tableLeft, y: btnY, w: btn, h: btn },
       gioca: { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn },
     },
-    nameInset: {
-      top: 0,
-      left: sideNameInset("left", anchors.left.x, ring, width),
-      right: sideNameInset("right", anchors.right.x, ring, width),
-    },
+    nameInset,
+    badgeRoom,
     tableBox: { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus },
     pill,
   };

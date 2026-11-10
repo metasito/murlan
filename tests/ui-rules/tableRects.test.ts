@@ -206,14 +206,14 @@ describe("a seat's badge is drawn whole", () => {
       }
   });
 
-  test("a username of thirty letters is cut at the strip and stays in the window", () => {
+  test("a username of thirty letters is cut short of everything beside its badge", () => {
     for (const c of cases.filter((x) => x.badge.kind === "vacated")) {
       const t = tableRects({ ...c.vp, insets: INSETS["0/0"], locale: c.locale, state: { ...DEALT, seats: { top: { ...FULL.top, name: LONGEST_USERNAME, badge: c.badge }, left: { ...FULL.left, name: LONGEST_USERNAME, badge: c.badge }, right: { ...FULL.right, name: LONGEST_USERNAME, badge: c.badge } }, chips: { combo: [], turn: [] } } });
       for (const name of ["badgeTop", "badgeLeft", "badgeRight"] as const) {
-        assert.ok(Math.abs(t.rects[name]!.w - SEAT_BADGE_SLOT_W * t.layout.scale) < 1e-6, `${c.vp.name}, ${c.locale}: ${name} is ${t.rects[name]!.w} wide`);
+        assert.ok(t.rects[name]!.w <= SEAT_BADGE_SLOT_W * t.layout.scale + 1e-6, `${c.vp.name}, ${c.locale}: ${name} is ${t.rects[name]!.w} wide`);
         assert.equal(t.capped[name], true);
       }
-      assert.deepEqual(brokenRules(t).filter((rule) => rule.includes("leaves the window")), [], `${c.vp.name}, ${c.locale}`);
+      assert.deepEqual(brokenRules(t).filter((rule) => rule.includes("badge")), [], `${c.vp.name}, ${c.locale}: a cut badge touches something`);
     }
   });
 
