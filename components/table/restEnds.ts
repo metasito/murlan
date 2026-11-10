@@ -98,7 +98,7 @@ export function nextShown(held: Shown, s: Lamp, side: number): Shown {
   return same ? held : next;
 }
 
-/** What a CSS animation takes between asking for it and its first frame, a median: the track is started this far ahead. */
+/** What a CSS animation takes between asking for it and its first frame, a median: the track is started this far ahead. A measured lag, not a motion step. */
 export const START_LAG_MS = 8;
 
 export interface EndTrack {
@@ -124,7 +124,7 @@ export function endTrack(ph: number, t: number, sinceMs: number): EndTrack {
   };
 }
 
-/** Seconds before a track ends that the next is baked: a track loops back to its start, and the bake cannot be late. */
+/** Milliseconds before a track ends that the next is baked: a track loops back to its start, and the bake cannot be late. Not a motion step. */
 export const REBAKE_BEFORE_MS = 2000;
-/** How long what an end draws holds still before the table is shown as ends again. */
+/** How long what an end draws holds still before the table is shown as ends again: a debounce, not a motion step. */
 export const QUIET_MS = 250;
