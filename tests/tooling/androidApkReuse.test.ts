@@ -46,7 +46,7 @@ describe("maestro.yml reuses the native build", () => {
     assert.match(key, /steps\.fingerprint\.outputs\.hash/);
     assert.match(key, /steps\.prebuild\.outputs\.ndk/);
     assert.match(key, /generated\/res\/react\/release/, "a new image would install into an APK without it");
-    assert.match(key, /hashFiles\('\.github\/workflows\/maestro\.yml'\)/);
+    assert.match(key, /hashFiles\('\.github\/workflows\/maestro\.yml', 'tools\/ci\/pin-ndk\.sh'\)/);
     assert.equal(uses(RESTORE).step.with?.key, "${{ steps.native.outputs.key }}");
   });
 
@@ -81,8 +81,10 @@ describe("maestro.yml reuses the native build", () => {
 
   test("the build uses an NDK the runner already has", () => {
     const prebuild = run("Generate the native project");
-    assert.match(prebuild, /\$ANDROID_HOME\/ndk/);
-    assert.match(prebuild, /ext\.ndkVersion/);
+    assert.match(prebuild, /bash tools\/ci\/pin-ndk\.sh/);
+    const script = readFileSync(path.join(repoRoot, "tools/ci/pin-ndk.sh"), "utf8");
+    assert.match(script, /\$ANDROID_HOME\/ndk/);
+    assert.match(script, /ext\.ndkVersion/);
     assert.ok(stepIndex(android, "Generate the native project") < stepIndex(android, "Bundle the JS"));
   });
 });
