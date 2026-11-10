@@ -59,10 +59,10 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
   await stepThen(page, null, TAKE_RENDER_COUNTS);
   const from = await metrics(cdp);
   const frames: RenderCounts[] = [];
-  const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
+  const sway: (EndBSample | null)[] = [];
   for (let i = 1; i <= WINDOW; i++) {
     frames.push(await stepThen<RenderCounts>(page, STEP_MS, TAKE_RENDER_COUNTS));
-    if (i === 60 || i === 120) sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
+    if (i === 1 || i === 60 || i === 120) sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
     await at[i]?.(page);
   }
   const to = await metrics(cdp);
@@ -93,6 +93,7 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
 function holds(m: Measured, budget: WindowBudget, what: string) {
   expect.soft(m.frames, `frames the counter saw through ${what}`).toBe(WINDOW);
   expect.soft(m.felts, `the felts the trace saw through ${what}`).toEqual(["skia"]);
+  // The sway rides the compositor, so the floor is its layer showing, not canvas redraws: docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md
   expect.soft(m.feltFrames > 0 || m.swayShown, `the felt never drew, and no end-B layer swayed, through ${what}`).toBe(true);
   expect.soft(m.glDrawsPerFrame, `WebGL draws a frame through ${what}`).toBeLessThanOrEqual(budget.glDrawsPerFrame);
   expect.soft(m.canvas2dDraws, `2D canvas draws through ${what}`).toBeLessThanOrEqual(budget.canvas2dDraws);

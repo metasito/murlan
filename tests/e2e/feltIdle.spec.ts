@@ -39,6 +39,7 @@ for (const motion of ["reduce", "no-preference"] as const) {
     console.log(`felt (${motion}): ${draws} draws in ${feltFrames} of ${counts.frames} frames over ${WINDOW_MS} ms`);
 
     if (motion === "reduce") expect(draws, "the felt redrew a lamp that had not moved").toBe(0);
+    // The sway rides the compositor, so the floor is its layer showing, not canvas redraws: docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md
     else expect(draws > 10 || swayShows(sway), "the counter saw no Skia felt frame, and no end-B layer swayed, while the lamp swayed").toBe(true);
     expect(consoleErrors.entries, "the felt warned while it drew").toEqual([]);
   });

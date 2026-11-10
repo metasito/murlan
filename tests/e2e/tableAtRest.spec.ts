@@ -89,6 +89,7 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   console.log(`frames drawn of ${WINDOW} at rest: ${JSON.stringify(counts)}`);
   expect(counts.felt, "frames the felt drew while only the sway moved").toBeLessThanOrEqual(WINDOW * 0.4);
   expect(counts.feltTwiceRunning, "frames the felt drew right after drawing, though the sway moves its light under half a point a frame").toBe(0);
+  // The sway rides the compositor, so the floor is its layer showing, not canvas redraws: docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md
   expect(counts.felt >= WINDOW / 60 || swayShows(sway), "the sway neither redrew the felt nor showed as an end-B layer whose animation runs and whose opacity moved").toBe(true);
   expect(counts.handShade, "frames the hand shade drew over cards that had not moved").toBe(0);
   expect(counts.readPixels, "pixels read back from a canvas at rest").toBe(0);
