@@ -7,7 +7,7 @@ import { useDuring } from "@/lib/motion";
 import { Platform } from "react-native";
 import { scheduleOnRN } from "react-native-worklets";
 import { flareKindFor } from "@/components/impact";
-import { designScale, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
+import { designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
 import { preloadFanGloss } from "./FanGlossSlot";
 import { createGlossTracks, type GlossTracks } from "./glossTrackStore";
 import { glossLive, nextGlossBake, snapOf, type LampSnap } from "./glossTrack";
@@ -19,6 +19,9 @@ import type { LandingSignal } from "./useFlightClock";
 /** The mockup's `deal` chapter: the lamp comes up from 75% as the cards fly. */
 const BREATH_FROM = 0.75;
 const BREATH_RATE = 2.2;
+
+/** How long after its target moves the lamp has glided to within 5% of it: three of the glide's time constants. */
+export const LAMP_SETTLE_MS = (3 / GLIDE) * 1000;
 
 /** The controls keep their identities while the size changes, so an effect firing one can depend on them. */
 export interface LampRig {

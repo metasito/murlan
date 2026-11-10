@@ -26,9 +26,8 @@ const EXEMPT: Record<string, number> = {
   "components/table/handShade.web.tsx": 1,
   "components/table/feltSkia.web.tsx": 1,
   "components/table/feltCanvas.tsx": 2,
-  "components/table/particleLayer.web.tsx": 4,
 };
-const MAX_EXEMPT_FILES = 6;
+const MAX_EXEMPT_FILES = 5;
 
 const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\/|(?<![:"'`])\/\/.*$/gm, "");
 const hitsIn = (source: string) => code(source).match(CALL)?.length ?? 0;

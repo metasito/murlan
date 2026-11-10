@@ -3,7 +3,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MOTES, createAir, moteAlpha, mothPose, moteAt, stepAir, type Air, type AirLight } from "../../components/table/air.ts";
-import { D, DRAW_STRIDE, SPRITE_R, layoutMotes } from "../../components/table/particleSprites.ts";
 import { rgba } from "../../components/table/particles.ts";
 import { RestAir } from "../../lib/tokens.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
@@ -66,17 +65,14 @@ function mockup(seed: number) {
   };
 }
 
-/** What the draw layers draw: the motes through the sprite layout, the moth from its pose. */
+/** What the layers draw: the motes at their alpha, the moth from its pose. */
 function appDraws(air: Air, light: AirLight): Ellipse[] {
   const out: Ellipse[] = [];
-  const draws = new Float32Array(MOTES * DRAW_STRIDE);
-  layoutMotes(air, light, draws, 0);
+  const [cr, cg, cb] = rgba(RestAir.mote).map((v) => Math.round(v * 255));
   for (let i = 0; i < MOTES; i++) {
-    const d = i * DRAW_STRIDE;
-    const r = draws[d + D.scos] * SPRITE_R;
-    const [cr, cg, cb] = [D.r, D.g, D.b].map((k) => Math.round(draws[d + k] * 255));
-    const fill = `rgba(${cr},${cg},${cb},${draws[d + D.a].toFixed(3)})`;
-    if (draws[d + D.a] > 0) out.push({ fill, x: draws[d + D.tx] + r, y: draws[d + D.ty] + r, rx: r, ry: r, rot: 0 });
+    const a = moteAlpha(air, i, light);
+    const { x, y, r } = moteAt(air, i);
+    if (a > 0) out.push({ fill: `rgba(${cr},${cg},${cb},${a.toFixed(3)})`, x, y, rx: r, ry: r, rot: 0 });
   }
   const moth = mothPose(air, light);
   if (moth) {
