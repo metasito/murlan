@@ -194,8 +194,6 @@ export interface SharedTrack {
   spot: Played | null;
   fadeA: Played | null;
   fadeB: Played | null;
-  /** The foil ink's opacity, which only the level moves. */
-  ink: Played | null;
   /** The fades as the track begins. */
   at: { fadeA: number; fadeB: number };
   played: boolean;
@@ -228,7 +226,6 @@ export function sharedTrack(track: GlossTrack, s: number): SharedTrack {
     })),
     fadeA: play((n) => ({ opacity: 1 - cross(n) })),
     fadeB: play((n) => ({ opacity: cross(n) })),
-    ink: play((n) => ({ opacity: CardGloss.foil.alpha.edge * p.level[n]! })),
     at,
     played: track.moves,
   };
@@ -254,10 +251,11 @@ export interface BackPose {
   spot: { x: number; y: number };
   spotAlpha: number;
   streak: [StreakEnd, StreakEnd];
-  foil: [FoilEnd, FoilEnd];
+  /** The foil's glint where the lamp comes to rest: it is masked and blended, so no track plays under it. */
+  foil: FoilEnd;
   foilEdge: number;
   /** Only while the glide, a kick or a level change runs; null once the back's ends hold still. */
-  played: { streak: [Played, Played]; foil: [Played, Played] } | null;
+  played: { streak: [Played, Played] } | null;
 }
 
 export interface StreakEnd {
@@ -300,12 +298,14 @@ export function backPose(track: GlossTrack, placed: Placed, box: BackBox, s: num
   const lamp0 = lampAt(track, 0);
   const spot = glossSpot(placed.x, placed.y, box.w, box.h, lamp0);
   const [a0, b0] = endsAt(track, 0);
-  const edge = foilGlint(placed.x, placed.y, placed.rot, box.w, box.h, lamp0).edge;
+  const rest = track.stops[Math.min(track.eventStops, track.stops.length - 1)]!;
+  const settled = { ...lampAt(track, rest), lx: track.path.x[rest]! };
+  const edge = foilGlint(placed.x, placed.y, placed.rot, box.w, box.h, settled).edge;
   const pose: BackPose = {
     spot: spot.spot,
     spotAlpha: spot.spotAlpha,
     streak: [streakAt(placed, box, a0), streakAt(placed, box, b0)],
-    foil: [foilAt(placed, box, a0), foilAt(placed, box, b0)],
+    foil: foilAt(placed, box, settled),
     foilEdge: edge,
     played: null,
   };
@@ -313,14 +313,14 @@ export function backPose(track: GlossTrack, placed: Placed, box: BackBox, s: num
     const upTo = Math.min(track.eventStops, track.stops.length - 1);
     const duration = seconds(track.stops[upTo]!) * 1000;
     const ends = (n: number) => endsAt(track, n);
-    const one = (make: (l: ReturnType<typeof lampAt>) => StreakEnd | FoilEnd, side: 0 | 1): Played => ({
+    const one = (make: (l: ReturnType<typeof lampAt>) => StreakEnd, side: 0 | 1): Played => ({
       keyframes: keyframesOf(track, upTo, (n) => {
         const e = make(ends(n)[side]);
         return { transform: [{ translateX: e.x * s }, { translateY: e.y * s }, { rotate: `${e.ang}rad` }], opacity: e.opacity };
       }),
       duration,
     });
-    pose.played = { streak: [one((l) => streakAt(placed, box, l), 0), one((l) => streakAt(placed, box, l), 1)], foil: [one((l) => foilAt(placed, box, l), 0), one((l) => foilAt(placed, box, l), 1)] };
+    pose.played = { streak: [one((l) => streakAt(placed, box, l), 0), one((l) => streakAt(placed, box, l), 1)] };
   }
   return pose;
 }

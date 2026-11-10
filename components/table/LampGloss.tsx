@@ -165,31 +165,20 @@ export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }
 
 function TrackedGlint(props: TrackedProps & { color: string }) {
   const { s, width, height, color } = props;
-  const { shared, pose, delay } = useBackTrack(props);
+  const { pose } = useBackTrack(props);
   const diag = Math.hypot(width, height);
   const bandW = 2 * diag;
   const bandH = CardGloss.foil.width * diag;
-  const fades = [shared.fadeA, shared.fadeB];
-  const fadeAt = [shared.at.fadeA, shared.at.fadeB];
   return (
     <>
-      <Animated.View testID="card-foil-ink" pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: pose.foilEdge }, playing(shared.ink, delay)]} />
-      {pose.foil.map((end, i) => (
-        <Animated.View
-          key={i}
-          testID="card-foil-band"
-          pointerEvents="none"
-          style={[
-            styles.layer,
-            { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH, opacity: end.opacity, transform: rotated(end, s) },
-            playing(pose.played?.foil[i], delay),
-          ]}
-        >
-          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: fadeAt[i] }, playing(fades[i], delay)]}>
-            <LinearGradient colors={[withAlpha(color, 0), color, withAlpha(color, 0)]} style={StyleSheet.absoluteFill} />
-          </Animated.View>
-        </Animated.View>
-      ))}
+      <Animated.View testID="card-foil-ink" pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: pose.foilEdge }]} />
+      <Animated.View
+        testID="card-foil-band"
+        pointerEvents="none"
+        style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH, opacity: pose.foil.opacity, transform: rotated(pose.foil, s) }]}
+      >
+        <LinearGradient colors={[withAlpha(color, 0), color, withAlpha(color, 0)]} style={StyleSheet.absoluteFill} />
+      </Animated.View>
     </>
   );
 }
