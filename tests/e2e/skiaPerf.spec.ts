@@ -6,7 +6,7 @@ import { test, expect } from "./fixtures";
 import { botMove, heldTurnTable, playLowest } from "./helpers/mockupParity";
 import { installVirtualClock, stepThen, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS } from "./helpers/traceDiff";
-import { COUNTED, countRenders, END_B_SAMPLE, type EndBSample, startRenderCounts, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
+import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { HAND_CARD_BOXES } from "./helpers/selectors";
 import { BUDGETS, type WindowBudget } from "./helpers/skiaPerfBudgets";
 import type { TraceFrame } from "../../lib/e2eTrace";
@@ -60,9 +60,11 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
   const from = await metrics(cdp);
   const frames: RenderCounts[] = [];
   const sway: (EndBSample | null)[] = [];
+  let picture: EndBLean | null = null;
   for (let i = 1; i <= WINDOW; i++) {
     frames.push(await stepThen<RenderCounts>(page, STEP_MS, TAKE_RENDER_COUNTS));
     if (i === 1 || i === 60 || i === 120) sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
+    if (i === 120) picture = await page.evaluate<EndBLean | null>(END_B_LEAN);
     await at[i]?.(page);
   }
   const to = await metrics(cdp);
@@ -75,7 +77,7 @@ async function measure(page: Page, cdp: CDPSession, at: Record<number, (page: Pa
   const per = (x: number) => +(x / WINDOW).toFixed(2);
   return {
     frames: frames.reduce((s, f) => s + f.frames, 0),
-    swayShown: swayShows(sway),
+    swayShown: swayShows(sway, picture),
     feltFrames: frames.filter((f) => (f.drewIn[COUNTED.felt] ?? 0) > 0).length,
     glDrawsPerFrame: per(drawn(" webgl")),
     canvas2dDraws: drawn(" 2d"),
