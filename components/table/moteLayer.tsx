@@ -49,6 +49,9 @@ const styles = StyleSheet.create({
   shadow: { position: "absolute", left: -SHADOW.w / 2, top: -SHADOW.h / 2, width: SHADOW.w, height: SHADOW.h, borderRadius: SHADOW.h, backgroundColor: RestAir.mothShadow, transform: [{ rotate: SHADOW.rot }] },
 });
 
+/** The mote's own box, at the origin: the animation moves it, and a zero-size box would not be composited. */
+const boxOf = (r: number): ViewStyle => ({ position: "absolute", left: 0, top: 0, width: 2 * r, height: 2 * r, borderRadius: r, backgroundColor: RestAir.mote });
+
 const dotOf = (r: number): ViewStyle => ({ position: "absolute", left: -r, top: -r, width: 2 * r, height: 2 * r, borderRadius: r, backgroundColor: RestAir.mote });
 
 /** The air's own clock: seconds since mount, stopped while the lamp is frozen. */
@@ -75,12 +78,8 @@ function useAirClock(frozen: boolean) {
 
 const Mote = memo(function Mote({ tracks, track, paused }: { tracks: MoteTracks; track: MoteTrack; paused: boolean }) {
   const motion = useMemo(() => ambient({ keyframes: moteKeyframes(tracks, track), duration: SPAN_S * MS, paused }), [tracks, track, paused]);
-  const dot = useMemo(() => dotOf(track.r), [track.r]);
-  return (
-    <Animated.View style={[styles.anchor, { opacity: trackAlpha(tracks, track, 0) }, motion]}>
-      <View testID="air-mote" style={dot} />
-    </Animated.View>
-  );
+  const box = useMemo(() => boxOf(track.r), [track.r]);
+  return <Animated.View testID="air-mote" style={[box, { opacity: trackAlpha(tracks, track, 0) }, motion]} />;
 });
 
 const Still = memo(function Still({ x, y, r, alpha }: { x: number; y: number; r: number; alpha: number }) {

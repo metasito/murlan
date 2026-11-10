@@ -144,7 +144,7 @@ const percent = (s: number, span: number) => `${((s / span) * 100).toFixed(4)}%`
 /** Opacity is sampled this often: a twinkle's period is 4.83 s, so a step of 0.5 s keeps linear between stops within 0.03 of it. */
 const ALPHA_STEP_S = 0.5;
 
-/** One mote's whole motion as one keyframe set, so it is one animation and one layer: its place at every drift stop, and its alpha (the cone times the twinkle) there and every 0.5 s between. */
+/** One mote's whole motion as one keyframe set, so it is one animation and one layer: the box's top-left, a radius off its centre, at every drift stop, and its alpha (the cone times the twinkle) there and every 0.5 s between. */
 export function moteKeyframes(tracks: MoteTracks, track: MoteTrack): CSSAnimationKeyframes {
   const at = new Map<string, number>();
   for (const p of track.drift) at.set(percent(p.t, SPAN_S), p.t);
@@ -152,7 +152,7 @@ export function moteKeyframes(tracks: MoteTracks, track: MoteTrack): CSSAnimatio
   const out: Record<string, object> = {};
   for (const [key, t] of [...at].sort((x, y) => x[1] - y[1])) {
     const [a, b, u] = around(track.drift, t);
-    out[key] = { transform: [{ translateX: between(a.x, b.x, u) }, { translateY: between(a.y, b.y, u) }], opacity: trackAlpha(tracks, track, t) };
+    out[key] = { transform: [{ translateX: between(a.x, b.x, u) - track.r }, { translateY: between(a.y, b.y, u) - track.r }], opacity: trackAlpha(tracks, track, t) };
   }
   return out as CSSAnimationKeyframes;
 }

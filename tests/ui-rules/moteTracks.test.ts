@@ -144,7 +144,7 @@ describe("the mote tracks against drawAir", () => {
     const tracks = buildMoteTracks(air, LIGHT);
     const sets = tracks.motes.map((tr) => {
       const kf = moteKeyframes(tracks, tr) as unknown as Record<string, { opacity: number; transform: { translateX: number; translateY: number }[] }>;
-      return { i: tr.i, stops: Object.entries(kf).map(([k, v]) => ({ t: (parseFloat(k) / 100) * SPAN_S, o: v.opacity, x: v.transform[0].translateX, y: v.transform[1].translateY })).sort((a, b) => a.t - b.t) };
+      return { i: tr.i, r: tr.r, stops: Object.entries(kf).map(([k, v]) => ({ t: (parseFloat(k) / 100) * SPAN_S, o: v.opacity, x: v.transform[0].translateX, y: v.transform[1].translateY })).sort((a, b) => a.t - b.t) };
     });
     assert.ok(Math.max(...sets.map((s) => s.stops.length)) < 700, "a set grows with the span, not past it");
     let worstA = 0;
@@ -154,7 +154,7 @@ describe("the mote tracks against drawAir", () => {
       const drawn = m.frame();
       if (!times.has(n)) continue;
       const s = n * DT;
-      for (const { i, stops } of sets) {
+      for (const { i, r, stops } of sets) {
         let k = 0;
         while (k < stops.length - 2 && stops[k + 1].t <= s) k++;
         const [a, b] = [stops[k], stops[k + 1]];
@@ -163,8 +163,8 @@ describe("the mote tracks against drawAir", () => {
         const at = m.lamp.m[i];
         const hit = drawn.find((d) => d.x === at.x && d.y === at.y);
         worstA = Math.max(worstA, Math.abs(o - (hit?.alpha ?? 0)));
-        const x = a.x + (b.x - a.x) * u;
-        const y = a.y + (b.y - a.y) * u;
+        const x = a.x + (b.x - a.x) * u + r;
+        const y = a.y + (b.y - a.y) * u + r;
         if (Math.abs(x - at.x) < 100 && Math.abs(y - at.y) < 100) worstP = Math.max(worstP, Math.hypot(x - at.x, y - at.y));
       }
     }
