@@ -152,12 +152,12 @@ const LEAN_REACH_PT = 120;
 /** Levels end B must lean: end B reads +5.4 at 874 x 402, DPR 1, a copy of end A -1.3 and a blank canvas 0. */
 const LEAN_FLOOR = 1;
 
-/** The settled felt's end-B layer, when it has one: its opacity now and how many of its animations run. In-page, for `page.evaluate`. */
+/** The settled felt's end-B layer, when it has one: its opacity now and how many of its animations play. The virtual clock holds every animation paused and steps it itself (`virtualClock.ts`), so a paused one plays here; a frozen layer fails on its opacity not moving. In-page, for `page.evaluate`. */
 export const END_B_SAMPLE = `(() => {
   const canvas = document.querySelector('[data-testid="felt-end-b"]');
   if (!canvas || canvas.style.visibility !== "visible") return null;
   const layer = canvas.parentElement;
-  return { opacity: Number(getComputedStyle(layer).opacity), running: layer.getAnimations().filter((a) => a.playState === "running").length };
+  return { opacity: Number(getComputedStyle(layer).opacity), running: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
 })()`;
 
 /**
