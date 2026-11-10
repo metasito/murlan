@@ -98,3 +98,12 @@ export function swayPhase(t: number): number {
   const u = (s - SWAY_TIMES[n]!) / (SWAY_TIMES[n + 1]! - SWAY_TIMES[n]!);
   return SWAY_PHASES[n]! + (SWAY_PHASES[n + 1]! - SWAY_PHASES[n]!) * u;
 }
+
+/** Seconds into the table at which the sway phase is `ph` (any phase: the table repeats every `HALF_SWINGS` half-turns). */
+export function swayTimeOf(ph: number): number {
+  "worklet";
+  const span = COUNT * STEP;
+  const s = (((ph + Math.PI / 2) % span) + span) % span;
+  const n = Math.min(COUNT - 1, Math.floor(s / STEP));
+  return SWAY_TIMES[n]! + (SWAY_TIMES[n + 1]! - SWAY_TIMES[n]!) * (s / STEP - n);
+}

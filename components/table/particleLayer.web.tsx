@@ -1,20 +1,24 @@
-// The web's particle layer: one 2D canvas and one requestAnimationFrame loop, whether or not
+// The web's particle layer: the rest air (moteLayer) and a 2D canvas that stays mounted and draws only while a burst flies, whether or not
 // CanvasKit has loaded — the felt swaps renderers, this never does (#1252).
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { useAnimatedReaction, type SharedValue } from "react-native-reanimated";
+import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import type { FrameInfo, SharedValue } from "react-native-reanimated";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { RestAir } from "@/lib/tokens";
-import { MOTES, type MothPose } from "./air";
-import { DESIGN, type Lamp } from "./lampRig";
+import { useDuring } from "@/lib/motion";
+import { MOTES } from "./air";
+import { DESIGN } from "./lampRig";
 import type { LampRig } from "./useLampRig";
-import { bombFx, landingDust, spawn, type ParticleEmitter } from "./particles";
+import { bombFx, landingDust, spawn, tableRng, type ParticleEmitter } from "./particles";
+import { burstIdle, createBurstScene, stepBurst, type BurstScene } from "./burstScene";
 import { startEmber } from "./ember";
 import { startRain } from "./coneRain";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
-import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, SHEET, SPARK_LEN, SPRITE_R, stepDue, stepScene, type Scene } from "./particleSprites";
+import { CELLS, D, DRAW_STRIDE, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
+
+// A chunk of its own: the rest air is not on the first paint's path, and the web first load is budgeted.
+const MoteLayer = lazy(() => import("./moteLayer").then((m) => ({ default: m.MoteLayer })));
 
 function bakeSheet(): HTMLCanvasElement {
   const sheet = document.createElement("canvas");
@@ -61,154 +65,98 @@ function tinted(white: HTMLCanvasElement, rgb: string): HTMLCanvasElement {
   return out;
 }
 
-function drawMoth(c: CanvasRenderingContext2D, p: MothPose) {
-  c.fillStyle = RestAir.mothShadow;
-  c.beginPath();
-  c.ellipse(p.sx, p.sy, p.shadowRx, p.shadowRy, p.shadowRot, 0, Math.PI * 2);
-  c.fill();
-  c.fillStyle = RestAir.moth;
-  c.beginPath();
-  c.ellipse(p.mx - p.wing, p.my, p.wing, p.wingRy, 0, 0, Math.PI * 2);
-  c.ellipse(p.mx + p.wing, p.my, p.wing, p.wingRy, 0, 0, Math.PI * 2);
-  c.fill();
-}
-
-export function animate(
-  cv: HTMLCanvasElement,
-  scene: Scene,
-  lamp: SharedValue<Lamp>,
-  reduced: boolean,
-  sx: number,
-  sy: number
-): { stop(): void; wake(): void } | undefined {
-  const c = cv.getContext("2d");
-  if (!c) return;
-  cv.width = Math.round(DESIGN.width * sx);
-  cv.height = Math.round(DESIGN.height * sy);
-  const white = bakeSheet();
-  const sheets = new Map<string, HTMLCanvasElement>();
-  let last = performance.now();
-  let owed = 0;
-  // Setting the size above cleared the canvas, so an asleep scene must still paint it once.
-  let cleared = true;
-  let asleep = false;
-  let stopped = false;
-  let resumed = false;
-  let id = 0;
-  const frame = (now: number) => {
-    if (resumed) {
-      resumed = false;
-      last = now;
-    }
-    const frameS = (now - last) / 1000;
-    owed += frameS;
-    const l = lamp.value;
-    last = now;
-    if (!cleared && sceneAsleep(scene, l, reduced)) {
-      asleep = true;
-      return;
-    }
-    if (!cleared && !stepDue(scene, owed, frameS, reduced)) return void (id = requestAnimationFrame(frame));
-    // Held still, the time owed spans the sleep: stepping it all at once would jump the light.
-    const dt = Math.min(0.05, reduced ? frameS : owed);
-    owed = 0;
-    cleared = false;
-    if (stepScene(scene, l, dt, reduced, Math.random)) traceOnset("moment", "moth");
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.clearRect(0, 0, cv.width, cv.height);
-    const draws = scene.d;
-    for (let i = 0; i < scene.s.live + MOTES; i++) {
-      const d = i * DRAW_STRIDE;
-      if (!draws[d + D.a]) continue;
-      const rgb = `${Math.round(draws[d + D.r] * 255)},${Math.round(draws[d + D.g] * 255)},${Math.round(draws[d + D.b] * 255)}`;
-      let sheet = sheets.get(rgb);
-      if (!sheet) sheets.set(rgb, (sheet = tinted(white, rgb)));
-      c.setTransform(sx, 0, 0, sy, 0, 0);
-      c.transform(draws[d + D.scos], draws[d + D.ssin], -draws[d + D.ssin], draws[d + D.scos], draws[d + D.tx], draws[d + D.ty]);
-      c.globalAlpha = draws[d + D.a];
-      c.drawImage(sheet, draws[d + D.x], draws[d + D.y], draws[d + D.w], draws[d + D.h], 0, 0, draws[d + D.w], draws[d + D.h]);
-    }
-    c.globalAlpha = 1;
-    if (scene.moth) {
-      c.setTransform(sx, 0, 0, sy, 0, 0);
-      drawMoth(c, scene.moth);
-    }
-    id = requestAnimationFrame(frame);
-  };
-  id = requestAnimationFrame(frame);
-  return {
-    stop() {
-      stopped = true;
-      cancelAnimationFrame(id);
-    },
-    wake() {
-      if (stopped || !asleep) return;
-      asleep = false;
-      resumed = true;
-      id = requestAnimationFrame(frame);
-    },
-  };
+function paintScene(c: CanvasRenderingContext2D, cv: HTMLCanvasElement, scene: BurstScene, paint: { white: HTMLCanvasElement | null; sheets: Map<string, HTMLCanvasElement> }, sx: number, sy: number) {
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, cv.width, cv.height);
+  const white = paint.white!;
+  const draws = scene.d;
+  for (let i = 0; i < scene.s.live; i++) {
+    const d = i * DRAW_STRIDE;
+    if (!draws[d + D.a]) continue;
+    const rgb = `${Math.round(draws[d + D.r] * 255)},${Math.round(draws[d + D.g] * 255)},${Math.round(draws[d + D.b] * 255)}`;
+    let sheet = paint.sheets.get(rgb);
+    if (!sheet) paint.sheets.set(rgb, (sheet = tinted(white, rgb)));
+    c.setTransform(sx, 0, 0, sy, 0, 0);
+    c.transform(draws[d + D.scos], draws[d + D.ssin], -draws[d + D.ssin], draws[d + D.scos], draws[d + D.tx], draws[d + D.ty]);
+    c.globalAlpha = draws[d + D.a];
+    c.drawImage(sheet, draws[d + D.x], draws[d + D.y], draws[d + D.w], draws[d + D.h], 0, 0, draws[d + D.w], draws[d + D.h]);
+  }
+  c.globalAlpha = 1;
 }
 
 export function ParticleLayer({ ref, rig, landing }: {
   ref?: Ref<ParticleEmitter>;
-  rig: Pick<LampRig, "lamp" | "sx" | "sy">;
+  rig: Pick<LampRig, "lamp" | "sx" | "sy"> & Partial<Pick<LampRig, "stillLight">>;
   landing: SharedValue<LandingSignal>;
 }) {
   const { lamp, sx, sy } = rig;
-  const [scene] = useState(() => createScene(Math.random));
-  const canvas = useRef<HTMLCanvasElement>(null);
+  const [scene] = useState(() => createBurstScene());
+  const [rng] = useState(tableRng);
+  const paint = useRef({ white: null as HTMLCanvasElement | null, sheets: new Map<string, HTMLCanvasElement>() });
   const reduced = usePrefersReducedMotion();
-  const running = useRef<{ stop(): void; wake(): void } | undefined>(undefined);
+  const canvas = useRef<HTMLCanvasElement | null>(null);
+  // The canvas stays mounted and the frame callback released: a throw wakes it on the contact frame, and it releases itself when nothing flies.
+  const [frame] = useState(() => (info: FrameInfo): boolean => {
+    stepBurst(scene, lamp.value, Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000), rng);
+    const cv = canvas.current;
+    const c = cv?.getContext?.("2d");
+    if (cv && c) paintScene(c, cv, scene, paint.current, cv.width / DESIGN.width, cv.height / DESIGN.height);
+    return !burstIdle(scene);
+  });
+  const wake = useDuring(frame, false);
+  // Baked at mount, outside any burst: the offscreen draws it takes are not a turn's.
+  useEffect(() => {
+    if (!paint.current.white) paint.current.white = bakeSheet();
+  }, []);
+  useEffect(() => {
+    const cv = canvas.current;
+    if (!cv) return;
+    cv.width = Math.round(DESIGN.width * sx);
+    cv.height = Math.round(DESIGN.height * sy);
+  }, [sx, sy]);
   useLandingReaction(landing, (l) => {
     "worklet";
-    for (const p of landingDust(l, reduced, sx, sy, Math.random)) spawn(scene.s, p);
-    running.current?.wake();
+    for (const p of landingDust(l, reduced, sx, sy, rng)) spawn(scene.s, p);
+    wake();
   });
   useBombBeat(landing, reduced, (l) => {
     "worklet";
-    for (const p of bombFx(l, reduced, sx, sy, Math.random)) spawn(scene.s, p);
-    running.current?.wake();
+    for (const p of bombFx(l, reduced, sx, sy, rng)) spawn(scene.s, p);
+    wake();
     traceOnset("moment", "bombFx");
   });
-  useAnimatedReaction(
-    () => lamp.value.t,
-    () => running.current?.wake()
-  );
 
   useImperativeHandle(ref, () => ({
     emit(spawns) {
       for (const p of spawns) spawn(scene.s, p);
-      running.current?.wake();
+      wake();
     },
     ember(from, to) {
       if (reduced) return;
       startEmber(scene.ember, from, to);
-      running.current?.wake();
+      wake();
     },
     rain() {
       if (reduced) return;
       startRain(scene.rain);
-      running.current?.wake();
+      wake();
     },
-  }), [scene, reduced]);
+  }), [scene, reduced, wake]);
 
+  // The motes are live from the first frame, whether or not their chunk has loaded.
   useTraceSource("live", useCallback(() => scene.s.live + MOTES, [scene]));
   useTraceSource("dropped", useCallback(() => scene.s.dropped, [scene]));
-  useTraceSource("motes", useCallback(() => scene.lit, [scene]));
-  useTraceSource("moth", useCallback(() => scene.moth && { x: scene.moth.mx * sx, y: scene.moth.my * sy }, [scene, sx, sy]));
-
-  useEffect(() => {
-    const loop = canvas.current ? animate(canvas.current, scene, lamp, reduced, sx, sy) : undefined;
-    running.current = loop;
-    return loop?.stop;
-  }, [scene, lamp, reduced, sx, sy]);
 
   return (
-    <canvas
-      ref={canvas}
-      data-testid="particles"
-      style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-    />
+    <>
+      <Suspense fallback={null}>
+        <MoteLayer rig={rig} />
+      </Suspense>
+      <canvas
+        ref={canvas}
+        data-testid="particles"
+        style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+      />
+    </>
   );
 }

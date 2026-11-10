@@ -1406,7 +1406,6 @@ const GUARDS = [
       { glob: "components/table/handShade.web.tsx", reason: "a one-shot, deferring the Skia probe past first paint" },
       { glob: "components/table/feltSkia.web.tsx", reason: "a one-shot, deferring the Skia probe past first paint" },
       { glob: "components/table/feltCanvas.tsx", reason: "a one-shot, waiting two frames for the canvas to be drawn" },
-      { glob: "components/table/particleLayer.web.tsx", reason: "the web canvas loop, which draws on the JS thread: it moves with the motes (PR F)" },
     ],
     plant: [
       { file: "components/Plant.tsx", code: ["useFrameCallback(step, true);", "const id = requestAnimationFrame(tick);", "window.requestAnimationFrame(tick);", "value.set(withRepeat(1, -1));", "const style = { animationName: [] };", 'const style = { "animationName": [] };'].join("\n"), hits: 6 },
