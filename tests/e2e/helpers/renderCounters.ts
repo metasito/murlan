@@ -145,3 +145,67 @@ export const TAKE_RENDER_COUNTS = "window.murlanRenderCounts.take()";
 
 /** Skia's web canvases carry no `testID` of their own: each is named by the view it lies in. */
 export const COUNTED = { felt: "table-felt webgl",handShade: "card-shade webgl", particles: "particles 2d" } as const;
+
+const DESIGN_WIDTH = 874;
+const SWAY_PT = 20;
+const LEAN_REACH_PT = 120;
+/** Levels end B must lean: end B reads +5.4 at 874 x 402, DPR 1, a copy of end A -1.3 and a blank canvas 0. */
+const LEAN_FLOOR = 1;
+
+/** The settled felt's end-B layer, when it has one: its opacity now and how many of its animations run. In-page, for `page.evaluate`. */
+export const END_B_SAMPLE = `(() => {
+  const canvas = document.querySelector('[data-testid="felt-end-b"]');
+  if (!canvas || canvas.style.visibility !== "visible") return null;
+  const layer = canvas.parentElement;
+  return { opacity: Number(getComputedStyle(layer).opacity), running: layer.getAnimations().filter((a) => a.playState === "running").length };
+})()`;
+
+/**
+ * Which way end B's picture leans, in 8-bit levels, from one 2D `getImageData` (never a WebGL read) of a row through the light.
+ * End B is lit from a sway ahead of the target, so the pixels right of the target are brighter than those left of it by this much;
+ * a copy of end A leans the other way and a blank canvas not at all. The target is the rig's light less the sway the layer's
+ * opacity says it is at. In-page, once per spec (a browser warns of repeated readbacks); needs the trace running.
+ */
+export const END_B_LEAN = `(() => {
+  const canvas = document.querySelector('[data-testid="felt-end-b"]');
+  const frame = window.murlanTrace?.frames.at(-1);
+  if (!canvas || canvas.style.visibility !== "visible" || !frame) return null;
+  const opacity = Number(getComputedStyle(canvas.parentElement).opacity);
+  const pt = innerWidth / ${DESIGN_WIDTH};
+  const px = canvas.width / innerWidth;
+  const target = frame.lamp.x - ${SWAY_PT} * pt * (2 * opacity - 1);
+  const reach = ${LEAN_REACH_PT} * pt;
+  const half = Math.round(8 * px);
+  const left = Math.round((target - reach) * px) - half;
+  const width = Math.round(2 * reach * px) + 2 * half;
+  const { data } = canvas.getContext("2d").getImageData(left, Math.round(frame.lamp.y * px) - half, width, 2 * half);
+  const mean = (from) => {
+    let sum = 0;
+    for (let y = 0; y < 2 * half; y++) for (let x = from; x < from + 2 * half; x++) { const i = (y * width + x) * 4; sum += data[i] + data[i + 1] + data[i + 2]; }
+    return sum / (4 * half * half) / 3;
+  };
+  const l = mean(0);
+  const r = mean(width - 2 * half);
+  return { lean: r - l, left: l, right: r };
+})()`;
+
+export interface EndBSample {
+  opacity: number;
+  running: number;
+}
+
+export interface EndBLean {
+  lean: number;
+}
+
+/** Opacity the end-B layer must move by across the samples: its sway runs the whole of 0 to 1, so two seconds of it cannot lie within this. */
+const SWAY_SHOWN = 0.02;
+
+/** Whether the sway is visible without the felt redrawing: every sample found the layer with an animation running and its opacity moved between them, and the picture on the layer leans toward the far end of the sway by at least `LEAN_FLOOR` levels. A table with no such layer, a frozen one, or one whose end B is a copy of end A is not. */
+export function swayShows(samples: (EndBSample | null)[], picture: EndBLean | null): boolean {
+  const seen = samples.filter((s): s is EndBSample => s !== null);
+  if (seen.length < 2 || seen.length !== samples.length || seen.some((s) => s.running < 1)) return false;
+  if (!picture || !(picture.lean >= LEAN_FLOOR)) return false;
+  const opacities = seen.map((s) => s.opacity);
+  return Math.max(...opacities) - Math.min(...opacities) >= SWAY_SHOWN;
+}

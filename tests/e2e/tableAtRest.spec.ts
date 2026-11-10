@@ -6,7 +6,7 @@ import { test, expect } from "./fixtures";
 import { heldTurnTable, playLowest } from "./helpers/mockupParity";
 import { installVirtualClock, stepThen, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS, type TraceFrame } from "./helpers/traceDiff";
-import { COUNTED, countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
+import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { HAND_CARD_BOXES } from "./helpers/selectors";
 
 const VIEWPORT = { width: 874, height: 402 };
@@ -69,8 +69,14 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   await frames(page, SETTLE);
 
   const airBefore = await page.evaluate<Air>(AIR);
-  const rest = await frames(page, WINDOW);
+  const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
+  const rest: Frame[] = [];
+  for (const length of [60, 60, WINDOW - 120]) {
+    rest.push(...(await frames(page, length)));
+    if (sway.length < 3) sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
+  }
   const airAfter = await page.evaluate<Air>(AIR);
+  const picture = await page.evaluate<EndBLean | null>(END_B_LEAN);
   const counts = {
     felt: drew(rest, FELT),
     feltTwiceRunning: rest.filter((f, i) => i > 0 && (f.draws[FELT] ?? 0) > 0 && (rest[i - 1].draws[FELT] ?? 0) > 0).length,
@@ -84,7 +90,8 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   console.log(`frames drawn of ${WINDOW} at rest: ${JSON.stringify(counts)}`);
   expect(counts.felt, "frames the felt drew while only the sway moved").toBeLessThanOrEqual(WINDOW * 0.4);
   expect(counts.feltTwiceRunning, "frames the felt drew right after drawing, though the sway moves its light under half a point a frame").toBe(0);
-  expect(counts.felt, "the felt never redrew a swaying light").toBeGreaterThanOrEqual(WINDOW / 60);
+  // The sway rides the compositor, so the floor is its layer showing, not canvas redraws: docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md
+  expect(counts.felt >= WINDOW / 60 || swayShows(sway, picture), "the sway neither redrew the felt nor showed as an end-B layer whose animation runs and whose opacity moved").toBe(true);
   expect(counts.handShade, "frames the hand shade drew over cards that had not moved").toBe(0);
   expect(counts.readPixels, "pixels read back from a canvas at rest").toBe(0);
   expect(counts.offscreen, "draws to a canvas outside the document").toBe(0);
