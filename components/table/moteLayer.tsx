@@ -45,7 +45,7 @@ const WING = { w: 2 * WING_MEAN, h: 4 } as const;
 const SHADOW = { w: 2 * SHADOW_MEAN, h: 12, rot: "0.3rad" } as const;
 
 const styles = StyleSheet.create({
-  fill: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 },
+  airBox: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 },
   anchor: { position: "absolute", left: 0, top: 0, width: 0, height: 0 },
   wings: { position: "absolute", left: -WING.w / 2, top: -WING.h / 2, width: WING.w, height: WING.h, flexDirection: "row" },
   wing: { width: WING.w / 2, height: WING.h, borderRadius: WING.h, backgroundColor: RestAir.moth },
@@ -200,7 +200,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
     [sx, sy]
   );
   return (
-    <View testID="air" style={styles.fill} pointerEvents="none">
+    <View testID="air" style={styles.airBox} pointerEvents="none">
       <View style={sized}>
         {tracks?.motes.map((m) => <Mote key={`${tracks.built}-${m.i}`} track={m} built={tracks.built} paused={frozen} />)}
         {still?.map((a, i) => (a >= UNSEEN * MOTE_ALPHA ? <Still key={i} x={air.m[i * MOTE_STRIDE + M.x]} y={air.m[i * MOTE_STRIDE + M.y]} r={air.m[i * MOTE_STRIDE + M.r]} alpha={a} /> : null))}
