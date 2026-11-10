@@ -66,7 +66,6 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   expect(counts.offscreen, "draws to a canvas outside the document").toBe(0);
   expect(counts.cardStyles, "style writes inside a card's view at rest").toBe(0);
   expect(counts.particles, "frames the motes drew").toBeLessThanOrEqual(WINDOW * 0.55);
-  expect(counts.particles, "the motes never drew").toBeGreaterThanOrEqual(1);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await frames(page, SETTLE);

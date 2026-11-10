@@ -51,7 +51,7 @@ export async function settledLight(page: Page, side: FlyDirection): Promise<Poin
 }
 
 /** A screenshot `style` that leaves the motes and the moth out of a sample of the felt. */
-export const UNLIT_AIR = '[data-testid="particles"] { visibility: hidden !important; }';
+export const UNLIT_AIR = '[data-testid="particles"], [data-testid="air"] { visibility: hidden !important; }';
 
 /** This browser draws WebGL on SwiftShader, where the table keeps its fallback felt: a spec of Skia's pixels asks for them. */
 export async function skiaOnSoftware(page: Page): Promise<void> {
