@@ -157,5 +157,10 @@ export function reconnectParityTest() {
       for (const f of side.frames) await test.info().attach(`reconnect-realtime/${f.file}`, { path: path.join(dir, f.file), contentType: "image/jpeg" });
     }
     expect(failures, "the app's reconnect against the mockup's chapter").toEqual([]);
+    const dropped = app.frames.find((f) => f.onsets.includes("moment:drop"))?.t;
+    const back = app.frames.find((f) => dropped !== undefined && f.t > dropped && f.onsets.includes("moment:net-ok"))?.t;
+    expect(back, "the app came back").toBeDefined();
+    const rebuilt = app.frames.some((f) => f.t >= back! - 500 && f.t <= back! + 3000 && f.onsets.includes("moment:air-thaw"));
+    expect(rebuilt, "the motes' tracks are rebuilt on the thaw, so their light follows the lamp").toBe(true);
   });
 }
