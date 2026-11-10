@@ -41,37 +41,51 @@ test.describe("a seat's badge is drawn in the solver's rects: online", () => {
     throw new Error("the badges kept changing shape under the read");
   }
 
-  test("every seat's badge, reconnecting then vacated, on a phone, a bigger phone and a tablet", async ({ browser, baseURL }) => {
+  /**
+   * The third human leaving a four-seat table ends the match for the one left (`vacateSeat`: `remaining <= 1`), so
+   * three seats are never vacated at once. Every seat reconnecting is compared first, then the last one comes back
+   * inside its grace and the two still away are compared once vacated.
+   */
+  test("every seat's badge, reconnecting then two vacated, on a phone, a bigger phone and a tablet", async ({ browser, baseURL }) => {
     test.setTimeout(360_000);
     const sizes = [SE, SIXTEEN, TABLETS[0]];
     const table = await openOnlineTable(browser, baseURL!, { playerCount: 4, gameMode: "free_for_all", viewport: { width: SE.width, height: SE.height } });
+    const solve = (vp: (typeof sizes)[number], seats: Awaited<ReturnType<typeof seated>>) =>
+      tableRects({
+        width: vp.width,
+        height: vp.height,
+        insets: INSETS["0/0"],
+        locale: "it",
+        state: {
+          seats: { top: null, left: null, right: null, ...Object.fromEntries(Object.entries(seats).map(([dir, seat]) => [dir, { name: seat.name, cards: 0, badge: seat.badge }])) },
+          hand: { cards: 0, onTurn: false, faceDown: false },
+          pile: 0,
+          chips: { combo: [], turn: [] },
+        },
+      });
+    const compare = async (what: string, badged: readonly string[]) => {
+      for (const vp of sizes) {
+        await table.page.setViewportSize({ width: vp.width, height: vp.height });
+        const { got, seats } = await read(table.page);
+        expect(Object.entries(seats).map(([dir, seat]) => `${dir} ${seat.badge?.kind ?? "bare"}`).sort(), `${vp.name}: ${what}`).toEqual([...badged].sort());
+        const rect = { top: "badgeTop", left: "badgeLeft", right: "badgeRight" } as const;
+        const drawn = Object.entries(seats).filter(([, seat]) => seat.badge).map(([dir]) => rect[dir as keyof typeof rect]);
+        for (const name of drawn) expect(got.boxes[name], `${vp.name}, ${what}: ${name} is drawn`).toBeDefined();
+        expect(misfits(got, solve(vp, seats), BADGES), `${vp.name}, ${what}`).toEqual([]);
+      }
+    };
     try {
       for (const gone of table.others) await gone.context().setOffline(true);
-      for (const kind of ["reconnecting", "vacated"] as const) {
-        if (kind === "reconnecting") await expect(table.page.getByTestId("notice-reconnecting"), "every seat is reconnecting").toHaveCount(3, { timeout: 90_000 });
-        else await expect(table.page.getByTestId("notice-vacated"), "a seat is vacated").not.toHaveCount(0, { timeout: 90_000 });
-        for (const vp of sizes) {
-          await table.page.setViewportSize({ width: vp.width, height: vp.height });
-          const { got, seats } = await read(table.page);
-          expect(Object.entries(seats).map(([dir, seat]) => `${dir} ${seat.badge ? "badged" : "bare"}`).sort(), `${vp.name}: every seat wears a badge`).toEqual(["left badged", "right badged", "top badged"]);
-          if (kind === "vacated") expect(Object.values(seats).some((seat) => seat.badge?.kind === "vacated"), `${vp.name}: a seat is vacated`).toBe(true);
-          else expect(Object.values(seats).every((seat) => seat.badge?.kind === "reconnecting"), `${vp.name}: every seat is reconnecting`).toBe(true);
-          const solved = tableRects({
-            width: vp.width,
-            height: vp.height,
-            insets: INSETS["0/0"],
-            locale: "it",
-            state: {
-              seats: { top: null, left: null, right: null, ...Object.fromEntries(Object.entries(seats).map(([dir, seat]) => [dir, { name: seat.name, cards: 0, badge: seat.badge }])) },
-              hand: { cards: 0, onTurn: false, faceDown: false },
-              pile: 0,
-              chips: { combo: [], turn: [] },
-            },
-          });
-          for (const name of ["badgeTop", "badgeLeft", "badgeRight"] as const) expect(got.boxes[name], `${vp.name}, ${kind}: ${name} is drawn`).toBeDefined();
-          expect(misfits(got, solved, BADGES), `${vp.name}, ${kind}`).toEqual([]);
-        }
-      }
+      await expect(table.page.getByTestId("notice-reconnecting"), "every seat is reconnecting").toHaveCount(3, { timeout: 90_000 });
+      await compare("every seat is reconnecting", ["top reconnecting", "left reconnecting", "right reconnecting"]);
+
+      await table.others[2].context().setOffline(false);
+      await expect(table.page.getByTestId("notice-vacated"), "the two still away are vacated").toHaveCount(2, { timeout: 90_000 });
+      await expect(table.page.getByTestId("notice-reconnecting"), "the one back is no longer reconnecting").toHaveCount(0);
+      const seats = await seated(table.page);
+      const bare = Object.entries(seats).filter(([, seat]) => !seat.badge).map(([dir]) => dir);
+      expect(bare, "one seat is bare").toHaveLength(1);
+      await compare("two seats are vacated", ["top", "left", "right"].map((dir) => `${dir} ${dir === bare[0] ? "bare" : "vacated"}`));
     } finally {
       await table.close();
     }
