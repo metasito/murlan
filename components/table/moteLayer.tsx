@@ -9,7 +9,6 @@ import { E2E_FAST } from "@/lib/e2eConfig";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ambient } from "@/lib/motion";
-import { swayTimeOf } from "@/lib/swayTable";
 import { RestAir } from "@/lib/tokens";
 import { createAir, isDrawn, M, MOTE_STRIDE, type Air } from "./air";
 import { DESIGN, LIGHT_ABOVE } from "./lampRig";
@@ -120,7 +119,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & 
 
   const lightNow = useCallback((): RestLight => {
     const s = lamp.get();
-    return { x: s.tx, ly: s.ty - LIGHT_ABOVE, level: s.lvlT, r: s.tr, tt: swayTimeOf(s.ph) };
+    return { x: s.tx, ly: s.ty - LIGHT_ABOVE, level: s.lvlT, r: s.tr, ph: s.ph, t: s.t };
   }, [lamp]);
 
   const rebuild = useCallback(() => {

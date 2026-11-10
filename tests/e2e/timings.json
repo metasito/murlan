@@ -55,6 +55,7 @@
   "reconnect.spec.ts": 50.8,
   "reducedMotionWobbleReset.spec.ts": 2,
   "reorderHand.spec.ts": 23.6,
+  "restEnds.spec.ts": 75,
   "resultActions.spec.ts": 58.4,
   "resultCutout.spec.ts": 50.9,
   "rulesScroll.spec.ts": 3.2,

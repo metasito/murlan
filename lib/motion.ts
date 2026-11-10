@@ -163,6 +163,30 @@ export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): (
   return wake;
 }
 
+/** `step` on the frame `frames` ahead; returns the cancel. */
+export function afterFrames(frames: number, step: () => void): () => void {
+  let id = requestAnimationFrame(function arrive() {
+    if (--frames > 0) id = requestAnimationFrame(arrive);
+    else step();
+  });
+  return () => cancelAnimationFrame(id);
+}
+
+/** Where the CSS animation on `element` is in its pass, in seconds; null where none runs. Web only. */
+export function ambientPlace(element: Element): number | null {
+  const timing = element.getAnimations()[0]?.effect?.getComputedTiming();
+  return timing?.progress == null || typeof timing.duration !== "number" ? null : (timing.progress * timing.duration) / 1000;
+}
+
+/** Moves the CSS animation on `element` to `seconds` into its pass without restarting it, or holds or releases it. Web only. */
+export function steerAmbient(element: Element, steer: { place: number } | { paused: boolean }): void {
+  const animation = element.getAnimations()[0];
+  if (!animation) return;
+  if ("place" in steer) animation.currentTime = steer.place * 1000;
+  else if (steer.paused) animation.pause();
+  else animation.play();
+}
+
 /** No frames are drawn: a hidden page (react-native-web maps visibility here) or a backgrounded app. */
 export const inBackground = () => AppState.currentState === "background";
 

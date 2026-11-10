@@ -5,6 +5,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
+import { speedOf } from "../../lib/swayTable.ts";
 import type { FlyDirection } from "../seatLayout.ts";
 
 export const DESIGN = { width: 874, height: 402 } as const;
@@ -55,9 +56,20 @@ export function lightUniforms(reach: number): { uPoolR: number; uVigR: number } 
   return { uPoolR: LAMP_LIGHT.poolR * reach, uVigR: LAMP_LIGHT.vigR * reach };
 }
 
+/** Where the light hangs: `sway` points either side of the pool's centre `x`, and above its `y`. */
+export function lightX(x: number, sway: number): number {
+  "worklet";
+  return x + sway;
+}
+
+export function lightY(y: number): number {
+  "worklet";
+  return y - LIGHT_ABOVE;
+}
+
 export const GLIDE = 2.2;
 export const SWAY = 20;
-const SWAY_KICKED = 80;
+export const SWAY_KICKED = 80;
 const KICK_DECAY = 1.1;
 const FLARE_DECAY = 2.4;
 const DEFAULT_LEVEL_RATE = 3;
@@ -169,13 +181,13 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
   }
   s.lvl += (s.lvlT - s.lvl) * (1 - Math.exp(-dt * s.lvlRate));
   const run = 1 - s.freeze;
-  const w = 0.84 * (1 + 0.14 * Math.sin(s.t * 0.11 + 1.3) + 0.06 * Math.sin(s.t * 0.37));
+  const w = speedOf(s.t);
   s.ph += dt * w * run;
   const sway = reduced ? 0 : Math.sin(s.ph) * (SWAY + SWAY_KICKED * s.kick);
   s.kick *= Math.exp(-dt * KICK_DECAY);
   s.level = clamp01(s.lvl);
-  s.lx = s.x + sway;
-  s.ly = s.y - LIGHT_ABOVE;
+  s.lx = lightX(s.x, sway);
+  s.ly = lightY(s.y);
   s.f = reduced ? 0 : s.flare;
   s.flare *= Math.exp(-dt * FLARE_DECAY);
 }
