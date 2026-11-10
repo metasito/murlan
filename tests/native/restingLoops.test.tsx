@@ -135,11 +135,11 @@ describe('useDuring', () => {
 });
 
 describe('a table at rest under reduced motion', () => {
-  it('registers no frame callback: lamp, link hold and particles are all released', async () => {
+  it('registers no frame callback: lamp and link hold are released, and the particles have none to release', async () => {
     await setMotion('on');
     const view = await render(<Table link="up" dim={false} />);
     await frames(30);
-    expect(mockControllers.length).toBe(3);
+    expect(mockControllers.length).toBe(2);
     expect(running()).toBe(0);
     await view.unmount();
   });
@@ -186,11 +186,11 @@ describe('a table with motion', () => {
     await view.unmount();
   });
 
-  it('keeps the lamp and the particles running, and releases the link hold', async () => {
+  it('keeps the lamp running, releases the link hold, and has no particle loop at rest', async () => {
     await setMotion('off');
     const view = await render(<Table link="up" dim={false} />);
     await frames(60);
-    expect(running()).toBe(2);
+    expect(running()).toBe(1);
     await view.unmount();
   });
 });

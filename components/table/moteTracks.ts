@@ -127,11 +127,6 @@ function around<T extends { t: number }>(stops: readonly T[], s: number): [T, T,
   return [a, b, b.t > a.t ? Math.min(1, Math.max(0, (s - a.t) / (b.t - a.t))) : 0];
 }
 
-export function trackAt(track: MoteTrack, s: number): { x: number; y: number } {
-  const [a, b, u] = around(track.drift, s);
-  return { x: between(a.x, b.x, u), y: between(a.y, b.y, u) };
-}
-
 /** The mote's alpha `s` seconds after the build, as the compositor shows it: the cone times the twinkle. */
 export function trackAlpha(tracks: MoteTracks, track: MoteTrack, s: number): number {
   const [a, b, u] = around(track.cone, s);

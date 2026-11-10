@@ -41,7 +41,6 @@ import {
 
 /** The lamp has glided to within 5% of a seat after three time constants; the tracks follow it there. */
 const SETTLE_MS = (3 / GLIDE) * 1000;
-const REBUILD_MS = REBUILD_S * 1000;
 const MS = 1000;
 
 const WING = { w: 14, h: 4 } as const;
@@ -129,6 +128,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
   const [still, setStill] = useState<number[] | null>(null);
   const [flight, setFlight] = useState<FlightStop[] | null>(null);
   const flightAt0 = useRef(0);
+  const builtAt = useRef<number | null>(null);
   const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const lightNow = useCallback((): RestLight => {
@@ -144,6 +144,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
       return;
     }
     advanceAir(air, elapsed() - air.t);
+    builtAt.current = air.t;
     setStill(null);
     setTracks(buildMoteTracks(air, light));
   }, [air, elapsed, lightNow, reduced]);
@@ -151,11 +152,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
   useEffect(() => {
     if (frozen) return;
     const first = setTimeout(rebuild, 0);
-    const again = setInterval(rebuild, REBUILD_MS);
-    return () => {
-      clearTimeout(first);
-      clearInterval(again);
-    };
+    return () => clearTimeout(first);
   }, [rebuild, frozen]);
 
   const onMoved = useCallback(() => {
@@ -186,6 +183,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
       timer = setTimeout(fly, (gap() - FLIGHT_S) * MS);
     };
     const fly = () => {
+      if (builtAt.current !== null && elapsed() - builtAt.current > REBUILD_S) rebuild();
       const l = lightNow();
       setFlight(buildFlight({ x: l.x, ly: l.ly, tt: l.tt }));
       flightAt0.current = elapsed();
@@ -197,7 +195,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
       clearTimeout(timer);
       setFlight(null);
     };
-  }, [reduced, frozen, air, elapsed, lightNow]);
+  }, [reduced, frozen, air, elapsed, lightNow, rebuild]);
 
   useTraceSource("live", useCallback(() => MOTES, []));
   useTraceSource(

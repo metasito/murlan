@@ -2,8 +2,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MOTES, createAir, type Air } from "../../components/table/air.ts";
-import { advanceAir, buildFlight, buildMoteTracks, flightAt, FLIGHT_S, litAt, REBUILD_S, SPAN_S, stillAlphas, trackAlpha, trackAt, TWINKLE_KEYFRAMES, TWINKLE_MS, twinkleDelay, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
+import { advanceAir, buildFlight, buildMoteTracks, flightAt, FLIGHT_S, litAt, REBUILD_S, SPAN_S, stillAlphas, trackAlpha, TWINKLE_KEYFRAMES, TWINKLE_MS, twinkleDelay, type MoteTracks, type RestLight } from "../../components/table/moteTracks.ts";
 import { swayTimeOf, SWAY_REST_AT } from "../../lib/swayTable.ts";
+import type { MoteTrack } from "../../components/table/moteTracks.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 import { mulberry32 } from "../support/game.ts";
 
@@ -55,6 +56,16 @@ function mockup(seed: number) {
     },
     time: () => ctx.simT as number,
   };
+}
+
+/** Where the track puts the mote `s` seconds in: linear between its stops. */
+function trackAt(track: MoteTrack, s: number): { x: number; y: number } {
+  const stops = track.drift;
+  let k = 0;
+  while (k < stops.length - 2 && stops[k + 1].t <= s) k++;
+  const [a, b] = [stops[k], stops[k + 1]];
+  const u = b.t > a.t ? Math.min(1, Math.max(0, (s - a.t) / (b.t - a.t))) : 0;
+  return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
 }
 
 const LIGHT: RestLight = { x: 437, ly: 292 - 40, level: 1, r: 1, tt: SWAY_REST_AT };
