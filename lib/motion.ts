@@ -75,19 +75,24 @@ export interface AmbientSpec {
   duration: number;
   /** A negative delay starts the loop that far into its pass. */
   delay?: number;
+  /** Passes before it rests at its own style; endless when omitted. */
+  iterations?: number;
+  /** Holds where it stands, and resumes from there. */
+  paused?: boolean;
 }
 
 /**
  * An endless loop of opacity or transform keyframes, as the style that runs it: a CSS animation on web, Reanimated's
  * C++ engine on native, neither on the JS or UI thread per frame. A style the caller wears on an `Animated.View`.
  */
-export function ambient({ keyframes, duration, delay = 0 }: AmbientSpec): ViewStyle {
+export function ambient({ keyframes, duration, delay = 0, iterations, paused = false }: AmbientSpec): ViewStyle {
   return {
     animationName: keyframes,
     animationDuration: `${duration}ms`,
-    animationIterationCount: "infinite",
+    animationIterationCount: iterations ?? "infinite",
     animationTimingFunction: "linear",
     animationDelay: `${delay}ms`,
+    animationPlayState: paused ? "paused" : "running",
   } as ViewStyle;
 }
 

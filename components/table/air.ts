@@ -13,8 +13,10 @@ export const MOTE_STRIDE = 6;
 
 const TAU = Math.PI * 2;
 const CROSSING_S = 4;
-const UNSEEN = 0.02;
-const MOTE_ALPHA = 0.85;
+export const UNSEEN = 0.02;
+export const MOTE_ALPHA = 0.85;
+/** Radians a second: a twinkle's period is 2 PI over this. */
+export const TWINKLE_RATE = 1.3;
 
 export interface Air {
   /** Seconds the air has run: the drift's sway, the twinkle and the moth read it. */
@@ -82,12 +84,23 @@ export function moteAt(a: Air, i: number): { x: number; y: number; r: number } {
   return { x: a.m[o + M.x], y: a.m[o + M.y], r: a.m[o + M.r] };
 }
 
-/** Mote `i`'s alpha, 0 where it is too faint to draw; the cone scales with the light's reach. */
+/** How far into the light's cone a mote at `x`, `y` sits, times the light's level, 0 to 1; the cone scales with the light's reach. */
+export function moteCone(x: number, y: number, l: MoteLight): number {
+  "worklet";
+  return Math.max(0, 1 - Math.hypot(x - l.lx, (y - l.ly) * 1.3) / ((300 + l.f * 200) * l.r)) * l.level;
+}
+
+/** A mote's twinkle at `t` seconds, 0 to 1. */
+export function twinkle(t: number, ph: number): number {
+  "worklet";
+  return 0.5 + 0.5 * Math.sin(t * TWINKLE_RATE + ph);
+}
+
+/** Mote `i`'s alpha, 0 where it is too faint to draw. */
 export function moteAlpha(a: Air, i: number, l: AirLight): number {
   "worklet";
   const o = i * MOTE_STRIDE;
-  const d = Math.hypot(a.m[o + M.x] - l.lx, (a.m[o + M.y] - l.ly) * 1.3);
-  const lit = Math.max(0, 1 - d / ((300 + l.f * 200) * l.r)) * (0.5 + 0.5 * Math.sin(a.t * 1.3 + a.m[o + M.ph])) * l.level;
+  const lit = moteCone(a.m[o + M.x], a.m[o + M.y], l) * twinkle(a.t, a.m[o + M.ph]);
   return lit < UNSEEN ? 0 : lit * MOTE_ALPHA;
 }
 

@@ -1,15 +1,13 @@
-// The native particle layer: one Skia <Atlas> over the felt, its simulation stepped on the UI
-// thread in one frame callback. The web's is `particleLayer.web.tsx`.
-import { useCallback, useEffect, useImperativeHandle, useState, type Ref } from "react";
+// The native particle layer: the rest air (moteLayer) and, only while a burst flies, one Skia <Atlas> over the felt, its
+// simulation stepped on the UI thread in one frame callback. The web's is `particleLayer.web.tsx`.
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { StyleSheet } from "react-native";
 import {
   Atlas,
   BlurStyle,
   Canvas,
   Group,
-  Oval,
   PaintStyle,
-  rect,
   Skia,
   StrokeCap,
   TileMode,
@@ -18,27 +16,24 @@ import {
   useRSXformBuffer,
   type SkImage,
 } from "@shopify/react-native-skia";
-import { useAnimatedReaction, useDerivedValue, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useDuring } from "@/lib/motion";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { RestAir } from "@/lib/tokens";
-import { MOTES, type MothPose } from "./air";
 import type { Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
-import { bombFx, landingDust, PARTICLE_BUDGET, spawn, type ParticleEmitter } from "./particles";
+import { bombFx, landingDust, PARTICLE_BUDGET, spawn, type ParticleEmitter, type ParticleSpawn } from "./particles";
+import { MoteLayer } from "./moteLayer";
 import { startEmber } from "./ember";
 import { startRain } from "./coneRain";
 import { useGreyLayer } from "./greyLayer";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
-import { CELLS, createScene, D, DRAW_STRIDE, sceneAsleep, SHEET, SPARK_LEN, SPRITE_R, stepDue, stepScene, type Scene } from "./particleSprites";
+import { CELLS, createScene, D, DRAW_STRIDE, sceneIdle, SHEET, SPARK_LEN, SPRITE_R, stepScene, type Scene } from "./particleSprites";
 
-interface Field extends Scene {
-  due: number;
-}
+type Field = Scene;
 
 function bakeSheet(): SkImage | null {
   const surface = Skia.Surface.Make(SHEET.width, SHEET.height);
@@ -72,132 +67,43 @@ function bakeSheet(): SkImage | null {
   return surface.makeImageSnapshot();
 }
 
-// `moth` is written only while one flies: `field` changes every frame, and shapes derived from it would rebuild with it.
-function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: SharedValue<boolean>, moth: SharedValue<MothPose | null>) {
+function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, onIdle: () => void) {
   return (frame: FrameInfo): boolean => {
     "worklet";
     const v = field.value;
-    const l = lamp.value;
-    const frameS = (frame.timeSincePreviousFrame ?? 0) / 1000;
-    v.due += frameS;
-    if (!stepDue(v, v.due, frameS, still.value)) return true;
-    if (sceneAsleep(v, l, still.value)) return false;
-    // Held still, the time owed spans the sleep: stepping it all at once would jump the light.
-    const dt = Math.min(0.05, still.value ? frameS : v.due);
-    v.due = 0;
-    if (stepScene(v, l, dt, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
-    const p = v.moth;
-    if (p || moth.value) moth.value = p;
+    stepScene(v, lamp.value, Math.min(0.05, (frame.timeSincePreviousFrame ?? 0) / 1000), Math.random);
     field.modify(undefined, true);
-    return true;
+    if (!sceneIdle(v)) return true;
+    scheduleOnRN(onIdle);
+    return false;
   };
 }
 
-const ovalOf = (cx: number, cy: number, rx: number, ry: number) => {
-  "worklet";
-  return rect(cx - rx, cy - ry, 2 * rx, 2 * ry);
-};
-
-const wingOf = (p: MothPose | null, side: number) => {
-  "worklet";
-  return p ? ovalOf(p.mx + side * p.wing, p.my, p.wing, p.wingRy) : ovalOf(0, 0, 0, 0);
-};
-
-export function ParticleLayer({ ref, rig, landing, grey }: {
-  ref?: Ref<ParticleEmitter>;
-  rig: Pick<LampRig, "lamp" | "sx" | "sy">;
-  /** The landing dust is thrown on the contact frame, on this thread. */
-  landing: SharedValue<LandingSignal>;
-  grey?: SharedValue<number>;
+function BurstField({ field, lamp, sx, sy, sheet, greyLayer, wakeRef, onIdle }: {
+  field: SharedValue<Field>;
+  lamp: SharedValue<Lamp>;
+  sx: number;
+  sy: number;
+  sheet: SkImage;
+  greyLayer: ReturnType<typeof useGreyLayer>;
+  wakeRef: { current: (() => void) | undefined };
+  onIdle: () => void;
 }) {
-  const { lamp, sx, sy } = rig;
-  const greyLayer = useGreyLayer(grey);
-  const [sheet] = useState(bakeSheet);
-  const [initial] = useState<Field>(() => ({ ...createScene(Math.random), due: 0 }));
-  const field = useSharedValue(initial);
-  const moth = useSharedValue<MothPose | null>(null);
-  const reduced = usePrefersReducedMotion();
-  const still = useSharedValue(reduced);
   // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
-  const [onFrame] = useState(() => stepper(field, lamp, still, moth));
+  const [onFrame] = useState(() => stepper(field, lamp, onIdle));
   const wake = useDuring(onFrame, true);
   useEffect(() => {
-    still.set(reduced);
-    wake();
-  }, [reduced, still, wake]);
-  useAnimatedReaction(
-    () => lamp.value.t,
-    () => {
-      wake();
-    }
-  );
-  useLandingReaction(landing, (l) => {
-    "worklet";
-    const dust = landingDust(l, reduced, sx, sy, Math.random);
-    field.modify((v) => {
-      "worklet";
-      for (const p of dust) spawn(v.s, p);
-      return v;
-    }, true);
-    wake();
-  });
-  useBombBeat(landing, reduced, (l) => {
-    "worklet";
-    const fx = bombFx(l, still.value, sx, sy, Math.random);
-    field.modify((v) => {
-      "worklet";
-      for (const p of fx) spawn(v.s, p);
-      return v;
-    }, true);
-    wake();
-    scheduleOnRN(traceOnset, "moment", "bombFx");
-  });
-
-  useTraceSource("live", useCallback(() => field.value.s.live + MOTES, [field]));
-  useTraceSource("dropped", useCallback(() => field.value.s.dropped, [field]));
-  useTraceSource("motes", useCallback(() => field.value.lit, [field]));
-  useTraceSource(
-    "moth",
-    useCallback(() => {
-      const p = moth.value;
-      return p && { x: p.mx * sx, y: p.my * sy };
-    }, [moth, sx, sy])
-  );
-
-  useImperativeHandle(ref, () => ({
-    emit(spawns) {
-      field.modify((v) => {
-        "worklet";
-        for (const p of spawns) spawn(v.s, p);
-        return v;
-      }, true);
-      wake();
-    },
-    ember(from, to) {
-      if (reduced) return;
-      field.modify((v) => {
-        "worklet";
-        startEmber(v.ember, from, to);
-        return v;
-      }, true);
-      wake();
-    },
-    rain() {
-      if (reduced) return;
-      field.modify((v) => {
-        "worklet";
-        startRain(v.rain);
-        return v;
-      }, true);
-      wake();
-    },
-  }), [field, reduced, wake]);
+    wakeRef.current = wake;
+    return () => {
+      wakeRef.current = undefined;
+    };
+  }, [wake, wakeRef]);
 
   const sprites = useRectBuffer(PARTICLE_BUDGET, (r, i) => {
     "worklet";
     const { s, d } = field.value;
     const o = i * DRAW_STRIDE;
-    if (i < s.live + MOTES) r.setXYWH(d[o + D.x], d[o + D.y], d[o + D.w], d[o + D.h]);
+    if (i < s.live) r.setXYWH(d[o + D.x], d[o + D.y], d[o + D.w], d[o + D.h]);
     else r.setXYWH(0, 0, 0, 0);
   });
   const transforms = useRSXformBuffer(PARTICLE_BUDGET, (t, i) => {
@@ -213,30 +119,95 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
     c[0] = d[o + D.r];
     c[1] = d[o + D.g];
     c[2] = d[o + D.b];
-    c[3] = i < s.live + MOTES ? d[o + D.a] : 0;
+    c[3] = i < s.live ? d[o + D.a] : 0;
   });
-  const shadow = useDerivedValue(() => {
-    const p = moth.value;
-    return p ? ovalOf(0, 0, p.shadowRx, p.shadowRy) : ovalOf(0, 0, 0, 0);
-  });
-  const shadowAt = useDerivedValue(() => {
-    const p = moth.value;
-    return p ? [{ translateX: p.sx }, { translateY: p.sy }, { rotate: p.shadowRot }] : [];
-  });
-  const leftWing = useDerivedValue(() => wingOf(moth.value, -1));
-  const rightWing = useDerivedValue(() => wingOf(moth.value, 1));
-
-  if (!sheet) return null;
   return (
     <Canvas style={StyleSheet.absoluteFill} pointerEvents="none" testID="particle-skia">
       <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={greyLayer}>
         <Atlas image={sheet} sprites={sprites} transforms={transforms} colors={colors} colorBlendMode="modulate" />
-        <Group transform={shadowAt}>
-          <Oval rect={shadow} color={RestAir.mothShadow} />
-        </Group>
-        <Oval rect={leftWing} color={RestAir.moth} />
-        <Oval rect={rightWing} color={RestAir.moth} />
       </Group>
     </Canvas>
+  );
+}
+
+export function ParticleLayer({ ref, rig, landing, grey }: {
+  ref?: Ref<ParticleEmitter>;
+  rig: Pick<LampRig, "lamp" | "stillLight" | "sx" | "sy">;
+  /** The landing dust is thrown on the contact frame, on this thread. */
+  landing: SharedValue<LandingSignal>;
+  grey?: SharedValue<number>;
+}) {
+  const { lamp, sx, sy } = rig;
+  const greyLayer = useGreyLayer(grey);
+  const [sheet] = useState(bakeSheet);
+  const [initial] = useState<Field>(() => createScene());
+  const field = useSharedValue(initial);
+  const [bursting, setBursting] = useState(false);
+  const reduced = usePrefersReducedMotion();
+  const wakeRef = useRef<(() => void) | undefined>(undefined);
+  const poke = useCallback(() => {
+    setBursting(true);
+    wakeRef.current?.();
+  }, []);
+  const idle = useCallback(() => {
+    if (sceneIdle(field.get())) setBursting(false);
+  }, [field]);
+  const throwInto = (spawns: readonly ParticleSpawn[]) => {
+    "worklet";
+    field.modify((v) => {
+      "worklet";
+      for (const p of spawns) spawn(v.s, p);
+      return v;
+    }, true);
+  };
+  useLandingReaction(landing, (l) => {
+    "worklet";
+    throwInto(landingDust(l, reduced, sx, sy, Math.random));
+    scheduleOnRN(poke);
+  });
+  useBombBeat(landing, reduced, (l) => {
+    "worklet";
+    throwInto(bombFx(l, reduced, sx, sy, Math.random));
+    scheduleOnRN(poke);
+    scheduleOnRN(traceOnset, "moment", "bombFx");
+  });
+
+  useTraceSource("live", useCallback(() => field.value.s.live, [field]));
+  useTraceSource("dropped", useCallback(() => field.value.s.dropped, [field]));
+
+  useImperativeHandle(ref, () => ({
+    emit(spawns) {
+      field.modify((v) => {
+        "worklet";
+        for (const p of spawns) spawn(v.s, p);
+        return v;
+      }, true);
+      poke();
+    },
+    ember(from, to) {
+      if (reduced) return;
+      field.modify((v) => {
+        "worklet";
+        startEmber(v.ember, from, to);
+        return v;
+      }, true);
+      poke();
+    },
+    rain() {
+      if (reduced) return;
+      field.modify((v) => {
+        "worklet";
+        startRain(v.rain);
+        return v;
+      }, true);
+      poke();
+    },
+  }), [field, reduced, poke]);
+
+  return (
+    <>
+      <MoteLayer rig={rig} />
+      {bursting && sheet && <BurstField field={field} lamp={lamp} sx={sx} sy={sy} sheet={sheet} greyLayer={greyLayer} wakeRef={wakeRef} onIdle={idle} />}
+    </>
   );
 }
