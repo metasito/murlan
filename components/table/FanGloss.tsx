@@ -60,7 +60,7 @@ export const FanGloss = React.memo(function FanGloss({ tracks, s, placed, cards,
       {pictures.map((xml, end) => (
         <Animated.View key={end} pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: baked.at[end] }, baked.fades[end]]}>
           <View pointerEvents="none" style={tilt}>
-            <SvgXml xml={xml} width={boxW} height={boxH} style={styles.overhang} />
+            <SvgXml xml={xml} width={boxW + 2 * w} height={boxH + 2 * w} style={{ position: "absolute", left: -w, top: -w }} />
           </View>
         </Animated.View>
       ))}
@@ -108,13 +108,18 @@ function gossXml(end: number, shapes: Shape[], cards: readonly ArcCard[], poses:
       const frame = `translate(${shape.cx} ${shape.cy}) rotate(${cards[i]!.rot})`;
       const spotAt = `translate(${p.x * s - w / 2} ${p.y * s - h / 2})`;
       const band_ = `translate(${e.x * s} ${e.y * s}) rotate(${(e.ang * 180) / Math.PI})`;
-      return `<g mask='url(#v${end}_${i})'><g transform='${frame}'><circle r='${radius}' transform='${spotAt}' fill='url(#s${end})' opacity='${p.alpha}'/><g transform='${band_}'><rect x='${-band.w / 2}' y='${-band.h / 2}' width='${band.w}' height='${band.h}' fill='url(#g${end})' opacity='${e.opacity}'/></g></g></g>`;
+      // One child under each mask: a masked group with two is a render surface per back, 140 passes a frame.
+      const masked = (inner: string) => `<g mask='url(#v${end}_${i})'><g transform='${frame}'>${inner}</g></g>`;
+      return (
+        masked(`<circle r='${radius}' transform='${spotAt}' fill='url(#s${end})' opacity='${p.alpha}'/>`) +
+        masked(`<g transform='${band_}'><rect x='${-band.w / 2}' y='${-band.h / 2}' width='${band.w}' height='${band.h}' fill='url(#g${end})' opacity='${e.opacity}'/></g>`)
+      );
     })
     .join("");
   const stops = (color: string, ...at: [number, number][]) => at.map(([o, a]) => `<stop offset='${o}' stop-color='${color}' stop-opacity='${a}'/>`).join("");
   const gradient = `<linearGradient id='g${end}' x1='0' y1='0' x2='0' y2='1'>${stops(streak.color, [0, 0], [0.5, 1], [1, 0])}</linearGradient>`;
   const blob = `<radialGradient id='s${end}'><stop offset='0' stop-color='${spot.color}' stop-opacity='1'/><stop offset='${spot.mid.at}' stop-color='${spot.mid.color}' stop-opacity='${spot.mid.alpha / spot.alpha}'/><stop offset='1' stop-color='${spot.mid.color}' stop-opacity='0'/></radialGradient>`;
-  return `<svg xmlns='http://www.w3.org/2000/svg' width='${boxW}' height='${boxH}' overflow='visible'><defs>${gradient}${blob}${masks}</defs>${lit}</svg>`;
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='${boxW + 2 * w}' height='${boxH + 2 * w}' viewBox='${-w} ${-w} ${boxW + 2 * w} ${boxH + 2 * w}'><defs>${gradient}${blob}${masks}</defs>${lit}</svg>`;
 }
 
-const styles = StyleSheet.create({ overhang: { position: "absolute", left: 0, top: 0, overflow: "visible" }, hidden: { display: "none" } });
+const styles = StyleSheet.create({ hidden: { display: "none" } });
