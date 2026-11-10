@@ -75,19 +75,27 @@ export interface AmbientSpec {
   duration: number;
   /** A negative delay starts the loop that far into its pass. */
   delay?: number;
+  /** Passes before it ends; endless when omitted. */
+  iterations?: number;
+  /** After its last pass, holds that pass's last frame instead of returning to the view's own style. */
+  holdEnd?: boolean;
+  /** Holds where it stands, and resumes from there. */
+  paused?: boolean;
 }
 
 /**
  * An endless loop of opacity or transform keyframes, as the style that runs it: a CSS animation on web, Reanimated's
  * C++ engine on native, neither on the JS or UI thread per frame. A style the caller wears on an `Animated.View`.
  */
-export function ambient({ keyframes, duration, delay = 0 }: AmbientSpec): ViewStyle {
+export function ambient({ keyframes, duration, delay = 0, iterations, holdEnd = false, paused = false }: AmbientSpec): ViewStyle {
   return {
     animationName: keyframes,
     animationDuration: `${duration}ms`,
-    animationIterationCount: "infinite",
+    animationIterationCount: iterations ?? "infinite",
     animationTimingFunction: "linear",
     animationDelay: `${delay}ms`,
+    ...(holdEnd && { animationFillMode: "forwards" }),
+    animationPlayState: paused ? "paused" : "running",
   } as ViewStyle;
 }
 
@@ -118,16 +126,18 @@ export function repeatTimes(cycle: number, times: number, reverse = false): numb
 export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): () => void {
   const dirty = useSharedValue(awake);
   const releasing = useSharedValue(false);
+  const epoch = useSharedValue(0);
   const span = useSharedValue<number | null>(null);
   const controller = useRef<FrameCallback | null>(null);
-  // A wake that lands between a frame saying no and the release reaching here must win.
-  const [release] = useState(() => () => {
+  // A wake that lands between a frame saying no and the release reaching here must win, though that frame's own write to `dirty` may land after the wake's: `seen` is the epoch the frame began in.
+  const [release] = useState(() => (seen: number) => {
     releasing.value = false;
-    if (!dirty.value) controller.current?.setActive(false);
+    if (!dirty.value && epoch.value === seen) controller.current?.setActive(false);
   });
   const [arm] = useState(() => () => controller.current?.setActive(true));
   const [tick] = useState(() => (frame: FrameInfo) => {
     "worklet";
+    const seen = epoch.value;
     // A woken callback's first frame has no previous one; an always-on callback would have had a frame's span.
     const gap = frame.timeSincePreviousFrame;
     if (gap !== null) span.value = gap;
@@ -136,10 +146,11 @@ export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): (
     dirty.value = false;
     if (releasing.value) return;
     releasing.value = true;
-    scheduleOnRN(release);
+    scheduleOnRN(release, seen);
   });
   const [wake] = useState(() => () => {
     "worklet";
+    epoch.value += 1;
     if (!isRNRuntime() && dirty.value) return;
     dirty.value = true;
     if (isRNRuntime()) arm();

@@ -7,7 +7,9 @@ import { BombFx, Dust, RoundMoment } from "../../lib/tokens.ts";
 import type { RoundOutcome } from "../../lib/game/matchState.ts";
 import type { LandingPayload } from "./useFlightClock.ts";
 import type { FlyDirection } from "../seatLayout.ts";
+import { E2E_FAST } from "../../lib/e2eConfig.ts";
 import { MOTES } from "./air.ts";
+import { rng as seeded } from "./rail.ts";
 
 export type ParticleShape = "dot" | "spark" | "soft";
 export const SHAPES: readonly ParticleShape[] = ["dot", "spark", "soft"];
@@ -44,6 +46,13 @@ export interface Particles {
 }
 
 export type Rng = () => number;
+
+const E2E_SEED = 1261;
+
+/** The table's random source: a build the e2e harness made draws the same motes, moth and bursts every run. */
+export function tableRng(): Rng {
+  return E2E_FAST ? seeded(E2E_SEED) : Math.random;
+}
 
 /** What a draw layer hands its owner: the one way into its simulation. */
 export interface ParticleEmitter {

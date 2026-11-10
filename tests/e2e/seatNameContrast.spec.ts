@@ -169,7 +169,7 @@ async function measure(page: Page, baseURL: string, phone: (typeof PHONES)[numbe
     await grab(page, "white", clip);
     await page.getByTestId("table-felt").evaluate((f, sel) => {
       for (const el of document.body.querySelectorAll<HTMLElement>("*")) {
-        if ((!f.contains(el) && !el.contains(f) && !el.matches(sel)) || el.matches('[data-testid="particles"]')) el.style.visibility = "hidden";
+        if ((!f.contains(el) && !el.contains(f) && !el.matches(sel)) || el.matches('[data-testid="particles"], [data-testid="air"]')) el.style.visibility = "hidden";
       }
     }, NAME);
     await paint(page, "visibility: visible !important; color: transparent !important; text-shadow: none !important;");

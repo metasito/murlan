@@ -138,3 +138,12 @@ export const TRACK_VS_EULER = 0.0024;
 
 /** How long a track is baked for: past it the animation would loop, so the felt bakes another before. */
 export const TRACK_SECONDS = 30;
+
+/** Seconds into the table at which the sway phase is `ph` (any phase: the table repeats every `HALF_SWINGS` half-turns). */
+export function swayTimeOf(ph: number): number {
+  "worklet";
+  const span = COUNT * STEP;
+  const s = (((ph + Math.PI / 2) % span) + span) % span;
+  const n = Math.min(COUNT - 1, Math.floor(s / STEP));
+  return SWAY_TIMES[n]! + (SWAY_TIMES[n + 1]! - SWAY_TIMES[n]!) * (s / STEP - n);
+}
