@@ -185,8 +185,10 @@ export function tableRects(input: {
     const shown = who.badge.kind === "reconnecting" ? String(who.badge.seconds) : "";
     const h = seatBadgeH(kind, scale);
     const slot = seatBadgeSlot(dir, scale, layout.nameInset[dir], h, rise(dir));
-    const w = noticeWidth(kind, locale, scale, counted(widestDigits(kind, scale, shown.length)), "snapped");
-    overcount[as] = w - noticeWidth(kind, locale, scale, counted(shown), "linear");
+    const widest = counted(widestDigits(kind, scale, shown.length));
+    const w = noticeWidth(kind, locale, scale, widest, "snapped", slot.width);
+    overcount[as] = w - noticeWidth(kind, locale, scale, counted(shown), "linear", slot.width);
+    if (noticeWidth(kind, locale, scale, widest) > slot.width + EPS) capped[as] = true;
     const slotLeft = anchors[dir].x - ring / 2 + slot.left;
     return box(aligned(slot.align, slotLeft, slot.width, w), anchors[dir].y - ring / 2 + slot.top, w, h);
   };

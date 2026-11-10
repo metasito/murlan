@@ -560,18 +560,20 @@ function SeatBadges({
   reconnecting,
   name,
   scale,
+  room,
 }: {
   badge: SeatBadge;
   reconnecting?: { seconds: number; resetKey: string };
   name: string;
   scale: number;
+  room: number;
 }) {
   return (
     <View style={seatStyles.seatBadgeRow}>
       {badge === "reconnecting" && reconnecting ? (
-        <ReconnectingMark seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} />
+        <ReconnectingMark seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} room={room} />
       ) : (
-        <VacatedMark username={name} scale={scale} />
+        <VacatedMark username={name} scale={scale} room={room} />
       )}
     </View>
   );
@@ -734,7 +736,7 @@ function SeatWho({
       )}
       {!focusMode && badge && (
         <View style={[seatStyles.whoLabel, { width: slot.width, left: slot.left, bottom: disc - slot.top - badgeH, alignItems: slot.align }]} pointerEvents="none">
-          <SeatBadges badge={badge} reconnecting={reconnecting} name={name} scale={scale} />
+          <SeatBadges badge={badge} reconnecting={reconnecting} name={name} scale={scale} room={slot.width} />
         </View>
       )}
       <SeatRing

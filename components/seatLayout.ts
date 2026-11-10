@@ -270,16 +270,16 @@ export function seatNameRise(place: OpponentSide, scale: number, height: number,
  * where in the strip it holds. A side seat's runs inward from the disc under its name; the top
  * seat's stands to the disc's right, centred on its height.
  */
-export function seatBadgeSlot(place: OpponentSide, scale: number, nameInset: number, height: number, rise: number): { left: number; top: number; width: number; align: Align } {
+export function seatBadgeSlot(place: OpponentSide, scale: number, inset: number, height: number, rise: number): { left: number; top: number; width: number; align: Align } {
   const disc = SEAT_DISC * scale;
   const width = SEAT_BADGE_SLOT_W * scale;
   if (place === "top") return { left: disc + seatGap(scale), top: (disc - height) / 2, width, align: "flex-start" };
   const anchor = seatAnchor(place);
-  return { left: seatLabelLeft(anchor, scale, nameInset, width), top: -(SEAT_LABEL_PAD * scale + rise + height), width, align: SEAT_LABEL_ALIGN[anchor] };
+  return { left: stripLeft(anchor, scale, inset, width), top: -(SEAT_LABEL_PAD * scale + rise + height), width, align: SEAT_LABEL_ALIGN[anchor] };
 }
 
 /** Wider than the widest badge in any locale at scale 1: `tests/ui-rules/tableRects.test.ts` holds each inside it. */
-export const SEAT_BADGE_SLOT_W = 400;
+export const SEAT_BADGE_SLOT_W = 169;
 
 /** A seat name's size at scale 1, before `tableFontSize`'s floor. */
 const SEAT_NAME_FS = 11;
@@ -323,7 +323,11 @@ export function seatLabelW(anchor: SeatAnchor, scale: number): number {
 }
 
 /** The label's left edge from its disc's: centred on the disc, or flush with the edge `anchor` names and `inset` in from it. */
-export function seatLabelLeft(anchor: SeatAnchor, scale: number, inset: number, labelW = seatLabelW(anchor, scale)): number {
+export function seatLabelLeft(anchor: SeatAnchor, scale: number, inset: number): number {
+  return stripLeft(anchor, scale, inset, seatLabelW(anchor, scale));
+}
+
+function stripLeft(anchor: SeatAnchor, scale: number, inset: number, labelW: number): number {
   const disc = SEAT_DISC * scale;
   return anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? inset : disc - labelW - inset;
 }

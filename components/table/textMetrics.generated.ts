@@ -502,8 +502,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 13578,
-          "chars": 31,
+          "units": 8802,
+          "chars": 21,
           "fallback": [],
           "slots": [
             "name"
@@ -533,8 +533,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 14706,
-          "chars": 32,
+          "units": 11248,
+          "chars": 25,
           "fallback": [],
           "slots": [
             "winner"
@@ -544,8 +544,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 13792,
-          "chars": 30,
+          "units": 10334,
+          "chars": 23,
           "fallback": [],
           "slots": [
             "winner",
@@ -1066,8 +1066,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 14039,
-          "chars": 31,
+          "units": 6952,
+          "chars": 17,
           "fallback": [],
           "slots": [
             "name"
@@ -1097,8 +1097,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 12272,
-          "chars": 27,
+          "units": 9505,
+          "chars": 21,
           "fallback": [],
           "slots": [
             "winner"
@@ -1108,8 +1108,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 10655,
-          "chars": 24,
+          "units": 7888,
+          "chars": 18,
           "fallback": [],
           "slots": [
             "winner",
@@ -1630,8 +1630,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 14456,
-          "chars": 33,
+          "units": 8873,
+          "chars": 21,
           "fallback": [],
           "slots": [
             "name"
@@ -1661,8 +1661,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 12133,
-          "chars": 27,
+          "units": 9001,
+          "chars": 20,
           "fallback": [],
           "slots": [
             "winner"
@@ -1672,8 +1672,8 @@ export const TEXT_METRICS = {
           "face": "regular",
           "upper": true,
           "tabular": false,
-          "units": 11191,
-          "chars": 25,
+          "units": 8059,
+          "chars": 18,
           "fallback": [],
           "slots": [
             "winner",

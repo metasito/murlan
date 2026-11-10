@@ -83,27 +83,12 @@ interface Known {
   where: readonly RegExp[];
 }
 
-/** The cases on `viewport`, in `locale`, at `inset`, each a regex alternation, whose label goes on with `rest`. */
-const on = (viewport: string, locale: string, inset: string, rest: string) =>
-  new RegExp(`^(?:${viewport}) \\(\\d+x\\d+\\), (?:${inset}), (?:${locale}), ${rest}`);
-
 /**
  * What the table on main breaks, each found by this test and none fixed here. A break outside an
  * entry is red; so is a case an entry covers that keeps all its rules, and a rule of an entry broken
  * more or fewer times than it says, so a fix has to narrow the entry and the list only shrinks.
  */
-const KNOWN: readonly Known[] = [
-  {
-    defect: "the exchange's choice sentence is wider than the chip row on an iPhone SE: Italian's longest, or any of them between a notch's insets",
-    ticket: "#1988 item 123",
-    breaks: { "hudTurn cuts its words": 15 },
-    where: [
-      on("iPhone SE", "it", "0/0", "exchange give as watcher, choice,"),
-      on("iPhone SE", "it", "62/21/62|62/0", "exchange give as (?:winner|loser|watcher), choice,"),
-      on("iPhone SE", "en|sq", "62/21/62|62/0", "exchange give as (?:winner|watcher), choice,"),
-    ],
-  },
-];
+const KNOWN: readonly Known[] = [];
 
 describe("the table keeps its rules", () => {
   test("the matrix covers what it says", () => {
@@ -219,6 +204,17 @@ describe("a seat's badge is drawn whole", () => {
         assert.ok(t.rects[name]!.w <= SEAT_BADGE_SLOT_W * t.layout.scale, `${c.vp.name}, ${c.locale}, ${c.badge.kind}: ${name} ${t.rects[name]!.w} wide`);
         assert.equal(t.capped[name], undefined, `${name} is held to a width`);
       }
+  });
+
+  test("a username of thirty letters is cut at the strip and stays in the window", () => {
+    for (const c of cases.filter((x) => x.badge.kind === "vacated")) {
+      const t = tableRects({ ...c.vp, insets: INSETS["0/0"], locale: c.locale, state: { ...DEALT, seats: { top: { ...FULL.top, name: LONGEST_USERNAME, badge: c.badge }, left: { ...FULL.left, name: LONGEST_USERNAME, badge: c.badge }, right: { ...FULL.right, name: LONGEST_USERNAME, badge: c.badge } }, chips: { combo: [], turn: [] } } });
+      for (const name of ["badgeTop", "badgeLeft", "badgeRight"] as const) {
+        assert.ok(Math.abs(t.rects[name]!.w - SEAT_BADGE_SLOT_W * t.layout.scale) < 1e-6, `${c.vp.name}, ${c.locale}: ${name} is ${t.rects[name]!.w} wide`);
+        assert.equal(t.capped[name], true);
+      }
+      assert.deepEqual(brokenRules(t).filter((rule) => rule.includes("leaves the window")), [], `${c.vp.name}, ${c.locale}`);
+    }
   });
 
   test("a countdown is priced at its widest digits, since the face sets none tabular", () => {
