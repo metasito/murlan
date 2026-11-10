@@ -4,21 +4,24 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import type { CSSAnimationKeyframes } from "react-native-reanimated";
-import { SWAY_LOOP, swayAt } from "../../lib/swayTable.ts";
-import { MOTE_ALPHA, MOTE_STRIDE, MOTES, M, moteCone, mothPose, stepAir, twinkle, UNSEEN, type Air, type MoteLight } from "./air.ts";
+import { swayAt } from "../../lib/swayTable.ts";
+import { isDrawn, MOTE_ALPHA, MOTE_STRIDE, MOTES, M, moteAlpha, moteCone, mothPose, stepAir, twinkle, type Air, type MoteLight } from "./air.ts";
 import { SWAY } from "./lampRig.ts";
 
 /** The mockup steps at 60 Hz; a track stepped at the same rate wraps its motes on the same frame. */
 const FRAME_S = 1 / 60;
-/** How long a track plays before the layer rebuilds it: one loop of the sway table, whole seconds. */
-export const SPAN_S = Math.floor(SWAY_LOOP);
+/** How long a track runs: the layer rebuilds it a moment before this, so no track ever loops. */
+export const SPAN_S = 60;
+/** How long before its end a track is rebuilt. */
+export const REBUILD_LEAD_S = 2;
 /** A wrapped mote is at its old place this long before the new one, so no interpolation sweeps it across the table. */
 const WRAP_GAP_S = 0.01;
 /** The wobble moves a mote 4.3 pt over 9 s: a stop a second keeps a track within 0.3 pt of it. */
 const STOP_S = 1;
 
 export const FLIGHT_S = 4;
-const FLIGHT_STEP_S = 1 / 30;
+/** A wing beat is a 83 ms flicker, so the flight is sampled at the mockup's own 60 Hz. */
+const FLIGHT_STEP_S = 1 / 60;
 
 /** The lamp as a track reads it: where it points, unswayed, and the table time at which its sway phase stands. */
 export interface RestLight {
@@ -57,10 +60,12 @@ export interface MoteTracks {
   motes: ({ i: number } & MoteTrack)[];
 }
 
-/** Steps `air` `seconds` forward at the mockup's own rate. */
-export function advanceAir(air: Air, seconds: number): void {
-  const steps = Math.round(seconds / FRAME_S);
+/** Brings `air` `seconds` on at the mockup's own rate: the first `replay` seconds stepped, the rest of a longer gap skipped, as the table was not watched. */
+export function advanceAir(air: Air, seconds: number, replay = Infinity): void {
+  const stepped = Math.min(seconds, replay);
+  const steps = Math.round(stepped / FRAME_S);
   for (let n = 0; n < steps; n++) stepAir(air, FRAME_S, { freeze: 0 }, false, () => 0);
+  air.t += seconds - stepped;
 }
 
 /** The lamp's light at `s` seconds into a track that began at `light`. */
@@ -99,7 +104,7 @@ export function buildMoteTracks(air: Air, light: RestLight): MoteTracks {
   }
   const motes: MoteTracks["motes"] = [];
   for (let i = 0; i < MOTES; i++) {
-    if (Math.max(...cone[i].map((c) => c.v)) < UNSEEN * MOTE_ALPHA) continue;
+    if (!isDrawn(Math.max(...cone[i].map((c) => c.v)))) continue;
     motes.push({ i, r: air.m[i * MOTE_STRIDE + M.r], ph: air.m[i * MOTE_STRIDE + M.ph], drift: drift[i], cone: cone[i] });
   }
   return { built: air.t, motes };
@@ -129,14 +134,13 @@ export function trackAlpha(tracks: MoteTracks, track: MoteTrack, s: number): num
 
 /** How many motes the light draws, `s` seconds after the build, by `drawAir`'s own floor. */
 export function litAt(tracks: MoteTracks, s: number): number {
-  return tracks.motes.filter((t) => trackAlpha(tracks, t, s) >= UNSEEN * MOTE_ALPHA).length;
+  return tracks.motes.filter((t) => isDrawn(trackAlpha(tracks, t, s))).length;
 }
 
 /** What a reduced-motion table shows: every mote where it is, at its first twinkle, in the unswayed light. */
 export function stillAlphas(air: Air, light: RestLight): number[] {
-  const l = lightAt({ ...light, tt: 0 }, 0);
-  const still = { ...l, lx: light.x };
-  return Array.from({ length: MOTES }, (_, i) => moteCone(air.m[i * MOTE_STRIDE + M.x], air.m[i * MOTE_STRIDE + M.y], still) * twinkle(0, air.m[i * MOTE_STRIDE + M.ph]) * MOTE_ALPHA);
+  const still = { lx: light.x, ly: light.ly, level: light.level, f: 0, r: light.r, freeze: 0 };
+  return Array.from({ length: MOTES }, (_, i) => moteAlpha(air, i, still));
 }
 
 const percent = (s: number, span: number) => `${((s / span) * 100).toFixed(4)}%`;
@@ -163,6 +167,9 @@ export interface FlightStop {
   my: number;
   sx: number;
   sy: number;
+  /** The wings' width against their widest, and the shadow's against its widest. */
+  wing: number;
+  spread: number;
 }
 
 /** The moth's crossing from a flight that sets off with the sway at table time `tt`: `mothPose` at every step, the light swaying under it. */
@@ -174,7 +181,7 @@ export function buildFlight(light: Omit<RestLight, "level" | "r">): FlightStop[]
     air.t = t;
     const l = lightAt({ ...light, level: 1, r: 1 }, t);
     const p = mothPose(air, { ...l, freeze: 0 })!;
-    stops.push({ t, mx: p.mx, my: p.my, sx: p.sx, sy: p.sy });
+    stops.push({ t, mx: p.mx, my: p.my, sx: p.sx, sy: p.sy, wing: p.wing / WING_HALF_MAX, spread: p.shadowRx / SHADOW_RX_MAX });
   }
   return stops;
 }
@@ -202,16 +209,16 @@ export function mothAt(flights: readonly Flight[], s: number): FlightStop | null
   const f = flights.find((x) => s >= x.s && s <= x.s + FLIGHT_S);
   if (!f) return null;
   const [a, b, u] = around(f.stops, s - f.s);
-  return { t: s, mx: between(a.mx, b.mx, u), my: between(a.my, b.my, u), sx: between(a.sx, b.sx, u), sy: between(a.sy, b.sy, u) };
+  return { t: s, mx: between(a.mx, b.mx, u), my: between(a.my, b.my, u), sx: between(a.sx, b.sx, u), sy: between(a.sy, b.sy, u), wing: between(a.wing, b.wing, u), spread: between(a.spread, b.spread, u) };
 }
 
 /** The moth's body or shadow over the whole span: hidden between flights, a flight's stops while one flies. */
 export function mothKeyframes(flights: readonly Flight[], part: "body" | "shadow"): CSSAnimationKeyframes {
   const out: Record<string, object> = {};
-  const at = (p: FlightStop) => (part === "body" ? { translateX: p.mx, translateY: p.my } : { translateX: p.sx, translateY: p.sy });
+  const at = (p: FlightStop) => (part === "body" ? { translateX: p.mx, translateY: p.my, scaleX: p.wing } : { translateX: p.sx, translateY: p.sy, scaleX: p.spread });
   const put = (t: number, p: FlightStop, opacity: number) => {
-    const { translateX, translateY } = at(p);
-    out[percent(t, SPAN_S)] = { opacity, transform: [{ translateX }, { translateY }] };
+    const { translateX, translateY, scaleX } = at(p);
+    out[percent(t, SPAN_S)] = { opacity, transform: [{ translateX }, { translateY }, { scaleX }] };
   };
   put(0, flights[0].stops[0], 0);
   for (const f of flights) {
@@ -222,6 +229,6 @@ export function mothKeyframes(flights: readonly Flight[], part: "body" | "shadow
   return out as CSSAnimationKeyframes;
 }
 
-/** Wings and shadow at their mean widths: `3 + 4|sin(38 t)|` and `16 + 9|sin(40 t)|` average to these. */
-export const WING_MEAN = 3 + 4 * (2 / Math.PI);
-export const SHADOW_MEAN = 16 + 9 * (2 / Math.PI);
+/** The widest of the mockup's wing beat (`3 + 4|sin(38 t)|`, a half of both wings) and of its shadow (`16 + 9|sin(40 t)|`). */
+export const WING_HALF_MAX = 3.5;
+export const SHADOW_RX_MAX = 25;

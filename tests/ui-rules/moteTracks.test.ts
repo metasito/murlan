@@ -8,8 +8,6 @@ import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture
 import { mulberry32 } from "../support/game.ts";
 
 const DT = 1 / 60;
-/** A rebuilt track is held this long: the rig's sway speed drifts with its own clock, which the table (read at the build) does not follow. */
-const REBUILD_S = 240;
 const ALPHA_WITHIN = 0.05;
 
 interface Drawn {
@@ -100,13 +98,13 @@ function worstAlpha(seed: number, from: number, at: number[], plant?: (t: MoteTr
 }
 
 describe("the mote tracks against drawAir", () => {
-  const AT = [0.5, 1, 7.3, 20, 45.9, 90, 133.3, 200, 280, 294];
+  const AT = [0.5, 1, 7.3, 20, 33.3, 45.9, 58, 59.9];
   test("every mote's alpha is within 0.05 of drawAir's over a whole span", () => {
     assert.ok(worstAlpha(1261, 0, AT) <= ALPHA_WITHIN);
     assert.ok(worstAlpha(4242, 0, AT) <= ALPHA_WITHIN);
   });
   test("a track rebuilt mid-way, from the air advanced to then, still is", () => {
-    assert.ok(worstAlpha(1261, 37.25, [0.5, 3, 40, 150, REBUILD_S]) <= ALPHA_WITHIN);
+    assert.ok(worstAlpha(1261, 37.25, [0.5, 3, 20, SPAN_S - 1]) <= ALPHA_WITHIN);
   });
   test("a track whose cone is read at the wrong height is red", () => {
     const worst = worstAlpha(1261, 0, AT, (t) => {
@@ -119,7 +117,7 @@ describe("the mote tracks against drawAir", () => {
     const air = createAir(mulberry32(1261));
     const tracks = buildMoteTracks(air, LIGHT);
     let worst = 0;
-    for (let n = 1; n <= 200 * 60; n++) {
+    for (let n = 1; n <= (SPAN_S - 1) * 60; n++) {
       m.frame();
       if (n % 97) continue;
       const s = n * DT;
@@ -136,7 +134,7 @@ describe("the mote tracks against drawAir", () => {
     const tracks = buildMoteTracks(createAir(mulberry32(1261)), LIGHT);
     assert.ok(litAt(tracks, 0) > 5);
     assert.ok(tracks.motes.length <= MOTES);
-    assert.ok(SPAN_S > 290);
+    assert.ok(SPAN_S >= 30);
   });
   test("one keyframe set per mote, as the compositor interpolates it, is within 0.05 of drawAir and 0.5 pt of the mockup's place", () => {
     const m = mockup(1261);
@@ -149,7 +147,7 @@ describe("the mote tracks against drawAir", () => {
     assert.ok(Math.max(...sets.map((s) => s.stops.length)) < 700, "a set grows with the span, not past it");
     let worstA = 0;
     let worstP = 0;
-    const times = new Set([1.5, 7.3, 20.2, 45.9, 90.4, 133.3, 200.1, 280.7].map((s) => Math.round(s / DT)));
+    const times = new Set([1.5, 7.3, 20.2, 33.3, 45.9, 58.2].map((s) => Math.round(s / DT)));
     for (let n = 1; n <= Math.max(...times); n++) {
       const drawn = m.frame();
       if (!times.has(n)) continue;
@@ -218,5 +216,16 @@ describe("the moth's flight against drawAir", () => {
     assert.equal(mothAt(flights, 13), null);
     const kf = mothKeyframes(flights, "body") as Record<string, { opacity: number }>;
     assert.equal(Object.values(kf).filter((k) => k.opacity === 1).length, flights.length * flights[0].stops.length);
+  });
+
+  test("the wings beat at the mockup's 38 rad/s over 3 to 7 pt, and the shadow breathes at 40 rad/s over 16 to 25", () => {
+    const { stops } = buildMoth(LIGHT, 0, 8, mulberry32(3)).flights[0];
+    const peaks = (v: number[]) => v.filter((x, i) => i > 0 && i < v.length - 1 && x > v[i - 1] && x >= v[i + 1]).length;
+    const wing = stops.map((s) => s.wing * 7);
+    const spread = stops.map((s) => s.spread * 25);
+    assert.ok(Math.min(...wing) < 3.3 && Math.max(...wing) <= 7 && Math.max(...wing) > 6.5, `${Math.min(...wing)} to ${Math.max(...wing)}`);
+    assert.ok(Math.min(...spread) < 16.8 && Math.max(...spread) <= 25 && Math.max(...spread) > 24, `${Math.min(...spread)} to ${Math.max(...spread)}`);
+    assert.ok(Math.abs(peaks(wing) - (FLIGHT_S * 38) / Math.PI) <= 3, `${peaks(wing)} beats`);
+    assert.ok(Math.abs(peaks(spread) - (FLIGHT_S * 40) / Math.PI) <= 3, `${peaks(spread)} breaths`);
   });
 });

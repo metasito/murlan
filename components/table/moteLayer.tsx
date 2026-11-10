@@ -11,9 +11,9 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ambient } from "@/lib/motion";
 import { swayTimeOf } from "@/lib/swayTable";
 import { RestAir } from "@/lib/tokens";
-import { createAir, M, MOTE_ALPHA, MOTE_STRIDE, UNSEEN, type Air } from "./air";
-import { DESIGN, GLIDE, LIGHT_ABOVE } from "./lampRig";
-import type { LampRig } from "./useLampRig";
+import { createAir, isDrawn, M, MOTE_STRIDE, type Air } from "./air";
+import { DESIGN, LIGHT_ABOVE } from "./lampRig";
+import { LAMP_SETTLE_MS, type LampRig } from "./useLampRig";
 import { tableRng } from "./particles";
 import {
   advanceAir,
@@ -23,23 +23,24 @@ import {
   mothAt,
   moteKeyframes,
   mothKeyframes,
-  SHADOW_MEAN,
+  REBUILD_LEAD_S,
   SPAN_S,
   stillAlphas,
   trackAlpha,
-  WING_MEAN,
+  SHADOW_RX_MAX,
+  WING_HALF_MAX,
   type Flight,
   type MoteTrack,
   type MoteTracks,
   type RestLight,
 } from "./moteTracks";
 
-/** The lamp has glided to within 5% of a seat after three time constants; the tracks follow it there. */
-const SETTLE_MS = (3 / GLIDE) * 1000;
+/** The most air time one rebuild steps through: a table that sat frozen or hidden for longer is not replayed. */
+const REPLAY_CAP_S = 20;
 const MS = 1000;
 
-const WING = { w: 2 * WING_MEAN, h: 4 } as const;
-const SHADOW = { w: 2 * SHADOW_MEAN, h: 12, rot: "0.3rad" } as const;
+const WING = { w: 4 * WING_HALF_MAX, h: 4 } as const;
+const SHADOW = { w: 2 * SHADOW_RX_MAX, h: 12, rot: "0.3rad" } as const;
 
 const styles = StyleSheet.create({
   airBox: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 },
@@ -108,7 +109,7 @@ const Moth = memo(function Moth({ flights, paused }: { flights: Flight[]; paused
   );
 });
 
-export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | "sx" | "sy"> }) {
+export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & Partial<Pick<LampRig, "stillLight">> }) {
   const { lamp, stillLight, sx, sy } = rig;
   const reduced = usePrefersReducedMotion();
   const [frozen, setFrozen] = useState(false);
@@ -134,11 +135,11 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
       setStill(stillAlphas(air, light));
       return;
     }
-    advanceAir(air, elapsed() - air.t);
-    const { flights } = buildMoth(light, air.t, nextMoth.current, rng);
-    nextMoth.current = air.t + flights[0].s;
+    advanceAir(air, elapsed() - air.t, REPLAY_CAP_S);
+    const { flights, next } = buildMoth(light, air.t, nextMoth.current, rng);
+    nextMoth.current = flights.length ? air.t + flights[0].s : next;
     setStill(null);
-    setMoth(flights);
+    setMoth(flights.length ? flights : null);
     setTracks(buildMoteTracks(air, light));
   }, [air, elapsed, lightNow, reduced, rng]);
 
@@ -148,13 +149,20 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
     return () => clearTimeout(first);
   }, [rebuild, frozen]);
 
+  useEffect(() => {
+    if (!tracks || frozen) return;
+    const left = tracks.built + SPAN_S - REBUILD_LEAD_S - elapsed();
+    const next = setTimeout(rebuild, Math.max(0, left) * MS);
+    return () => clearTimeout(next);
+  }, [tracks, frozen, elapsed, rebuild]);
+
   const onMoved = useCallback(() => {
     clearTimeout(settle.current);
-    settle.current = setTimeout(rebuild, SETTLE_MS);
+    settle.current = setTimeout(rebuild, LAMP_SETTLE_MS);
   }, [rebuild]);
   useEffect(() => () => clearTimeout(settle.current), []);
   useAnimatedReaction(
-    () => stillLight.value,
+    () => stillLight?.value ?? null,
     (now, before) => {
       if (before !== null && now !== before) scheduleOnRN(onMoved);
     }
@@ -176,7 +184,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
     "motes",
     useCallback(() => {
       if (tracks) return litAt(tracks, Math.min(SPAN_S, elapsed() - tracks.built));
-      return still ? still.filter((a) => a >= UNSEEN * MOTE_ALPHA).length : 0;
+      return still ? still.filter(isDrawn).length : 0;
     }, [tracks, still, elapsed])
   );
   useTraceSource(
@@ -196,7 +204,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "stillLight" | 
     <View testID="air" style={styles.airBox} pointerEvents="none">
       <View style={sized}>
         {tracks?.motes.map((m) => <Mote key={`${tracks.built}-${m.i}`} tracks={tracks} track={m} paused={frozen} />)}
-        {still?.map((a, i) => (a >= UNSEEN * MOTE_ALPHA ? <Still key={i} x={air.m[i * MOTE_STRIDE + M.x]} y={air.m[i * MOTE_STRIDE + M.y]} r={air.m[i * MOTE_STRIDE + M.r]} alpha={a} /> : null))}
+        {still?.map((a, i) => (isDrawn(a) ? <Still key={i} x={air.m[i * MOTE_STRIDE + M.x]} y={air.m[i * MOTE_STRIDE + M.y]} r={air.m[i * MOTE_STRIDE + M.r]} alpha={a} /> : null))}
         {tracks && moth && <Moth key={tracks.built} flights={moth} paused={frozen} />}
       </View>
     </View>
