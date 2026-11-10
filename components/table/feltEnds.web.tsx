@@ -93,15 +93,11 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
       setPlaying(null);
       hide();
     };
-    const whenPlaying = (then: () => void) => {
-      let waited = 0;
-      const wait = () => {
-        if (!live) return;
-        if (!canvas.parentElement || ambientPlace(canvas.parentElement) !== null) return then();
-        if (++waited > START_WAIT_FRAMES) return giveUp();
-        cancels.push(afterFrames(1, wait));
-      };
-      wait();
+    const whenPlaying = (then: () => void, left = START_WAIT_FRAMES) => {
+      if (!live) return;
+      if (!canvas.parentElement || ambientPlace(canvas.parentElement) !== null) return then();
+      if (left <= 0) return giveUp();
+      cancels.push(afterFrames(1, () => whenPlaying(then, left - 1)));
     };
     bake();
     // The felt draws from a shared value through a mapper run and a redraw, each a microtask of its own, and an unpresented drawing buffer reads back blank: so end B is drawn now, by hand, before the copy, and end A drawn back by the redraw the write queues. Never presented.
