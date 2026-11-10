@@ -11,6 +11,12 @@ declare global {
   }
 }
 
+/** Animations before timers: one a timer or rAF creates during the step then reads 0, as a browser reads 0 to 15 ms, not the whole step. */
+async function orderedStep(ms: number, animations: (ms: number) => unknown, timers: (ms: number) => Promise<void>): Promise<void> {
+  await animations(ms);
+  await timers(ms);
+}
+
 const EPOCH = new Date("2026-09-24T12:00:00Z");
 
 /**
@@ -23,7 +29,7 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Animation.enable");
   await cdp.send("Animation.setPlaybackRate", { playbackRate: 0 });
-  const install = (generator: typeof mulberry32, seed: number) => {
+  const install = (generator: typeof mulberry32, seed: number, ordered: typeof orderedStep) => {
     Math.random = generator(seed);
     // A paused animation holds its phase in a browser, so the clock holds it too. In the page so
     // a spec's own in-page stepping loop calls this one rather than keeping a copy.
@@ -32,14 +38,10 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
         if (a.playState === "running" && a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
       }
     };
-    // The one in-page step: animations first, so one a timer or rAF creates during the step reads 0,
-    // as a browser reads 0 to 15 ms, not the whole step. Playwright's in-page controller is its
-    // only other half, so a spec's own stepping loop calls this rather than ordering the two itself.
     window.murlanStep = async (ms) => {
-      window.murlanStepAnimations(ms);
       const clock = (globalThis as unknown as { __pwClock?: { controller: { runFor(ms: number): Promise<void> } } }).__pwClock?.controller;
       if (!clock) throw new Error("Playwright's in-page clock is not installed");
-      await clock.runFor(ms);
+      await ordered(ms, window.murlanStepAnimations, (ms) => clock.runFor(ms));
     };
     // `page.clock` fakes performance.now() but not this stamp's performanceTime, which stays on the
     // real clock; the engine maps a moment's `at` through it, so every sound would read seconds late.
@@ -47,7 +49,7 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
       return { contextTime: this.currentTime, performanceTime: performance.now() };
     };
   };
-  await page.addInitScript({ content: `(${String(install)})(${String(mulberry32)}, ${seed});` });
+  await page.addInitScript({ content: `(${String(install)})(${String(mulberry32)}, ${seed}, ${String(orderedStep)});` });
   await page.clock.install({ time: EPOCH });
   await page.clock.pauseAt(EPOCH);
 }
@@ -64,13 +66,9 @@ export async function takeOver(page: Page): Promise<void> {
   if (offGrid > 0) await page.clock.runFor(offGrid);
 }
 
-/**
- * Through `page.clock`, which logs the step for a document opened after it, so the in-page `murlanStep`
- * cannot stand in; the order is the same, animations first.
- */
+/** Through `page.clock`, whose replay log carries the step into a document opened after it; `murlanStep` bypasses that log. */
 export async function step(page: Page, ms: number = STEP_MS): Promise<void> {
-  await page.evaluate((ms) => window.murlanStepAnimations(ms), ms);
-  await page.clock.runFor(ms);
+  await orderedStep(ms, (ms) => page.evaluate((ms) => window.murlanStepAnimations(ms), ms), (ms) => page.clock.runFor(ms));
 }
 
 /** Every animation's name and `currentTime` now, in the order the document lists them. */
