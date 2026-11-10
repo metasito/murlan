@@ -44,7 +44,7 @@ export function HudComboPill({ scale, room, play }: { scale: number; room?: numb
 /** What an exchange's card did, under the pile it rests on. */
 export function PileNote({ scale, room, note }: { scale: number; room?: number; note: PillNote }) {
   return (
-    <TableNotice kind="pileNote" tone="lit" scale={scale} room={room}>
+    <TableNotice kind="pileNote" tone="lit" scale={scale} room={room} still>
       <NoticeText testID={note.testID}>{note.text}</NoticeText>
     </TableNotice>
   );

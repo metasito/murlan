@@ -183,12 +183,12 @@ function misfits(got: Drawn, want: TableRects, rects = DRAWN): string[] {
   return bad;
 }
 
-async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false, exchangeCards?: { received: Card; given: Card }) {
-  const got = await settled(page);
+async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false, exchangeCards?: { received: Card; given: Card }, rects = DRAWN) {
+  const got = await settled(page, rects);
   const chips = drawnChips(table, locale, got.texts, exchangeName, exchangeCards);
   expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn} | ${got.texts.note})`).toEqual({ combo: expect.anything(), turn: expect.anything(), note: got.texts.note === "" ? null : expect.anything() });
   const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn!, note: chips.note ?? undefined } } });
-  expect(misfits(got, solved), where).toEqual([]);
+  expect(misfits(got, solved, rects), where).toEqual([]);
   if (keepsRules) expect(brokenRules(solved), `${where}: the solved table breaks its rules`).toEqual([]);
 }
 
@@ -247,9 +247,8 @@ test.describe("the table at its limits is drawn in the solver's rects", () => {
       );
       const phase = save.gameState.exchangePhase;
       if (phase?.kind !== "open") throw new Error("the save opens no exchange");
-      const dealt = gameTable(save.gameState);
-      const resting: DrawnTable = { ...dealt, base: { ...dealt.base, hand: { ...dealt.base.hand, onTurn: false } } };
-      await check(page, `${vp.name}, the note under the pile`, vp, INSETS["0/0"], "it", resting, EXCHANGE_NAME, false, { received: phase.cardFromLoser, given: phase.cardFromLoser });
+      const { hand: _hand, ...beside } = DRAWN;
+      await check(page, `${vp.name}, the note under the pile`, vp, INSETS["0/0"], "it", gameTable(save.gameState), EXCHANGE_NAME, false, { received: phase.cardFromLoser, given: phase.cardFromLoser }, beside);
     });
 
     test(`a thirteen-card straight over an eighteen-card hand: ${vp.name}`, async ({ page, baseURL }) => {
