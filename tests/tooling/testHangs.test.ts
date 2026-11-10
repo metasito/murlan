@@ -836,7 +836,6 @@ describe("a run that stops hearing from its files fails by name", { concurrency:
     assert.equal(seen?.(), false, "the kill is handed the stop flag, so a halt reaches it mid-kill");
     stopped = true;
     assert.equal(seen?.(), true);
-    stopped = false;
     stopped = true;
     calls.length = 0;
     assert.equal(proc.identityOf(1), undefined);
