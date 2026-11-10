@@ -28,8 +28,8 @@ the mockup wins.
    so there is one copy of the sway (rule 48).
 3. **Live drawing is for events only** (glide, flare, kick), started with the event and released
    at its end. The one-off bakes an event needs are done at glide time.
-4. **Native keeps today's rest path** wherever the PR 0 spike did not show the compositor shape
-   working; the shape per platform is named in `components/table/swayPlan.ts`.
+4. **Native keeps today's rest path** until a profile on device shows the compositor shape
+   working there; a per-platform seam is added only when native needs one (rule 50).
 
 ## Consequences
 
