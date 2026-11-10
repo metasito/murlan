@@ -41,7 +41,7 @@ export async function settled(page: Page, ceilingMs: number, within?: string): P
  * a check that reads positions, where `settled`'s ceiling would let it read
  * them mid-flight.
  *
- * The boxes that can be seen, and not their opacity: the active seat and a
+ * Not the air's motes and moth: they drift for as long as the table is up. The boxes that can be seen, and not their opacity: the active seat and a
  * playable GIOCA breathe for as long as they stay that way, and the lamp's
  * flare rides the swaying light at opacity 0 until something sets it off.
  */
@@ -90,6 +90,7 @@ function read(page: Page, within?: string, seenBoxes = false): Promise<string> {
         const role = el.getAttribute("role") ?? (el.tagName === "BUTTON" ? "button" : "");
         if (!INTERACTIVE.has(role)) continue;
       }
+      if (el.closest('[data-testid="air"]')) continue;
       if (seenBoxes && isUnseen(el)) continue;
       const r = el.getBoundingClientRect();
       // Unrounded: a spring's tail moves less than a pixel per reading, and rounded it reads as rest.
