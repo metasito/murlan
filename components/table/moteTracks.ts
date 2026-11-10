@@ -4,7 +4,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import type { CSSAnimationKeyframes } from "react-native-reanimated";
-import { swayAt } from "../../lib/swayTable.ts";
+import { bakeSway, trackAt as swayTrackAt } from "../../lib/swayTable.ts";
 import { isDrawn, MOTE_ALPHA, MOTE_STRIDE, MOTES, M, moteAlpha, moteCone, mothPose, stepAir, twinkle, type Air, type MoteLight } from "./air.ts";
 import { SWAY } from "./lampRig.ts";
 
@@ -23,14 +23,14 @@ export const FLIGHT_S = 4;
 /** A wing beat is a 83 ms flicker, so the flight is sampled at the mockup's own 60 Hz. */
 const FLIGHT_STEP_S = 1 / 60;
 
-/** The lamp as a track reads it: where it points, unswayed, and the table time at which its sway phase stands. */
+/** The lamp as a track reads it: where it points, unswayed, and the rig's sway phase and clock at the track's start. */
 export interface RestLight {
   x: number;
   ly: number;
   level: number;
   r: number;
-  /** Seconds into the sway table (`swayTimeOf`) at the track's start. */
-  tt: number;
+  ph: number;
+  t: number;
 }
 
 export interface Stop {
@@ -82,16 +82,20 @@ export function rebuildTracks(air: Air, light: RestLight, now: number, nextMoth:
   return { tracks: buildMoteTracks(air, light), flights: flights.length ? flights : null, nextMoth: flights.length ? air.t + flights[0].s : next };
 }
 
-/** The lamp's light at `s` seconds into a track that began at `light`. */
-function lightAt(light: RestLight, s: number): MoteLight {
-  return { lx: light.x + SWAY * swayAt(light.tt + s), ly: light.ly, level: light.level, f: 0, r: light.r };
+/** The sway a track that began at `light` follows, long enough for a track and a flight begun at its end. */
+export const swayFrom = (light: Pick<RestLight, "ph" | "t">) => bakeSway(light, SPAN_S + FLIGHT_S + 1);
+
+/** The lamp's light at `s` seconds into a track that began at `light`, whose sway is `sway`. */
+export function lightAt(light: Omit<RestLight, "ph" | "t">, sway: readonly number[], s: number): MoteLight {
+  return { lx: light.x + SWAY * swayTrackAt(sway, s), ly: light.ly, level: light.level, f: 0, r: light.r };
 }
 
 export function buildMoteTracks(air: Air, light: RestLight): MoteTracks {
   const sim: Air = { t: air.t, m: Float64Array.from(air.m), mothAt: Infinity, mothT: -1 };
   const drift: Stop[][] = Array.from({ length: MOTES }, (_, i) => [{ t: 0, x: sim.m[i * MOTE_STRIDE + M.x], y: sim.m[i * MOTE_STRIDE + M.y] }]);
   const cone: ConeStop[][] = Array.from({ length: MOTES }, () => []);
-  const coneAt = (x: number, y: number, t: number) => moteCone(x, y, lightAt(light, t)) * MOTE_ALPHA;
+  const sway = swayFrom(light);
+  const coneAt = (x: number, y: number, t: number) => moteCone(x, y, lightAt(light, sway, t)) * MOTE_ALPHA;
   for (let i = 0; i < MOTES; i++) cone[i].push({ t: 0, v: coneAt(drift[i][0].x, drift[i][0].y, 0) });
   const steps = SPAN_S / FRAME_S;
   const before = new Float64Array(MOTES * 2);
@@ -186,14 +190,15 @@ export interface FlightStop {
   spread: number;
 }
 
-/** The moth's crossing from a flight that sets off with the sway at table time `tt`: `mothPose` at every step, the light swaying under it. */
-export function buildFlight(light: Omit<RestLight, "level" | "r">): FlightStop[] {
+/** The moth's crossing from a flight that sets off `from` seconds into the track that began at `light`: `mothPose` at every step, the light swaying under it. */
+export function buildFlight(light: Pick<RestLight, "x" | "ly" | "ph" | "t">, from = 0): FlightStop[] {
+  const sway = swayFrom(light);
   const air: Air = { t: 0, m: new Float64Array(0), mothAt: Infinity, mothT: 0 };
   const stops: FlightStop[] = [];
   for (let n = 0; n * FLIGHT_STEP_S <= FLIGHT_S + 1e-9; n++) {
     const t = n * FLIGHT_STEP_S;
     air.t = t;
-    const l = lightAt({ ...light, level: 1, r: 1 }, t);
+    const l = lightAt({ ...light, level: 1, r: 1 }, sway, from + t);
     const p = mothPose(air, { ...l, freeze: 0 })!;
     stops.push({ t, mx: p.mx, my: p.my, sx: p.sx, sy: p.sy, wing: p.wing / WING_HALF_MAX, spread: p.shadowRx / SHADOW_RX_MAX });
   }
@@ -213,7 +218,7 @@ export function buildMoth(light: RestLight, built: number, first: number, rng: (
   while (at < built) at += 10 + rng() * 5;
   for (; at - built + FLIGHT_S < SPAN_S; at += 10 + rng() * 5) {
     const s = at - built;
-    flights.push({ s, stops: buildFlight({ x: light.x, ly: light.ly, tt: light.tt + s }) });
+    flights.push({ s, stops: buildFlight(light, s) });
   }
   return { flights, next: at };
 }

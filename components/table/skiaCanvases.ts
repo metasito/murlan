@@ -2,3 +2,4 @@
 // async chunks share into `__common`, which the first load fetches, and CanvasKit's bindings with it.
 export { FeltCanvas } from "./feltCanvas";
 export { HandShadeCanvas } from "./handShadeCanvas";
+export { EndB } from "./feltEndB";
