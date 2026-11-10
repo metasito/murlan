@@ -25,8 +25,6 @@ type Stepped = { scale: number | null; frames: number };
  * length, whatever the rotation. Null once the node is gone.
  */
 function stepUntil({ want, frames, stepMs }: { want: "engaged" | "rest"; frames: number; stepMs: number }): Promise<Stepped> {
-  const clock = (globalThis as unknown as { __pwClock?: { controller: { runFor(ms: number): Promise<void> } } }).__pwClock?.controller;
-  if (!clock) throw new Error("Playwright's in-page clock is not installed");
   const read = (): number | null => {
     const el = document.querySelector('[data-testid="flying-cards"]') as HTMLElement | null;
     if (!el) return null;
@@ -49,8 +47,7 @@ function stepUntil({ want, frames, stepMs }: { want: "engaged" | "rest"; frames:
     let scale = read();
     for (let i = 0; i < frames; i++) {
       if (want === "engaged" && done(scale)) return { scale, frames: i };
-      window.murlanStepAnimations(stepMs);
-      await clock.runFor(stepMs);
+      await window.murlanStep(stepMs);
       await yieldTask();
       scale = read();
       if (want === "rest" && done(scale)) return { scale, frames: i + 1 };

@@ -36,16 +36,24 @@ test("a paused CSS animation holds its phase across steps", async ({ page, baseU
   expect(await animationPhase(page)).toEqual([{ name: "slide", currentTime: 0 }]);
 });
 
-test("an animation a timer creates during a step has not yet been advanced by it", async ({ page, baseURL }) => {
-  await installVirtualClock(page, 1);
-  await page.goto(`${baseURL}/metadata.json`);
-  await page.setContent(PAGE);
-  await takeOver(page);
-  await page.evaluate(() => setTimeout(() => document.getElementById("box")!.classList.add("late"), 1));
-  await step(page);
-  const [created] = await animationPhase(page);
-  expect(created.currentTime).toBeGreaterThanOrEqual(0);
-  expect(created.currentTime).toBeLessThan(STEP_MS);
-  await step(page);
-  expect((await animationPhase(page))[0].currentTime).toBe(STEP_MS);
-});
+const steppers: [string, (page: Page) => Promise<unknown>][] = [
+  ["step", (page) => step(page)],
+  ["stepThen", (page) => stepThen(page, STEP_MS, "0")],
+  ["murlanStep, the in-page loops' step", (page) => page.evaluate((ms) => window.murlanStep(ms), STEP_MS)],
+];
+
+for (const [name, advance] of steppers) {
+  test(`an animation a timer creates during ${name} has not yet been advanced by it`, async ({ page, baseURL }) => {
+    await installVirtualClock(page, 1);
+    await page.goto(`${baseURL}/metadata.json`);
+    await page.setContent(PAGE);
+    await takeOver(page);
+    await page.evaluate(() => setTimeout(() => document.getElementById("box")!.classList.add("late"), 1));
+    await advance(page);
+    const [created] = await animationPhase(page);
+    expect(created.currentTime).toBeGreaterThanOrEqual(0);
+    expect(created.currentTime).toBeLessThan(STEP_MS);
+    await advance(page);
+    expect((await animationPhase(page))[0].currentTime).toBe(STEP_MS);
+  });
+}

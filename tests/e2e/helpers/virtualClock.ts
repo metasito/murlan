@@ -7,6 +7,7 @@ import { mulberry32 } from "../../support/game.ts";
 declare global {
   interface Window {
     murlanStepAnimations(ms: number): void;
+    murlanStep(ms: number): Promise<void>;
   }
 }
 
@@ -31,6 +32,15 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
         if (a.playState === "running" && a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
       }
     };
+    // The one in-page step: animations first, so one a timer or rAF creates during the step reads 0,
+    // as a browser reads 0 to 15 ms, not the whole step. Playwright's in-page controller is its
+    // only other half, so a spec's own stepping loop calls this rather than ordering the two itself.
+    window.murlanStep = async (ms) => {
+      window.murlanStepAnimations(ms);
+      const clock = (globalThis as unknown as { __pwClock?: { controller: { runFor(ms: number): Promise<void> } } }).__pwClock?.controller;
+      if (!clock) throw new Error("Playwright's in-page clock is not installed");
+      await clock.runFor(ms);
+    };
     // `page.clock` fakes performance.now() but not this stamp's performanceTime, which stays on the
     // real clock; the engine maps a moment's `at` through it, so every sound would read seconds late.
     AudioContext.prototype.getOutputTimestamp = function () {
@@ -54,7 +64,10 @@ export async function takeOver(page: Page): Promise<void> {
   if (offGrid > 0) await page.clock.runFor(offGrid);
 }
 
-/** Animations step first: one a timer or rAF creates during the step then reads 0, as a browser reads 0 to 15 ms, not the whole step. */
+/**
+ * Through `page.clock`, which logs the step for a document opened after it, so the in-page `murlanStep`
+ * cannot stand in; the order is the same, animations first.
+ */
 export async function step(page: Page, ms: number = STEP_MS): Promise<void> {
   await page.evaluate((ms) => window.murlanStepAnimations(ms), ms);
   await page.clock.runFor(ms);
@@ -78,13 +91,8 @@ export async function animationPhase(page: Page): Promise<{ name: string; curren
  */
 export async function stepThen<T>(page: Page, ms: number | null, read: string): Promise<T> {
   return page.evaluate(`(async () => {
-    const clock = globalThis.__pwClock?.controller;
-    if (!clock) throw new Error("Playwright's in-page clock is not installed");
     const ms = ${ms};
-    if (ms !== null) {
-      globalThis.murlanStepAnimations(ms);
-      await clock.runFor(ms);
-    }
+    if (ms !== null) await globalThis.murlanStep(ms);
     return ${read};
   })()`) as Promise<T>;
 }
