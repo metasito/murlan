@@ -145,3 +145,27 @@ export const TAKE_RENDER_COUNTS = "window.murlanRenderCounts.take()";
 
 /** Skia's web canvases carry no `testID` of their own: each is named by the view it lies in. */
 export const COUNTED = { felt: "table-felt webgl",handShade: "card-shade webgl", particles: "particles 2d" } as const;
+
+/** The settled felt's end-B layer, when it has one: its opacity now and how many of its animations run. In-page, for `page.evaluate`. */
+export const END_B_SAMPLE = `(() => {
+  const canvas = document.querySelector('[data-testid="felt-end-b"]');
+  if (!canvas || canvas.style.visibility !== "visible") return null;
+  const layer = canvas.parentElement;
+  return { opacity: Number(getComputedStyle(layer).opacity), running: layer.getAnimations().filter((a) => a.playState === "running").length };
+})()`;
+
+export interface EndBSample {
+  opacity: number;
+  running: number;
+}
+
+/** Opacity the end-B layer must move by across the samples: its sway runs the whole of 0 to 1, so two seconds of it cannot lie within this. */
+const SWAY_SHOWN = 0.02;
+
+/** Whether the sway is visible without the felt redrawing: every sample found the layer with an animation running, and its opacity moved between them. A table with no such layer, or a frozen one, is not. */
+export function swayShows(samples: (EndBSample | null)[]): boolean {
+  const seen = samples.filter((s): s is EndBSample => s !== null);
+  if (seen.length < 2 || seen.length !== samples.length || seen.some((s) => s.running < 1)) return false;
+  const opacities = seen.map((s) => s.opacity);
+  return Math.max(...opacities) - Math.min(...opacities) >= SWAY_SHOWN;
+}
