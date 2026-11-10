@@ -27,9 +27,9 @@ for (const motion of ["reduce", "no-preference"] as const) {
     await page.waitForTimeout(3_000);
     await startRenderCounts(page);
 
-    // fixed wait on purpose: the window is the measurement
     const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
     for (let half = 0; half < 2; half++) {
+      // fixed wait on purpose: the window is the measurement
       await page.waitForTimeout(WINDOW_MS / 2);
       sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
     }
