@@ -65,7 +65,9 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
   );
   // Motionless, the lamp is at the centre: the ends cross half and half and the spot stands.
   const lean = reduceMotion ? 0.5 : 0.5 + 0.5 * track.sway[0]!;
-  const [fadeANode, fadeBNode, spotNode] = [useRef<NodeRef>(null), useRef<NodeRef>(null), useRef<NodeRef>(null)];
+  const fadeANode = useRef<NodeRef>(null);
+  const fadeBNode = useRef<NodeRef>(null);
+  const spotNode = useRef<NodeRef>(null);
 
   useLayoutEffect(() => {
     onCover(!live);
