@@ -214,15 +214,17 @@ describe('the table holding its breath', () => {
     await view.unmount();
   });
 
-  it('starts the ramp on the first frame after the change, never on time from before it', async () => {
+  it('runs the ramp on the frame clock from the first frame after the change, never on time from before it', async () => {
     const rig = { freeze: jest.fn<(amount: number) => void>(), hold: jest.fn<LampRig['hold']>() };
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
-    const frame = (ms: number) => mockSteps.at(-1)!({ timeSincePreviousFrame: ms, timestamp: 0, timeSinceFirstFrame: 0 });
+    const frame = (timestamp: number) => mockSteps.at(-1)!({ timeSincePreviousFrame: 16, timestamp, timeSinceFirstFrame: 0 });
     await view.rerender({ link: 'dropped' });
     frame(33);
     expect(mockReaders.grey()).toBe(0);
-    frame(30);
+    frame(63);
     expect(mockReaders.grey()).toBeCloseTo(Reconnect.grey / 10, 6);
+    frame(233);
+    expect(mockReaders.grey()).toBeCloseTo((Reconnect.grey * 200) / Reconnect.greyIn, 6);
     await view.unmount();
   });
 
