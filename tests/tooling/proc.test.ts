@@ -179,6 +179,26 @@ describe("on POSIX, modelled", () => {
     assert.deepEqual(world.stopped(), []);
   });
 
+  test("a halt between two reads of the table runs no further ps and signals no kill", () => {
+    const world = posixWorld({ forks: 2 });
+    const child = world.proc.startBin("node", ["a.js"], {});
+    let halted = false;
+    world.afterRead(() => (halted = true));
+    world.proc.killTree(child.pid, { halted: () => halted });
+    assert.equal(world.reads(), 1);
+    assert.deepEqual(world.signals.filter(([, s]) => s === "SIGKILL"), []);
+    assert.deepEqual(world.stopped(), []);
+  });
+
+  test("a halt that comes before the first read runs no ps at all", () => {
+    const world = posixWorld();
+    const child = world.proc.startBin("node", ["a.js"], {});
+    const identity = world.proc.identityOf(child.pid!);
+    assert.equal(world.proc.endTreeIf(child.pid!, identity!, () => true), false);
+    world.proc.killTree(child.pid, { halted: () => true });
+    assert.equal(world.reads(), 0);
+  });
+
   test("a process whose identity still matches is ended with its tree", () => {
     const world = posixWorld();
     const child = world.proc.startBin("node", ["a.js"], {});
