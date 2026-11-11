@@ -15,7 +15,7 @@ import { drawnDisc, SEAT_DISC } from "../../components/seatLayout.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { designScale } from "../../components/table/lampRig.ts";
 import { ANNULUS_OUTER, feltOnly, legibilityRing } from "../../components/table/legibilityRing.ts";
-import { tableLayout } from "../../components/tableLayout.ts";
+import { tableLayout, tableScale } from "../../components/tableLayout.ts";
 import { RAIL_BAND, ringRect } from "../../components/table/rail.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { phoneTable } from "../helpers/phoneTable.ts";
@@ -189,6 +189,15 @@ describe("annulusLuminance", () => {
     near(read(feltOnly(whole, win), rim, 1, r), GREY_LINEAR, 0.001);
     assert.throws(() => read(feltOnly(whole, win), { x: feltLeft - 20, y: win.height / 2 }, 1, r), /is felt/);
     assert.throws(() => feltOnly(whole, { width: win.width, height: win.height + 2 }), /is not of a/);
+  });
+
+  test("the parity targets' perPt and scale forms read the same felt and ring as the viewport form", () => {
+    const win = { width: 874, height: 402 };
+    const perPt = 2;
+    const data = new Uint8ClampedArray(win.width * perPt * win.height * perPt * 4).fill(128);
+    const shot = { width: win.width * perPt, height: win.height * perPt, data };
+    assert.deepEqual(feltOnly(shot, perPt), feltOnly(shot, win));
+    assert.deepEqual(legibilityRing(win.width, win.height, tableScale(win)), legibilityRing(win));
   });
 });
 

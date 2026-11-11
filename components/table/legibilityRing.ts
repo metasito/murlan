@@ -14,10 +14,14 @@ export const ANNULUS_OUTER = 45;
 type Viewport = { width: number; height: number };
 
 /** From the drawn disc's edge to 45 design pt of the table stretched to `viewport`. */
-export function legibilityRing(viewport: Viewport): Ring {
+export function legibilityRing(viewport: Viewport): Ring;
+/** The parity targets' form (docs/agents/target-freeze.md): a `width` x `height` viewport whose table is drawn at `scale`. */
+export function legibilityRing(width: number, height: number, scale: number): Ring;
+export function legibilityRing(at: Viewport | number, height?: number, scale?: number): Ring {
+  const viewport = typeof at === "number" ? { width: at, height: height! } : at;
   const { sx, sy } = designScale(viewport.width, viewport.height);
   return {
-    inner: drawnDisc(tableScale(viewport)) / 2,
+    inner: drawnDisc(scale ?? tableScale(viewport)) / 2,
     outerX: ANNULUS_OUTER * sx,
     outerY: ANNULUS_OUTER * sy,
   };
@@ -36,8 +40,12 @@ export function pixelsPerPt(pixels: Pixels, viewport: Viewport): number {
  * A shot of the whole `viewport` with everything outside the cloth, the rail and the room, made
  * transparent: the sampler counts only felt.
  */
-export function feltOnly(pixels: Pixels, viewport: Viewport): Pixels {
+export function feltOnly(pixels: Pixels, viewport: Viewport): Pixels;
+/** The parity targets' form (docs/agents/target-freeze.md): the shot's own size over `perPt` is its viewport. */
+export function feltOnly(pixels: Pixels, perPt: number): Pixels;
+export function feltOnly(pixels: Pixels, at: Viewport | number): Pixels {
   const { width, height } = pixels;
+  const viewport = typeof at === "number" ? { width: width / at, height: height / at } : at;
   const perPt = pixelsPerPt(pixels, viewport);
   const { sx, sy } = designScale(viewport.width, viewport.height);
   const { x, y, w, h, r } = ringRect(RAIL_BAND);

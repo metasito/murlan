@@ -9,6 +9,7 @@ import { feltPixels, seatAnchor, skiaOnSoftware, untilSkiaFelt } from "./helpers
 import type { FlyDirection } from "../../components/seatLayout";
 import type { TraceFrame } from "../../lib/e2eTrace";
 import { feltOnly, legibilityRing } from "../../components/table/legibilityRing";
+import { tableScale } from "../../components/tableLayout";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 import { LAMP_FLOOR, LAMP_SYMMETRY, annulusLuminance, evenness, legibility } from "../../lib/diagnostics/lampLegibility";
 
@@ -40,12 +41,13 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
     (globalThis as unknown as { murlanCardShadows: (on: boolean) => void }).murlanCardShadows(false);
     return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
-  const { pixels: shot, perPt, origin } = await feltPixels(page);
-  const viewport = { width: phone.width, height: phone.height };
-  expect({ ...origin, width: shot.width / perPt, height: shot.height / perPt }, "the felt fills the viewport").toEqual({ x: 0, y: 0, ...viewport });
-  const pixels = feltOnly(shot, viewport);
-  const ring = legibilityRing(viewport);
-  return Object.fromEntries(SEATS.map((s) => [s, annulusLuminance(pixels, anchors[s], perPt, ring)])) as Record<FlyDirection, number>;
+  const { pixels: box, perPt, origin } = await feltPixels(page);
+  const pixels = feltOnly(box, perPt);
+  const felt = { width: pixels.width / perPt, height: pixels.height / perPt };
+  const ring = legibilityRing(felt.width, felt.height, tableScale(felt));
+  return Object.fromEntries(
+    SEATS.map((s) => [s, annulusLuminance(pixels, { x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt, ring)])
+  ) as Record<FlyDirection, number>;
 }
 
 for (const phone of PHONES) {
