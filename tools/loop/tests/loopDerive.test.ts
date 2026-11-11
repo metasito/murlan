@@ -744,7 +744,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
       return { s: (derive as any)({ cwd: dir, base: "main", ci: true, tracker: budgeted(exec) }), asked };
     };
 
-    // `runSettle` reads the run, reruns it once and posts the CI-RED; until then the head is G's.
+    // `runSettle` reads the run and posts the CI-RED; until then the head is G's.
     test("a head no CI-RED names is still G, whatever its CI says, and no run is read", () => {
       const { s, asked } = derived(land());
       assert.deepEqual([s.ci.state, s.fix, s.phase], ["settling", false, "G"]);
@@ -752,7 +752,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
     });
 
     test("once the supervisor posts the CI-RED it writes, the session reads a fix round", () => {
-      const body = ciRedBody({ sha: head, runUrl: "https://github.com/o/r/actions/runs/10", failedStep: "Test", testIds: ["a.ts › b"], runId: 10, attempt: 2 });
+      const body = ciRedBody({ sha: head, runUrl: "https://github.com/o/r/actions/runs/10", failedStep: "Test", testIds: ["a.ts › b"], runId: 10 });
       const { s } = derived([...land(), { body, authorAssociation: "OWNER" }]);
       assert.deepEqual([s.ci.state, s.fix, s.phase, s.ci.step], ["red", true, "C", "Test"]);
     });

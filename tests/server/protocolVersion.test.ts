@@ -5,9 +5,15 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { MIN_PROTOCOL_VERSION, PROTOCOL_VERSION } from "../../shared/protocol.ts";
+import { atMain, rewritten } from "../helpers/appendOnly.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
+const HASHES = "tests/fixtures/protocolHashes.json";
+
+test("a recorded hash dropped or rewritten is named, and one added is not", () => {
+  assert.deepEqual(rewritten({ "1": "a", "2": "b", "3": "c" }, { "1": "a", "3": "x", "4": "d" }), ["2: was b, now missing", "3: was c, now x"]);
+});
 
 /** Hashes the tokens bar module paths, so a comment or a moved import — neither reaches the wire — needs no bump. */
 function protocolHash(source: string): string {
@@ -22,7 +28,7 @@ function protocolHash(source: string): string {
 
 test("shared/protocol.ts does not change without a PROTOCOL_VERSION bump", () => {
   const source = read("shared/protocol.ts");
-  const recorded: Record<string, string> = JSON.parse(read("tests/fixtures/protocolHashes.json"));
+  const recorded: Record<string, string> = JSON.parse(read(HASHES));
   assert.notEqual(
     protocolHash(source.replace("handCount", "cardCount")),
     protocolHash(source),
@@ -38,12 +44,21 @@ test("shared/protocol.ts does not change without a PROTOCOL_VERSION bump", () =>
     protocolHash(source),
     "a renamed string literal must move the hash"
   );
-  assert.equal(
-    recorded[String(PROTOCOL_VERSION)],
-    protocolHash(source),
-    `shared/protocol.ts changed at PROTOCOL_VERSION ${PROTOCOL_VERSION}. Bump it, record the new hash ` +
-      "under the new version in tests/fixtures/protocolHashes.json, and raise MIN_PROTOCOL_VERSION if " +
-      "bundles already in the field cannot read the change."
+  const base = atMain(HASHES) as Record<string, string> | undefined;
+  if (base) assert.deepEqual(rewritten(base, recorded), [], `${HASHES} only grows: restore what origin/main records`);
+  const hash = protocolHash(source);
+  const missing = recorded[String(PROTOCOL_VERSION)] === undefined;
+  // assert.ok, not equal: equal's report prints the hash, and a hash handed out where the base
+  // cannot be read is one pasted over the entry it replaces.
+  const rerun = "Rerun `node --test tests/server/protocolVersion.test.ts` in a clone that holds origin/main: it prints the entry to add.";
+  assert.ok(
+    recorded[String(PROTOCOL_VERSION)] === hash,
+    !missing
+      ? `shared/protocol.ts changed at PROTOCOL_VERSION ${PROTOCOL_VERSION}. Bump PROTOCOL_VERSION in shared/protocol.ts. ${rerun}`
+      : base
+        ? `no protocol hash is recorded for PROTOCOL_VERSION ${PROTOCOL_VERSION}: add "${PROTOCOL_VERSION}": "${hash}" ` +
+          `to ${HASHES}. Raise MIN_PROTOCOL_VERSION if bundles already in the field cannot read the change.`
+        : `no protocol hash is recorded for PROTOCOL_VERSION ${PROTOCOL_VERSION}. ${rerun}`
   );
   assert.ok(MIN_PROTOCOL_VERSION >= 1 && MIN_PROTOCOL_VERSION <= PROTOCOL_VERSION);
 });

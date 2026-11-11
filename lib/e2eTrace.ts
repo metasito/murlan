@@ -12,6 +12,8 @@ export interface TraceFrame {
   shake: { x: number; y: number; rotate: number } | null;
   /** Which felt is on screen: the web fallback until Skia has drawn its first frame. */
   felt?: "skia" | "fallback" | null;
+  /** The device pixels per design point the Skia felt draws at, before its shader caps it. */
+  feltK?: number | null;
   /** The score pill's box and its open progress, which may overshoot 1. */
   scorePill: { x: number; y: number; w: number; h: number; open: number } | null;
   flight: number;
@@ -35,6 +37,7 @@ interface Sources {
   lamp: () => NonNullable<TraceFrame["lamp"]>;
   shake: () => NonNullable<TraceFrame["shake"]>;
   felt: () => "skia" | "fallback";
+  feltK: () => number;
   scorePill: () => NonNullable<TraceFrame["scorePill"]>;
   flight: () => number;
   grey: () => number;
@@ -56,6 +59,7 @@ const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   lamp: new Set(),
   shake: new Set(),
   felt: new Set(),
+  feltK: new Set(),
   scorePill: new Set(),
   flight: new Set(),
   grey: new Set(),
@@ -134,6 +138,7 @@ export function traceRecorder(host: FrameHost): TraceRecorder {
     lamp: last(sources.lamp),
     shake: last(sources.shake),
     felt: last(sources.felt),
+    feltK: last(sources.feltK),
     scorePill: last(sources.scorePill),
     flight: Math.max(0, ...[...sources.flight].map((read) => read())),
     motes: sum(sources.motes),

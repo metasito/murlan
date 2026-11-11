@@ -65,7 +65,7 @@ const ci = (over: object = {}) => ({ testIds: ["tests/a.test.ts › adds"], outp
 const land = (over: object = {}) => ({
   ...base,
   step: "landing",
-  landing: { action: "recheck", reason: "the run has not finished", head: "h2abcdef9", armed: false, overdue: false, deadline: SETTLE.DEADLINE_MS, updates: 0, last: null, stuck: false, cleared: { ok: true, why: null }, ci: ci(), error: null, reran: null, ...over },
+  landing: { action: "recheck", reason: "the run has not finished", head: "h2abcdef9", armed: false, overdue: false, deadline: SETTLE.DEADLINE_MS, updates: 0, last: null, stuck: false, cleared: { ok: true, why: null }, ci: ci(), error: null, ...over },
 });
 const red = (over: object = {}) => land({ action: "hand-back", reason: "CI failed at Typecheck and tests", ...over });
 const green = (over: object = {}) => land({ action: "arm", reason: "mergeStateStatus is CLEAN", ...over });
@@ -248,11 +248,9 @@ const ROWS: Row[] = [
   ["a G pass with no open pull request says so", g(null), { kind: "park", phase: "G", why: "phase G found no open pull request for the pushed head" }],
 
   // poll, one read of the pull request: a step, or the verdict `settled` reads
-  ["poll: a red with its log is rerun once, on its first attempt", red({ ci: ci({ attempt: 1 }) }),
-    { kind: "settle", act: "rerun", why: "CI is red at Typecheck and tests — rerunning 99 once", loop: fresh }],
-  ["poll: a head this process already reran is handed back", red({ ci: ci({ attempt: 1 }), reran: "h2abcdef9" }), { kind: "settled", action: "hand-back", why: "CI failed at Typecheck and tests" }],
-  ["poll: a red on its second attempt is handed back", red(), { kind: "settled", action: "hand-back" }],
-  ["poll: a red with no run to rerun is handed back", red({ ci: ci({ attempt: 1, runId: null }) }), { kind: "settled", action: "hand-back" }],
+  ["poll: a red with its log is handed back on its first attempt, never rerun", red({ ci: ci({ attempt: 1 }) }),
+    { kind: "settled", action: "hand-back", why: "CI failed at Typecheck and tests", loop: fresh }],
+  ["poll: a red on a later attempt is handed back", red(), { kind: "settled", action: "hand-back" }],
   ["poll: a red whose log is unread is asked again", red({ ci: ci({ logUnread: true }) }),
     { kind: "settle", act: "wait", why: "CI is red but named no log — asking again" }],
   ["poll: main moved, so the branch is updated", land({ action: "update-branch", reason: "main moved" }),
@@ -301,7 +299,7 @@ const ROWS: Row[] = [
   ["a CI fix round keeps the worktree, and hands it back", settled(), { kind: "retry" }],
   ["a red settle leaves the worktree standing and the next pass spawns C with the fix", settled(), { kind: "retry", loop: { ...fresh, pinned: 42 } }],
   ["the retry row carries the head CI judged, not the one before update-branch", settled({ head: "h9" }), { kind: "retry", head: "h9" }],
-  ["#1100's report-upload red, back from its one rerun, is a fix round", settled({ reason: "CI failed at Browser test report", head: "2f2a885" }), { kind: "retry", head: "2f2a885" }],
+  ["a hand-back at a job no test names is a fix round", settled({ reason: "CI failed at Browser test report", head: "2f2a885" }), { kind: "retry", head: "2f2a885" }],
   [`runOnce: red round ${CI_ROUNDS} parks`, settled({}, { tally: { ...empty, retries: CI_ROUNDS - 1 } }),
     { kind: "park", phase: "E", ciRed: true, why: `${CI_ROUNDS} CI rounds on the same branch did not go green — last: CI failed at Typecheck and tests` }],
   ["a restart mid fix round keeps the round count: the third red run parks", settled({}, { tally: { ...empty, retries: CI_ROUNDS - 1 } }), { kind: "park" }],
@@ -543,11 +541,8 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "a hold is not a handoff: the ticket's handoff count stays where it was": ["queueLoopMain.test.ts", "tally"],
   "is recorded with the steps that failed": ["queueLoopMain.test.ts", "repark"],
   "is applied again at the start of the next pass, once, and a restart does not repeat it": ["queueLoopMain.test.ts", "repark"],
-  "a landing a rerun won writes the flake on its row": ["queueLoopMain.test.ts", "io"],
-  "a rerun's green whose merge then failed still writes the flake, on the park row": ["queueLoopMain.test.ts", "io"],
   "a red whose CI-RED a settle could not post reaches its fix round with exactly one posted": ["queueLoopMain.test.ts", "io: three passes, one CI-RED"],
   "a ticket's hold says which ticket and why, not a pre-flight's words": ["queueLoopMain.test.ts", "io: main's notice"],
-  "the settle is handed the flake the ledger armed with, and writes an armed row when it arms": ["queueLoopMain.test.ts", "io"],
   "a red on an armed pull request is disarmed before any fix round is spawned": ["queueLoopMain.test.ts", "io: poll's call order"],
 };
 

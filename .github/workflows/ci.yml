@@ -283,6 +283,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # protocolVersion and storedShapeVersions compare their fixtures with main's (tests/helpers/appendOnly.ts).
+      - name: Fetch main
+        run: git fetch --depth=1 origin +refs/heads/main:refs/remotes/origin/main
       - uses: ./.github/actions/install
 
       # tests/server/backupDb.test.ts restores a real dump — needs the same client

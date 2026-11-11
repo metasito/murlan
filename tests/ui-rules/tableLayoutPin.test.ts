@@ -50,7 +50,27 @@ function current(c: { viewport: string; insets: string }) {
     chipsBottom: bannerTop(at.width > at.height ? layout : null, at.insets.top),
     tableBox: layout.tableBox,
     pill: layout.pill,
-    voteTop: { rest: voteTop(layout.pill, false, at.scale), open: voteTop(layout.pill, true, at.scale) },
+    voteTop: layout.votes.top,
+  };
+}
+
+function derived(c: { viewport: string; insets: string }) {
+  const at = place(c);
+  const layout = tableLayout(at);
+  const { pill, frame, buttons } = layout;
+  return {
+    actual: {
+      votes: layout.votes,
+      floatBeside: layout.floatBeside,
+      bannerBand: layout.bannerBand,
+      tableCentre: layout.tableCentre,
+    },
+    expected: {
+      votes: { right: at.width - pill.right, top: { rest: voteTop(pill, false, at.scale), open: voteTop(pill, true, at.scale) } },
+      floatBeside: { giocaTopFromBottom: at.height - buttons.gioca.y, left: frame.tableLeft, right: frame.tableRight },
+      bannerBand: { left: frame.tableLeft + frame.pad, right: frame.tableRight + frame.pad },
+      tableCentre: { x: (frame.tableLeft + at.width - frame.tableRight) / 2, y: (frame.tableTop + at.height - frame.surplus) / 2 },
+    },
   };
 }
 
@@ -70,5 +90,14 @@ describe("the table lays out where it was pinned", () => {
 
   for (const { case: c, layout } of PIN) {
     test(`${c.viewport}, ${c.insets}`, () => assert.deepEqual(current(c), layout));
+  }
+});
+
+describe("the overlay places stand where the score pill, GIOCA and the frame put them", () => {
+  for (const c of cases()) {
+    test(`${c.viewport}, ${c.insets}`, () => {
+      const { actual, expected } = derived(c);
+      assert.deepEqual(actual, expected);
+    });
   }
 });

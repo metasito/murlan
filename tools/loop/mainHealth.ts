@@ -1,6 +1,6 @@
 import { gh } from "./cli.mjs";
 import { ghTracker } from "./tracker.mjs";
-import { decideVerdict, failedLogArgs, failingTestIds, jobRowsOf, markTimedOut, stripLogPrefix, type JobRow, type RunRow, type Tracker } from "./ciVerdict.ts";
+import { decideVerdict, failedLogArgs, failingTestIds, jobRowsOf, markFromAnnotations, stripLogPrefix, type JobRow, type RunRow, type Tracker } from "./ciVerdict.ts";
 
 /**
  * Whether `main` itself is green, and filing a ticket when it is not.
@@ -111,7 +111,7 @@ const ghCli: Gh = (args) => gh(args);
 
 function jobRows(t: Tracker, runId: number, attempt?: number): JobRow[] {
   const jobs = jobRowsOf(t.runJobs(runId, { attempt }));
-  markTimedOut(jobs, t);
+  markFromAnnotations(jobs, t);
   return jobs;
 }
 
@@ -157,6 +157,8 @@ export interface MainFailures {
   runId: number;
   url?: string;
   ids: string[];
+  /** The jobs main's red run failed, for a red whose step names no test id. */
+  jobs?: string[];
   /** The ids failed attempt 1 of a green main's run, or of the pull-request run it inherited: flakes, not main's reds. */
   flaky?: true;
 }
@@ -198,7 +200,8 @@ export function mainFailures(gh: Gh, repo: string): MainFailures | null {
     if (!run || run.status !== "completed") return null;
     if (run.conclusion === "success") return firstAttemptFlakes(gh, repo, t, run) ?? inheritedFlakes(gh, repo, t, run);
     const ids = failuresOf(gh, repo, run, jobs);
-    return ids && { runId: run.databaseId, url: run.url, ids };
+    const failed = jobs.filter((j) => j.conclusion === "failure" || j.timedOut).map((j) => j.name);
+    return ids && { runId: run.databaseId, url: run.url, ids, jobs: failed };
   } catch {
     return null;
   }

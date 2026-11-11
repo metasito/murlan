@@ -26,7 +26,7 @@ every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issu
 | `size:XS` … `size:XL` | A promise about the diff; the supervisor sets the session's turn budget from it | — |
 | `loop` | The loop's own machinery: `tools/loop`, the supervisor, its guards | — |
 | `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`); closed by the same module once a later `ci.yml` run on main is green | ranked first |
-| `ci-flake` | A test that fails CI intermittently; the owner's to add, never a loop session's (`tools/loop/guard-bash.mjs` refuses it). When a rerun turns a red green, the supervisor files `CI flake: <test>` as `ready-for-human` for the owner to promote | ranked with `main-red` |
+| `ci-flake` | A test that fails CI intermittently; the owner's to add, never a loop session's (`tools/loop/guard-bash.mjs` refuses it). The supervisor never reruns a red (rule 53) | ranked with `main-red` |
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`), one open per title (`tools/ci/report-to-tracker.sh`) | — |
 | `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-to-tracker.sh`), one open per workflow; closed by hand once diagnosed | — |
 | `mutation` | Filed by the weekly mutation run (`.github/workflows/mutation.yml`): one open issue, "Mutation testing: surviving mutants", commented on each week with every file's score and every survivor (`tools/ci/report-to-tracker.sh`) | owner |

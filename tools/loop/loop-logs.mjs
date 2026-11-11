@@ -221,9 +221,11 @@ export function prune(now = Date.now(), fs = fsNode, dir = DIR) {
  * machine spent in standby, and `reruns`. 8 adds `review_holds_total`, every HOLD on the
  * issue across claims and fix rounds, beside `review_rounds`, the count the cap reads. 9 adds
  * `model`, the one the session's init line named, and drops `usage`, a token split read back off
- * the stream log, and `review_holds_total`, which `holdRound` counts from the rows.
+ * the stream log, and `review_holds_total`, which `holdRound` counts from the rows. 10 drops
+ * `flake` and stops writing the `armed` row: the supervisor no longer reruns a red, so no green
+ * is a rerun's.
  */
-export const SCHEMA = 9;
+export const SCHEMA = 10;
 
 export const STDERR_CAP = 2000;
 
@@ -246,7 +248,7 @@ export const errorLine = (error) =>
  *   reviewRounds: number|null, startedAt: string, ms: number, version: string|null,
  *   model?: string|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
- *   error?: object|null, flake?: {runId: number, tests: string[]}|null}} session
+ *   error?: object|null}} session
  */
 export function sessionRow({
   number,
@@ -270,7 +272,6 @@ export function sessionRow({
   handoff = null,
   error = null,
   parkFailed = null,
-  flake = null,
 }) {
   const models = Object.fromEntries(
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
@@ -303,8 +304,6 @@ export function sessionRow({
     handoff,
     error,
     park_failed: parkFailed,
-    // The run whose rerun went green, and the tests its first attempt failed: a landing a flake let through.
-    flake,
   };
 }
 
@@ -432,11 +431,10 @@ export function ledger(io = {}) {
     /**
      * @param {{number: number, outcome: string, why?: string|null, run: object, title?: string|null,
      *   size?: string|null, reviewRounds?: number|null, pr?: number|null,
-     *   merged?: boolean, head?: string|null, handoff?: object|null, parkFailed?: string[]|null,
-     *   flake?: object|null}} session
+     *   merged?: boolean, head?: string|null, handoff?: object|null, parkFailed?: string[]|null}} session
      * @param {string} runId
      */
-    record({ number, outcome, why = null, run, title = null, size = null, reviewRounds = null, pr = null, merged = false, head = null, handoff = null, parkFailed = null, flake = null }, runId) {
+    record({ number, outcome, why = null, run, title = null, size = null, reviewRounds = null, pr = null, merged = false, head = null, handoff = null, parkFailed = null }, runId) {
       const prior = exists(ledgerPath()) ? parsed(read(ledgerPath())) : [];
       const error = errorOf(run);
       const entry = sessionRow({
@@ -462,7 +460,6 @@ export function ledger(io = {}) {
         handoff,
         error,
         parkFailed,
-        flake,
       });
       mkdir();
       append(ledgerPath(), ledgerLine(entry));
@@ -655,13 +652,11 @@ export function tallyOf(rows) {
     retries: 0,
     rebases: 0,
     undeclared: 0,
-    armedFlake: /** @type {object|null} */ (null),
   };
   let fixing = false;
   for (const r of rows) {
     const cost = r.cost ?? 0;
-    if (r.outcome === "armed") t.armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : null;
-    else if (r.outcome !== "pushed") t.sessions += 1;
+    if (r.outcome !== "pushed" && r.outcome !== "armed") t.sessions += 1;
     t.spend += cost;
     t.ms += r.ms ?? 0;
     t.turns += r.turns ?? 0;

@@ -39,6 +39,8 @@ const AUDIT_DIR = path.resolve(__dirname, "57-polish-audit");
 const RECORD = path.join(AUDIT_DIR, "online-table.txt");
 /** Set to rewrite the record instead of being held to it. */
 const UPDATING = process.env.AUDIT_UPDATE === "1";
+const regenerate = (grep?: string) =>
+  `\`AUDIT_UPDATE=1 npx playwright test -c tests/e2e/playwright.config.ts onlineTableSurvey${grep ? ` -g "${grep}"` : ""}\``;
 
 /**
  * `MODE\tviewport\tcards=N`. Every seat here is a real account now (#800),
@@ -353,7 +355,7 @@ test("the record holds rows for the audited viewports only", () => {
   expect(
     orphans,
     "tests/e2e/57-polish-audit/online-table.txt holds rows for a viewport VIEWPORTS no longer lists; " +
-      "regenerate it with AUDIT_UPDATE=1, which drops them"
+      `regenerate it with ${regenerate()}, which drops them`
   ).toEqual([]);
 });
 
@@ -458,13 +460,13 @@ test.describe("the online table, at the audit's viewports", () => {
             expect(
               was,
               `tests/e2e/57-polish-audit/ records no row for ${keyOf(row).replaceAll("\t", " ")}, so ` +
-                `nothing holds this table to anything. Regenerate the record with AUDIT_UPDATE=1.`
+                `nothing holds this table to anything. Regenerate the record with ${regenerate(vp.name)}.`
             ).toBeDefined();
             expect(
               row,
               `the table no longer lays out the way tests/e2e/57-polish-audit/ records it ` +
                 `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
-                `it and regenerate the record with AUDIT_UPDATE=1 (any subset of viewports; each row replaces its own), ` +
+                `it and regenerate this viewport's rows with ${regenerate(vp.name)}, ` +
                 `correcting the numbers README.md quotes.`
             ).toBe(was);
           }

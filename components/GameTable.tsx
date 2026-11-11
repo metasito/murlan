@@ -38,7 +38,7 @@ import {
 import { handCountOf, vacatedOf, type ViewedGameState } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import { tableLayout, type ChipWidths, type Seating } from "@/components/tableLayout";
+import { tableLayout, type ChipWidths, type Seating, type TableLayout } from "@/components/tableLayout";
 import { useTableExchange } from "@/components/table/useTableExchange";
 import { FloatSlot } from "@/components/table/notices/floats";
 import { useTableFloat } from "@/components/table/useTableFloat";
@@ -61,7 +61,7 @@ import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, t
 import { ScorePill } from "@/components/table/scorePill";
 import type { MatchBoardActions, MatchRating } from "@/components/table/matchBoard";
 import { matchDim } from "@/lib/timeline/matchEnding";
-import { scorePillHitBox, voteTop } from "@/components/table/scorePillModel";
+import { scorePillHitBox } from "@/components/table/scorePillModel";
 import { matchBoardFor, scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
 import { HudComboPill, PileNote, WindowTurnChip } from "@/components/table/notices/hud";
@@ -265,9 +265,9 @@ export interface GameTableProps {
    * Takes the veil rather than returning plain nodes: whether the settings
    * sheet is open is this component's own state, and a layer that renders a
    * `<Modal>` is above the veil while one that does not is behind it — which
-   * only the caller knows.
+   * only the caller knows. `layout` is the one this table drew this render.
    */
-  overlays?: (veiled: AccessibilityProps) => React.ReactNode;
+  overlays?: (veiled: AccessibilityProps, layout: TableLayout) => React.ReactNode;
 
   /**
    * A layer in `overlays` covers the table and the player may not act. It
@@ -754,7 +754,7 @@ export function GameTable({
         sy: rig.sy,
         s: scale,
         kickAt: { x: W / 2, y: H / 2 },
-        shakeAt: { x: (frame.tableLeft + W - frame.tableRight) / 2, y: (frame.tableTop + H - frame.surplus) / 2 },
+        shakeAt: layout.tableCentre,
       },
     },
     tableMotion,
@@ -1014,7 +1014,7 @@ export function GameTable({
             pointerEvents="box-none"
             style={[
               styles.voteSpot,
-              { right: W - pillAnchor.right, top: voteTop(pillAnchor, false, scale) },
+              { right: layout.votes.right, top: layout.votes.top.rest },
             ]}
           >
             <A11yVeil veil={behindVeil}>
@@ -1030,7 +1030,7 @@ export function GameTable({
             pointerEvents="box-none"
             style={[
               styles.voteSpot,
-              { right: W - pillAnchor.right, top: voteTop(pillAnchor, true, scale) },
+              { right: layout.votes.right, top: layout.votes.top.open },
               roundVoteStyle,
             ]}
           >
@@ -1047,12 +1047,7 @@ export function GameTable({
         <FloatSlot
           float={float}
           at={{ x: anchors.pile.x, y: layout.floatTop }}
-          beside={{
-            giocaTop: H - buttons.gioca.y,
-            left: frame.tableLeft,
-            right: frame.tableRight,
-            mirrored: playOnLeft,
-          }}
+          beside={{ ...layout.floatBeside, mirrored: playOnLeft }}
           scale={scale}
           veiled={tableWithdrawn}
         />
@@ -1126,14 +1121,7 @@ export function GameTable({
         <View
           testID="banner-band"
           {...behindVeil}
-          style={[
-            styles.bannerBand,
-            {
-              top: layout.chipsBottom,
-              left: frame.tableLeft + frame.pad,
-              right: frame.tableRight + frame.pad,
-            },
-          ]}
+          style={[styles.bannerBand, { top: layout.chipsBottom, ...layout.bannerBand }]}
         >
           <A11yVeil veil={behindVeil}>{banners}</A11yVeil>
         </View>
@@ -1313,7 +1301,7 @@ export function GameTable({
         </Animated.View>
 
 
-        <A11yVeil veil={behindSheetOnly}>{overlays?.(behindSheetOnly)}</A11yVeil>
+        <A11yVeil veil={behindSheetOnly}>{overlays?.(behindSheetOnly, layout)}</A11yVeil>
 
         {portrait && <RotateOverlay />}
       </Animated.View>

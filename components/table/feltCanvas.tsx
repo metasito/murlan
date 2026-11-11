@@ -37,6 +37,7 @@ import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import { E2E_FAST } from "@/lib/e2eConfig";
+import { useTraceSource } from "@/lib/e2eTrace";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -501,6 +502,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, Ends }: 
   useBenchHandle("feltOpaque", flipOpaque);
   const dpr = PixelRatio.get();
   const k = dpr * Math.min(sx, sy);
+  useTraceSource("feltK", useCallback(() => k, [k]));
   const gx = dpr * sx;
   const gy = dpr * sy;
   const rail = useMemo(() => bakeRail(k), [k]);
