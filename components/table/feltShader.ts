@@ -143,9 +143,15 @@ const PLANES = "uniform shader uG0,uG1;\n";
 /** The cloth again, lit from the weave's planes `uG0`–`uG1`, sampled nearest at the device pixel they were baked on. */
 export const LIT_SKSL = `${UNIFORMS}\n${PLANES}${LIT_BODY}\nhalf4 main(vec2 xy){return half4(cloth(xy));}`;
 
+/** The fallback's one vertex stage: a strip of four corners at attribute 0, covering the target. */
+export const QUAD_GLSL = "attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}";
+
 const GL_HEAD = "precision highp float;\nuniform vec2 uRes,uPx;\n";
 /** The mockup's own `gl_FragCoord` mapping, `uPx` device pixels a point on each axis. */
 const GL_MAIN = (fn: string) => `\nvoid main(){gl_FragColor=${fn}(vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uPx);}`;
+
+/** WebGL's cloth in one pass, where the weave's planes cannot be baked or are not baked yet. */
+export const CLOTH_GLSL = `${GL_HEAD}${UNIFORMS}\n${CLOTH_BODY}${GL_MAIN("cloth")}`;
 
 /** WebGL's weave, for the fallback's bake: one plane a pass. */
 export const WEAVE_GLSL = `${GL_HEAD}${swaps(WEAVE_SKSL, [
@@ -155,7 +161,7 @@ export const WEAVE_GLSL = `${GL_HEAD}${swaps(WEAVE_SKSL, [
 ])}${GL_MAIN("weave")}`;
 
 /** WebGL's lit cloth: the planes are textures of the target's own size, so a fragment reads the texel it was baked on. */
-export const LIT_GLSL = `${GL_HEAD}${UNIFORMS}\nuniform sampler2D uG0,uG1;\n${swaps(LIT_BODY, [
+export const LIT_GLSL = `${GL_HEAD}${UNIFORMS}\nprecision highp sampler2D;\nuniform sampler2D uG0,uG1;\n${swaps(LIT_BODY, [
   ["uG0.eval(p)", "texture2D(uG0,gl_FragCoord.xy/uRes)"],
   ["uG1.eval(p)", "texture2D(uG1,gl_FragCoord.xy/uRes)"],
 ])}${GL_MAIN("cloth")}`;

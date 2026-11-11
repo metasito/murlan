@@ -15,6 +15,7 @@
   "exchangeNoOverlap.spec.ts": 22.1,
   "exchangePickChange.spec.ts": 20,
   "exchangeTeleport.spec.ts": 15.4,
+  "feltGlsl.spec.ts": 0.9,
   "feltIdle.spec.ts": 19,
   "feltNap.spec.ts": 16.4,
   "flightOrigin.spec.ts": 7.9,
