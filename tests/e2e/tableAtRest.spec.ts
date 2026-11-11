@@ -1,22 +1,31 @@
 // A target (RULES.md 52), set by the owner's ruling of 2026-11-10 that freezes the S4 rest limits.
-// tests/e2e/tableAtRest.spec.ts — a settled table draws only what moves (rule 51): counted per stepped
-// frame on the virtual clock, so a slow runner cannot pass by drawing fewer frames.
-import type { Page } from "@playwright/test";
+// tests/e2e/tableAtRest.spec.ts — a settled table draws nothing (rule 51, docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md):
+// counted per stepped frame on the virtual clock, so a slow runner cannot pass by drawing fewer frames.
+import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { heldTurnTable, playLowest } from "./helpers/mockupParity";
-import { installVirtualClock, stepThen, stepUntil } from "./helpers/virtualClock";
+import { botMove, heldTurnTable, pass, playLowest } from "./helpers/mockupParity";
+import { installVirtualClock, stepFrames, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS, type TraceFrame } from "./helpers/traceDiff";
-import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
-import { HAND_CARD_BOXES } from "./helpers/selectors";
+import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayRuns, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
+import { HAND_CARD_BOXES, TABLE_STATE } from "./helpers/selectors";
 
 const VIEWPORT = { width: 874, height: 402 };
 const SEED = 1255;
-/** Half a sway: the felt's share of frames depends on where in its swing the window falls, up to 0.37 of any 240. */
+/** Half a sway, so the end-B layer's opacity crosses most of its swing. */
 const WINDOW = 240;
+const SETTLED = Math.ceil(2000 / STEP_MS);
+/** Where a window reads the end-B layer, besides its first and last frame. */
+const SWAY_SAMPLES_AT = [60, 120];
 /** Past the restored table's own entrance: the deal's lamp breath and the seats' fade. */
 const SETTLE = 120;
+/** Past a throw's flight, landing, dust and the lamp's glide to the next seat. */
+const AFTER_MOVE = 300;
+const PLAY_CONTROL = SETTLE * 2;
+const AFTER_CONTROL = AFTER_MOVE - PLAY_CONTROL;
 /** The lamp's glide to the next seat moves its light more than half a point a frame for about this long. */
 const GLIDE = 80;
+/** With motion on, the lamp rig's frame callback still steps the sway into the trace's lamp (#1988 item 7); no other may run at rest. */
+const MOTION_CALLBACKS = 1;
 
 const { felt: FELT, handShade: HAND_SHADE, particles: PARTICLES } = COUNTED;
 
@@ -46,17 +55,71 @@ type Air = { lit: number; transforms: string } | null;
 
 const READ = `({ ...${TAKE_RENDER_COUNTS}, lamp: window.murlanTrace.frames.at(-1)?.lamp })`;
 
-async function frames(page: Page, n: number): Promise<Frame[]> {
-  const out: Frame[] = [];
-  for (let i = 0; i < n; i++) out.push(await stepThen<Frame>(page, STEP_MS, READ));
-  return out;
-}
-
+const run = async (page: Page, n: number) => void (await stepFrames(page, n));
+const take = (page: Page) => page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
 const drew = (fs: Frame[], key: string) => fs.filter((f) => (f.draws[key] ?? 0) > 0).length;
 const total = (fs: Frame[], pick: (f: Frame) => number) => fs.reduce((n, f) => n + pick(f), 0);
+const sum = (r: Record<string, number>) => Object.values(r).reduce((n, v) => n + v, 0);
+const airMoved = (before: Air, after: Air) => !!before && !!after && before.lit >= 1 && after.lit >= 1 && after.transforms !== before.transforms;
 
-test("a settled table redraws its felt only when the light moves, and its cards not at all", async ({ browser, baseURL }, info) => {
-  test.setTimeout(3 * 60_000);
+/** The table's state sentence, the cards the opponents' badges hold, and the cards on the pile, by id. */
+const table = (page: Page) =>
+  page.evaluate((attr) => ({
+    said: document.querySelector(`[${attr}]`)?.getAttribute(attr) ?? null,
+    held: [...document.querySelectorAll('[data-testid="seat-card-count"]')].reduce((n, b) => n + Number(b.textContent), 0),
+    pile: [...document.querySelectorAll('[id^="card-pile:"]')].map((c) => c.id),
+    flying: document.querySelectorAll('[data-testid="flying-card"]').length,
+  }), TABLE_STATE);
+
+/** `lean` reads end B's picture back as well: once a spec, for a second readback of that canvas warns, and a warning fails the test. */
+async function expectAtRest(page: Page, info: TestInfo, state: string, motion: boolean, length: number, lean = false): Promise<void> {
+  await take(page);
+  const traced = await page.evaluate<number>("window.murlanTrace.frames.length");
+  const airBefore = await page.evaluate<Air>(AIR);
+  const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
+  let at = 0;
+  for (const to of [...SWAY_SAMPLES_AT.filter((t) => t < length), length]) {
+    await run(page, to - at);
+    at = to;
+    sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
+  }
+  const counts = await take(page);
+  const clocks = await page.evaluate<(number | null)[]>(`window.murlanTrace.frames.slice(${traced}).map((f) => f.lamp?.clock ?? null)`);
+  const airAfter = await page.evaluate<Air>(AIR);
+  const picture = lean ? await page.evaluate<EndBLean | null>(END_B_LEAN) : null;
+  const seen = {
+    frames: counts.frames,
+    draws: sum(counts.draws),
+    readPixels: counts.readPixels,
+    styles: sum(counts.styles),
+    loopCallers: Object.keys(counts.loops).length,
+    frameCallbacks: counts.maxFrameCallbacks,
+    frameCallbacksAtEnd: counts.frameCallbacks,
+    tracedFrames: clocks.length,
+    lampStepped: clocks.filter((c, i) => i > 0 && c !== null && clocks[i - 1] !== null && c > clocks[i - 1]!).length,
+  };
+  const label = `${state}, frames 0–${length} at rest`;
+  info.annotations.push({ type: label, description: JSON.stringify(seen) });
+  console.log(`${label}: ${JSON.stringify(seen)}`);
+  const callbacks = motion ? MOTION_CALLBACKS : 0;
+  expect(seen.frames, `${label}: frames the page ran`).toBe(length);
+  expect(seen.draws, `${label}: canvas draws`).toBe(0);
+  expect(seen.readPixels, `${label}: pixels read back from a canvas`).toBe(0);
+  expect(seen.styles, `${label}: style writes under the table`).toBe(0);
+  expect(seen.frameCallbacks, `${label}: the most Reanimated frame callbacks active in a frame`).toBeLessThanOrEqual(callbacks);
+  expect(seen.loopCallers, `${label}: requestAnimationFrame callers, of which Reanimated's runs only for a frame callback`).toBeLessThanOrEqual(seen.frameCallbacks > 0 ? 1 : 0);
+  if (seen.frameCallbacks > 0) {
+    expect(seen.tracedFrames, `${label}: frames the trace recorded`).toBeGreaterThanOrEqual(length);
+    expect(seen.lampStepped, `${label}: the one frame callback allowed is the lamp rig's, so its clock advanced in every frame`).toBe(seen.tracedFrames - 1);
+  }
+  if (!motion) return;
+  expect(airMoved(airBefore, airAfter), `${label}: the motes did not show as views whose transforms moved`).toBe(true);
+  if (lean) expect(swayShows(sway, picture), `${label}: the sway did not show as an end-B layer whose animation runs, whose opacity moved and whose picture leans`).toBe(true);
+  else expect(swayRuns(sway), `${label}: the sway did not show as an end-B layer whose animation runs and whose opacity moved`).toBe(true);
+}
+
+test("a settled table draws nothing in five states, and draws a play", async ({ browser, baseURL }, info) => {
+  test.setTimeout(4 * 60_000);
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, locale: "it-IT", baseURL });
   const page = await context.newPage();
   await installVirtualClock(page, SEED);
@@ -66,59 +129,52 @@ test("a settled table redraws its felt only when the light moves, and its cards 
   await stepUntil(page, () => page.evaluate(() => ((globalThis as { murlanShadowBuilds?: number }).murlanShadowBuilds ?? 0) > 0), "the Skia felt's shadows");
   await stepUntil(page, () => page.locator(HAND_CARD_BOXES).first().isVisible(), "the viewer's hand");
   await startRenderCounts(page);
-  await frames(page, SETTLE);
-
-  const airBefore = await page.evaluate<Air>(AIR);
-  const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
-  const rest: Frame[] = [];
-  for (const length of [60, 60, WINDOW - 120]) {
-    rest.push(...(await frames(page, length)));
-    if (sway.length < 3) sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
-  }
-  const airAfter = await page.evaluate<Air>(AIR);
-  const picture = await page.evaluate<EndBLean | null>(END_B_LEAN);
-  const counts = {
-    felt: drew(rest, FELT),
-    feltTwiceRunning: rest.filter((f, i) => i > 0 && (f.draws[FELT] ?? 0) > 0 && (rest[i - 1].draws[FELT] ?? 0) > 0).length,
-    handShade: drew(rest, HAND_SHADE),
-    particles: drew(rest, PARTICLES),
-    readPixels: total(rest, (f) => f.readPixels),
-    offscreen: total(rest, (f) => f.draws.offscreen ?? 0),
-    cardStyles: total(rest, (f) => f.styles.cards ?? 0),
-  };
-  info.annotations.push({ type: `frames drawn of ${WINDOW} at rest`, description: JSON.stringify(counts) });
-  console.log(`frames drawn of ${WINDOW} at rest: ${JSON.stringify(counts)}`);
-  expect(counts.felt, "frames the felt drew while only the sway moved").toBeLessThanOrEqual(WINDOW * 0.4);
-  expect(counts.feltTwiceRunning, "frames the felt drew right after drawing, though the sway moves its light under half a point a frame").toBe(0);
-  // The sway rides the compositor, so the floor is its layer showing, not canvas redraws: docs/adr/0020-the-table-at-rest-plays-precomputed-tracks.md
-  expect(counts.felt >= WINDOW / 60 || swayShows(sway, picture), "the sway neither redrew the felt nor showed as an end-B layer whose animation runs and whose opacity moved").toBe(true);
-  expect(counts.handShade, "frames the hand shade drew over cards that had not moved").toBe(0);
-  expect(counts.readPixels, "pixels read back from a canvas at rest").toBe(0);
-  expect(counts.offscreen, "draws to a canvas outside the document").toBe(0);
-  expect(counts.cardStyles, "style writes inside a card's view at rest").toBe(0);
-  expect(counts.particles, "frames the motes drew").toBeLessThanOrEqual(WINDOW * 0.55);
-  const airShows = !!airBefore && !!airAfter && airBefore.lit >= 1 && airAfter.lit >= 1 && airAfter.transforms !== airBefore.transforms;
-  const motesShown = airBefore || airAfter ? airShows : counts.particles >= 1;
-  expect(motesShown, "the motes neither showed as views whose transforms moved (the table has an air layer), nor drew on a canvas (it has none)").toBe(true);
+  await run(page, SETTLE);
+  await expectAtRest(page, info, "1. the viewer's turn, motion on", true, WINDOW, true);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await frames(page, SETTLE);
-  const reduced = await frames(page, WINDOW);
-  expect(drew(reduced, FELT), "frames the felt drew under reduced motion").toBe(0);
-  expect(drew(reduced, PARTICLES), "frames the motes drew under reduced motion").toBe(0);
+  await run(page, SETTLE);
+  await expectAtRest(page, info, "2. the viewer's turn, reduced motion", false, WINDOW);
 
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await frames(page, SETTLE);
+  await run(page, SETTLE);
+  await take(page);
   await playLowest(1)(page);
-  const played = await frames(page, SETTLE * 2);
+  const played = await stepFrames<Frame>(page, PLAY_CONTROL, READ);
   const moved = played.findIndex((f, i) => i > 0 && Math.abs(f.lamp!.x - played[i - 1].lamp!.x) > 5);
   expect(moved, "the lamp glided to the next seat").toBeGreaterThan(0);
   const glide = played.slice(moved, moved + GLIDE);
   const control = { felt: drew(glide, FELT), handShade: drew(played, HAND_SHADE), particles: drew(played, PARTICLES), styles: total(played, (f) => f.styles.cards ?? 0) };
+  info.annotations.push({ type: "frames drawn through a play", description: JSON.stringify(control) });
   console.log(`frames drawn through a play: ${JSON.stringify(control)} (felt of ${GLIDE} gliding)`);
   expect(control.felt, "frames the felt drew while its light glided").toBeGreaterThanOrEqual(GLIDE * 0.8);
   expect(control.handShade, "the hand shade never drew the played hand").toBeGreaterThanOrEqual(1);
   expect(control.particles, "the motes never drew").toBeGreaterThanOrEqual(1);
   expect(control.styles, "no card's view was styled through a play").toBeGreaterThan(0);
+  await run(page, AFTER_CONTROL);
+  await expectAtRest(page, info, "3. a bot on move over the viewer's card, motion on", true, SETTLED);
+
+  const beforeBot = await table(page);
+  await botMove(page);
+  const afterBot = await table(page);
+  expect(afterBot.held, "the bot played cards, rather than passing").toBeLessThan(beforeBot.held);
+  expect(afterBot.said, "the table's state sentence after the bot's play").not.toBe(beforeBot.said);
+  await run(page, AFTER_MOVE);
+  const landed = await table(page);
+  expect(landed.pile.filter((id) => !beforeBot.pile.includes(id)).length, "the bot's cards on the pile").toBe(beforeBot.held - afterBot.held);
+  expect(landed.flying, "cards still flying after the bot's play").toBe(0);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await run(page, SETTLE);
+  await expectAtRest(page, info, "4. after a bot's play, reduced motion", false, SETTLED);
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await run(page, SETTLE);
+  const beforePass = await table(page);
+  await pass(page);
+  const afterPass = await table(page);
+  expect(afterPass.said, "the turn moved on the pass").not.toBe(beforePass.said);
+  expect(afterPass.held, "cards left the opponents' hands on a pass").toBe(beforePass.held);
+  await run(page, AFTER_MOVE);
+  await expectAtRest(page, info, "5. after a pass, motion on", true, SETTLED);
   await context.close();
 });
