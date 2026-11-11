@@ -12,7 +12,7 @@ import { CardView } from '@/components/CardView';
 import { CARD_SCOPES, type CardRects } from '@/components/table/cardRects';
 import { CardCastContext } from '@/components/table/feltReady';
 import { dealCards } from '@/lib/game/gameEngine';
-import { CardShadow, cardShadow, Colors, Shadow, withAlpha } from '@/lib/theme';
+import { CardShadow, cardShadow, Colors, Shadow, TABLE_CAST, withAlpha } from '@/lib/theme';
 import { card } from '../support/game.ts';
 import { FLYING, THROW, cardTable, dealtTable, pairThrownBy3, runScenario, type Scenario } from './helpers/cardScenarios';
 import { frames } from './helpers/exchangeLegs';
@@ -145,18 +145,18 @@ describe('a card on the table', () => {
 });
 
 describe('a card view off the felt', () => {
-  it("keeps today's static shadow, its cast moved where the web felt is still baking", async () => {
+  it("keeps today's static shadow, its cast read from the table's root where the web felt is still baking", async () => {
     const face = card('7', 'clubs');
     const off = await render(<CardView card={face} />);
     expect(StyleSheet.flatten(screen.getByTestId('card-box').props.style).boxShadow).toBe(cardShadow('face').boxShadow);
     await off.unmount();
     const baking = await render(
-      <CardCastContext.Provider value={{ x: -3, y: 7 }}>
+      <CardCastContext.Provider value="table">
         <CardView card={face} />
       </CardCastContext.Provider>
     );
-    expect(StyleSheet.flatten(screen.getByTestId('card-box').props.style).boxShadow).toBe(cardShadow('face', { x: -3, y: 7 }).boxShadow);
-    expect(cardShadow('face', { x: -3, y: 7 }).boxShadow).toContain('-3px 7px');
+    expect(StyleSheet.flatten(screen.getByTestId('card-box').props.style).boxShadow).toBe(cardShadow('face', 'table').boxShadow);
+    expect(cardShadow('face', 'table').boxShadow).toContain(`var(${TABLE_CAST.x}) var(${TABLE_CAST.y})`);
     await baking.unmount();
   });
 
@@ -164,7 +164,7 @@ describe('a card view off the felt', () => {
     const face = card('7', 'clubs');
     const shadowOf = async (selected: boolean, rectKey?: string) => {
       const view = await render(
-        <CardCastContext.Provider value={{ x: -3, y: 7 }}>
+        <CardCastContext.Provider value="table">
           <CardView card={face} rectKey={rectKey} selected={selected} />
         </CardCastContext.Provider>
       );
@@ -174,7 +174,7 @@ describe('a card view off the felt', () => {
     };
     const rest = await shadowOf(false, `hand:${face.id}`);
     expect(rest).toBe(await shadowOf(false, `deal:${face.id}`));
-    expect(rest).toContain(`-3px 7px ${CardShadow.cast.blur}px ${withAlpha(Colors.shadow, CardShadow.cast.alpha)}`);
+    expect(rest).toContain(`var(${TABLE_CAST.x}) var(${TABLE_CAST.y}) ${CardShadow.cast.blur}px ${withAlpha(Colors.shadow, CardShadow.cast.alpha)}`);
     expect(rest).toContain(`0px ${CardShadow.contact.y}px ${CardShadow.contact.blur}px`);
     const lifted = await shadowOf(true, `hand:${face.id}`);
     expect(lifted).toContain(`0px ${CardShadow.lifted.y}px ${CardShadow.lifted.blur}px`);

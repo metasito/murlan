@@ -103,15 +103,16 @@ function grainLayer(width: number, height: number, ax: number, ay: number): HTML
 }
 
 const MAX_DPR = 2;
-/** 16 MB a copy: past it, five cached felts cost more memory than a re-bake costs time. */
-const MAX_CACHED_PIXELS = 4_000_000;
+/** 16 MB a copy, so five cached felts stay in memory; a larger table bakes at this many pixels and its canvas scales up. */
+const MAX_BAKED_PIXELS = 4_000_000;
 /** One bake per place the lamp aims; `satisfies` makes a new `LampTarget` a compile error here. */
 const LAMP_TARGETS = Object.keys({ top: 0, bottom: 0, left: 0, right: 0, centre: 0 } satisfies Record<LampTarget, 0>).length;
 
 /** False when the bake came out incomplete (no 2D context, or a cloth lost mid-draw), which must not be cached. */
 function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, sx: number, sy: number, dpr: number): boolean {
-  const ax = dpr * sx;
-  const ay = dpr * sy;
+  const fit = Math.min(1, Math.sqrt(MAX_BAKED_PIXELS / (DESIGN.width * dpr * sx * DESIGN.height * dpr * sy)));
+  const ax = dpr * sx * fit;
+  const ay = dpr * sy * fit;
   out.width = Math.round(DESIGN.width * ax);
   out.height = Math.round(DESIGN.height * ay);
   const c = out.getContext("2d");
@@ -156,7 +157,7 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, s
   c.stroke();
   c.restore();
 
-  const k = dpr * Math.min(sx, sy);
+  const k = Math.min(ax, ay);
   const uniforms = { ...clothUniforms(stops, k), uLamp: [lx, ly], uFlare: 0, ...lightUniforms(reach) };
   const cloth = drawCloth(out.width, out.height, uniforms, [ax, ay]);
   if (cloth === undefined) return false;
@@ -181,7 +182,7 @@ function bakeCached(out: HTMLCanvasElement, cache: Baked, stops: FeltStops, pool
     out.getContext("2d")?.drawImage(hit, 0, 0);
     return;
   }
-  if (!bake(out, stops, pool, sx, sy, dpr) || out.width * out.height > MAX_CACHED_PIXELS) return;
+  if (!bake(out, stops, pool, sx, sy, dpr)) return;
   const copy = document.createElement("canvas");
   copy.width = out.width;
   copy.height = out.height;

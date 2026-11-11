@@ -764,7 +764,8 @@ export function GameTable({
     rig.tracks
   );
   const [feltReady, onFeltReady] = useFeltReady();
-  const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
+  const tableRoot = useRef<React.ComponentRef<typeof View>>(null);
+  const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt), tableRoot);
   useBenchHandle("lampFreeze", rig.freeze);
   const { grey, greyStyle, edgeGreyStyle, darkenStyle, greyed: linkGreyed, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
 
@@ -906,7 +907,7 @@ export function GameTable({
   return (
     <CardTableProvider value={cardTable}>
     <CardCastContext.Provider value={cardCast}>
-    <View testID="game-root" style={[styles.root, clipOverflow]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
+    <View ref={tableRoot} testID="game-root" style={[styles.root, clipOverflow]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
       <Animated.View

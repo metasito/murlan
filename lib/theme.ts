@@ -40,11 +40,14 @@ export function makeShadow(
 
 export interface ShadowLayer {
   color: string;
-  offsetX?: number;
-  offsetY: number;
+  /** Points, or a CSS length such as a `var()` (web only). */
+  offsetX?: number | string;
+  offsetY: number | string;
   opacity: number;
   radius: number;
 }
+
+const cssLength = (v: number | string) => (typeof v === "number" ? `${v}px` : v);
 
 /**
  * A card lying on cloth casts two shadows, and having only one is what makes it
@@ -77,7 +80,7 @@ export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Rec
   return {
     boxShadow: layers
       .map(({ color, offsetX = 0, offsetY, opacity, radius }) =>
-        `${offsetX}px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}`)
+        `${cssLength(offsetX)} ${cssLength(offsetY)} ${radius}px ${withAlpha(color, opacity)}`)
       .join(", "),
   };
 }
@@ -98,10 +101,13 @@ const CARD_LAYERS = {
 } as const;
 const CARD_ELEVATION = { face: 3, lifted: 14, back: 5 } as const;
 
-/** A card view's own contact+fall pair; a resting card's fall moved to `cast` where the table gives one. */
-export function cardShadow(kind: keyof typeof CARD_LAYERS, cast?: { x: number; y: number } | null): Record<string, any> {
+/** The web table's cast, in window points, which `useCardCast` sets on the table's root as these custom properties. */
+export const TABLE_CAST = { x: "--card-cast-x", y: "--card-cast-y" } as const;
+
+/** A card view's own contact+fall pair; on the web table a resting card's fall reads `TABLE_CAST`. */
+export function cardShadow(kind: keyof typeof CARD_LAYERS, cast: "table" | null = null): Record<string, any> {
   const [contact, fall] = CARD_LAYERS[kind];
-  const moved = cast && kind !== "lifted" ? { ...fall, offsetX: cast.x, offsetY: cast.y } : fall;
+  const moved = cast && kind !== "lifted" ? { ...fall, offsetX: `var(${TABLE_CAST.x})`, offsetY: `var(${TABLE_CAST.y})` } : fall;
   return makeLayeredShadow([contact, moved], CARD_ELEVATION[kind]);
 }
 
