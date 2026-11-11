@@ -3,10 +3,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { lampControls, MAX_DT, restingLamp, stepLamp, SWAY, type Lamp } from "../../components/table/lampRig.ts";
-import { cardGloss, glossSpot } from "../../components/table/cardGloss.ts";
+import { cardGloss, GLOSS_POINT_STEP, glossSpot, type GlossLight } from "../../components/table/cardGloss.ts";
+import { createGlossTracks } from "../../components/table/glossTrackStore.ts";
 import { fadeA, spotPose, spotSlide, streakPose } from "../../components/table/fanTrack.ts";
 import { SPOT_STOPS } from "../../components/table/glossStops.ts";
-import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endLamp, endTrack, isRested, leanOf, placeOf, steering, type EndTrack } from "../../components/table/restEnds.ts";
+import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endLamp, endTrack, isRested, leanOf, placeOf, restLight, steering, type EndTrack } from "../../components/table/restEnds.ts";
 import { TRACK_SECONDS } from "../../lib/swayTable.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
@@ -168,6 +169,32 @@ describe("the gloss is the felt's while the lamp rests", () => {
     lampControls.hold(dim, "lost", 0.4, 3);
     stepLamp(dim, FRAME, false);
     assert.equal(isRested(dim), false, "dimming");
+  });
+
+  test("the backs stop posing their gloss once a glide is within the step a gloss shows, before the felt rests", () => {
+    const s = restingLamp([200, 300, 1]);
+    const value = <T,>(v: T) => ({ value: v, get: () => v }) as never;
+    const light = value(restLight(s)) as { value: GlossLight };
+    const tracks = createGlossTracks({ now: () => s, clock: () => s.t }, { rest: value(restLight(s)), light: light as never, ends: value(0) }, s);
+    lampControls.setTarget(s, [700, 120, 1], false);
+    let posesUnderStep = 0;
+    let felt = 0;
+    for (let n = 0; n < 60 * 25 && !isRested(s); n++) {
+      stepLamp(s, FRAME, false);
+      const shown = light.value;
+      tracks.follow(s);
+      const under = Math.abs(s.x - s.tx) < GLOSS_POINT_STEP && Math.abs(s.y - s.ty) < GLOSS_POINT_STEP;
+      if (under && light.value !== shown) posesUnderStep += 1;
+      if (under) felt += 1;
+      if (!under) assert.equal(tracks.live(), true, "gliding further than a step is drawn by the backs");
+    }
+    assert.equal(isRested(s), true, "the felt rests");
+    assert.ok(felt > 30, `the glide spends ${felt} frames under a step before the felt rests`);
+    assert.equal(tracks.live(), false, "the fans draw the gloss at rest");
+    assert.equal(posesUnderStep, 0, "no back is posed for a glide no gloss shows");
+    lampControls.kick(s, false);
+    tracks.follow(s);
+    assert.equal(tracks.live(), true, "a kick is drawn by the backs");
   });
 
   test("where the lamp comes to rest, the ends are the sway's two extremes", () => {

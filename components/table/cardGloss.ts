@@ -23,7 +23,7 @@ export interface Gloss {
 export type GlossLight = Pick<Lamp, "lx" | "ly" | "level" | "r" | "t">;
 
 /** Steps no soft gloss shows, coarse enough that the lamp's sway poses every gloss a few times a second rather than every frame (rule 51). */
-const GLOSS_POINT_STEP = 2;
+export const GLOSS_POINT_STEP = 2;
 const GLOSS_LIGHT_STEP = 1 / 256;
 /** Under a 60 Hz frame, so its jitter never skips one: a faster display, or jest's 1 ms frames, poses a gloss no oftener. */
 export const GLOSS_FRAME_S = 0.012;
