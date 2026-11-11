@@ -2,6 +2,7 @@
 import type { Browser, Page } from "@playwright/test";
 import { FIXTURE, fitFrame, newSidePage, sideContext } from "./mockupParity";
 import { openCaptureState, resumeSaved } from "./offlineSeed";
+import { shadowLayers } from "./cardContact";
 import type { OfflineSave } from "../../../lib/offlineSave";
 import type { CaptureState } from "../../../lib/captureStates";
 
@@ -102,12 +103,6 @@ function readPlate(page: Page, selector: string, run: string | null, origin: str
       const ink = getComputedStyle(inked ?? el);
       let opacity = 1;
       for (let n: Element | null = el; n; n = n.parentElement) opacity *= Number(getComputedStyle(n).opacity);
-      const layers = cs.boxShadow === "none" ? [] : cs.boxShadow.split(/,(?![^(]*\))/);
-      if (layers.length > 1 || /inset/.test(cs.boxShadow)) throw new Error(`${selector} casts ${cs.boxShadow}, not one outset glow`);
-      const glow = layers.map((layer) => ({
-        color: layer.match(/rgba?\([^)]*\)/)![0],
-        blur: layer.replace(/rgba?\([^)]*\)/, "").match(/-?[\d.]+px/g)!.map(parseFloat)[2] ?? 0,
-      }))[0] ?? null;
       const corner = cs.borderTopLeftRadius;
       const radius = corner.endsWith("%") ? (parseFloat(corner) / 100) * r.width : parseFloat(corner);
       return {
@@ -117,10 +112,17 @@ function readPlate(page: Page, selector: string, run: string | null, origin: str
         ink: ink.color,
         fontSize: parseFloat(ink.fontSize),
         radius: Math.min(radius, r.height / 2),
-        glow,
+        shadow: cs.boxShadow,
         opacity,
       };
     },
     [selector, run, origin] as const
-  );
+  ).then((read) => {
+    if (!read) return null;
+    const { shadow, ...paint } = read;
+    const layers = shadowLayers(shadow);
+    if (layers.length > 1 || layers.some((l) => l.inset)) throw new Error(`${selector} casts ${shadow}, not one outset glow`);
+    const glow = layers.map((l) => ({ color: l.colour, blur: l.blur }))[0] ?? null;
+    return { ...paint, glow };
+  });
 }

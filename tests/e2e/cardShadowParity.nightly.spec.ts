@@ -8,7 +8,7 @@ import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
 import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { cardViewShadows, isContact } from "./helpers/cardContact";
+import { cardViewShadows, contactsOf, SHADE_CANVAS } from "./helpers/cardContact";
 import { feltPixels, rgbaOf, skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -115,14 +115,17 @@ test("the felt's shadow round the pile is the mockup's, and no card view casts m
   await held.click();
   await expect.poll(rebuiltOverASecond, { message: "shadow paths and glow rebuilt over a second once the cards rest again" }).toEqual(still);
 
-  const shadowed = await cardViewShadows(page, '[id^="card-"], [data-testid^="hand-card-"]');
-  expect(shadowed.views).toBeGreaterThan(0);
-  expect(
-    shadowed.shadows.filter((s) => !isContact(s, shadowed.s)),
-    `shadows and glows beyond a contact among the ${shadowed.views} views of the table's cards`
-  ).toEqual([]);
-  if ((await page.getByTestId("card-shade").count()) === 0) {
-    expect(shadowed.shadows.length, "no card view casts its contact, and no hand-shade canvas draws it").toBeGreaterThan(0);
+  const table = await cardViewShadows(page, '[id^="card-"], [data-testid^="hand-card-"]');
+  const pileCards = await cardViewShadows(page, '[data-testid="pile-card"]');
+  expect(table.cards.length).toBeGreaterThan(0);
+  expect(pileCards.cards.length).toBeGreaterThan(0);
+  if ((await page.locator(SHADE_CANVAS).count()) > 0) {
+    expect(table.cards.flatMap((c) => c.shadows), "card views' own shadows while the hand-shade canvas draws the contacts").toEqual([]);
+  } else {
+    const read = table.cards.map((c) => contactsOf(c, table.s));
+    expect(read.flatMap((c) => c.others), "card views' shadows and glows beyond a contact").toEqual([]);
+    expect(read.filter((c) => c.contacts > 1).length, "cards casting more than one contact").toBe(0);
+    expect(pileCards.cards.map((c) => contactsOf(c, pileCards.s).contacts), "each pile card's contacts").toEqual(pileCards.cards.map(() => 1));
   }
 
   const [rects, felt, anchor] = await page.evaluate(() => {
@@ -224,7 +227,7 @@ test("the felt's shadow round the pile is the mockup's, and no card view casts m
   expect(Math.max(Math.abs(best.dx), Math.abs(best.dy)), "the shift that best lays the app's shadow on the mockup's, in points").toBeLessThanOrEqual(SHIFT_GATE);
 });
 
-test("before Skia has drawn, a card view keeps its own shadow, and drops all but its contact once Skia has", async ({ browser, baseURL }) => {
+test("before Skia has drawn, a card view keeps its own shadow, and drops it once Skia has",async ({ browser, baseURL }) => {
   test.setTimeout(5 * 60_000);
   const page = await (await sideContext(browser, baseURL)).newPage();
   let release = () => {};
@@ -237,15 +240,8 @@ test("before Skia has drawn, a card view keeps its own shadow, and drops all but
   await openCaptureState(page, baseURL!, PILE_STATE);
   const shadow = () => page.locator('[data-testid="card-box"]').first().evaluate((n) => getComputedStyle(n).boxShadow);
   await expect.poll(shadow).not.toBe("none");
-  const before = await shadow();
   release();
   await untilSkiaFelt(page);
-  const s = await page.evaluate(() => (globalThis as unknown as { murlanCardFelt: () => { s: number } }).murlanCardFelt().s);
-  expect(isContact(before, s), "before Skia the card's view casts no more than a contact").toBe(false);
-  const dropped = async () => {
-    const now = await shadow();
-    return now === "none" || isContact(now, s);
-  };
-  await expect.poll(dropped, { message: "the card's own cast, still on its view once Skia drew" }).toBe(true);
+  await expect.poll(shadow).toBe("none");
   await page.context().close();
 });

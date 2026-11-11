@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
 import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
+import { shadowLayers } from "./helpers/cardContact";
 import { tap } from "./helpers/press";
 import { captureGameState, captureStateById, seatedSituation, type CaptureState } from "../../lib/captureStates";
 import { CARD_H, HAND_SCALE, tableScale } from "../../components/cardFaceModel";
@@ -262,8 +263,8 @@ function openingWithStartCard() {
 }
 
 /** The plate in design points, whatever the page's own scale: `stage` is the element the design is drawn in. */
-function readPlate(page: Page, sel: { stage: string; plate: string; dim: string; tile: string }) {
-  return page.evaluate((s) => {
+async function readPlate(page: Page, sel: { stage: string; plate: string; dim: string; tile: string }) {
+  const { shadows, css, ...read } = await page.evaluate((s) => {
     const q = (css: string) => {
       const el = document.querySelector(css);
       if (!el) throw new Error(`nothing matches ${css}`);
@@ -281,15 +282,9 @@ function readPlate(page: Page, sel: { stage: string; plate: string; dim: string;
     const dimCs = getComputedStyle(dim);
     const tileEl = q(s.tile);
     const tile = tileEl.getBoundingClientRect();
-    const layers = (shadow: string) =>
-      shadow.split(/,(?![^(]*\))/).map((layer) => {
-        const colour = /rgba?\([^)]*\)/.exec(layer)?.[0] ?? "";
-        const [, y, blur] = (layer.replace(colour, "").match(/-?[\d.]+px/g) ?? []).map(parseFloat);
-        return { colour, y: y / css, blur, inset: layer.includes("inset") };
-      });
-    const hairline = layers(cs.boxShadow).find((l) => l.inset);
-    const lip = layers(getComputedStyle(tileEl).boxShadow).find((l) => !l.inset && l.blur === 0);
     return {
+      css,
+      shadows: { plate: cs.boxShadow, tile: getComputedStyle(tileEl).boxShadow },
       plate: {
         x: (r.x - stage.x + r.width / 2) / k,
         y: (r.y - stage.y + r.height / 2) / k,
@@ -301,10 +296,16 @@ function readPlate(page: Page, sel: { stage: string; plate: string; dim: string;
         edge: cs.borderTopColor,
         dim: dimCs.opacity === "1" ? dimCs.backgroundColor : `${dimCs.backgroundColor}@${dimCs.opacity}`,
       } satisfies Plate,
-      hairline: hairline && { colour: hairline.colour, y: hairline.y },
-      tile: { w: tile.width / k, h: tile.height / k, lip: lip && { colour: lip.colour, y: lip.y } },
+      tile: { w: tile.width / k, h: tile.height / k },
     };
   }, sel);
+  const hairline = shadowLayers(shadows.plate).find((l) => l.inset);
+  const lip = shadowLayers(shadows.tile).find((l) => !l.inset && l.blur === 0);
+  return {
+    ...read,
+    hairline: hairline && { colour: hairline.colour, y: hairline.y / css },
+    tile: { ...read.tile, lip: lip && { colour: lip.colour, y: lip.y / css } },
+  };
 }
 
 const alphaOf = (dim: string) => {
