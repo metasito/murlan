@@ -11,7 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { CHIP_H } from '@/components/seatLayout';
 import { computeTableFrame } from '@/components/tableFrame';
-import { tableScale } from '@/components/tableLayout';
+import { tableScale } from '@/components/cardFaceModel';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { setMotion, setWindow } from './harness/env';
 import { aThreePlayed } from '../support/game';

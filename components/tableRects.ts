@@ -8,7 +8,7 @@ import { BACK_SCALE, CARD_H, CARD_W, FIELD_SCALE, handCardSize } from "./cardFac
 import { pileSlots } from "./flightPose.ts";
 import { fanCorners, fanPoint, seatLabelRise } from "./fanGeometry.ts";
 import { layoutHandRow } from "./handLayout.ts";
-import { CHIP_H, SEAT_DISC, SEAT_LABEL_ALIGN, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatBadgeSlot, seatLabelW, seatNameRise, seatNameSet } from "./seatLayout.ts";
+import { CHIP_H, drawnDisc, SEAT_LABEL_ALIGN, SEAT_NAME_LINE, seatAnchor, seatLabelLeft, seatBadgeSlot, seatLabelW, seatNameRise, seatNameSet } from "./seatLayout.ts";
 import type { OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
 import { faceWordsWidth, noticeWidth, widestDigits, type NoticeContent, type NoticeLocale, type Pricing } from "./table/noticeWidth.ts";
@@ -150,7 +150,7 @@ export function tableRects(input: {
   const pill = scorePillBox(0, 0, layout.pill);
   const chipH = CHIP_H(chips);
 
-  const ring = SEAT_DISC * scale;
+  const ring = drawnDisc(scale);
   const seat = (dir: OpponentSide) => centred(anchors[dir].x, anchors[dir].y, ring, ring);
   const fan = (dir: OpponentSide): Card[] => {
     const count = state.seats[dir]?.cards ?? 0;

@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Layer, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
 import { useOrientedWindow } from "@/lib/device/orientation";
-import { tableScale } from "@/components/tableLayout";
+import { tableScale } from "@/components/cardFaceModel";
 import { mockupPx } from "@/components/table/noticeModel";
 import { OfflinePill } from "@/components/table/notices/hud";
 

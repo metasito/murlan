@@ -71,8 +71,6 @@ export interface TableLayout {
   pill: PillAnchor;
 }
 
-export { tableScale };
-
 /**
  * The bands are the drawn cap's (`topBandHeight`, `sideSlotHeight`), never a count's, so no seat
  * moves as a hand shrinks. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
@@ -83,7 +81,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const frame = computeTableFrame({ ...i, scale });
   const handCardH = CARD_H(scale * HAND_SCALE);
   const handZoneH = HAND_ZONE_H(handCardH, frame.bottomPad);
-  const ring = drawnDisc(i);
+  const ring = drawnDisc(scale);
   const midTop = frame.tableTop + topBandHeight(scale);
   const tableFloor = height - frame.surplus;
   const midH = tableFloor - midTop - handZoneH;

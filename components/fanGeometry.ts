@@ -4,7 +4,7 @@
 
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
-import { FAN_DRAWN_CARDS, SEAT_DISC, seatGap, type OpponentSide } from "./seatLayout.ts";
+import { drawnDisc, FAN_DRAWN_CARDS, seatGap, type OpponentSide } from "./seatLayout.ts";
 
 /** A quarter turn per side, so one construction serves all three seats. */
 export const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
@@ -59,7 +59,7 @@ export function drawnFanBounds(scale: number): { topH: number; topW: number; sid
 
 /** How far a side seat's fan stands above its ring's top, which its name and badges must clear; the top seat's fan hangs below. */
 export function seatLabelRise(side: OpponentSide, scale: number): number {
-  return side === "top" ? 0 : Math.max(0, (drawnFanBounds(scale).sideH - SEAT_DISC * scale) / 2);
+  return side === "top" ? 0 : Math.max(0, (drawnFanBounds(scale).sideH - drawnDisc(scale)) / 2);
 }
 
 /** The fan's centre, from the pile, given its ring's (`seatPoint`), and the angle it is drawn at. */
@@ -71,7 +71,7 @@ export function fanPoint(
 ): { x: number; y: number; rot: number } {
   const drawn = fanCounts(count, FAN_DRAWN_CARDS[dir]);
   const across = drawn > 0 ? seatFanArc(drawn, scale * BACK_SCALE).bounds.h : 0;
-  const along = (SEAT_DISC * scale) / 2 + seatGap(scale) + across / 2;
+  const along = drawnDisc(scale) / 2 + seatGap(scale) + across / 2;
   if (dir === "top") return { x: ring.dx, y: ring.dy + along, rot: FAN_TURN.top };
   return { x: ring.dx + (dir === "left" ? along : -along), y: ring.dy, rot: FAN_TURN[dir] };
 }

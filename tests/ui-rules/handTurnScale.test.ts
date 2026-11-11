@@ -24,10 +24,10 @@ import {
   HAND_NEAR_RATIO,
   HAND_SCALE,
   HAND_SCALE_ON_TURN,
+  tableScale,
 } from "../../components/cardFaceModel.ts";
 import { HAND_ZONE_GAP } from "../../components/seatLayout.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
-import { tableScale } from "../../components/tableLayout.ts";
 import { layoutHandRow, MIN_READABLE_STEP } from "../../components/handLayout.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";

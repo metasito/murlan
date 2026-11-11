@@ -20,7 +20,7 @@ import {
   type ImpactTier,
   type FlareKind,
 } from "../../components/impact.ts";
-import { tableScale } from "../../components/tableLayout.ts";
+import { tableScale } from "../../components/cardFaceModel.ts";
 import { blankComments, blankCommentsAndStrings } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");

@@ -41,10 +41,10 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
     return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
   const { pixels: shot, perPt, origin } = await feltPixels(page);
-  const window = { width: phone.width, height: phone.height };
-  expect({ ...origin, width: shot.width / perPt, height: shot.height / perPt }, "the felt fills the viewport").toEqual({ x: 0, y: 0, ...window });
-  const pixels = feltOnly(shot, window);
-  const ring = legibilityRing(window);
+  const viewport = { width: phone.width, height: phone.height };
+  expect({ ...origin, width: shot.width / perPt, height: shot.height / perPt }, "the felt fills the viewport").toEqual({ x: 0, y: 0, ...viewport });
+  const pixels = feltOnly(shot, viewport);
+  const ring = legibilityRing(viewport);
   return Object.fromEntries(SEATS.map((s) => [s, annulusLuminance(pixels, anchors[s], perPt, ring)])) as Record<FlyDirection, number>;
 }
 

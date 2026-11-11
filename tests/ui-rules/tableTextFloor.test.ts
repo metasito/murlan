@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tableFontSize } from "../../components/cardFaceModel.ts";
-import { tableScale } from "../../components/tableLayout.ts";
+import { tableFontSize, tableScale } from "../../components/cardFaceModel.ts";
 
 test("an SE's table text stays at 10px or more", () => {
   const se = tableScale({ width: 568, height: 320 });

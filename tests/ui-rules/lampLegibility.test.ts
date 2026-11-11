@@ -11,7 +11,7 @@ import {
   type Ring,
   type Pixels,
 } from "../../lib/diagnostics/lampLegibility.ts";
-import { SEAT_DISC } from "../../components/seatLayout.ts";
+import { drawnDisc, SEAT_DISC } from "../../components/seatLayout.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { designScale } from "../../components/table/lampRig.ts";
 import { ANNULUS_OUTER, feltOnly, legibilityRing } from "../../components/table/legibilityRing.ts";
@@ -119,7 +119,7 @@ describe("annulusLuminance", () => {
   });
 
   test("the ring starts at the drawn disc's edge, which scales with the card and not the table", () => {
-    assert.equal(SEAT_DISC * tableLayout({ ...PHONE, insets: INSETS }).scale / 2, DISC);
+    assert.equal(drawnDisc(tableLayout({ ...PHONE, insets: INSETS }).scale) / 2, DISC);
     near(DISC, 13.5, 0.1);
     const discWhite = (w: Where) => (w.pt < DISC ? WHITE : GREY);
     for (const { at } of SEATS) near(read(paint(at, discWhite), at), GREY_LINEAR, 0.001);
@@ -188,6 +188,7 @@ describe("annulusLuminance", () => {
     assert.ok(read(whole, rim, 1, r) > GREY_LINEAR + 0.1, "the fixture's rail does not reach the ring");
     near(read(feltOnly(whole, win), rim, 1, r), GREY_LINEAR, 0.001);
     assert.throws(() => read(feltOnly(whole, win), { x: feltLeft - 20, y: win.height / 2 }, 1, r), /is felt/);
+    assert.throws(() => feltOnly(whole, { width: win.width, height: win.height + 2 }), /is not of a/);
   });
 });
 

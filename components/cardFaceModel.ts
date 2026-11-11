@@ -28,8 +28,8 @@ export function cardScale(shortEdge: number): number {
  * and the hand zone carries the home indicator, and taking the insets off here instead shrinks the
  * cards on a device only, away from the web table at the same size.
  */
-export function tableScale(window: { width: number; height: number }): number {
-  return cardScale(Math.min(window.width, window.height));
+export function tableScale(viewport: { width: number; height: number }): number {
+  return cardScale(Math.min(viewport.width, viewport.height));
 }
 
 /** The short edge a table at `scale` is drawn for: past the cap, less than the window's own. */
