@@ -5,13 +5,15 @@
 import type { SharedValue } from "react-native-reanimated";
 import type { GlossLight } from "./cardGloss.ts";
 import { isRested, restLight } from "./restEnds.ts";
-import type { Lamp } from "./lampRig.ts";
+import type { Lamp, LampNow } from "./lampRig.ts";
 
 export interface GlossTracks {
-  /** The rig's lamp, which the fans read where it rests when a track is baked and where its clock is when it is steered. */
-  lamp: SharedValue<Lamp>;
   /** The light where the lamp rests, written at each settle: a back whose gloss the fan draws reads its foil glint there. */
   rest: SharedValue<GlossLight>;
+  /** The felt's `EndsProps.side`: while it shows an end of a rested lamp, the rig may stop stepping it (`endsCarry`). */
+  ends: SharedValue<number>;
+  /** The rig's lamp as it is now (`LampRig.now`), which the tracks are baked and steered from. */
+  rig: LampNow;
   /** The lamp as it was when it last settled or a track last ran out, a copy: the fans bake anew from it when it changes. */
   get(): Lamp;
   subscribe(listener: () => void): () => void;
@@ -22,17 +24,18 @@ export interface GlossTracks {
   rebake(): void;
 }
 
-export function createGlossTracks(lamp: SharedValue<Lamp>, rest: SharedValue<GlossLight>, resting: Lamp): GlossTracks {
+export function createGlossTracks(rig: LampNow, rest: SharedValue<GlossLight>, ends: SharedValue<number>, resting: Lamp): GlossTracks {
   let taken = resting;
   let live = !isRested(resting);
   const listeners = new Set<() => void>();
   const tell = () => {
-    taken = structuredClone(lamp.get());
+    taken = structuredClone(rig.now());
     for (const listener of listeners) listener();
   };
   return {
-    lamp,
     rest,
+    ends,
+    rig,
     get: () => taken,
     subscribe: (listener) => {
       listeners.add(listener);

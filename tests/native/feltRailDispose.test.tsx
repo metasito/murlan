@@ -6,7 +6,7 @@ import { makeMutable } from 'react-native-reanimated';
 
 import { TABLE_AT_REST } from '@/components/table/cardRects';
 import { FeltCanvas } from '@/components/table/feltCanvas';
-import { TABLE_CENTRE, restingLamp } from '@/components/table/lampRig';
+import { TABLE_CENTRE, restingLamp, steppedLamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
 import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
@@ -41,7 +41,10 @@ jest.mock('@shopify/react-native-skia', () => {
 
 const at = { x: 0, y: 0 };
 const table = { rects: makeMutable({}), felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, motion: makeMutable(TABLE_AT_REST), pile: at, hand: at, seats: {} } as unknown as CardTable;
-const felt = (sx: number) => <FeltCanvas lamp={makeMutable(restingLamp(TABLE_CENTRE))} sx={sx} sy={sx} stops={FeltGradient} cards={table} />;
+const felt = (sx: number) => {
+  const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+  return <FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={sx} sy={sx} stops={FeltGradient} cards={table} />;
+};
 
 beforeEach(() => {
   jest.useFakeTimers();

@@ -6,9 +6,9 @@ import { useTraceSource } from "@/lib/e2eTrace";
 import { useDuring } from "@/lib/motion";
 import { Platform } from "react-native";
 import { flareKindFor } from "@/components/impact";
-import { designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, type Lamp, type LevelOwner, type Pool } from "./lampRig";
+import { createLampHold, designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, steppedLamp, type Lamp, type LampHold, type LampNow, type LevelOwner, type Pool } from "./lampRig";
 import { createGlossTracks, type GlossTracks } from "./glossTrackStore";
-import { isRested, restLight } from "./restEnds";
+import { endsCarry, isRested, restLight } from "./restEnds";
 import { glossLightOf, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
@@ -22,7 +22,8 @@ const BREATH_RATE = 2.2;
 export const LAMP_SETTLE_MS = (3 / GLIDE) * 1000;
 
 /** The controls keep their identities while the size changes, so an effect firing one can depend on them. */
-export interface LampRig {
+export interface LampRig extends LampNow {
+  /** The rig's own lamp, which it may have stopped stepping: what a frame draws is `now()`. A reaction reads it to run when the rig writes. */
   lamp: SharedValue<Lamp>;
   /** The lamp in the coarser steps the card glosses follow (`cardGloss.ts`). */
   glossLight: SharedValue<GlossLight>;
@@ -40,23 +41,28 @@ export interface LampRig {
   freeze(amount: number): void;
 }
 
-function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, reduced: SharedValue<boolean>, tracks: GlossTracks | undefined) {
+function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, reduced: SharedValue<boolean>, tracks: GlossTracks | undefined, hold: LampHold | undefined) {
   return (frame: FrameInfo): boolean => {
     "worklet";
     const s = lamp.value;
-    stepLamp(s, (frame.timeSincePreviousFrame ?? 0) / 1000, reduced.value);
+    if (hold?.held()) hold.resume(s);
+    else stepLamp(s, hold ? hold.step(frame.timestamp) : (frame.timeSincePreviousFrame ?? 0) / 1000, reduced.value);
     if (lampMoved(s)) lamp.modify(undefined, true);
     const gloss = nextGlossLight(glossLight.value, s);
     if (gloss) glossLight.value = gloss;
     const still = nextStillLight(stillLight.value, s);
     if (still) stillLight.value = still;
-    // Called as the page, not scheduled onto it: on web a worklet runs on the JS thread, and `tracks` is undefined on native, which never gets here.
+    // Called as the page, not scheduled onto it: on web a worklet runs on the JS thread, and `tracks` and `hold` are undefined on native, which never gets here.
     if (tracks) {
       const rested = isRested(s);
       if (rested === tracks.live()) tracks.update(rested);
     }
     const level = nextShadeLevel(shadeLevel.value, s);
     if (level !== null) shadeLevel.value = level;
+    if (hold && tracks && endsCarry(s, tracks.ends.value, reduced.value)) {
+      hold.hold();
+      return false;
+    }
     return !lampSettled(s, reduced.value);
   };
 }
@@ -88,112 +94,148 @@ export function useLampRig({
   const shadeLevel = useSharedValue(resting.level);
   const [px, py, reach] = pool;
   const rest = useSharedValue<GlossLight>(restLight(resting));
-  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(lamp, rest, resting) : undefined));
+  const ends = useSharedValue(0);
+  const [hold] = useState(() => (Platform.OS === "web" ? createLampHold(lamp, reduced) : undefined));
+  const [reader] = useState(() => hold ?? steppedLamp(lamp));
+  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(reader, rest, ends, resting) : undefined));
 
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.
-  const [step] = useState(() => lampStepper(lamp, glossLight, stillLight, shadeLevel, reduced, tracks));
+  const [step] = useState(() => lampStepper(lamp, glossLight, stillLight, shadeLevel, reduced, tracks, hold));
   const wake = useDuring(step, true);
-
-  useEffect(() => {
-    reduced.set(reduceMotion);
-    wake();
-  }, [reduceMotion, reduced, wake]);
-
-  useEffect(() => {
+  const [control] = useState(() => (apply: (s: Lamp) => void) => {
+    "worklet";
     lamp.modify((s) => {
       "worklet";
-      lampControls.setTarget(s, [px, py, reach], reduced.value);
+      hold?.resume(s);
+      apply(s);
       return s;
     }, true);
     wake();
-  }, [px, py, reach, lamp, reduced, wake]);
+  });
+  const [resumeRig] = useState(() => (then?: () => void) => {
+    "worklet";
+    if (hold?.held())
+      lamp.modify((s) => {
+        "worklet";
+        hold.resume(s);
+        return s;
+      }, true);
+    then?.();
+    wake();
+  });
 
   useEffect(() => {
-    lamp.modify((s) => {
+    resumeRig(() => {
+      "worklet";
+      reduced.set(reduceMotion);
+    });
+  }, [reduceMotion, reduced, resumeRig]);
+
+  useEffect(() => {
+    if (!hold) return;
+    const shown = () => hold.shown(!document.hidden);
+    shown();
+    document.addEventListener("visibilitychange", shown);
+    return () => document.removeEventListener("visibilitychange", shown);
+  }, [hold]);
+
+  useEffect(() => {
+    control((s) => {
+      "worklet";
+      lampControls.setTarget(s, [px, py, reach], reduced.value);
+    });
+  }, [px, py, reach, reduced, control]);
+
+  useEffect(() => {
+    control((s) => {
       "worklet";
       if (dim) lampControls.hold(s, "lost", RoundMoment.lostLevel, RoundMoment.lostLevelRate);
       else lampControls.hold(s, "lost", null, RoundMoment.releaseRate);
-      return s;
-    }, true);
-    wake();
-  }, [dim, lamp, wake]);
+    });
+  }, [dim, control]);
 
   const dealClock = deal?.clock;
   const riseAt = (deal?.offsetMs ?? 0) + Motion.deal.lead;
   useEffect(() => {
     if (!dealClock) return;
-    lamp.modify((s) => {
+    control((s) => {
       "worklet";
       lampControls.hold(s, "breath", BREATH_FROM, BREATH_RATE);
       s.lvl = s.lvlT;
-      return s;
-    }, true);
-    wake();
+    });
     // A deal gone before its rise leaves the lamp where it would have risen to, at once.
     return () => {
-      lamp.modify((s) => {
+      control((s) => {
         "worklet";
-        if (s.holds.breath === 1) return s;
+        if (s.holds.breath === 1) return;
         lampControls.hold(s, "breath", null, BREATH_RATE);
         s.lvl = s.lvlT;
-        return s;
-      }, true);
-      wake();
+      });
     };
-  }, [dealClock, lamp, wake]);
+  }, [dealClock, control]);
   useAnimatedReaction(
     () => (dealClock ? dealClock.value : -1),
     (now, prev) => {
       if (now < riseAt || (prev !== null && prev >= riseAt)) return;
-      lamp.modify((s) => {
+      control((s) => {
         "worklet";
         lampControls.hold(s, "breath", null, BREATH_RATE);
-        return s;
-      }, true);
-      wake();
+      });
+    }
+  );
+
+  useAnimatedReaction(
+    () => ends.value,
+    (now, before) => {
+      if (now !== 0 || before === null || before === 0) return;
+      resumeRig();
     }
   );
 
   useLandingReaction(landing, (l) => {
     "worklet";
     if (flareKindFor(l.tier) !== "settle" || reduced.value) return;
-    lamp.modify((s) => {
+    control((s) => {
       "worklet";
       lampControls.flare(s, false);
-      return s;
-    }, true);
-    wake();
+    });
   });
   useBombBeat(landing, reduceMotion, () => {
     "worklet";
-    lamp.modify((s) => {
+    control((s) => {
       "worklet";
       lampControls.flare(s, false);
       lampControls.kick(s, false);
-      return s;
-    }, true);
-    wake();
+    });
   });
 
   const { sx, sy } = designScale(width, height);
+  // `rig`, `held`, `ends` and `rested` are the rig's own, not the drawn lamp's: a rig that neither steps nor may hold is a stuck rig, which the specs must see.
   useTraceSource(
     "lamp",
     useCallback(() => {
-      const s = lamp.value;
-      return { x: s.lx * sx, y: s.ly * sy, level: s.level, flare: s.f, r: s.r, ph: s.ph, freeze: s.freeze, kick: s.kick, clock: s.t };
-    }, [lamp, sx, sy])
+      const own = lamp.value;
+      const s = reader.now();
+      return {
+        x: s.lx * sx,
+        y: s.ly * sy,
+        level: s.level,
+        flare: s.f,
+        r: s.r,
+        ph: s.ph,
+        freeze: s.freeze,
+        kick: s.kick,
+        clock: s.t,
+        rig: own.t,
+        held: hold?.held() ?? false,
+        ends: tracks?.ends.value ?? 0,
+        rested: isRested(own),
+      };
+    }, [lamp, reader, hold, tracks, sx, sy])
   );
 
   const controls = useMemo((): Pick<LampRig, "hold" | "freeze"> => {
-    const control = (apply: (s: Lamp) => void) => {
-      lamp.modify((s) => {
-        "worklet";
-        apply(s);
-        return s;
-      }, true);
-      wake();
-    };
     return {
       hold: (owner, level, rate) =>
         control((s) => {
@@ -206,7 +248,7 @@ export function useLampRig({
           lampControls.freeze(s, amount);
         }),
     };
-  }, [lamp, wake]);
+  }, [control]);
 
-  return useMemo(() => ({ lamp, glossLight, stillLight, tracks, shadeLevel, sx, sy, ...controls }), [lamp, glossLight, stillLight, tracks, shadeLevel, sx, sy, controls]);
+  return useMemo(() => ({ lamp, now: reader.now, clock: reader.clock, glossLight, stillLight, tracks, shadeLevel, sx, sy, ...controls }), [lamp, reader, glossLight, stillLight, tracks, shadeLevel, sx, sy, controls]);
 }

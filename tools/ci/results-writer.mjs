@@ -10,6 +10,12 @@ import path from "node:path";
 /** The directory a CI job collects into; unset, the reporters write nothing. */
 export const RESULTS_ENV = "MURLAN_TEST_RESULTS";
 
+/**
+ * Beside a node run's records, `{ file: seconds }` for each file it ran, start of its process to
+ * exit: what a split of the suite is planned from. The verdict reads only `.jsonl`.
+ */
+export const TIMINGS_SUFFIX = ".timings.json";
+
 /** @typedef {"passed" | "failed" | "skipped" | "todo"} Status */
 /**
  * @typedef {{ type: "run", runner: "node" | "jest" | "playwright", started: string, filters: string[] }

@@ -1,6 +1,6 @@
 # 0011. Review converges, and the loop works toward launch
 
-**Status:** Accepted
+**Status:** Accepted; decision 2 amended 2026-11-11
 **Date:** 2026-10-11
 
 ## Context
@@ -36,6 +36,9 @@ reporting only Important findings after the first review.
    - It reads the fix delta plus every caller of what it changed, and checks the previous round's
      Blocking findings.
    - The builder fixes only those findings: no sibling sweep and no nits.
+   - **Amended 2026-11-11** (the owner's ruling lifting S8 for #1988 item 32): a round also fixes
+     the same defect elsewhere in the ticket's own diff, still no nits. `docs/agents/RULES.md` 34
+     holds the current rule.
    - `MAX_REVIEW_ROUNDS` is 3. A third review that still blocks sends the ticket to the owner; a
      ticket never lands at the cap.
 3. **The loop files no agent work.**

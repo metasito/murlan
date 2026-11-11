@@ -61,6 +61,7 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
       timings: ${{ steps.plan.outputs.timings }}
+      verify-timings: ${{ steps.verify-plan.outputs.verify-timings }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -146,6 +147,32 @@ jobs:
             fi
           done
           node tools/ci/e2e-shard.mjs plan "${layers[@]}"
+
+      # verify's split: each file at its median over main's latest runs, one line of artifact ids a run.
+      # A file no run measured is placed as a typical one, so a missing layer costs balance, never a file.
+      - id: verify-plan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNS: 5
+        run: |
+          runs=$(for shard in 0 1 2 3; do
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=test-results-verify-$shard-1&per_page=100" || echo '{"artifacts":[]}'
+            done | jq -rs --argjson RUNS "$RUNS" '[.[].artifacts[] | select((.expired | not) and .workflow_run.head_branch == "main"
+              and .workflow_run.head_repository_id == .workflow_run.repository_id)] | group_by(.workflow_run.id)
+              | sort_by(.[0].created_at) | .[-$RUNS:] | .[] | map(.id | tostring) | join(" ")')
+          layers=()
+          while read -r ids; do
+            [ -n "$ids" ] || continue
+            for id in $ids; do
+              mkdir -p "$RUNNER_TEMP/verify-timings/$id"
+              { gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/verify-timings/$id.zip" \
+                && unzip -q -o "$RUNNER_TEMP/verify-timings/$id.zip" '*.timings.json' -d "$RUNNER_TEMP/verify-timings/$id"; } || true &
+            done
+            wait
+            layers+=("$(for id in $ids; do printf '%s,' "$RUNNER_TEMP"/verify-timings/"$id"/*.timings.json; done)")
+          done <<< "$runs"
+          node tools/ci/verify-shard.mjs plan "${layers[@]}"
 
   # Runs unconditionally rather than depending on `scope`: `scope` exempts
   # doc-only changes (docs/, .claude/, *.md), but a secret can land in exactly
@@ -238,12 +265,17 @@ jobs:
   # gated on this, so one run still reports every failure rather than stopping
   # at the first — which is what the folded job's `if: !cancelled()` bought.
   verify:
-    name: Typecheck and tests
+    name: Typecheck and tests ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: scope
     if: fromJSON(needs.scope.outputs.jobs)['verify']
     # Pinned: the restore test installs postgresql-client-16 from the distro, and ubuntu-latest moved to 26.04, which does not package it.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      # CI gate's verdict needs every shard's results to hold the listing together.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     # Without a database the integration suites skip themselves (by design, so
     # `npm test` works for a contributor with no Postgres). That is exactly the
@@ -292,31 +324,49 @@ jobs:
       # tools scripts/backup-db.mjs itself depends on, matched to the service
       # container's major version so the dump a pg_dump writes is one its own
       # psql can read back.
+      # The packages the image lacks, kept between runs: `apt-get update` alone once held this step 205 s.
+      # A kept set that no longer installs on the image is fetched again.
+      - id: pg-debs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/pg-debs
+          key: postgresql-client-16-debs-${{ runner.os }}-24.04
       - name: Install postgresql-client
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
+        run: |
+          debs="$RUNNER_TEMP/pg-debs"
+          if ! { ls "$debs"/*.deb > /dev/null 2>&1 && sudo apt-get install -y --no-install-recommends "$debs"/*.deb; }; then
+            mkdir -p "$debs/partial"
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends -o Dir::Cache::archives="$debs" postgresql-client-16
+            # apt's root-only lock would fail the cache's save.
+            sudo rm -rf "$debs/lock" "$debs/partial"
+          fi
 
       # A skipped integration suite still exits 0; CI gate's verdict over these results is what
       # turns a missing Postgres, Redis, postgresql-client-16 or pwsh red (RULES.md 53).
       - name: Test
         env:
           MURLAN_TEST_RESULTS: ${{ runner.temp }}/test-results
-        run: npm test
+          TIMINGS: ${{ needs.scope.outputs.verify-timings }}
+        run: |
+          printf '%s' "$TIMINGS" > "$RUNNER_TEMP/verify-timings.json"
+          node tools/ci/verify-shard.mjs run ${{ matrix.shard }} ${{ strategy.job-total }} "$RUNNER_TEMP/verify-timings.json"
       - name: Keep the runner's own results for CI gate
         if: ${{ !cancelled() }}
         id: up1
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: test-results-verify-0-${{ github.run_attempt }}
+          name: test-results-verify-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
           retention-days: 7
-      - name: Upload test-results-verify-0-${{ github.run_attempt }} again after a failed attempt
+      - name: Upload test-results-verify-${{ matrix.shard }}-${{ github.run_attempt }} again after a failed attempt
         if: ${{ !cancelled() && steps.up1.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           overwrite: true
-          name: test-results-verify-0-${{ github.run_attempt }}
+          name: test-results-verify-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/test-results/
           if-no-files-found: error
           retention-days: 7

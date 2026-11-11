@@ -9,7 +9,7 @@ import { makeMutable } from 'react-native-reanimated';
 import { TABLE_AT_REST } from '@/components/table/cardRects';
 import { FeltCanvas } from '@/components/table/feltCanvas';
 import { WEAVE_PLANES } from '@/components/table/feltShader';
-import { DESIGN, TABLE_CENTRE, lampControls, restingLamp, stepLamp, type Lamp } from '@/components/table/lampRig';
+import { DESIGN, TABLE_CENTRE, lampControls, restingLamp, stepLamp, steppedLamp, type Lamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
 import { setMotionPreference } from '@/lib/accessibility';
 import { FeltGradient, Motion } from '@/lib/tokens';
@@ -177,7 +177,7 @@ afterEach(() => {
 describe('the felt cloth', () => {
   it('bakes its weave once, and a settled lamp lights two cloths once and only crosses them while it sways', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     expect(bakes('weave')).toEqual([[DESIGN.width * 2, DESIGN.height * 2]]);
     expect(planesHeld()).toHaveLength(WEAVE_PLANES);
@@ -193,7 +193,7 @@ describe('the felt cloth', () => {
   it('hands the lit cloth over to the settled cross in a ramp, from the frame the cross is drawn', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const { seen, each } = watch(lamp);
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(1000, each);
     const drawnAt = seen.findIndex((w) => w !== null);
     expect(seen[drawnAt]).toBe(1);
@@ -207,7 +207,7 @@ describe('the felt cloth', () => {
     setMotionPreference('on');
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
     const { seen, each } = watch(lamp);
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(1000, each);
     expect(seen.filter((w) => w !== null && w > 0 && w < 1)).toEqual([]);
     expect(seen.at(-1)).toBe(0);
@@ -216,7 +216,7 @@ describe('the felt cloth', () => {
 
   it('lights a flare in full on its first frame and ramps back down over the same two cloths, lighting nothing else', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(1000, sway(lamp));
     expect(weight()).toBe(0);
     const { seen, each } = watch(lamp);
@@ -234,7 +234,7 @@ describe('the felt cloth', () => {
 
   it('draws no frame of the old cross once the lamp moves on', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(1000, sway(lamp));
     const { seen, each } = watch(lamp);
     settle(lamp, [TABLE_CENTRE[0] + 200, TABLE_CENTRE[1] - 60, TABLE_CENTRE[2]]);
@@ -245,7 +245,7 @@ describe('the felt cloth', () => {
 
   it('lights the planes while the lamp glides, lights two cloths once it settles, and keeps those it lit before', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     settle(lamp, [TABLE_CENTRE[0] + 200, TABLE_CENTRE[1] - 60, TABLE_CENTRE[2]]);
     await frames(160, sway(lamp));
@@ -263,13 +263,13 @@ describe('the felt cloth', () => {
 
   it('bakes again once a new size holds still, drawing the live cloth meanwhile, and frees the old planes', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     const first = planesHeld();
     expect(first).toHaveLength(WEAVE_PLANES);
-    await view.rerender(<FeltCanvas lamp={lamp} sx={1.05} sy={1.05} stops={FeltGradient} cards={table} />);
+    await view.rerender(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1.05} sy={1.05} stops={FeltGradient} cards={table} />);
     await frames(96, sway(lamp));
-    await view.rerender(<FeltCanvas lamp={lamp} sx={1.1} sy={1.1} stops={FeltGradient} cards={table} />);
+    await view.rerender(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1.1} sy={1.1} stops={FeltGradient} cards={table} />);
     await frames(96, sway(lamp));
     expect(bakes('weave')).toHaveLength(1);
     expect(drawn()).toEqual({ rest: 0, hand: 0, lit: 0, live: 1 });
@@ -292,7 +292,7 @@ describe('the felt cloth', () => {
   ])('draws every pixel of the felt where it shows, at DPR %p and %p points a design point: nothing scaled, every bake on the canvas\'s own pixels', async (dpr, s) => {
     jest.spyOn(PixelRatio, 'get').mockReturnValue(dpr);
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={s} sy={s} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={s} sy={s} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     const device = [Math.round(DESIGN.width * dpr * s), Math.round(DESIGN.height * dpr * s)];
     expect(bakes('weave')).toEqual([device]);
@@ -306,7 +306,7 @@ describe('the felt cloth', () => {
   it('crosses two cloths lit in one pass when a plane comes out blank, and frees the planes', async () => {
     mock.blank = 'weave';
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     expect(bakes('weave')).toHaveLength(1);
     expect(planesHeld()).toEqual([]);
@@ -321,7 +321,7 @@ describe('the felt cloth', () => {
   it('keeps the live cloth when every bake comes out blank, and frees what it baked', async () => {
     mock.centre = [0, 0, 0, 0];
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     expect(mock.images.length).toBeGreaterThan(0);
     expect(drawn()).toEqual({ rest: 0, hand: 0, lit: 0, live: 1 });
@@ -331,7 +331,7 @@ describe('the felt cloth', () => {
 
   it('frees the cloths of the target it lit longest ago, and every bake when it unmounts', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     expect(overKind()).toBe('lit');
     const first = held('lit');
@@ -351,7 +351,7 @@ describe('the felt cloth', () => {
 
   it('holds no texture of a disposed surface as a plane or a lit cloth', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     const kept = mock.images.filter((i) => i.baked && i.dispose.mock.calls.length === 0);
     expect(kept).toHaveLength(WEAVE_PLANES + LIT_PER_TARGET);
@@ -363,7 +363,7 @@ describe('the felt cloth', () => {
   it('keeps its bakes when the build cannot read pixels back', async () => {
     mock.centre = null;
     const lamp = makeMutable(restingLamp(TABLE_CENTRE));
-    const view = await render(<FeltCanvas lamp={lamp} sx={1} sy={1} stops={FeltGradient} cards={table} />);
+    const view = await render(<FeltCanvas lamp={lamp} now={steppedLamp(lamp).now} sx={1} sy={1} stops={FeltGradient} cards={table} />);
     await frames(160, sway(lamp));
     await frames(HANDED_OVER_MS, sway(lamp));
     expect(drawn()).toEqual({ rest: 1, hand: 0, lit: 0, live: 0 });

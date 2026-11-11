@@ -16,9 +16,6 @@ import { pillAnchorFor, scorePillBox, voteTop, type PillAnchor } from "./table/s
 import { floatAboveFoot, noticeBox, pileNoteBelowPile } from "./table/noticeModel.ts";
 import { computeTableFrame, SIDE_SEAT_GAP, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
 
-/** The parity targets still import it from here; docs/agents/target-freeze.md moves them in a target-only PR. */
-export { tableScale } from "./cardFaceModel.ts";
-
 /** Where the rail holds each knob across its width: `rail`'s slots and `ControlRail` both read it. */
 export const RAIL_KNOB_ALIGN: Align = "center";
 

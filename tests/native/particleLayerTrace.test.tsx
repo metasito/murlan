@@ -37,12 +37,13 @@ jest.mock('@/components/table/air', () => {
 
 import { makeMutable } from 'react-native-reanimated';
 import { ParticleLayer } from '@/components/table/particleLayer';
-import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
+import { restingLamp, steppedLamp, TABLE_CENTRE } from '@/components/table/lampRig';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 import { setMotion } from './harness/env';
 
 const atRest = async (ms: number, freeze = 0) => {
-  const rig = { lamp: makeMutable({ ...restingLamp(TABLE_CENTRE), freeze }), sx: 1, sy: 1 };
+  const lamp = makeMutable({ ...restingLamp(TABLE_CENTRE), freeze });
+  const rig = { lamp, ...steppedLamp(lamp), sx: 1, sy: 1 };
   const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
   const lit = new Set<unknown>();
   let moths = 0;
@@ -62,7 +63,8 @@ const DUST: ParticleSpawn = {
 describe('ParticleLayer', () => {
   it('traces its live and dropped counts, the 40 motes inside the budget of 200', async () => {
     const ref = React.createRef<ParticleEmitter>();
-    const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const rig = { lamp, ...steppedLamp(lamp), sx: 1, sy: 1 };
     const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
     expect(mockSources.get('live')?.()).toBe(40);
     expect(mockSources.get('moth')?.()).toBeNull();
@@ -76,7 +78,8 @@ describe('ParticleLayer', () => {
 
 
   it('lays the air down once, not on every render', async () => {
-    const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const rig = { lamp, ...steppedLamp(lamp), sx: 1, sy: 1 };
     const landing = makeMutable(NO_LANDING);
     const before = mockAirs;
     const view = await render(<ParticleLayer rig={rig} landing={landing} />);
@@ -115,7 +118,8 @@ describe('ParticleLayer', () => {
     });
 
     it('builds the moth\'s shapes only on frames with a moth on the light', async () => {
-      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+      const rig = { lamp, ...steppedLamp(lamp), sx: 1, sy: 1 };
       const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
       let idle = 0;
       let flying = 0;
@@ -135,7 +139,8 @@ describe('ParticleLayer', () => {
     it('lays the air out at most 30 times a second on a 1000 Hz display, every frame while dust is live', async () => {
       globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 1) as unknown as number;
       const ref = React.createRef<ParticleEmitter>();
-      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+      const rig = { lamp, ...steppedLamp(lamp), sx: 1, sy: 1 };
       const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
       const laidIn = async (ms: number) => {
         const before = mockLaid;
@@ -156,7 +161,8 @@ describe('ParticleLayer', () => {
       it(`rains ${reduced ? 'nothing under reduced motion' : "a won match's 60 motes through the cone over 1.2 s"}`, async () => {
         await setMotion(reduced ? 'on' : 'off');
         const ref = React.createRef<ParticleEmitter>();
-        const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+        const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+        const rig = { lamp, ...steppedLamp(lamp), sx: 1, sy: 1 };
         const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
         await act(async () => jest.advanceTimersByTime(100));
         await act(async () => ref.current!.rain());
@@ -175,7 +181,8 @@ describe('ParticleLayer', () => {
 
     it('under reduced motion lays the motes out again only when the light moves', async () => {
       await setMotion('on');
-      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+      const rig = { lamp, ...steppedLamp(lamp), sx: 1, sy: 1 };
       const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
       const frames = async (n: number) => {
         const before = mockLaid;
@@ -197,7 +204,8 @@ describe('ParticleLayer', () => {
 
     it('back under reduced motion lays the motes out again for a light that moved while it was off', async () => {
       await setMotion('on');
-      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+      const rig = { lamp, ...steppedLamp(lamp), sx: 1, sy: 1 };
       const landing = makeMutable(NO_LANDING);
       const view = await render(<ParticleLayer rig={rig} landing={landing} />);
       const frames = async (n: number) => {
