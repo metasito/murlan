@@ -309,18 +309,14 @@ describe("the supervisor's writes", () => {
     const { asked, t } = asking();
     t.createIssue({ title: "CI flake: x", bodyFile: "f.md", labels: ["ready-for-human"] });
     t.closeIssue(7, "green again");
-    t.rerunFailed(99);
     t.updateBranch(5);
     const m = ghMerges((args: string[]) => (asked.push(args), ""));
-    m.merge(5, "abc", "m.md");
     m.merge(5, "abc");
     assert.deepEqual(asked, [
       ["api", "-X", "POST", "repos/metasito/murlan/issues", "-f", "title=CI flake: x", "-F", "body=@f.md", "-f", "labels[]=ready-for-human"],
       ["api", "-X", "POST", "repos/metasito/murlan/issues/7/comments", "-f", "body=green again"],
       ["api", "-X", "PATCH", "repos/metasito/murlan/issues/7", "-f", "state=closed", "-f", "state_reason=completed"],
-      ["api", "-X", "POST", "repos/metasito/murlan/actions/runs/99/rerun-failed-jobs"],
       ["api", "-X", "PUT", "repos/metasito/murlan/pulls/5/update-branch"],
-      ["api", "-X", "PUT", "repos/metasito/murlan/pulls/5/merge", "-f", "merge_method=merge", "-f", "sha=abc", "-F", "commit_message=@m.md"],
       ["api", "-X", "PUT", "repos/metasito/murlan/pulls/5/merge", "-f", "merge_method=merge", "-f", "sha=abc"],
     ]);
     m.arm(5, "abc");

@@ -519,7 +519,7 @@ describe("readLandingState, from rollups recorded off live pull requests", () =>
     assert.ok(asked.every((a) => landing.includes(String(ciCall(a)?.kind)) || a.some((x) => x.includes("38295085768"))), JSON.stringify(asked));
   });
 
-  test("a red gate carries its run's attempt, which is what a rerun is counted by", () => {
+  test("a red gate carries its run's attempt, so a rerun from outside the loop is a new reading", () => {
     const red = fixture("red");
     const { state, asked } = read({ ...red, run: { ...red.run, attempt: 2 } });
     assert.equal(state.ci.attempt, 2);

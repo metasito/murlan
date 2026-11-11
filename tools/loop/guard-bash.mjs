@@ -707,7 +707,7 @@ const RULES = [
   },
   {
     test: (c, { loop }) => loop && isRerun(c),
-    message: "The supervisor reruns a red once per head; a session does not rerun.",
+    message: "A red is never rerun: read its failure and fix it at its source (rule 53).",
   },
   {
     test: (c, { loop }) => loop && ((c.cmd === "gh" && untrustedRead(c.args)) || fetchesThread(c.cmd, c.args)),

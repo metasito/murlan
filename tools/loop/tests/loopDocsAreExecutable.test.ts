@@ -368,10 +368,7 @@ test("queue.md reads CI-RED's on main: line and knows no shared issue", () => {
   assert.doesNotMatch(q, /shared:|shared issue|owned here/);
 });
 
-test("queue.md quotes CI-RED's rerun line in both the forms ciRedBody writes it", () => {
-  const q = read(QUEUE);
-  for (const attempt of [1, 2]) {
-    const line = /^rerun: .+$/m.exec(ciRedBody({ sha: "a", runUrl: "u", runId: 1, attempt }))?.[0] ?? "(no rerun line)";
-    assert.ok(q.includes(`\`${line}\``), line);
-  }
+test("queue.md reads no CI-RED rerun line, and ciRedBody writes none", () => {
+  assert.doesNotMatch(read(QUEUE), /`rerun: /);
+  assert.doesNotMatch(ciRedBody({ sha: "a", runUrl: "u", runId: 1 }), /^rerun: /m);
 });

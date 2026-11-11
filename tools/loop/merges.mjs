@@ -13,10 +13,10 @@ import { gh as ghCli, REPO } from "./cli.mjs";
  * when it arms: a head that moved past the cleared commit is refused. It is not documented to be
  * checked again at merge time, so the caller disarms before anything can push.
  *
- * @param {string} repo @param {number} prNumber @param {string} sha @param {string} [bodyFile]
+ * @param {string} repo @param {number} prNumber @param {string} sha
  */
-export function armArgs(repo, prNumber, sha, bodyFile) {
-  return ["pr", "merge", String(prNumber), "--repo", repo, "--auto", "--merge", "--match-head-commit", sha, ...(bodyFile ? ["--body-file", bodyFile] : [])];
+export function armArgs(repo, prNumber, sha) {
+  return ["pr", "merge", String(prNumber), "--repo", repo, "--auto", "--merge", "--match-head-commit", sha];
 }
 
 /** @param {string} repo @param {number} prNumber */
@@ -28,10 +28,9 @@ export function disarmArgs(repo, prNumber) {
 export function ghMerges(gh = ghCli, repo = REPO) {
   const pulls = `repos/${repo}/pulls`;
   return {
-    arm: (n, sha, bodyFile, opts) => void gh(armArgs(repo, n, sha, bodyFile), opts),
+    arm: (n, sha, opts) => void gh(armArgs(repo, n, sha), opts),
     disarm: (n, opts) => void gh(disarmArgs(repo, n), opts),
     /** Merges now, refused (409) when the head is no longer `sha`: what `--match-head-commit` binds. */
-    merge: (n, sha, bodyFile, opts) =>
-      void gh(["api", "-X", "PUT", `${pulls}/${n}/merge`, "-f", "merge_method=merge", "-f", `sha=${sha}`, ...(bodyFile ? ["-F", `commit_message=@${bodyFile}`] : [])], opts),
+    merge: (n, sha, opts) => void gh(["api", "-X", "PUT", `${pulls}/${n}/merge`, "-f", "merge_method=merge", "-f", `sha=${sha}`], opts),
   };
 }

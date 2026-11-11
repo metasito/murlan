@@ -1,6 +1,6 @@
 /**
  * Settles a pushed pull request: waits on its `CI gate`, arms GitHub's auto-merge on a green head
- * that review cleared, and reruns a red once before handing it back.
+ * that review cleared, and hands a red back to a fix round, never rerunning it (rule 53).
  *
  * `stepSettle` is the state machine, pure: one read of the pull request in, the effects to run and
  * the next state out. `runSettle` is the executor that reads, runs those effects through its ports
@@ -11,7 +11,6 @@
  * CI-RED is posted — that comment is what starts a fix round, here or after a restart.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import { createRequire } from "node:module";
 import { firstLine, REPO, viaCli } from "./cli.mjs";
 import { ciRedPosted } from "./loop-derive.mjs";
@@ -39,22 +38,20 @@ const SERVER = /HTTP 5\d\d\b|Bad Gateway|Service Unavailable|Gateway Timeout|Som
 const sha7 = (sha) => String(sha).slice(0, 7);
 
 /**
- * @typedef {{action: string, reason?: string, head?: string|null, runId?: number|null, flake?: {runId: number, tests: string[], step: string|null}}} SettleOutcome
+ * @typedef {{action: string, reason?: string, head?: string|null, runId?: number|null}} SettleOutcome
  * @typedef {{do: string, [key: string]: any}} SettleEffect
  * @typedef {Record<string, any>} SettleState
  */
 
 /**
- * @param {{at: number, deadline: number, stuckMs?: number, pr: number, ledgered?: {head: string, runId: number, tests?: string[], step?: string|null}|null}} start
- *   `ledgered` is the flake a process that armed on a rerun's green and then stopped left in the ledger
+ * @param {{at: number, deadline: number, stuckMs?: number, pr: number}} start
  * @returns {SettleState}
  */
-export function startSettle({ at, deadline, stuckMs = SETTLE.STUCK_MS, pr, ledgered = null }) {
+export function startSettle({ at, deadline, stuckMs = SETTLE.STUCK_MS, pr }) {
   return {
     pr,
     deadline,
     stuckMs,
-    ledgered,
     until: at + deadline,
     stuckSince: at,
     seen: null,
@@ -63,9 +60,6 @@ export function startSettle({ at, deadline, stuckMs = SETTLE.STUCK_MS, pr, ledge
     head: null,
     armed: false,
     armedAt: null,
-    reran: null,
-    firstRed: null,
-    flake: null,
     updates: 0,
     last: null,
     ci: {},
@@ -83,7 +77,7 @@ export const rested = (state, slept) => ({
 /** True when the read at `at` would come past the deadline, so the executor does not take it. */
 export const overdueAt = (state, at) => at > state.until;
 
-const ownerOut = (s, reason) => ({ action: "owner", reason, runId: s.ci.runId ?? null, head: s.head, ...(s.flake && { flake: s.flake }) });
+const ownerOut = (s, reason) => ({ action: "owner", reason, runId: s.ci.runId ?? null, head: s.head });
 
 /**
  * A verdict into its outcome and the effects that must run first. `end` is `{action, reason}`, and a
@@ -109,10 +103,7 @@ export function endSettle(state, end) {
   if (end.action === "hold") return { state: s, effects, outcome: { action: "hold", reason: end.reason, head: s.head, runId: s.ci.runId ?? null } };
   if (end.action === "already-merged") {
     // The merged branch is GitHub's to delete: `deleteBranchOnMerge.test.ts` pins the repository setting.
-    const l = s.ledgered;
-    if (!s.flake && l && l.head === s.head) s.flake = { runId: l.runId, tests: l.tests ?? [], step: l.step ?? null };
-    if (s.flake) effects.push({ do: "file-flakes", red: s.flake });
-    return { state: s, effects, outcome: { action: "already-merged", reason: end.reason, ...(s.flake && { flake: s.flake }) } };
+    return { state: s, effects, outcome: { action: "already-merged", reason: end.reason } };
   }
   disarm(end.reason);
   if (end.action === "rebase") return { state: s, effects, outcome: { action: "rebase", reason: end.reason, head: s.head } };
@@ -166,7 +157,7 @@ export function stepSettle(state, read) {
   }
   // Landing reads move no run counter.
   const stuck = read.at - s.stuckSince >= s.stuckMs;
-  const facts = { ...next, head: s.head, armed: s.armed, overdue, deadline: s.deadline, updates: s.updates, last: s.last, stuck, ci: s.ci, error, reran: s.reran, cleared: read.cleared };
+  const facts = { ...next, head: s.head, armed: s.armed, overdue, deadline: s.deadline, updates: s.updates, last: s.last, stuck, ci: s.ci, error, cleared: read.cleared };
   const step = decide({ step: "landing", loop: {}, landing: facts });
   if (step.kind === "ask") return { state, effects: [], ask: "cleared", head: s.head };
 
@@ -176,12 +167,7 @@ export function stepSettle(state, read) {
     return { state: s, effects, outcome: next };
   }
   s.last = step.why;
-  if (step.act === "rerun") {
-    s.reran = s.head;
-    s.firstRed = { runId: s.ci.runId, tests: s.ci.testIds ?? [], step: s.ci.failedStep ?? null };
-    effects.push({ do: "rerun", runId: s.ci.runId, next });
-    s.until = read.at + s.deadline;
-  } else if (step.act === "update-branch") {
+  if (step.act === "update-branch") {
     // The merge of main is a new head nobody cleared, and an arm would carry over to it.
     if (s.armed) effects.push({ do: "disarm", then: next.reason });
     s.armed = false;
@@ -189,17 +175,12 @@ export function stepSettle(state, read) {
     s.updates += 1;
     effects.push({ do: "update-branch" });
   } else if (step.act === "arm") {
-    // A green this process's rerun won: named in the merge and on the row; filed once it has merged.
-    if (s.reran === s.head && s.firstRed && !s.flake) {
-      s.flake = s.firstRed;
-      effects.push({ do: "note-flake", flake: { ...s.flake, head: s.head } });
-    }
-    effects.push({ do: "arm", head: s.head, flake: s.flake });
+    effects.push({ do: "arm", head: s.head });
     // An arm whose answer was lost may have taken effect, so every way out disarms from here on.
     s.armed = "maybe";
     s.armedAt = s.head;
   }
-  if (step.act === "rerun" || step.act === "wait") log(step.why);
+  if (step.act === "wait") log(step.why);
   return { state: s, effects };
 }
 
@@ -217,9 +198,9 @@ const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.split(" ›
  * fit one into a comment dropped the part that mattered. `onMain` and `flaky` are `onMainLine`'s answers.
  *
  * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
- *   onMain?: string, flaky?: string, runId?: number, logArgs?: string[], reason?: string, attempt?: number}} args
+ *   onMain?: string, flaky?: string, runId?: number, logArgs?: string[], reason?: string}} args
  */
-export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", flaky = "none", runId, logArgs, reason, attempt }) {
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", flaky = "none", runId, logArgs, reason }) {
   const files = failingFiles(testIds);
   // A count of zero would be a target a round meets by diagnosing nothing, so a step whose output
   // parses as no test id says that instead of stating one.
@@ -236,8 +217,6 @@ export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "",
     ...files.map((f) => `- ${f}`),
     `on main: ${onMain}`,
     ...(flaky === "none" ? [] : [`flaky on main: ${flaky}`]),
-    // A rerun the supervisor could not start leaves attempt 1: that red was never asked twice.
-    `rerun: ${attempt > 1 ? "survived one" : "none"}`,
   ];
   if (files.length === 0) body.push("```", ...excerpt.split("\n").slice(-EXCERPT_LINES), "```");
   return body.join("\n");
@@ -254,17 +233,6 @@ export function onMainLine(failing, main) {
   const how = main.flaky ? "failed attempt 1 of main's rerun-won green" : "also fail on main";
   return `${ids.length} of ${failing.length} ${how} (${main.url ?? "main's latest run"}): ${ids.join(", ")}`;
 }
-
-/** What a red a rerun turned green failed on, one name per issue: its tests, or its step when it named none. */
-const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an unnamed step"} (no test named)`]);
-
-const FLAKES_PER_RUN = 3;
-
-/** Bounds what a merge message or an issue body lists: a starved runner fails hundreds. */
-const FLAKES_LISTED = 20;
-
-const listed = (names) =>
-  (names.length > FLAKES_LISTED ? [...names.slice(0, FLAKES_LISTED), `and ${names.length - FLAKES_LISTED} more`] : names).map((n) => `- ${n}`);
 
 /**
  * The ports `runSettle` acts through; `io` overrides any of them. `run` is `cli.mjs`'s `gh` and
@@ -284,7 +252,6 @@ function settlePorts(pending, log, pause, io) {
     write: io.write ?? writeFileSync,
     mkdir: io.mkdir ?? mkdirSync,
     mainFailures: io.mainFailures ?? (() => ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO)),
-    noteArmed: io.noteArmed ?? pending.noteArmed,
     now: io.now ?? (() => Date.now()),
     sleep:
       io.sleep ??
@@ -351,7 +318,6 @@ function postCiRedOnce(ticket, ci, { onMain, flaky }, comments, { tracker, write
     runId: ci.runId,
     logArgs: ci.logArgs,
     reason: ci.reason,
-    attempt: ci.attempt,
   });
   try {
     const file = ciRedNotePath(ticket, dir);
@@ -382,48 +348,6 @@ function prepareRed(ticket, ci, { mkdir, write, mainFailures, log, dir }) {
   return { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
 }
 
-/** The merge message's body, written to a file: an inline argument has no bound. */
-function flakeMergeFile(red, ticket, write, dir) {
-  const file = path.join(dir, `flake-merge-${ticket}.md`);
-  write(file, [`Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed`, ...listed(flakeNames(red))].join("\n"), "utf8");
-  return file;
-}
-
-/**
- * One open issue per flaky test, found by its exact title in a listing of every open issue: GitHub's
- * search trails its own writes, and promoting one swaps its label. `ready-for-human`, not
- * `ci-flake`: ADR 0011 keeps that label, and the rank it carries, the owner's to add.
- */
-function fileFlakes(red, { tracker, log, write, dir }) {
-  let open;
-  try {
-    open = tracker.openIssues();
-  } catch (err) {
-    log(`could not list the open flake issues — ${firstLine(err)}; the merge and the ledger still name it`);
-    return;
-  }
-  const names = flakeNames(red);
-  // More reds than this cleared by one rerun reads as a starved runner, and it bounds the tracker's writes.
-  const titles = names.length > FLAKES_PER_RUN ? [`CI flake: ${names.length} tests in run ${red.runId}`] : names.map((n) => `CI flake: ${n}`);
-  for (const title of titles) {
-    if (open.some((i) => i.title === title)) continue;
-    const body = [
-      `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed ${titles.length < names.length ? "these" : "this"}; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
-      ...(titles.length < names.length ? ["", ...listed(names)] : []),
-      "",
-      "Filed by the supervisor (`tools/loop/settle.mjs`). The title is what stops a second issue for the same failure, so keep it.",
-    ].join("\n");
-    try {
-      const file = path.join(dir, `flake-issue-${red.ticket}.md`);
-      write(file, body, "utf8");
-      tracker.createIssue({ title, bodyFile: file, labels: ["ready-for-human"] });
-      log(`filed ${title}`);
-    } catch (err) {
-      log(`could not file ${title} — ${firstLine(err)}`);
-    }
-  }
-}
-
 /**
  * Runs one effect. Undefined when the list goes on; an `end` (`endSettle`'s input) when it ended
  * the settle instead.
@@ -449,14 +373,6 @@ async function perform(effect, pending, ports) {
         }
         return { action: "owner", reason: `could not disarm auto-merge — ${firstLine(err)}; it may still merge${effect.then ? ` — ${effect.then}` : ""}` };
       }
-    case "rerun":
-      try {
-        tracker.rerunFailed(effect.runId);
-        return;
-      } catch (err) {
-        log(`could not rerun ${effect.runId} — ${firstLine(err)}; handing the red back`);
-        return { action: "hand-back", next: effect.next };
-      }
     case "update-branch":
       try {
         tracker.updateBranch(pending.pr);
@@ -464,33 +380,17 @@ async function perform(effect, pending, ports) {
       } catch (err) {
         return { action: "owner", reason: `could not update the branch — ${firstLine(err)}` };
       }
-    case "note-flake":
-      try {
-        ports.noteArmed?.(effect.flake);
-      } catch (err) {
-        log(`could not ledger the flake before arming — ${firstLine(err)}`);
-      }
-      return;
     case "arm": {
       const at = String(effect.head ?? "an unread head").slice(0, 7);
-      let message;
       try {
-        if (effect.flake) {
-          ports.mkdir(ports.dir, { recursive: true });
-          message = flakeMergeFile(effect.flake, pending.ticket, ports.write, ports.dir);
-        }
-      } catch (err) {
-        log(`could not write the flake into the merge message — ${firstLine(err)}`);
-      }
-      try {
-        tracker.arm(pending.pr, effect.head, message);
+        tracker.arm(pending.pr, effect.head);
         log(`auto-merge armed at ${at}`);
       } catch (err) {
         // GitHub refuses `--auto` where auto-merge is off or the head is already mergeable; the
         // gate is green here, and the merge's `sha` still binds it to the cleared head.
         log(`could not arm auto-merge — ${firstLine(err)}; merging ${at} directly`);
         try {
-          tracker.merge(pending.pr, effect.head, message);
+          tracker.merge(pending.pr, effect.head);
         } catch (again) {
           return { action: "owner", reason: `the merge failed — ${firstLine(again)}` };
         }
@@ -506,9 +406,6 @@ async function perform(effect, pending, ports) {
       }
       return;
     }
-    case "file-flakes":
-      fileFlakes({ ...effect.red, ticket: pending.ticket, pr: pending.pr }, ports);
-      return;
     default:
       throw new Error(`settle has no effect called ${effect.do}`);
   }
@@ -516,13 +413,13 @@ async function perform(effect, pending, ports) {
 
 /**
  * The executor: reads the pull request, steps, runs the step's effects, and sleeps, until a step
- * settles. `pending` is `{ticket, pr, branch, flake?, noteArmed?}`; `io` overrides `settlePorts`'.
+ * settles. `pending` is `{ticket, pr, branch}`; `io` overrides `settlePorts`'.
  *
  * @returns {Promise<SettleOutcome>}
  */
 export async function runSettle(pending, log, pause, deadline, io = {}) {
   const ports = settlePorts(pending, log, pause, io);
-  let state = startSettle({ at: ports.now(), deadline, stuckMs: io.stuckMs, pr: pending.pr, ledgered: pending.flake ?? null });
+  let state = startSettle({ at: ports.now(), deadline, stuckMs: io.stuckMs, pr: pending.pr });
   for (;;) {
     const read = { at: ports.now() };
     if (!overdueAt(state, read.at)) {

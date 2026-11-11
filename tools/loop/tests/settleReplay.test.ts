@@ -51,16 +51,13 @@ function rollupFake({
   autoMerges = true,
   refuse = {},
   issueComments = [],
-  open = [],
 }: {
-  /** The titles of the open issues `issue list` answers with; `issue create` adds to it. */
-  open?: string[];
   views: Fixture[];
   log?: string | null;
   attempt?: number;
   armed?: boolean;
   autoMerges?: boolean;
-  refuse?: { auto?: string; merge?: string; disarm?: string; rerun?: string };
+  refuse?: { auto?: string; merge?: string; disarm?: string };
   issueComments?: { body: string }[];
 }) {
   const asked: string[][] = [];
@@ -76,11 +73,6 @@ function rollupFake({
       pr.head = NEW;
       return "";
     }
-    if (kind === "rerun") {
-      if (refuse.rerun) throw new Error(refuse.rerun);
-      pr.attempt += 1;
-      return "";
-    }
     if (kind === "merge") {
       if (refuse.merge) throw new Error(refuse.merge);
       pr.merged = true;
@@ -88,11 +80,6 @@ function rollupFake({
     }
     if (kind === "read") return JSON.stringify([issueComments.map((c) => ({ author_association: "OWNER", user: { login: "o" }, ...c }))]);
     if (kind === "comment") return "";
-    if (kind === "list") return JSON.stringify([open.map((title, i) => ({ number: 2000 + i, title }))]);
-    if (kind === "create") {
-      open.push(titleOf(args));
-      return JSON.stringify({ html_url: `https://github.com/${REPO}/issues/${1999 + open.length}` });
-    }
     // One landing read is the pull request, then its head's checks and statuses: the script steps on the first.
     if (ciCall(args)?.kind === "pull") {
       const f = views[Math.min(read++, views.length - 1)];
@@ -151,15 +138,11 @@ const kindOf = (a: string[]) => {
   const path = String(a.find((x) => x.startsWith("repos/")) ?? "");
   const method = a.includes("-X") ? a[a.indexOf("-X") + 1] : "GET";
   if (/\/pulls\/\d+\/update-branch$/.test(path)) return "update-branch";
-  if (/\/actions\/runs\/\d+\/rerun-failed-jobs$/.test(path)) return "rerun";
   if (/\/pulls\/\d+\/merge$/.test(path)) return "merge";
   if (/\/issues\/\d+\/comments/.test(path)) return method === "POST" ? "comment" : "read";
-  if (/\/issues\?/.test(path)) return "list";
-  if (/\/issues$/.test(path) && method === "POST") return "create";
   return null;
 };
 const fieldOf = (a: string[], name: string) => a.find((x) => x.startsWith(`${name}=`))?.slice(name.length + 1) ?? null;
-const titleOf = (a: string[]) => fieldOf(a, "title") ?? a[a.indexOf("--title") + 1];
 /** The file a call's body comes from: `--body-file`, or REST's `@file` field. */
 const bodyFileOf = (a: string[]) => {
   const at = a.indexOf("--body-file");
@@ -171,11 +154,6 @@ const merges = (asked: string[][]) => asked.filter((a) => (a[0] === "pr" && a[1]
 const indexOf = (asked: string[][], match: (a: string[]) => boolean) => asked.findIndex(match);
 const isDisarm = (a: string[]) => a[1] === "merge" && a.includes("--disable-auto");
 const isComment = (a: string[]) => kindOf(a) === "comment";
-/** The text a `--body-file` argument names, from what `io`'s `write` captured; "" when it names none. */
-const fileOf = (written: string[][], args: string[]) => {
-  const file = bodyFileOf(args);
-  return file === null ? "" : (written.findLast(([p]) => p === file)?.[1] ?? "");
-};
 
 /**
  * One recorded rollup as `readLandingState` reads it, with the pull request's own head, arm and
@@ -187,7 +165,7 @@ const recorded = (f: Fixture, { head = SHA, armed = false, merged = false, attem
   return readLandingState(REPO, PENDING.pr, (args) => fake.gh(args), Date.now() + 60_000);
 };
 
-type Effect = { do: string; line?: string; head?: string; flake?: any; red?: any; then?: string };
+type Effect = { do: string; line?: string; head?: string; red?: any; then?: string };
 /** A failed read: `execFileSync`'s shape, the first line naming the command and `stderr` saying what went wrong. */
 const ghFailed = (stderr: string) => Object.assign(new Error(`Command failed: gh pr view 1053\n${stderr}`), { stderr });
 
@@ -197,9 +175,9 @@ const ghFailed = (stderr: string) => Object.assign(new Error(`Command failed: gh
  */
 function replay(
   reads: (ReturnType<typeof recorded> | Error)[],
-  { cleared = REVIEWED, deadline = DEADLINE, stuckMs = SETTLE.STUCK_MS, tick = 15_000, slept = [] as number[], ledgered = null as { head: string; runId: number; tests?: string[]; step?: string | null } | null } = {},
+  { cleared = REVIEWED, deadline = DEADLINE, stuckMs = SETTLE.STUCK_MS, tick = 15_000, slept = [] as number[] } = {},
 ) {
-  let state = startSettle({ at: 0, deadline, stuckMs, pr: PENDING.pr, ledgered });
+  let state = startSettle({ at: 0, deadline, stuckMs, pr: PENDING.pr });
   const effects: Effect[] = [];
   const judged: string[] = [];
   for (let i = 0, at = 0; i < 1000; at += tick + (slept[i] ?? 0), i++) {
@@ -222,17 +200,16 @@ function replay(
 
 describe("stepSettle, fed recorded landing states", () => {
   const MIN = 60_000;
-  const ID = "tools/loop/tests/x.test.ts › breaks";
   const BEHIND = at(GREEN, { mergeStateStatus: "BEHIND" });
 
   test("a gate still running is waited on, then handed back once it is red", () => {
-    const { out, did, said } = replay([recorded(ABSENT), recorded(GATE_RUNNING), recorded(RED), recorded(RED, { attempt: 2 })]);
+    const { out, did, said } = replay([recorded(ABSENT), recorded(GATE_RUNNING), recorded(RED)]);
     assert.equal(out.action, "hand-back");
     assert.ok(said.some((m) => /^PR #1053 · CI \d+ of \d+ jobs/.test(m)), `no CI progress line in ${JSON.stringify(said)}`);
     assert.ok(said.some((m) => /CI gate has not reported/.test(m)) && said.some((m) => /CI gate is in_progress/.test(m)));
     assert.equal(out.head, SHA, "the retry row records the head CI judged");
     assert.match(String(out.reason), /Typecheck and tests/);
-    assert.deepEqual(did, ["rerun", "post-red"]);
+    assert.deepEqual(did, ["post-red"]);
   });
 
   test("a cleared green head is armed pinned to that head, and GitHub's merge lands it", () => {
@@ -347,51 +324,14 @@ describe("stepSettle, fed recorded landing states", () => {
     });
   });
 
-  describe("a red is rerun once per head", () => {
-    test("rerun once, then handed back when the rerun is red too", () => {
-      const { out, did } = replay([recorded(RED, { log: UNNAMED }), recorded(GATE_RUNNING), recorded(RED, { log: UNNAMED, attempt: 2 })]);
-      assert.deepEqual(did, ["rerun", "post-red"]);
-      assert.equal(out.action, "hand-back");
-      assert.equal(out.flake, undefined, "a red handed back after its rerun is no flake");
-    });
-
-    test("a rerun that goes green is armed, lands, and names the flake: ledgered before the arm, filed once merged", () => {
-      const { out, effects, did } = replay([recorded(RED), recorded(GATE_RUNNING), recorded(GREEN, { attempt: 2 }), recorded(GREEN, { attempt: 2, armed: true, merged: true })]);
-      assert.equal(out.action, "already-merged");
-      assert.deepEqual(did, ["rerun", "note-flake", "arm", "file-flakes"]);
-      assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
-      const noted = effects.find((e) => e.do === "note-flake")!;
-      assert.deepEqual([noted.flake.runId, noted.flake.tests, noted.flake.head], [RED_RUN, [ID], SHA]);
-      assert.deepEqual(effects.find((e) => e.do === "arm")!.flake.runId, RED_RUN, "the merge message names the run");
-    });
-
-    test("a red already on its second attempt is not rerun again, whoever reran it", () => {
-      const { out, did } = replay([recorded(RED, { log: UNNAMED, attempt: 2 })]);
-      assert.equal(out.action, "hand-back");
-      assert.deepEqual(did, ["post-red"]);
-    });
-
-    test("a red naming its failing test is rerun once too, before any CI-RED starts a fix round", () => {
-      const { out, did } = replay([recorded(RED), recorded(RED, { attempt: 2 })]);
-      assert.equal(out.action, "hand-back");
-      assert.deepEqual(did, ["rerun", "post-red"]);
-    });
-  });
-
-  describe("the flake outlives the process that armed it", () => {
-    const flake = { runId: RED_RUN, tests: [ID], step: "Test", head: SHA };
-
-    test("a restart that finds it merged still files the issue and names the flake", () => {
-      const { out, effects } = replay([recorded(GREEN, { merged: true })], { ledgered: flake });
-      assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
-      assert.deepEqual(effects.filter((e) => e.do === "file-flakes").map((e) => e.red.runId), [RED_RUN]);
-    });
-
-    test("one ledgered for another head is not this merge's", () => {
-      const { out, did } = replay([recorded(GREEN, { merged: true })], { ledgered: { ...flake, head: NEW } });
-      assert.equal(out.flake, undefined);
-      assert.deepEqual(did, []);
-    });
+  describe("a red is never rerun: its first attempt goes to a fix round", () => {
+    for (const [name, log] of [["naming its failing test", NAMED], ["naming none", UNNAMED]] as const) {
+      test(`a red ${name}`, () => {
+        const { out, did } = replay([recorded(RED, { log }), recorded(GREEN, { attempt: 2 })]);
+        assert.equal(out.action, "hand-back");
+        assert.deepEqual(did, ["post-red"]);
+      });
+    }
   });
 
   describe("across a standby", () => {
@@ -619,120 +559,14 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
   });
 });
 
-describe("a red is rerun once per head", () => {
-  const reruns = (asked: string[][]) => asked.filter((a) => kindOf(a) === "rerun");
-
-  test("rerun once through gh, then handed back when the rerun is red too", async () => {
-    const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED], log: UNNAMED });
+describe("a red is never rerun", () => {
+  test("its first attempt is handed back with a CI-RED, and no run is rerun or armed", async () => {
+    const { gh, asked } = rollupFake({ views: [RED, GREEN] });
     const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
-    assert.deepEqual(reruns(asked), [["api", "-X", "POST", `repos/${REPO}/actions/runs/${RED_RUN}/rerun-failed-jobs`]]);
     assert.equal(out.action, "hand-back");
-  });
-
-  describe("a red a rerun turned green is a flake, said everywhere it lands", () => {
-    const ID = "tools/loop/tests/x.test.ts › breaks";
-    const creates = (asked: string[][]) => asked.filter((a) => kindOf(a) === "create");
-
-    test("the settle names the run and its tests, the merge says so, and one issue is filed per test", async () => {
-      const written: string[][] = [];
-      const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
-      const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
-      assert.equal(out.action, "already-merged");
-      assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
-      const arm = merges(asked).find((a) => a.includes("--auto"))!;
-      assert.match(fileOf(written, arm), new RegExp(`${RED_RUN}[\\s\\S]*x\\.test\\.ts › breaks`));
-      const [create, ...more] = creates(asked);
-      assert.equal(more.length, 0);
-      assert.equal(titleOf(create), `CI flake: ${ID}`);
-      const mergedAt = asked.findIndex((a, i) => i > indexOf(asked, (b) => b.includes("--auto")) && ciCall(a)?.kind === "pull");
-      assert.ok(indexOf(asked, (a) => kindOf(a) === "create") > mergedAt, "filed once the merge is read back, never before it");
-    });
-
-    // The issue says the pull request merged on that green; the ledger row is the record either way.
-    test("a merge that fails files nothing, and the settle still names the flake", async () => {
-      const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], refuse: { auto: CLEAN_STATUS, merge: "GraphQL: Base branch was modified" } });
-      const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
-      assert.equal(out.action, "owner");
-      assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
-      assert.equal(creates(asked).length, 0);
-    });
-
-    test("a test already filed open is not filed again", async () => {
-      const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
-      await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
-      assert.equal(creates(asked).length, 0);
-    });
-
-    describe("the flake outlives the process that armed it", () => {
-      test("it is handed to the ledger before the arm, naming the head", async () => {
-        const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
-        const noted: { flake: any; asked: number }[] = [];
-        await runSettle({ ...PENDING, noteArmed: (flake: unknown) => noted.push({ flake, asked: fake.asked.length }) } as never, () => {}, 0, DEADLINE, io(fake.gh));
-        assert.equal(noted.length, 1);
-        assert.deepEqual([noted[0].flake.runId, noted[0].flake.tests, noted[0].flake.head], [RED_RUN, [ID], SHA]);
-        assert.ok(!fake.asked.slice(0, noted[0].asked).some((a) => a.includes("--auto")), "noted before the arm");
-      });
-
-      test("a restart that finds it merged files the issue from the ledger", async () => {
-        const { gh, asked } = rollupFake({ views: [at(GREEN, { state: "MERGED" })] });
-        const flake = { runId: RED_RUN, tests: [ID], step: "Test", head: SHA };
-        await runSettle({ ...PENDING, flake } as never, () => {}, 0, DEADLINE, io(gh));
-        assert.equal(creates(asked).length, 1);
-      });
-    });
-
-    // Promotion swaps `ready-for-human` for `ci-flake`, so a listing by either label misses it.
-    test("a test filed and since promoted is not filed again, whatever its labels", async () => {
-      const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
-      const gh = (args: string[], file = "gh") => (kindOf(args) === "list" && args.some((a) => /[?&]labels=/.test(a)) ? (fake.asked.push(args), "[[]]") : fake.gh(args, file));
-      await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
-      assert.equal(creates(fake.asked).length, 0);
-    });
-
-    // More than three reds one rerun cleared reads as a starved runner, not as that many flakes.
-    describe("a rerun that clears more than three tests", () => {
-      const P = "Typecheck and tests\tTest\t2026-10-12T19:07:30Z ";
-      const many = ["a", "b", "c", "d"].flatMap((x) => [`${P}test at tools/loop/tests/${x}.test.ts:9:5`, `${P}✖ breaks (2.1ms)`]).join("\n");
-      const TITLE = `CI flake: 4 tests in run ${RED_RUN}`;
-
-      test("files one issue for the run, and one gh listing before it", async () => {
-        const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: many });
-        await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
-        assert.deepEqual(creates(asked).map(titleOf), [TITLE]);
-        assert.equal(asked.filter((a) => kindOf(a) === "list").length, 1);
-      });
-
-      test("names at most twenty tests in the merge and the issue, both passed as files", async () => {
-        const lots = Array.from({ length: 25 }, (_, i) => [`${P}test at tools/loop/tests/t${i}.test.ts:9:5`, `${P}✖ breaks (2.1ms)`]).flat().join("\n");
-        const written: string[][] = [];
-        const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: lots });
-        await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
-        const arm = merges(asked).find((a) => a.includes("--auto"))!;
-        const [create] = creates(asked);
-        for (const args of [arm, create]) {
-          assert.ok(!args.includes("--body") && !args.some((a) => /^body=[^@]/.test(a)), `no inline body: ${args.join(" ")}`);
-          const text = fileOf(written, args);
-          assert.equal((text.match(/t\d+\.test\.ts › breaks/g) ?? []).length, 20, text);
-          assert.match(text, /and 5 more/);
-        }
-      });
-
-      test("and dedupes that issue by its title the same way", async () => {
-        const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: many, open: [TITLE] });
-        await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
-        assert.equal(creates(asked).length, 0);
-      });
-    });
-
-  });
-
-  test("a rerun GitHub refuses hands the red back as it is", async () => {
-    const said: string[] = [];
-    const { gh, asked } = rollupFake({ views: [RED], log: UNNAMED, refuse: { rerun: "HTTP 403: Resource not accessible" } });
-    const out = await runSettle(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh));
-    assert.equal(out.action, "hand-back");
-    assert.ok(asked.some(isComment), "the fix round still gets its CI-RED");
-    assert.ok(said.some((m) => /could not rerun/.test(m)));
+    assert.ok(asked.some(isComment), "the fix round gets its CI-RED");
+    assert.deepEqual(asked.filter((a) => a.some((x) => /rerun/.test(x))), []);
+    assert.deepEqual(merges(asked), []);
   });
 });
 
@@ -971,7 +805,7 @@ describe("runSettle posts CI-RED once per red head", () => {
       return gh(args, file);
     };
     await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh), run, mainFailures: undefined });
-    assert.deepEqual(calls.map((c) => kindOf(c.args) ?? ciCall(c.args)?.kind ?? c.args.slice(0, 2).join(" ")), ["rerun", "runs", "read", "comment"]);
+    assert.deepEqual(calls.map((c) => kindOf(c.args) ?? ciCall(c.args)?.kind ?? c.args.slice(0, 2).join(" ")), ["runs", "read", "comment"]);
     for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
   });
 });
@@ -1052,19 +886,8 @@ describe("ciRedBody", () => {
     assert.match(body, /^on main: none$/m);
   });
 
-  // queue.md lets a fix round call a failure its own only where a rerun failed it again.
-  test("says whether the red survived a rerun, from the run's attempt", () => {
-    const body = (attempt?: number) => ciRedBody({ sha: SHA, runUrl, failedStep: "Test", testIds: ["a.ts › b"], runId: 7, attempt });
-    assert.match(body(2), /^rerun: survived one$/m);
-    for (const attempt of [1, undefined]) assert.match(body(attempt), /^rerun: none$/m);
-  });
-
-  test("a hand-back's CI-RED carries the attempt it was read from", async () => {
-    const written: string[][] = [];
-    const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED] });
-    await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
-    const post = asked.find(isComment)!;
-    assert.match(String(written.find(([p]) => p === bodyFileOf(post))?.[1]), /^rerun: survived one$/m);
+  test("says nothing of a rerun: none is ever made", () => {
+    assert.doesNotMatch(ciRedBody({ sha: SHA, runUrl, failedStep: "Test", testIds: ["a.ts › b"], runId: 7 }), /^rerun:/m);
   });
 
   test("no failing file is dropped, however long the others are", () => {

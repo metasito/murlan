@@ -105,7 +105,7 @@ const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
  *   dirty: boolean, run?: object, pr?: number|null, files?: number}} ctx `run` only when this park
  *   is the session's own row; otherwise its cost is already recorded and the row carries none.
  */
-export function parkAndRecord({ tracker, events, record }, number, { run = null, pr = null, files = 0, flake = null, ...ctx }) {
+export function parkAndRecord({ tracker, events, record }, number, { run = null, pr = null, files = 0, ...ctx }) {
   events.bell();
   const failed = tracker.park(number, { ...ctx, error: run ? errorOf(run) : null })?.failed ?? [];
   if (failed.length) events.log(`#${number}'s park did not reach the tracker (${failed.join(", ")}) — applied again at the start of each pass`, "park");
@@ -117,7 +117,6 @@ export function parkAndRecord({ tracker, events, record }, number, { run = null,
     pr,
     files,
     parkFailed: failed.length ? failed : null,
-    flake,
   });
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
@@ -368,18 +367,6 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
     ticket: n,
     pr: action.pr,
     branch: after?.branch ?? facts.pushed.head,
-    // A process that armed on a rerun's green and then stopped leaves its flake here, not in memory.
-    flake: tally.armedFlake ?? null,
-    noteArmed: (flake) =>
-      record({
-        number: n,
-        outcome: "armed",
-        why: "auto-merge armed on a rerun's green",
-        run: { result: null, ms: 0, log: streamLog(n), phases: {} },
-        pr: action.pr,
-        head: flake.head,
-        flake: { runId: flake.runId, tests: flake.tests, step: flake.step },
-      }),
   });
   billed.ms += Date.now() - landFrom;
   // What the next round is judged against: a round that leaves this where it was cannot change
@@ -392,7 +379,7 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
   if (verdict.kind === "ask") verdict = decideAt("settled", { ...judging, posted: tracker.conflict(n, head) });
   const red = verdict.instead ?? verdict;
   if (red.kind === "retry" || red.kind === "rebase" || red.kind === "hold") {
-    record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : red.kind, why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), head, flake: settled.flake ?? null });
+    record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : red.kind, why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), head });
     if (verdict.kind === "park") return parkOver(verdict, owned.own, red.kind === "hold" ? streamLog(n) : run.log);
     // The worktree and the run come with it: the next round works in that worktree.
     if (verdict.kind === "retry" || verdict.kind === "rebase") {
@@ -401,14 +388,14 @@ export async function runOnce(ports, events, pinned = null, at = null, loop = { 
     return pass(verdict);
   }
   if (verdict.kind === "landed") {
-    record({ number: n, outcome: "landed", why: settled.reason, run: billed, pr: action.pr, merged: true, files: files(), head, flake: settled.flake ?? null });
+    record({ number: n, outcome: "landed", why: settled.reason, run: billed, pr: action.pr, merged: true, files: files(), head });
     teardown(after?.cwd ?? null, n);
     return pass(verdict);
   }
   // The failed CI log, when there is one: it is what the owner needs and the session's own stream
   // log is not.
   const log = (verdict.ciRed && workspace.ciLog(n)) || billed.log;
-  return parkHere(verdict, { ...worked(action.pr, log), flake: verdict.ciRed ? null : (settled.flake ?? null) });
+  return parkHere(verdict, worked(action.pr, log));
 }
 
 /**

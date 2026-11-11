@@ -86,7 +86,7 @@ export interface Verdict {
   /** The `gh` arguments that read the log `output` and `testIds` came from. */
   logArgs?: string[];
   progress?: CiProgress;
-  /** The red run's attempt: the supervisor reruns only an attempt 1, so a red is rerun once. */
+  /** The run's attempt: a rerun from outside the loop is a new reading of the same run id. */
   attempt?: number;
   reason: string;
 }

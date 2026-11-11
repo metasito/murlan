@@ -149,43 +149,6 @@ describe("runOnce", () => {
     assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["hold", "abc"]]);
   });
 
-  test("a landing a rerun won writes the flake on its row", async () => {
-    const rows: any[] = [];
-    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
-    await runOnce(io({ settle: async () => ({ action: "already-merged", reason: "merged", flake }), record: (x: unknown) => rows.push(x) }));
-    assert.deepEqual(rows.find((x) => x.outcome === "landed")?.flake, flake);
-  });
-
-  test("the settle is handed the flake the ledger armed with, and writes an armed row when it arms", async () => {
-    const flake = { runId: 7, tests: ["t"], step: "Test" };
-    const ledger: any[] = [{ n: 42, outcome: "armed", cost: 0, head: "h1", flake }];
-    const rows: any[] = [];
-    let handed: any = null;
-    await runOnce(
-      io(
-        {
-          settle: async (p: any) => {
-            handed = p.flake;
-            p.noteArmed({ ...flake, head: "h2" });
-            return { action: "already-merged", reason: "merged" };
-          },
-          record: (x: any) => (rows.push(x), ledger.push(rowOf(x))),
-        },
-        ledger,
-      ),
-    );
-    assert.deepEqual(handed, { ...flake, head: "h1" });
-    const armed = rows.find((x) => x.outcome === "armed");
-    assert.deepEqual([armed?.flake, armed?.head], [flake, "h2"]);
-  });
-
-  test("a rerun's green whose merge then failed still writes the flake, on the park row", async () => {
-    const rows: any[] = [];
-    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
-    await runOnce(io({ settle: async () => ({ action: "owner", reason: "the merge failed", flake }), record: (x: unknown) => rows.push(x) }));
-    assert.deepEqual(rows.find((x) => x.outcome === "parked")?.flake, flake);
-  });
-
   test("a session that pushed nothing parks the ticket", async () => {
     const parked: number[] = [];
     const r = await runOnce(io({ pushedPr: () => null, park: (n: number) => parked.push(n) }));
@@ -2146,7 +2109,7 @@ describe("a park that never reached the tracker", () => {
   });
 });
 
-describe("a stop no rule names parks; a red was rerun before it came back", () => {
+describe("a stop no rule names parks; a red is a fix round", () => {
   const RUN = 35661862241;
   const silent = async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "C", declared: null });
   const redAt1100 = async () => ({
@@ -2156,7 +2119,7 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     runId: RUN,
   });
 
-  test("#1100's report-upload red, back from its one rerun, is a fix round", async () => {
+  test("#1100's report-upload red is a fix round", async () => {
     const ledger: any[] = [];
     const r = await runOnce(io({ settle: redAt1100 }, ledger));
     assert.equal(r.outcome, "retry");

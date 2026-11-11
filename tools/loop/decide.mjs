@@ -338,7 +338,7 @@ const STEPS = {
   // `stuck` is the second bound: nothing a settle reads has changed for SETTLE.STUCK_MS. A run still going
   // and an armed head are exempt, since one long job or GitHub's merge queue changes nothing for minutes.
   landing({ landing, limits }) {
-    const { action, reason, head, armed, overdue, updates, last, ci, reran, stuck } = landing;
+    const { action, reason, head, armed, overdue, updates, last, ci, stuck } = landing;
     const { UPDATES, READ_RETRIES } = limits;
     const step = (act, why) => ({ kind: "settle", act, why });
     const verdict = (as, why) => ({ kind: "settled", action: as, why });
@@ -350,11 +350,7 @@ const STEPS = {
       if (transient && tries <= READ_RETRIES) return step("wait", `could not read CI — ${why}; asking again (${tries} of ${READ_RETRIES})`);
       return verdict("owner", `could not read CI — ${why}`);
     }
-    if (action === "hand-back" && ci.output && !ci.logUnread) {
-      // `attempt` rather than a note of our own: a restart, or the owner's own rerun, is counted too.
-      if (ci.runId && ci.attempt === 1 && reran !== head) return step("rerun", `CI is red at ${ci.failedStep ?? "an unnamed step"} — rerunning ${ci.runId} once`);
-      return verdict("hand-back", reason);
-    }
+    if (action === "hand-back" && ci.output && !ci.logUnread) return verdict("hand-back", reason);
     if (action === "update-branch") {
       return updates < UPDATES
         ? step("update-branch", "main moved — updating the branch and reading CI again")
