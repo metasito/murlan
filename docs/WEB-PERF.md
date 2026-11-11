@@ -42,12 +42,25 @@ It prints eight lines:
 [web-perf] throttled-load {...}
 ```
 
+and under `PERF_SKIA=1` two more, `idle-dpr3` and `turn-dpr3` (§ The Skia felt at 3x).
+
 `deal` records for three seconds from the click that starts the game, which is
 the burst worth measuring: every card in the hand animates in at once. `idle`
 records a settled table as the control — the difference between the two is the
 cost of the animation rather than the cost of the page.
 
 `idle-4x` is a settled table on the viewer's own turn, at 4x CPU: nothing runs but ambient motion.
+It and `turn-4x` play one seeded game: `dealCards(4, 0, rng(12).source)`, saved `fresh` with no
+opening (no 3♠ gate and no start reason, so it is not dealt the way a new round is: the viewer leads
+at once), and the viewer leading J♣ J♦, to which the bots answer Q Q, K K and A A, and the turn comes
+back to the viewer facing A♠ A♥. The spec
+replays those replies through `offlineBotMove` under eleven different random sources before it opens
+the page and fails unless all agree, and after the window it compares the table's hand counts with
+the engine's. Seeding `Math.random` would not do it: on a production build the particles draw from
+it every frame, so a bot's draw would depend on the frame rate being measured. The seed removes
+the game's variance and nothing else: three seeded runs of one build read `idle-4x` at 3.4, 12.9 and
+13.6fps at load 4.7 to 9.7, so the machine's load still moves the figure, and every line carries
+`load` to be read beside it.
 `round-4x` records one whole four-player round at 4x, from the click to the result screen — the
 deal, every throw, the bots' replies and the pauses between — so its `frames` are in the thousands
 and its `transformed` and `domNodes` are sampled on the result screen.
@@ -75,16 +88,20 @@ refuses to publish a number unless the hand's order actually changed.
 | `feltFps`, `particlesFps`, `handShadeFps` | `PERF_SKIA` only: frames a second the Skia felt's, the motes' and the hand shade's canvas drew in (`tests/e2e/helpers/renderCounters.ts`) |
 | `cardStylesPerS` | `PERF_SKIA` only: style writes a second inside cards' own views |
 | `felts` | `PERF_SKIA` only: which felt the trace saw draw through the window |
+| `feltKs` | `PERF_SKIA` only: the k the Skia felt reported drawing at through the window (`feltK` in `lib/e2eTrace.ts`) |
+| `load` | the one-minute load average when the line was printed (rule 51) |
 
-`turn-4x` is the 2.5 s after the viewer's own play on the `idle-4x` table: the throw, its landing,
-the lamp's glide to the next seat and the bots behind it.
+`turn-4x` is the 2.5 s after the viewer's seeded lead on the `idle-4x` table: the throw, its
+landing, the lamp's glide to the next seat and the bots behind it.
 
 `PERF_SKIA=1 npm run perf:web` records the Skia felt instead of the fallback. This browser draws
 WebGL on SwiftShader, where the table keeps its fallback felt (`drawsOnGpu`,
 `components/table/feltSkia.web.tsx`), and only an e2e build lets a spec ask for Skia anyway, so this
 mode runs against the e2e build, never `PERF_URL`, and fails a window whose trace saw any felt but
 Skia's. It records at device pixel ratio 1: at 3 SwiftShader draws the Skia table at about four
-frames a second, under every window's floor, and `drag` misses its floor of 20 frames even at 1. SwiftShader draws on the CPU: its frame times say how two builds compare on this machine,
+frames a second, under every window's floor, and `drag` misses its floor of 20 frames even at 1
+(§ The drag floor on SwiftShader). The one case at 3x is § The Skia felt at 3x. SwiftShader draws
+on the CPU: its frame times say how two builds compare on this machine,
 never what a phone's GPU pays. Only this mode installs the render counters and runs the trace,
 which patch every draw call, observe every style write and sample every frame: their cost is in its
 figures, and in no other mode's.
@@ -162,6 +179,34 @@ The same runs of its parent, where the felt redrew every frame its light moved a
 point: idle 43.1fps with the felt drawing 44 frames a second and the main thread busy 995 ms of
 every second.
 
+### The Skia felt at 3x
+
+`records the Skia felt past its cap` runs under `PERF_SKIA=1` alone, at device pixel ratio 3 and
+874x402, unthrottled, on the seeded table of `idle-4x`. The case reads the k the Skia felt itself
+draws at (`dpr · min(sx, sy)` in `components/table/feltCanvas.tsx`, reported to the trace as
+`feltK`) and fails unless it passes `FELT_K_CAP` (2.5, `components/table/feltShader.ts`); it
+confirms the lead left the hand before the turn window and checks the hand counts after. It prints
+`idle-dpr3`, the seeded table at rest, and `turn-dpr3`, the 2.5 s after the seeded lead. **SwiftShader rasterises on the CPU: these figures compare runs of
+this case with each other, never with a phone's GPU.** Three runs of `6f60f0fc` plus this case,
+2026-11-11, load average 9.3 to 11.7 on four cores:
+
+| | fps | frames | p95 | longTaskMs | feltFps | taskMsPerS |
+|---|---|---|---|---|---|---|
+| **idle-dpr3** | 1.4 / 1.8 / 1.5 | 15 / 15 / 16 | 1400 / 1033 / 1567 | 10182 / 7914 / 9976 | 2.4 / 2.2 / 1.7 | ~997 |
+| **turn-dpr3** | 1.7 / 0.9 / 0.8 | 13 / 11 / 10 | 1933 / 2600 / 2367 | 7252 / 11776 / 12671 | 1.5 / 1.4 / 1.3 | ~1000 |
+
+One later run, with the felt reporting `feltKs: [3]`, at load 2.9 to 4.5: `idle-dpr3` 2.8fps,
+`feltFps` 3.4; `turn-dpr3` 36.7fps, `feltFps` 1.4. The table above ran at more than twice that load.
+At device pixel ratio 2 the felt reports k 2 and the case fails.
+
+### The drag floor on SwiftShader
+
+`drag` holds `frames > 20` over a window of about 1.44 s, some 14fps. Under `PERF_SKIA=1` at
+DPR 1 it failed in all four runs on 2026-11-11: 9, 12, 11 and 18 frames (2.1 to 4.3fps), load
+average 6.5 to 11.2, the main thread busy about 1000 ms of every second. The fallback felt at DPR 3
+on the same e2e build passed in all three: 90, 88 and 68 frames, load 7.7 to 9.5. The floor is not
+moved here; whether Skia on SwiftShader gets a floor of its own is the owner's call.
+
 ### What counts as a regression
 
 The thresholds that block are the gate's (§ The gate). This recorder has none, deliberately.
@@ -210,7 +255,8 @@ The budgets and the spec are targets (rule 52), set by
 `docs/adr/0018-the-skia-table-is-held-to-counted-budgets.md`. A budget moves in a pull request of
 its own, touching nothing under `app/`, `components/` or `lib/`, and `@rotonmeta` owns both files.
 
-Not covered: DPR 3, where SwiftShader had not finished the rest window after six minutes.
+Not covered: DPR 3, where SwiftShader had not finished the rest window after six minutes. The
+recorder's 3x case (§ The Skia felt at 3x) prints figures there and holds no budget.
 
 ## Why this recorder does not gate CI
 
