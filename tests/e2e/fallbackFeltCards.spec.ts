@@ -5,6 +5,7 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
+import { shadowLayers } from "./helpers/cardContact";
 import { countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { OFFLINE_SAVE_KEY } from "../../lib/storageKeys";
 
@@ -30,21 +31,18 @@ interface Layer {
 }
 
 /** The cast `game-root` holds, and each hand card's inline and computed shadow, its computed layers parsed. */
-function readTable(page: Page) {
-  return page.evaluate(() => {
+async function readTable(page: Page) {
+  const { cast, cards } = await page.evaluate(() => {
     const root = document.querySelector<HTMLElement>('[data-testid="game-root"]')!;
     const rootStyle = getComputedStyle(root);
     const cast = { x: parseFloat(rootStyle.getPropertyValue("--card-cast-x")), y: parseFloat(rootStyle.getPropertyValue("--card-cast-y")) };
-    const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="hand-card-"] [data-testid="card-box"]')].map((box) => {
-      const computed = getComputedStyle(box).boxShadow;
-      const layers = computed === "none" ? [] : computed.split(/,(?![^(]*\))/).map((layer) => {
-        const [x, y] = layer.replace(/rgba?\([^)]*\)/, "").trim().split(/\s+/).map(parseFloat);
-        return { x, y };
-      });
-      return { inline: box.style.boxShadow, computed, layers };
-    });
+    const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="hand-card-"] [data-testid="card-box"]')].map((box) => ({
+      inline: box.style.boxShadow,
+      computed: getComputedStyle(box).boxShadow,
+    }));
     return { cast, cards };
   });
+  return { cast, cards: cards.map((c) => ({ ...c, layers: shadowLayers(c.computed).map(({ x, y }) => ({ x, y })) })) };
 }
 
 function expectCastAt(cards: { computed: string; layers: Layer[] }[], cast: Layer) {
