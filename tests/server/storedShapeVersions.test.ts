@@ -78,8 +78,8 @@ for (const name of Object.keys(DOCUMENTS) as Document[]) {
       recorded[name]?.[String(version)] === undefined
         ? `no ${name} shape is recorded for version ${version}: add "${name}" → "${version}": "${current[name]}" ` +
             `to tests/fixtures/storedShapes.json${golden}.`
-        : `the stored ${name} shape changed at version ${version}. Bump ${bump}, add the new hash under ` +
-            `"${name}" → "<new version>" in tests/fixtures/storedShapes.json${golden}.`
+        : `the stored ${name} shape changed at version ${version}. Bump ${bump}, then rerun ` +
+            `\`node --test tests/server/storedShapeVersions.test.ts\`, which prints the entry to add${golden}.`
     );
   });
 }

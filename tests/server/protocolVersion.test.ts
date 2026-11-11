@@ -38,12 +38,17 @@ test("shared/protocol.ts does not change without a PROTOCOL_VERSION bump", () =>
     protocolHash(source),
     "a renamed string literal must move the hash"
   );
+  const hash = protocolHash(source);
   assert.equal(
     recorded[String(PROTOCOL_VERSION)],
-    protocolHash(source),
-    `shared/protocol.ts changed at PROTOCOL_VERSION ${PROTOCOL_VERSION}. Bump it, record the new hash ` +
-      "under the new version in tests/fixtures/protocolHashes.json, and raise MIN_PROTOCOL_VERSION if " +
-      "bundles already in the field cannot read the change."
+    hash,
+    recorded[String(PROTOCOL_VERSION)] === undefined
+      ? `no protocol hash is recorded for PROTOCOL_VERSION ${PROTOCOL_VERSION}: add "${PROTOCOL_VERSION}": "${hash}" ` +
+          "to tests/fixtures/protocolHashes.json, and raise MIN_PROTOCOL_VERSION if bundles already in the " +
+          "field cannot read the change."
+      : `shared/protocol.ts changed at PROTOCOL_VERSION ${PROTOCOL_VERSION}. Bump PROTOCOL_VERSION in ` +
+          "shared/protocol.ts, then rerun `node --test tests/server/protocolVersion.test.ts`, which prints " +
+          "the entry to add."
   );
   assert.ok(MIN_PROTOCOL_VERSION >= 1 && MIN_PROTOCOL_VERSION <= PROTOCOL_VERSION);
 });

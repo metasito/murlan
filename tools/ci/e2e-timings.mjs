@@ -90,9 +90,25 @@ export function coverageGap(timings, files) {
         `measured ${missing.join(", ")}`;
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+/**
+ * The recorded timings with every spec the suite no longer holds dropped: the one change to the
+ * file that needs no run, so it is the one a PR deleting or renaming a spec can make locally.
+ *
+ * @param {Record<string, number>} timings
+ * @param {string[]} files
+ * @returns {Record<string, number>}
+ */
+export function withoutGone(timings, files) {
+  return Object.fromEntries(Object.entries(timings).filter(([file]) => files.includes(file)));
+}
+
+if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "--prune") {
+  const kept = withoutGone(JSON.parse(readFileSync(TIMINGS, "utf8")), specFilesIn());
+  writeFileSync(TIMINGS, `${JSON.stringify(kept, null, 2)}\n`);
+  process.stdout.write(`${Object.keys(kept).length} specs kept -> tests/e2e/timings.json\n`);
+} else if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [report] = process.argv.slice(2);
-  if (!report) throw new Error("usage: node tools/ci/e2e-timings.mjs <merged-report.json>");
+  if (!report) throw new Error("usage: node tools/ci/e2e-timings.mjs <merged-report.json> | --prune");
 
   const { seconds, unpriced } = timingsFromReport(JSON.parse(readFileSync(report, "utf8")));
   const files = specFilesIn();

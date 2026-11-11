@@ -156,7 +156,8 @@ test("every fixed real-time wait left is inventoried, at its exact count", () =>
     found,
     pinned,
     "Install a clock for server time, await the event or ack, or use nothingArrives for an absence. " +
-      "A wait that is about real time itself is listed here with its reason; a removed one lowers its entry. " +
+      "A wait that is about real time itself is listed in INVENTORY in tests/tooling/integrationSleepInventory.test.ts " +
+      "with its reason; a removed one lowers its entry to the count found below. " +
       `Found: ${JSON.stringify([...counts].map(([file, lines]) => `${file}: ${lines.join(", ")}`))}`
   );
 });
