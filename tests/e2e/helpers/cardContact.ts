@@ -40,36 +40,50 @@ export function isContact(css: string, s: number, kind: CardKind): boolean {
   );
 }
 
-export type CardViewShadows = { kind: CardKind; box: string; shadows: string[] };
+export type ViewCard = { key: string; kind: CardKind; fan: boolean; contacts: number };
 
-/** Each card under `scope`: its kind, its `card-box`'s `box-shadow`, and every non-`none` one on its views, with the felt's scale. */
-export function cardViewShadows(page: Page, scope: string): Promise<{ s: number; cards: CardViewShadows[] }> {
-  return page.evaluate((scope) => {
+/**
+ * Every view under `scope`, its roots included, read once: each card box with the contacts its own siblings
+ * cast, and every other `box-shadow` in the scope. A contact's length is the felt's scale alone, whatever the
+ * card's size or transform: a computed `box-shadow` is the view's own, before its transform scales it.
+ */
+export async function cardViewShadows(page: Page, scope: string): Promise<{ s: number; cards: ViewCard[]; others: string[] }> {
+  const read = await page.evaluate((scope) => {
     const felt = (globalThis as unknown as { murlanCardFelt: () => { s: number } }).murlanCardFelt();
-    const boxes = [...document.querySelectorAll(scope)].flatMap((r) => [
-      ...(r.matches('[data-testid="card-box"], [data-testid="card-box-back"]') ? [r] : []),
-      ...r.querySelectorAll('[data-testid="card-box"], [data-testid="card-box-back"]'),
-    ]);
-    const cards = new Map<Element, Element>();
-    for (const box of boxes) cards.set(box.parentElement!, box);
+    const views = [...new Set([...document.querySelectorAll(scope)].flatMap((r) => [r, ...r.querySelectorAll("*")]))];
+    const boxes = views.filter((v) => v.matches('[data-testid="card-box"], [data-testid="card-box-back"]'));
+    const cardOf = new Map<Element, number>();
+    boxes.forEach((box, i) => {
+      for (const sibling of box.parentElement!.children) if (sibling !== box) cardOf.set(sibling, i);
+    });
     return {
       s: felt.s,
-      cards: [...cards].map(([root, box]) => ({
+      cards: boxes.map((box) => ({
+        key: box.closest('[id^="card-"]')?.id.slice("card-".length) ?? box.closest('[data-testid^="hand-card-"]')?.getAttribute("data-testid")?.replace("hand-card-", "hand:") ?? "",
         kind: box.getAttribute("data-testid") === "card-box-back" ? ("back" as const) : ("face" as const),
-        box: getComputedStyle(box).boxShadow,
-        shadows: [root, ...root.querySelectorAll("*")].map((v) => getComputedStyle(v).boxShadow).filter((s) => s !== "none"),
+        fan: box.closest('[id^="card-fan:"]') !== null,
       })),
+      shadows: views.map((v) => ({ css: getComputedStyle(v).boxShadow, card: cardOf.get(v) ?? -1 })).filter((v) => v.css !== "none"),
     };
   }, scope);
+  const contacts = read.cards.map(() => 0);
+  const others: string[] = [];
+  for (const { css, card } of read.shadows) {
+    if (card >= 0 && isContact(css, read.s, read.cards[card].kind)) contacts[card] += 1;
+    else others.push(css);
+  }
+  return { s: read.s, cards: read.cards.map((c, i) => ({ ...c, contacts: contacts[i] })), others };
 }
 
-/** How many of a card's shadows are its contact, and which are anything else: the card's box, which clips to its corners, casts none of its own. */
-export function contactsOf(card: CardViewShadows, s: number): { contacts: number; others: string[] } {
-  const own = card.box === "none" ? [] : [card.box];
-  const rest = [...card.shadows];
-  if (own.length) rest.splice(rest.indexOf(card.box), 1);
-  const others = [...own, ...rest.filter((css) => !isContact(css, s, card.kind))];
-  return { contacts: card.shadows.length - others.length, others };
+/** The paths the felt has built, and each path's member cards, from its per-cluster build counter. */
+export async function feltBuilt(page: Page): Promise<Record<string, string[]>> {
+  const clusters = await page.evaluate(() => Object.keys((globalThis as { murlanShadowClusterBuilds?: Record<string, number> }).murlanShadowClusterBuilds ?? {}));
+  const built: Record<string, string[]> = {};
+  for (const cluster of clusters) {
+    const [path, members] = cluster.split("|");
+    built[path] = [...(built[path] ?? []), ...members.split(",").filter(Boolean)];
+  }
+  return built;
 }
 
 /** Whether the hand-shade canvas, rather than each card's own view, draws the cards' contact. */

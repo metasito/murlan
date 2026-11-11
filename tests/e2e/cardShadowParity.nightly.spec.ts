@@ -8,7 +8,7 @@ import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
 import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { cardViewShadows, contactsOf, SHADE_CANVAS } from "./helpers/cardContact";
+import { cardViewShadows, feltBuilt, SHADE_CANVAS, type ViewCard } from "./helpers/cardContact";
 import { feltPixels, rgbaOf, skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -106,9 +106,6 @@ test("the felt's shadow round the pile is the mockup's, and no card view casts m
     return { shadow: to.shadow - from.shadow, glow: to.glow - from.glow };
   };
   const still = { shadow: 0, glow: 0 };
-  const builtPaths = await page.evaluate(() => [...new Set(Object.keys((globalThis as { murlanShadowClusterBuilds?: Record<string, number> }).murlanShadowClusterBuilds ?? {}).map((cluster) => cluster.split("|")[0]))].sort());
-  expect(builtPaths, "the felt built the cast and the seat fans' contact for the seeded table").toEqual(expect.arrayContaining(["cast", "fan"]));
-  expect(builtPaths.filter((path) => !(SHADOW_PATHS as readonly string[]).includes(path)), "a shadow path the felt does not have").toEqual([]);
   expect(await rebuiltOverASecond(), "shadow paths and glow rebuilt over a second at rest").toEqual(still);
   const resting = await builds();
   const held = page.locator('[data-testid^="hand-card-"]').filter({ visible: true }).last();
@@ -118,17 +115,22 @@ test("the felt's shadow round the pile is the mockup's, and no card view casts m
   await expect.poll(rebuiltOverASecond, { message: "shadow paths and glow rebuilt over a second once the cards rest again" }).toEqual(still);
 
   const table = await cardViewShadows(page, '[id^="card-"], [data-testid^="hand-card-"]');
-  const pileCards = await cardViewShadows(page, '[data-testid="pile-card"]');
-  expect(table.cards.length).toBeGreaterThan(0);
-  expect(pileCards.cards.length).toBeGreaterThan(0);
-  if ((await page.locator(SHADE_CANVAS).count()) > 0) {
-    expect(table.cards.flatMap((c) => c.shadows), "card views' own shadows while the hand-shade canvas draws the contacts").toEqual([]);
-  } else {
-    const read = table.cards.map((c) => contactsOf(c, table.s));
-    expect(read.flatMap((c) => c.others), "card views' shadows and glows beyond a contact").toEqual([]);
-    expect(read.filter((c) => c.contacts > 1).length, "cards casting more than one contact").toBe(0);
-    expect(pileCards.cards.map((c) => contactsOf(c, pileCards.s).contacts), "each pile card's contacts").toEqual(pileCards.cards.map(() => 1));
-  }
+  const kindOf = (c: ViewCard) => (c.fan ? "fan" : c.kind);
+  expect(table.cards.filter((c) => c.key.startsWith("pile:")).length, "cards on the pile").toBeGreaterThan(0);
+  expect(table.others, `platform shadows and glows among the views of the table's ${table.cards.length} cards`).toEqual([]);
+  const shadeCanvas = (await page.locator(SHADE_CANVAS).count()) > 0;
+  const viewContacts = (c: ViewCard) => (shadeCanvas || c.fan ? 0 : 1);
+  expect(
+    Object.fromEntries(table.cards.map((c) => [`${kindOf(c)} ${c.key}`, c.contacts])),
+    shadeCanvas ? "card views' own contacts while the hand-shade canvas draws them" : "each card's own contact, a seat fan's drawn by the felt"
+  ).toEqual(Object.fromEntries(table.cards.map((c) => [`${kindOf(c)} ${c.key}`, viewContacts(c)])));
+  const feltDraws = new Set(["cast", ...table.cards.filter((c) => viewContacts(c) === 0).map(kindOf)]);
+  const built = await feltBuilt(page);
+  expect(Object.keys(built).sort(), "the shadow paths the felt built for the seeded table").toEqual(SHADOW_PATHS.filter((path) => feltDraws.has(path)).sort());
+  expect(
+    table.cards.filter((c) => viewContacts(c) === 0 && !built[kindOf(c)]?.includes(c.key)).map((c) => `${kindOf(c)} ${c.key}`),
+    "cards whose contact neither their view nor the felt's path of their kind draws"
+  ).toEqual([]);
 
   const [rects, felt, anchor] = await page.evaluate(() => {
     const e2e = globalThis as unknown as { murlanCardRects: () => CardRects; murlanCardFelt: () => Felt; murlanCardPile: () => Point };
@@ -229,7 +231,7 @@ test("the felt's shadow round the pile is the mockup's, and no card view casts m
   expect(Math.max(Math.abs(best.dx), Math.abs(best.dy)), "the shift that best lays the app's shadow on the mockup's, in points").toBeLessThanOrEqual(SHIFT_GATE);
 });
 
-test("before Skia has drawn, a card view keeps its own shadow, and drops it once Skia has",async ({ browser, baseURL }) => {
+test("before Skia has drawn, a card view keeps its own shadow, and drops it once Skia has", async ({ browser, baseURL }) => {
   test.setTimeout(5 * 60_000);
   const page = await (await sideContext(browser, baseURL)).newPage();
   let release = () => {};
