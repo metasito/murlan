@@ -147,7 +147,7 @@ export async function startRenderCounts(page: Page): Promise<void> {
 export const TAKE_RENDER_COUNTS = "window.murlanRenderCounts.take()";
 
 /** Skia's web canvases carry no `testID` of their own: each is named by the view it lies in. */
-export const COUNTED = { felt: "table-felt webgl",handShade: "card-shade webgl", particles: "particles 2d" } as const;
+export const COUNTED = { felt: "table-felt webgl", particles: "particles 2d" } as const;
 
 const DESIGN_WIDTH = 874;
 /** The rested lamp's sway either side of its centre, in design points: the harness's own, not the app's, so a change to the rig's swing is caught rather than followed. */

@@ -115,6 +115,3 @@ export async function feltHolds(page: Page, settle: () => Promise<unknown>, draw
   if (unbuilt.length) throw new Error(`the felt rebuilt no ${unbuilt.join(", ")} across a resize, so what it holds is unread (built: ${JSON.stringify(held)})`);
   return held;
 }
-
-/** Whether the hand-shade canvas, rather than each card's own view, draws the cards' contact. */
-export const SHADE_CANVAS = '[data-testid="card-shade"] canvas';

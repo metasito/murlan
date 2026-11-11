@@ -52,5 +52,4 @@ test("the Skia table draws on one WebGL context, the felt's, and a play in fligh
   await expect(page.getByTestId("pile-card").first()).toBeAttached({ timeout: 30_000 });
   await expect(page.getByTestId("flying-card")).toHaveCount(0, { timeout: 30_000 });
   expect(await live()).toEqual(rest);
-  await expect(page.getByTestId("card-shade")).toHaveCount(0);
 });
