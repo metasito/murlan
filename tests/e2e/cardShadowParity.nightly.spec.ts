@@ -1,6 +1,6 @@
 // tests/e2e/cardShadowParity.nightly.spec.ts — the felt draws a card's shadow as the Lantern Table's `.card`
-// would for the same card under the same light, and no card view keeps one of its own once Skia has
-// drawn (#1259 plan 4, task 12). The mockup's own shadow rules carry the owner's ruling of 2026-11-03 (#1966):
+// would for the same card under the same light, and no card view keeps more than its contact once Skia
+// has drawn (#1259 plan 4, task 12; #1988 item 8). The mockup's own shadow rules carry the owner's ruling of 2026-11-03 (#1966):
 // a thin contact, a tight cast. The same cards are laid on the mockup's stage, its `--shx`/`--shy`
 // set from the app's lamp; each side's shadow is what turning it off gives back.
 import type { Page } from "@playwright/test";
@@ -8,6 +8,7 @@ import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
 import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
+import { cardViewShadows, isContact } from "./helpers/cardContact";
 import { feltPixels, rgbaOf, skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -83,7 +84,7 @@ async function appShadows(page: Page) {
   return { on, off };
 }
 
-test("the felt's shadow round the pile is the mockup's, and no card view carries one", async ({ browser, baseURL }, info) => {
+test("the felt's shadow round the pile is the mockup's, and no card view casts more than its contact", async ({ browser, baseURL }, info) => {
   test.setTimeout(5 * 60_000);
   const page = await (await sideContext(browser, baseURL)).newPage();
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -114,13 +115,15 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   await held.click();
   await expect.poll(rebuiltOverASecond, { message: "shadow paths and glow rebuilt over a second once the cards rest again" }).toEqual(still);
 
-  const shadowed = await page.evaluate(() => {
-    const scopes = document.querySelectorAll('[id^="card-"], [data-testid^="hand-card-"]');
-    const views = new Set([...scopes].flatMap((r) => [r, ...r.querySelectorAll("*")]));
-    return { scopes: scopes.length, views: views.size, cast: [...views].map((v) => getComputedStyle(v).boxShadow).filter((s) => s !== "none") };
-  });
-  expect(shadowed.scopes).toBeGreaterThan(0);
-  expect(shadowed.cast, `platform shadows and glows among the ${shadowed.views} views of the table's cards`).toEqual([]);
+  const shadowed = await cardViewShadows(page, '[id^="card-"], [data-testid^="hand-card-"]');
+  expect(shadowed.views).toBeGreaterThan(0);
+  expect(
+    shadowed.shadows.filter((s) => !isContact(s, shadowed.s)),
+    `shadows and glows beyond a contact among the ${shadowed.views} views of the table's cards`
+  ).toEqual([]);
+  if ((await page.getByTestId("card-shade").count()) === 0) {
+    expect(shadowed.shadows.length, "no card view casts its contact, and no hand-shade canvas draws it").toBeGreaterThan(0);
+  }
 
   const [rects, felt, anchor] = await page.evaluate(() => {
     const e2e = globalThis as unknown as { murlanCardRects: () => CardRects; murlanCardFelt: () => Felt; murlanCardPile: () => Point };
@@ -221,7 +224,7 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   expect(Math.max(Math.abs(best.dx), Math.abs(best.dy)), "the shift that best lays the app's shadow on the mockup's, in points").toBeLessThanOrEqual(SHIFT_GATE);
 });
 
-test("before Skia has drawn, a card view keeps its own shadow, and drops it once Skia has", async ({ browser, baseURL }) => {
+test("before Skia has drawn, a card view keeps its own shadow, and drops all but its contact once Skia has", async ({ browser, baseURL }) => {
   test.setTimeout(5 * 60_000);
   const page = await (await sideContext(browser, baseURL)).newPage();
   let release = () => {};
@@ -234,8 +237,15 @@ test("before Skia has drawn, a card view keeps its own shadow, and drops it once
   await openCaptureState(page, baseURL!, PILE_STATE);
   const shadow = () => page.locator('[data-testid="card-box"]').first().evaluate((n) => getComputedStyle(n).boxShadow);
   await expect.poll(shadow).not.toBe("none");
+  const before = await shadow();
   release();
   await untilSkiaFelt(page);
-  await expect.poll(shadow).toBe("none");
+  const s = await page.evaluate(() => (globalThis as unknown as { murlanCardFelt: () => { s: number } }).murlanCardFelt().s);
+  expect(isContact(before, s), "before Skia the card's view casts no more than a contact").toBe(false);
+  const dropped = async () => {
+    const now = await shadow();
+    return now === "none" || isContact(now, s);
+  };
+  await expect.poll(dropped, { message: "the card's own cast, still on its view once Skia drew" }).toBe(true);
   await page.context().close();
 });
