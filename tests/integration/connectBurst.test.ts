@@ -5,17 +5,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
-import { connectSocket, waitFor } from "../helpers/client.ts";
+import { connectSocket, waitForWhere } from "../helpers/client.ts";
 
 test("a push read in the same burst as the connect ack reaches a waiter attached once the connect resolves", async () => {
   const http = createServer();
   const io = new Server(http);
   io.on("connection", (socket) => {
-    socket.emit("before-busy", 1);
+    socket.emit("friend:online_list", { onlineIds: ["first"] });
     // The ack is already written; this holds the shared loop so the client reads it with the push.
     const until = Date.now() + 30;
     while (Date.now() < until);
-    socket.emit("pushed", 2);
+    socket.emit("friend:online_list", { onlineIds: ["second"] });
   });
   await new Promise<void>((resolve) => http.listen(0, resolve));
   const url = `http://127.0.0.1:${(http.address() as { port: number }).port}`;
@@ -23,8 +23,9 @@ test("a push read in the same burst as the connect ack reaches a waiter attached
     for (let i = 0; i < 5; i++) {
       const socket = await connectSocket(url, {});
       try {
-        const got = await Promise.all([waitFor(socket, "before-busy", 2_000), waitFor(socket, "pushed", 2_000)]);
-        assert.deepEqual(got, [1, 2]);
+        const pushed = (id: string) => waitForWhere(socket, "friend:online_list", (l) => l.onlineIds[0] === id, 2_000);
+        const got = await Promise.all([pushed("first"), pushed("second")]);
+        assert.deepEqual(got.map((l) => l.onlineIds[0]), ["first", "second"]);
       } finally {
         socket.close();
       }
