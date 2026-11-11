@@ -24,8 +24,6 @@ const PLAY_CONTROL = SETTLE * 2;
 const AFTER_CONTROL = AFTER_MOVE - PLAY_CONTROL;
 /** The lamp's glide to the next seat moves its light more than half a point a frame for about this long. */
 const GLIDE = 80;
-/** With motion on, the lamp rig's frame callback still steps the sway into the trace's lamp (#1988 item 7); no other may run at rest. */
-const MOTION_CALLBACKS = 1;
 
 const { felt: FELT, handShade: HAND_SHADE, particles: PARTICLES } = COUNTED;
 
@@ -74,7 +72,6 @@ const table = (page: Page) =>
 /** `lean` reads end B's picture back as well: once a spec, for a second readback of that canvas warns, and a warning fails the test. */
 async function expectAtRest(page: Page, info: TestInfo, state: string, motion: boolean, length: number, lean = false): Promise<void> {
   await take(page);
-  const traced = await page.evaluate<number>("window.murlanTrace.frames.length");
   const airBefore = await page.evaluate<Air>(AIR);
   const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
   let at = 0;
@@ -84,7 +81,6 @@ async function expectAtRest(page: Page, info: TestInfo, state: string, motion: b
     sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
   }
   const counts = await take(page);
-  const clocks = await page.evaluate<(number | null)[]>(`window.murlanTrace.frames.slice(${traced}).map((f) => f.lamp?.clock ?? null)`);
   const airAfter = await page.evaluate<Air>(AIR);
   const picture = lean ? await page.evaluate<EndBLean | null>(END_B_LEAN) : null;
   const seen = {
@@ -95,23 +91,16 @@ async function expectAtRest(page: Page, info: TestInfo, state: string, motion: b
     loopCallers: Object.keys(counts.loops).length,
     frameCallbacks: counts.maxFrameCallbacks,
     frameCallbacksAtEnd: counts.frameCallbacks,
-    tracedFrames: clocks.length,
-    lampStepped: clocks.filter((c, i) => i > 0 && c !== null && clocks[i - 1] !== null && c > clocks[i - 1]!).length,
   };
   const label = `${state}, frames 0–${length} at rest`;
   info.annotations.push({ type: label, description: JSON.stringify(seen) });
   console.log(`${label}: ${JSON.stringify(seen)}`);
-  const callbacks = motion ? MOTION_CALLBACKS : 0;
   expect(seen.frames, `${label}: frames the page ran`).toBe(length);
   expect(seen.draws, `${label}: canvas draws`).toBe(0);
   expect(seen.readPixels, `${label}: pixels read back from a canvas`).toBe(0);
   expect(seen.styles, `${label}: style writes under the table`).toBe(0);
-  expect(seen.frameCallbacks, `${label}: the most Reanimated frame callbacks active in a frame`).toBeLessThanOrEqual(callbacks);
-  expect(seen.loopCallers, `${label}: requestAnimationFrame callers, of which Reanimated's runs only for a frame callback`).toBeLessThanOrEqual(seen.frameCallbacks > 0 ? 1 : 0);
-  if (seen.frameCallbacks > 0) {
-    expect(seen.tracedFrames, `${label}: frames the trace recorded`).toBeGreaterThanOrEqual(length);
-    expect(seen.lampStepped, `${label}: the one frame callback allowed is the lamp rig's, so its clock advanced in every frame`).toBe(seen.tracedFrames - 1);
-  }
+  expect(seen.frameCallbacks, `${label}: the most Reanimated frame callbacks active in a frame`).toBe(0);
+  expect(seen.loopCallers, `${label}: requestAnimationFrame callers`).toBe(0);
   if (!motion) return;
   expect(airMoved(airBefore, airAfter), `${label}: the motes did not show as views whose transforms moved`).toBe(true);
   if (lean) expect(swayShows(sway, picture), `${label}: the sway did not show as an end-B layer whose animation runs, whose opacity moved and whose picture leans`).toBe(true);
