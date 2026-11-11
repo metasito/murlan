@@ -146,35 +146,75 @@ type CompilerEvent = {
   kind: string;
   fnLoc?: { start?: { line?: number } };
   detail?: { reason?: string; description?: string };
+  reason?: string;
+  data?: string;
 };
+
+type Compiled = { bailouts: CompilerEvent[]; memoized: string[] };
 
 const compiledCache = cacheFor("murlan-react-compiler", [fileURLToPath(import.meta.url)]);
 
-/** One file's bailouts, from the cache when these exact bytes compiled under today's key before. */
-function compile(rel: string, source?: string): CompilerEvent[] {
+/** One file's bailouts and memoized functions, from the cache when these exact bytes compiled under today's key before. */
+function compiled(rel: string, source?: string): Compiled {
   const text = source ?? readFileSync(path.join(repoRoot, rel), "utf8");
   const entry = path.join(compiledCache, `${createHash("sha256").update(`${rel}\0${text}`).digest("hex")}.json`);
   try {
-    return JSON.parse(readFileSync(entry, "utf8")) as CompilerEvent[];
+    return JSON.parse(readFileSync(entry, "utf8")) as Compiled;
   } catch {
-    const events = compileUncached(rel, text);
+    const result = compileUncached(rel, text);
     // Another key's run prunes this directory, so a write that loses that race is just not kept.
     const partial = `${entry}.${process.pid}`;
     try {
-      writeFileSync(partial, JSON.stringify(events));
+      writeFileSync(partial, JSON.stringify(result));
       renameSync(partial, entry);
     } catch {}
-    return events;
+    return result;
   }
 }
 
-function compileUncached(rel: string, source: string): CompilerEvent[] {
+const compile = (rel: string, source?: string) => compiled(rel, source).bailouts;
+
+// A `CompileSkip` is a `"use no memo"` on the function; one at the top of the file logs
+// `CompileSuccess` and then discards the output, which only the emitted code shows.
+const BAILOUTS = new Set(["CompileError", "CompileSkip", "PipelineError"]);
+
+type Node = { type?: string; [key: string]: unknown };
+
+/** The functions whose emitted body opens on the compiler's cache, `const $ = _c(n)`. */
+function memoizedIn(program: Node): string[] {
+  const runtime = (program.body as Node[])
+    .filter((n) => n.type === "ImportDeclaration" && (n.source as Node).value === "react/compiler-runtime")
+    .flatMap((n) => (n.specifiers as Node[]).map((s) => (s.local as Node).name as string));
+  const names: string[] = [];
+  const opensOnCache = (fn: Node) => {
+    const first = ((fn.body as Node).body as Node[] | undefined)?.[0];
+    const init = first?.type === "VariableDeclaration" ? ((first.declarations as Node[])[0].init as Node | null) : null;
+    return init?.type === "CallExpression" && runtime.includes((init.callee as Node).name as string);
+  };
+  const walk = (node: unknown, name: string | null) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) return node.forEach((n) => walk(n, name));
+    const n = node as Node;
+    const own = n.type === "FunctionDeclaration" ? ((n.id as Node | null)?.name as string) : name;
+    if (/Function/.test(n.type ?? "") && own && opensOnCache(n)) names.push(own);
+    for (const [key, child] of Object.entries(n)) {
+      if (key === "loc" || key === "leadingComments" || key === "trailingComments") continue;
+      walk(child, n.type === "VariableDeclarator" ? ((n.id as Node).name as string) : n.type === "CallExpression" ? name : null);
+    }
+  };
+  walk(program, null);
+  return names;
+}
+
+function compileUncached(rel: string, source: string): Compiled {
   const events: CompilerEvent[] = [];
   const filename = path.join(repoRoot, rel);
-  transformSync(source, {
+  const { ast } = transformSync(source, {
     filename,
     babelrc: false,
     configFile: false,
+    ast: true,
+    code: false,
     parserOpts: { plugins: ["jsx", "typescript"] },
     plugins: [
       [
@@ -185,13 +225,14 @@ function compileUncached(rel: string, source: string): CompilerEvent[] {
   });
   // Read off here rather than stored whole: `detail` is a class whose `reason` may be a getter,
   // which JSON would drop on the way into the cache.
-  return events
-    .filter((e) => e.kind === "CompileError")
+  const bailouts = events
+    .filter((e) => BAILOUTS.has(e.kind))
     .map((e) => ({
       kind: e.kind,
       fnLoc: { start: { line: e.fnLoc?.start?.line } },
-      detail: { reason: e.detail?.reason, description: e.detail?.description },
+      detail: { reason: e.detail?.reason ?? e.reason, description: e.detail?.description ?? e.data },
     }));
+  return { bailouts, memoized: memoizedIn(ast.program) };
 }
 
 test("every screen and component compiles with no bailouts", { timeout: 240_000 }, () => {
@@ -206,6 +247,61 @@ test("every screen and component compiles with no bailouts", { timeout: 240_000 
     "the React Compiler silently skipped these. In a production build they ship unmemoized and " +
       "the whole subtree is rebuilt on every render. Compile the file on its own with " +
       "`node scripts/react-compiler-probe.mjs <file>` to see why"
+  );
+});
+
+/** The game screens and the table's main views, by the component each must ship memoized. */
+const TABLE = {
+  "app/game.tsx": ["GameScreen"],
+  "app/(online)/game.tsx": ["OnlineGameScreen"],
+  "components/GameTable.tsx": ["GameTable"],
+  "components/table/hand.tsx": ["StraightHand"],
+  "components/table/pile.tsx": ["PileLayer"],
+  "components/table/seats.tsx": ["OpponentSeat"],
+  "components/table/actions.tsx": ["GiocaButton", "PassaButton"],
+  "components/table/chrome.tsx": ["ControlRail"],
+  "components/table/deal.tsx": ["DealFlights"],
+} as const;
+
+function unmemoized(rel: string, names: readonly string[], source?: string): string[] {
+  const { memoized } = compiled(rel, source);
+  return names.filter((name) => !memoized.includes(name)).map((name) => `${rel} — ${name}`);
+}
+
+test("the game screens and the table's views ship memoized", { timeout: 240_000 }, () => {
+  for (const rel of Object.keys(TABLE)) {
+    assert.ok(COMPILED.includes(rel), `${rel} is not in COMPILED, so the bailout gate above never reads it`);
+  }
+  assert.deepEqual(
+    Object.entries(TABLE).flatMap(([rel, names]) => unmemoized(rel, names)),
+    [],
+    "the compiler's output for these does not open on its cache, so they render unmemoized and " +
+      "rebuild their subtree on every render. A renamed component is renamed here too"
+  );
+});
+
+const GAME_TABLE_BODY = /^\}: GameTableProps\) \{$/m;
+
+test("an opt-out or a bailout in GameTable is what the table gate refuses", () => {
+  const rel = "components/GameTable.tsx";
+  const { source, match } = anchored(rel, GAME_TABLE_BODY, "`}: GameTableProps) {` opening GameTable's body");
+  const at = match.index + match[0].length;
+  const inBody = (line: string) => `${source.slice(0, at)}\n  ${line}${source.slice(at)}`;
+  const optedOut = inBody(`"use no memo";`);
+  assert.deepEqual(unmemoized(rel, ["GameTable"], optedOut), [`${rel} — GameTable`]);
+  assert.ok(
+    compile(rel, optedOut).some((e) => e.kind === "CompileSkip"),
+    "a `\"use no memo\"` in GameTable is no longer reported by the gate over every file"
+  );
+  assert.deepEqual(
+    unmemoized(rel, ["GameTable"], `"use no memo";\n${source}`),
+    [`${rel} — GameTable`],
+    "a file-wide `\"use no memo\"` left GameTable reading as memoized, though its events report a success"
+  );
+  assert.deepEqual(
+    unmemoized(rel, ["GameTable"], inBody("(gameState as { probe?: number }).probe = 1;")),
+    [`${rel} — GameTable`],
+    "mutating a prop in GameTable no longer costs it its compilation"
   );
 });
 
