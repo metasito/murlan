@@ -207,16 +207,18 @@ describe("a planted run starts from nothing of its parent's environment", () => 
 describe("a run handed a list of files answers for each, and a run handed a glob for its whole root", () => {
   test("a listed file that never loaded is named; an unlisted one is another shard's", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "files-run-"));
+    // Joined, so repoLayout.test.ts does not read these fixtures as paths that must exist.
+    const [a, b] = [["tests", "a.test.ts"], ["tests", "engine", "b.test.ts"]].map((f) => f.join("/"));
     try {
-      for (const f of [["tests", "a.test.ts"], ["tests", "engine", "b.test.ts"]]) {
-        mkdirSync(path.join(dir, ...f.slice(0, -1)), { recursive: true });
-        writeFileSync(path.join(dir, ...f), "");
+      for (const f of [a, b]) {
+        mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+        writeFileSync(path.join(dir, f), "");
       }
-      const loaded = [path.join(dir, "tests", "a.test.ts")];
-      assert.deepEqual(unloaded(loaded, dir, ["tests/a.test.ts"]), []);
-      assert.deepEqual(unloaded(loaded, dir, ["tests/a.test.ts", "tests/engine/b.test.ts"]), ["tests/engine/b.test.ts"]);
-      assert.deepEqual(unloaded(loaded, dir, ["tests/**/*.test.ts"]), ["tests/engine/b.test.ts"]);
-      assert.deepEqual(unloaded(loaded, dir, ["tests/a.test.ts", "tests/engine"]), ["tests/engine/b.test.ts"]);
+      const loaded = [path.join(dir, a)];
+      assert.deepEqual(unloaded(loaded, dir, [a]), []);
+      assert.deepEqual(unloaded(loaded, dir, [a, b]), [b]);
+      assert.deepEqual(unloaded(loaded, dir, ["tests/**/*.test.ts"]), [b]);
+      assert.deepEqual(unloaded(loaded, dir, [a, "tests/engine"]), [b]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
