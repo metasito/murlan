@@ -12,7 +12,7 @@ import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayo
 import { aligned, type Align } from "./flexAlign.ts";
 import { drawnFanBounds } from "./fanGeometry.ts";
 import { sideNameInset } from "./table/legibilityRing.ts";
-import { pillAnchorFor, scorePillBox, type PillAnchor } from "./table/scorePillModel.ts";
+import { pillAnchorFor, scorePillBox, voteTop, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot, noticeBox, pileNoteBelowPile } from "./table/noticeModel.ts";
 import { computeTableFrame, SIDE_SEAT_GAP, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
 
@@ -35,8 +35,16 @@ export interface TableLayout {
   seatPoint(dir: FlyDirection): Delta;
   /** The float slot's top edge: `.floatchip`, above the hand row's floor. */
   floatTop: number;
+  /** The band a refused play's float stands in beside GIOCA: GIOCA's top as a distance from the window's bottom, and the table's side margins. */
+  floatBeside: { giocaTopFromBottom: number; left: number; right: number };
   /** Bottom edge of the chip row: the banner band's top, and the notification banner's in landscape. */
   chipsBottom: number;
+  /** The banner band's sides, a pad inside the table's, as distances from the window's edges; its top is `chipsBottom`. */
+  bannerBand: { left: number; right: number };
+  /** A vote's corner under the score pill: `right` from the window's right edge, `top` from its top, at rest and open. */
+  votes: { right: number; top: Record<"rest" | "open", number> };
+  /** The middle of the felt the table is drawn on, between the rail and the far margin and inside the surplus. */
+  tableCentre: Point;
   /** The scale the HUD's chips are drawn at: the table's, or less where the window is too narrow for the row. */
   chips: number;
   /** The chip row for pills drawn `widths` wide: the combo pill from the left, the score pill at rest on the right, and the turn chip between, a gap clear of both. */
@@ -94,6 +102,8 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const knob = physicalTouchTarget(scale);
   const chips = chipScale(scale, width);
   const pill = pillAnchorFor(frame, width, scale);
+  const chipsBottom = frame.tableTop + CHIP_H(scale) + frame.pad;
+  const gioca = { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn };
   const sideY = midTop + sideSlotHeight(scale) / 2;
   const anchors: Record<FlyDirection | "pile", Point> = {
     pile: { x, y: midTop + midH / 2 },
@@ -123,7 +133,11 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     anchors,
     seatPoint: (dir) => ({ dx: anchors[dir].x - anchors.pile.x, dy: anchors[dir].y - anchors.pile.y }),
     floatTop: tableFloor - frame.bottomPad - floatAboveFoot(scale),
-    chipsBottom: frame.tableTop + CHIP_H(scale) + frame.pad,
+    floatBeside: { giocaTopFromBottom: height - gioca.y, left: frame.tableLeft, right: frame.tableRight },
+    chipsBottom,
+    bannerBand: { left: frame.tableLeft + frame.pad, right: frame.tableRight + frame.pad },
+    votes: { right: width - pill.right, top: { rest: voteTop(pill, false, scale), open: voteTop(pill, true, scale) } },
+    tableCentre: { x: (frame.tableLeft + width - frame.tableRight) / 2, y: (frame.tableTop + height - frame.surplus) / 2 },
     chips,
     chipRow: (widths) => chipRow(frame, pill, widths),
     pileNote: pileNote(x, anchors.pile.y, scale, frame.fieldRoomW),
@@ -135,7 +149,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     handZone,
     buttons: {
       passa: { x: frame.tableLeft, y: btnY, w: btn, h: btn },
-      gioca: { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn },
+      gioca,
     },
     nameInset,
     badgeRoom,

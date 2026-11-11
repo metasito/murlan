@@ -26,7 +26,6 @@ import { linkNote } from "@/components/table/connectionNote";
 import type { MatchRating } from "@/components/table/matchBoard";
 import { provisionalLeft } from "@/lib/game/rating";
 import { vacatedOf } from "@/shared/protocol";
-import { tableLayout } from "@/components/tableLayout";
 import {
   FloatingReactions,
   ReactionPanel,
@@ -35,7 +34,6 @@ import {
 import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
-import { useOrientedWindow } from "@/lib/device/orientation";
 import { useTranslation } from "@/lib/i18n";
 import { useCatchUp } from "@/lib/useOwnLink";
 
@@ -50,7 +48,6 @@ const OVERLAY_LAYER_Z = Layer.overlay;
 
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
-  const { width, height } = useOrientedWindow();
   const { t, translateServerPayload } = useTranslation();
   const { user } = useAuth();
   const {
@@ -157,10 +154,6 @@ export default function OnlineGameScreen() {
 
   const myUserId = user?.id ?? "";
   const hasVotedToEndMatch = endMatchVoteState?.votes.includes(myUserId) ?? false;
-
-  // The tray opens beside the rail's own lower knob, which is where the
-  // trigger it belongs to lives.
-  const rail = tableLayout({ width, height, insets }).frame.rail;
 
   const toggleReactionPanel = () => {
     setShowReactions((v) => !v);
@@ -306,7 +299,7 @@ export default function OnlineGameScreen() {
             }
           : null
       }
-      overlays={(veiled) => (
+      overlays={(veiled, { rail }) => (
         <>
           {/* A <Modal> renders above the settings sheet rather than behind it,
               so the veil would take away the confirmation the sheet just
@@ -325,7 +318,7 @@ export default function OnlineGameScreen() {
 
             {showReactions && (
               <ReactionPanel
-                left={rail + Spacing.sm}
+                left={rail.width + Spacing.sm}
                 bottom={insets.bottom + Spacing.sm}
                 onSelect={(emoji) => {
                   uiFeedback("light");

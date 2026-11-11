@@ -43,13 +43,14 @@ const finished: GameState = state({
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
+  const { tableLayout } = require('@/components/tableLayout') as typeof import('@/components/tableLayout');
   return {
     GameTable: (props: {
       onQuit: () => void;
       matchActions?: { onHome: () => void };
       gameState: { roundOver: boolean };
       matchOver: boolean;
-      overlays?: (v: object) => React.ReactNode;
+      overlays?: (v: object, layout: import('@/components/tableLayout').TableLayout) => React.ReactNode;
     }) =>
       react.createElement(
         rn.View,
@@ -58,7 +59,7 @@ jest.mock('@/components/GameTable', () => {
         props.matchActions && props.gameState.roundOver && props.matchOver
           ? react.createElement(rn.Pressable, { testID: 'btn-home', onPress: props.matchActions.onHome })
           : null,
-        props.overlays ? props.overlays({}) : null
+        props.overlays ? props.overlays({}, tableLayout({ ...rn.Dimensions.get('window'), insets: { top: 0, bottom: 0, left: 0, right: 0 } })) : null
       ),
   };
 });
