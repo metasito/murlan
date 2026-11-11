@@ -18,7 +18,13 @@ import path from "node:path";
 import { ADOPTED, SHIPPED } from "../helpers/adoptedHookRules.ts";
 import { directives } from "../helpers/hookSuppression.ts";
 import { runBin } from "../../scripts/lib/proc.mjs";
-import { presetRequire, reactCompiler, reactCompilerOptions } from "../../scripts/reactCompilerOptions.mjs";
+import {
+  bailouts,
+  presetRequire,
+  reactCompiler,
+  reactCompilerOptions,
+  runtimeModule,
+} from "../../scripts/reactCompilerOptions.mjs";
 import { scanSources, sourcesUnder } from "../helpers/sourceScan.ts";
 import { cacheFor, sharedCheckout } from "../helpers/cacheDir.ts";
 
@@ -142,24 +148,18 @@ test(`only ${OPTIONS_OWNER} writes out a field of the compiler's options`, () =>
   );
 });
 
-type CompilerEvent = {
-  kind: string;
-  fnLoc?: { start?: { line?: number } };
-  detail?: { reason?: string; description?: string };
-  reason?: string;
-  data?: string;
-};
+type Bailout = { kind: string; line?: number; reason: string };
 
-type Compiled = { bailouts: CompilerEvent[]; memoized: string[] };
+type CompileResult = { bailouts: Bailout[]; memoized: string[] };
 
 const compiledCache = cacheFor("murlan-react-compiler", [fileURLToPath(import.meta.url)]);
 
-/** One file's bailouts and memoized functions, from the cache when these exact bytes compiled under today's key before. */
-function compiled(rel: string, source?: string): Compiled {
+/** One file's bailouts and, for a TABLE file, its memoized functions, from the cache when these exact bytes compiled under today's key before. */
+function compileResult(rel: string, source?: string): CompileResult {
   const text = source ?? readFileSync(path.join(repoRoot, rel), "utf8");
   const entry = path.join(compiledCache, `${createHash("sha256").update(`${rel}\0${text}`).digest("hex")}.json`);
   try {
-    return JSON.parse(readFileSync(entry, "utf8")) as Compiled;
+    return JSON.parse(readFileSync(entry, "utf8")) as CompileResult;
   } catch {
     const result = compileUncached(rel, text);
     // Another key's run prunes this directory, so a write that loses that race is just not kept.
@@ -172,18 +172,21 @@ function compiled(rel: string, source?: string): Compiled {
   }
 }
 
-const compile = (rel: string, source?: string) => compiled(rel, source).bailouts;
-
-// A `CompileSkip` is a `"use no memo"` on the function; one at the top of the file logs
-// `CompileSuccess` and then discards the output, which only the emitted code shows.
-const BAILOUTS = new Set(["CompileError", "CompileSkip", "PipelineError"]);
+const bailoutsIn = (rel: string, source?: string) => compileResult(rel, source).bailouts;
 
 type Node = { type?: string; [key: string]: unknown };
 
-/** The functions whose emitted body opens on the compiler's cache, `const $ = _c(n)`. */
+const NAME_CARRIERS = new Set([
+  "CallExpression",
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+  "ParenthesizedExpression",
+]);
+
 function memoizedIn(program: Node): string[] {
   const runtime = (program.body as Node[])
-    .filter((n) => n.type === "ImportDeclaration" && (n.source as Node).value === "react/compiler-runtime")
+    .filter((n) => n.type === "ImportDeclaration" && (n.source as Node).value === runtimeModule(COMPILER_OPTIONS))
     .flatMap((n) => (n.specifiers as Node[]).map((s) => (s.local as Node).name as string));
   const names: string[] = [];
   const opensOnCache = (fn: Node) => {
@@ -197,20 +200,21 @@ function memoizedIn(program: Node): string[] {
     const n = node as Node;
     const own = n.type === "FunctionDeclaration" ? ((n.id as Node | null)?.name as string) : name;
     if (/Function/.test(n.type ?? "") && own && opensOnCache(n)) names.push(own);
+    const passed =
+      n.type === "VariableDeclarator" ? ((n.id as Node).name as string) : NAME_CARRIERS.has(n.type ?? "") ? name : null;
     for (const [key, child] of Object.entries(n)) {
       if (key === "loc" || key === "leadingComments" || key === "trailingComments") continue;
-      walk(child, n.type === "VariableDeclarator" ? ((n.id as Node).name as string) : n.type === "CallExpression" ? name : null);
+      walk(child, passed);
     }
   };
   walk(program, null);
   return names;
 }
 
-function compileUncached(rel: string, source: string): Compiled {
-  const events: CompilerEvent[] = [];
-  const filename = path.join(repoRoot, rel);
+function compileUncached(rel: string, source: string): CompileResult {
+  const events: unknown[] = [];
   const { ast } = transformSync(source, {
-    filename,
+    filename: path.join(repoRoot, rel),
     babelrc: false,
     configFile: false,
     ast: true,
@@ -219,27 +223,31 @@ function compileUncached(rel: string, source: string): Compiled {
     plugins: [
       [
         reactCompiler.default ?? reactCompiler,
-        { ...COMPILER_OPTIONS, logger: { logEvent: (_f: string, e: CompilerEvent) => events.push(e) } },
+        { ...COMPILER_OPTIONS, logger: { logEvent: (_f: string, e: unknown) => events.push(e) } },
       ],
     ],
   });
-  // Read off here rather than stored whole: `detail` is a class whose `reason` may be a getter,
-  // which JSON would drop on the way into the cache.
-  const bailouts = events
-    .filter((e) => BAILOUTS.has(e.kind))
-    .map((e) => ({
-      kind: e.kind,
-      fnLoc: { start: { line: e.fnLoc?.start?.line } },
-      detail: { reason: e.detail?.reason ?? e.reason, description: e.detail?.description ?? e.data },
-    }));
-  return { bailouts, memoized: memoizedIn(ast.program) };
+  return {
+    bailouts: bailouts(events, ast.program, COMPILER_OPTIONS).map(({ kind, line, reason }: Bailout) => ({ kind, line, reason })),
+    memoized: rel in TABLE ? memoizedIn(ast.program) : [],
+  };
 }
+
+const TABLE: Record<string, readonly string[]> = {
+  "app/game.tsx": ["GameScreen"],
+  "app/(online)/game.tsx": ["OnlineGameScreen"],
+  "components/GameTable.tsx": ["GameTable"],
+  "components/table/hand.tsx": ["StraightHand"],
+  "components/table/pile.tsx": ["PileLayer"],
+  "components/table/seats.tsx": ["OpponentSeat"],
+  "components/table/actions.tsx": ["GiocaButton", "PassaButton"],
+  "components/table/chrome.tsx": ["ControlRail"],
+  "components/table/deal.tsx": ["DealFlights"],
+};
 
 test("every screen and component compiles with no bailouts", { timeout: 240_000 }, () => {
   const failures = COMPILED.flatMap((rel) =>
-    compile(rel).map(
-      (e) => `${rel}:${e.fnLoc?.start?.line} — ${e.detail?.reason ?? e.detail?.description}`
-    )
+    bailoutsIn(rel).map((e) => `${e.line == null ? rel : `${rel}:${e.line}`} — ${e.reason}`)
   );
   assert.deepEqual(
     failures,
@@ -250,58 +258,51 @@ test("every screen and component compiles with no bailouts", { timeout: 240_000 
   );
 });
 
-/** The game screens and the table's main views, by the component each must ship memoized. */
-const TABLE = {
-  "app/game.tsx": ["GameScreen"],
-  "app/(online)/game.tsx": ["OnlineGameScreen"],
-  "components/GameTable.tsx": ["GameTable"],
-  "components/table/hand.tsx": ["StraightHand"],
-  "components/table/pile.tsx": ["PileLayer"],
-  "components/table/seats.tsx": ["OpponentSeat"],
-  "components/table/actions.tsx": ["GiocaButton", "PassaButton"],
-  "components/table/chrome.tsx": ["ControlRail"],
-  "components/table/deal.tsx": ["DealFlights"],
-} as const;
+test("a file-wide opt-out is a bailout the gate reports", () => {
+  const rel = "context/GameContext.tsx";
+  const source = readFileSync(path.join(repoRoot, rel), "utf8");
+  assert.deepEqual(bailoutsIn(rel, source), [], `${rel} bails out already, so this proves nothing`);
+  assert.deepEqual(
+    bailoutsIn(rel, `"use no memo";\n${source}`).map((e) => e.kind),
+    ["FileOptOut"],
+    `a \`"use no memo"\` at the top of ${rel} compiled every function and shipped none of them, ` +
+      "and the gate over every file did not say so"
+  );
+});
 
-function unmemoized(rel: string, names: readonly string[], source?: string): string[] {
-  const { memoized } = compiled(rel, source);
-  return names.filter((name) => !memoized.includes(name)).map((name) => `${rel} — ${name}`);
+function unmemoized(rel: string, source?: string): string[] {
+  const { memoized } = compileResult(rel, source);
+  return TABLE[rel].filter((name) => !memoized.includes(name)).map((name) => `${rel} — ${name}`);
 }
 
 test("the game screens and the table's views ship memoized", { timeout: 240_000 }, () => {
-  for (const rel of Object.keys(TABLE)) {
-    assert.ok(COMPILED.includes(rel), `${rel} is not in COMPILED, so the bailout gate above never reads it`);
-  }
   assert.deepEqual(
-    Object.entries(TABLE).flatMap(([rel, names]) => unmemoized(rel, names)),
+    Object.keys(TABLE).flatMap((rel) => unmemoized(rel)),
     [],
     "the compiler's output for these does not open on its cache, so they render unmemoized and " +
       "rebuild their subtree on every render. A renamed component is renamed here too"
   );
 });
 
-const GAME_TABLE_BODY = /^\}: GameTableProps\) \{$/m;
+const GAME_TABLE_SIGNATURE = /^export function GameTable\(\{\s*(\w+)[\s\S]*?^\}: GameTableProps\) \{$/m;
 
 test("an opt-out or a bailout in GameTable is what the table gate refuses", () => {
   const rel = "components/GameTable.tsx";
-  const { source, match } = anchored(rel, GAME_TABLE_BODY, "`}: GameTableProps) {` opening GameTable's body");
+  const { source, match } = anchored(rel, GAME_TABLE_SIGNATURE, "`export function GameTable({ … }: GameTableProps) {`");
   const at = match.index + match[0].length;
   const inBody = (line: string) => `${source.slice(0, at)}\n  ${line}${source.slice(at)}`;
+  const refused = [`${rel} — GameTable`];
   const optedOut = inBody(`"use no memo";`);
-  assert.deepEqual(unmemoized(rel, ["GameTable"], optedOut), [`${rel} — GameTable`]);
+  assert.deepEqual(unmemoized(rel, optedOut), refused);
   assert.ok(
-    compile(rel, optedOut).some((e) => e.kind === "CompileSkip"),
+    bailoutsIn(rel, optedOut).some((e) => e.kind === "CompileSkip"),
     "a `\"use no memo\"` in GameTable is no longer reported by the gate over every file"
   );
+  assert.deepEqual(unmemoized(rel, `"use no memo";\n${source}`), refused);
   assert.deepEqual(
-    unmemoized(rel, ["GameTable"], `"use no memo";\n${source}`),
-    [`${rel} — GameTable`],
-    "a file-wide `\"use no memo\"` left GameTable reading as memoized, though its events report a success"
-  );
-  assert.deepEqual(
-    unmemoized(rel, ["GameTable"], inBody("(gameState as { probe?: number }).probe = 1;")),
-    [`${rel} — GameTable`],
-    "mutating a prop in GameTable no longer costs it its compilation"
+    unmemoized(rel, inBody(`(${match[1]} as { probe?: number }).probe = 1;`)),
+    refused,
+    `mutating the prop \`${match[1]}\` in GameTable no longer costs it its compilation`
   );
 });
 
@@ -341,7 +342,7 @@ function withRenderTimeRefWrite(rel: string): string {
 
 /** Distinguishes an injection the compiler never saw from one it tolerated. */
 function reasonsFor(rel: string, patched: string): string[] {
-  const reasons = compile(rel, patched).map((e) => e.detail?.reason ?? e.detail?.description ?? "");
+  const reasons = bailoutsIn(rel, patched).map((e) => e.reason);
   assert.notEqual(
     reasons.length,
     0,
@@ -402,9 +403,7 @@ const probeSuppressing = (rule: string) => `import { useState } from "react";
 `;
 
 function bailoutReasons(rule: string): string[] {
-  return compile(PROBE_REL, probeSuppressing(rule)).map(
-    (e) => e.detail?.reason ?? e.detail?.description ?? ""
-  );
+  return bailoutsIn(PROBE_REL, probeSuppressing(rule)).map((e) => e.reason);
 }
 
 /**
@@ -415,7 +414,7 @@ function bailoutReasons(rule: string): string[] {
  * `eslintSuppressionRules` option; neither babel-preset-expo nor
  * `COMPILER_OPTIONS` sets one, so the plugin's own default stands — and that
  * default is a module-local constant the package does not export. Measuring it
- * through `compile()` is the only reading that cannot drift from the options
+ * through `bailoutsIn()` is the only reading that cannot drift from the options
  * this suite compiles with (docs/adr/0005).
  */
 const CHARGED_FOR = SHIPPED.filter((rule) =>

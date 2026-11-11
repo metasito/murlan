@@ -48,3 +48,37 @@ export function reactCompilerOptions() {
   }
   return entry.options;
 }
+
+const BAILOUT_KINDS = new Set(["CompileError", "CompileSkip", "PipelineError"]);
+
+export function runtimeModule(options) {
+  const { target } = options;
+  if (target === "19") return "react/compiler-runtime";
+  if (target === "17" || target === "18") return "react-compiler-runtime";
+  return target.runtimeModule;
+}
+
+/**
+ * What the compiler left uncompiled in one file, from its logged events and the file's Babel
+ * AST: a file-wide opt-out logs `CompileSuccess` for each function and then discards the output.
+ * `line` is where a bailout is reported, `blamed` the lines that caused it.
+ */
+export function bailouts(events, program, options) {
+  // The plugin's rule: a custom list, when set, replaces the default one rather than adding to it.
+  const optOuts = options.customOptOutDirectives ?? ["use no forget", "use no memo"];
+  const fileWide = program.directives
+    .filter((d) => optOuts.includes(d.value.value))
+    .map((d) => ({ kind: "FileOptOut", line: d.loc?.start?.line, reason: `file-wide '${d.value.value}'`, blamed: [] }));
+  const logged = events
+    .filter((e) => BAILOUT_KINDS.has(e.kind))
+    .map((e) => {
+      const detail = e.detail?.options ?? e.detail;
+      return {
+        kind: e.kind,
+        line: e.fnLoc?.start?.line,
+        reason: detail?.reason ?? detail?.description ?? e.reason ?? String(e.data ?? "").split("\n")[0],
+        blamed: (detail?.details ?? []).map((d) => `${d.loc?.start?.line}:${d.loc?.identifierName ?? ""}`),
+      };
+    });
+  return [...fileWide, ...logged];
+}
