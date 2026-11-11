@@ -4,9 +4,9 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { botMove, heldTurnTable, pass, playLowest } from "./helpers/mockupParity";
-import { installVirtualClock, stepUntil } from "./helpers/virtualClock";
+import { installVirtualClock, stepFrames, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS, type TraceFrame } from "./helpers/traceDiff";
-import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
+import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayRuns, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { HAND_CARD_BOXES, TABLE_STATE } from "./helpers/selectors";
 
 const VIEWPORT = { width: 874, height: 402 };
@@ -16,13 +16,12 @@ const WINDOW = 240;
 const SETTLED = Math.ceil(2000 / STEP_MS);
 /** Where a window reads the end-B layer, besides its first and last frame. */
 const SWAY_SAMPLES_AT = [60, 120];
-/** `swayShows`' own floor on the opacity's move. */
-const SWAY_MOVES = 0.02;
 /** Past the restored table's own entrance: the deal's lamp breath and the seats' fade. */
 const SETTLE = 120;
 /** Past a throw's flight, landing, dust and the lamp's glide to the next seat. */
 const AFTER_MOVE = 300;
 const PLAY_CONTROL = SETTLE * 2;
+const AFTER_CONTROL = AFTER_MOVE - PLAY_CONTROL;
 /** The lamp's glide to the next seat moves its light more than half a point a frame for about this long. */
 const GLIDE = 80;
 /** With motion on, the lamp rig's frame callback still steps the sway into the trace's lamp (#1988 item 7); no other may run at rest. */
@@ -56,48 +55,26 @@ type Air = { lit: number; transforms: string } | null;
 
 const READ = `({ ...${TAKE_RENDER_COUNTS}, lamp: window.murlanTrace.frames.at(-1)?.lamp })`;
 
-/** `n` frames in one round trip, each its own step with a task yielded after it, as a round trip per frame would give React; `read` is taken after each. */
-const stepFrames = <T>(page: Page, n: number, read: string) =>
-  page.evaluate(`(async () => {
-    const out = [];
-    for (let i = 0; i < ${n}; i++) {
-      await globalThis.murlanStep(${STEP_MS});
-      await new Promise((resolve) => {
-        const ch = new MessageChannel();
-        ch.port1.onmessage = () => resolve();
-        ch.port2.postMessage(null);
-      });
-      out.push(${read});
-    }
-    return out;
-  })()`) as Promise<T[]>;
-
-const frames = (page: Page, n: number) => stepFrames<Frame>(page, n, READ);
-const run = async (page: Page, n: number) => void (await stepFrames<null>(page, n, "null"));
-
+const run = async (page: Page, n: number) => void (await stepFrames(page, n));
 const take = (page: Page) => page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
 const drew = (fs: Frame[], key: string) => fs.filter((f) => (f.draws[key] ?? 0) > 0).length;
 const total = (fs: Frame[], pick: (f: Frame) => number) => fs.reduce((n, f) => n + pick(f), 0);
 const sum = (r: Record<string, number>) => Object.values(r).reduce((n, v) => n + v, 0);
 const airMoved = (before: Air, after: Air) => !!before && !!after && before.lit >= 1 && after.lit >= 1 && after.transforms !== before.transforms;
 
-/** The table's state sentence and the cards the opponents' badges hold. */
+/** The table's state sentence, the cards the opponents' badges hold, and the cards on the pile, by id. */
 const table = (page: Page) =>
   page.evaluate((attr) => ({
     said: document.querySelector(`[${attr}]`)?.getAttribute(attr) ?? null,
     held: [...document.querySelectorAll('[data-testid="seat-card-count"]')].reduce((n, b) => n + Number(b.textContent), 0),
+    pile: [...document.querySelectorAll('[id^="card-pile:"]')].map((c) => c.id),
+    flying: document.querySelectorAll('[data-testid="flying-card"]').length,
   }), TABLE_STATE);
-
-/** Every sample found the end-B layer with its animation running, and its opacity moved: `swayShows` short of the picture's lean. */
-const swayRuns = (samples: (EndBSample | null)[]) => {
-  const seen = samples.filter((s): s is EndBSample => s !== null && s.running >= 1);
-  const opacities = seen.map((s) => s.opacity);
-  return seen.length === samples.length && Math.max(...opacities) - Math.min(...opacities) >= SWAY_MOVES;
-};
 
 /** `lean` reads end B's picture back as well: once a spec, for a second readback of that canvas warns, and a warning fails the test. */
 async function expectAtRest(page: Page, info: TestInfo, state: string, motion: boolean, length: number, lean = false): Promise<void> {
   await take(page);
+  const traced =await page.evaluate<number>("window.murlanTrace.frames.length");
   const airBefore = await page.evaluate<Air>(AIR);
   const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
   let at = 0;
@@ -107,6 +84,7 @@ async function expectAtRest(page: Page, info: TestInfo, state: string, motion: b
     sway.push(await page.evaluate<EndBSample | null>(END_B_SAMPLE));
   }
   const counts = await take(page);
+  const clocks = await page.evaluate<(number | null)[]>(`window.murlanTrace.frames.slice(${traced}).map((f) => f.lamp?.clock ?? null)`);
   const airAfter = await page.evaluate<Air>(AIR);
   const picture = lean ? await page.evaluate<EndBLean | null>(END_B_LEAN) : null;
   const seen = {
@@ -115,7 +93,10 @@ async function expectAtRest(page: Page, info: TestInfo, state: string, motion: b
     readPixels: counts.readPixels,
     styles: sum(counts.styles),
     loopCallers: Object.keys(counts.loops).length,
-    frameCallbacks: counts.frameCallbacks,
+    frameCallbacks: counts.maxFrameCallbacks,
+    frameCallbacksAtEnd: counts.frameCallbacks,
+    tracedFrames: clocks.length,
+    lampStepped: clocks.filter((c, i) => i > 0 && c !== null && clocks[i - 1] !== null && c > clocks[i - 1]!).length,
   };
   const label = `${state}, frames 0–${length} at rest`;
   info.annotations.push({ type: label, description: JSON.stringify(seen) });
@@ -125,8 +106,12 @@ async function expectAtRest(page: Page, info: TestInfo, state: string, motion: b
   expect(seen.draws, `${label}: canvas draws`).toBe(0);
   expect(seen.readPixels, `${label}: pixels read back from a canvas`).toBe(0);
   expect(seen.styles, `${label}: style writes under the table`).toBe(0);
-  expect(seen.frameCallbacks, `${label}: Reanimated frame callbacks active`).toBeLessThanOrEqual(callbacks);
-  expect(seen.loopCallers, `${label}: requestAnimationFrame callers, of which Reanimated's runs only for a frame callback`).toBeLessThanOrEqual(Math.min(callbacks, seen.frameCallbacks) > 0 ? 1 : 0);
+  expect(seen.frameCallbacks, `${label}: the most Reanimated frame callbacks active in a frame`).toBeLessThanOrEqual(callbacks);
+  expect(seen.loopCallers, `${label}: requestAnimationFrame callers, of which Reanimated's runs only for a frame callback`).toBeLessThanOrEqual(seen.frameCallbacks > 0 ? 1 : 0);
+  if (seen.frameCallbacks > 0) {
+    expect(seen.tracedFrames, `${label}: frames the trace recorded`).toBeGreaterThanOrEqual(length);
+    expect(seen.lampStepped, `${label}: the one frame callback allowed is the lamp rig's, so its clock advanced in every frame`).toBe(seen.tracedFrames - 1);
+  }
   if (!motion) return;
   expect(airMoved(airBefore, airAfter), `${label}: the motes did not show as views whose transforms moved`).toBe(true);
   if (lean) expect(swayShows(sway, picture), `${label}: the sway did not show as an end-B layer whose animation runs, whose opacity moved and whose picture leans`).toBe(true);
@@ -134,9 +119,7 @@ async function expectAtRest(page: Page, info: TestInfo, state: string, motion: b
 }
 
 test("a settled table draws nothing in five states, and draws a play", async ({ browser, baseURL }, info) => {
-  test.setTimeout(6 * 60_000);
-  const afterControl = AFTER_MOVE - PLAY_CONTROL;
-  expect(afterControl, "the settle left after the play's control window").toBeGreaterThan(0);
+  test.setTimeout(4 * 60_000);
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, locale: "it-IT", baseURL });
   const page = await context.newPage();
   await installVirtualClock(page, SEED);
@@ -157,7 +140,7 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   await run(page, SETTLE);
   await take(page);
   await playLowest(1)(page);
-  const played = await frames(page, PLAY_CONTROL);
+  const played = await stepFrames<Frame>(page, PLAY_CONTROL, READ);
   const moved = played.findIndex((f, i) => i > 0 && Math.abs(f.lamp!.x - played[i - 1].lamp!.x) > 5);
   expect(moved, "the lamp glided to the next seat").toBeGreaterThan(0);
   const glide = played.slice(moved, moved + GLIDE);
@@ -168,7 +151,7 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   expect(control.handShade, "the hand shade never drew the played hand").toBeGreaterThanOrEqual(1);
   expect(control.particles, "the motes never drew").toBeGreaterThanOrEqual(1);
   expect(control.styles, "no card's view was styled through a play").toBeGreaterThan(0);
-  await run(page, afterControl);
+  await run(page, AFTER_CONTROL);
   await expectAtRest(page, info, "3. a bot on move over the viewer's card, motion on", true, SETTLED);
 
   const beforeBot = await table(page);
@@ -176,9 +159,10 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   const afterBot = await table(page);
   expect(afterBot.held, "the bot played cards, rather than passing").toBeLessThan(beforeBot.held);
   expect(afterBot.said, "the table's state sentence after the bot's play").not.toBe(beforeBot.said);
-  await take(page);
   await run(page, AFTER_MOVE);
-  expect((await take(page)).drewIn[FELT] ?? 0, "the felt never drew the bot's play").toBeGreaterThanOrEqual(1);
+  const landed = await table(page);
+  expect(landed.pile.filter((id) => !beforeBot.pile.includes(id)).length, "the bot's cards on the pile").toBe(beforeBot.held - afterBot.held);
+  expect(landed.flying, "cards still flying after the bot's play").toBe(0);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await run(page, SETTLE);
   await expectAtRest(page, info, "4. after a bot's play, reduced motion", false, SETTLED);

@@ -13,6 +13,8 @@ export interface RenderCounts {
   loops: Record<string, number>;
   /** Reanimated frame callbacks active in the window's last frame; each keeps a loop running while it is. */
   frameCallbacks: number;
+  /** The most Reanimated frame callbacks active in any one frame of the window. */
+  maxFrameCallbacks: number;
   /** Style attribute writes under `game-root`; anything inside a card's own view is `cards`. */
   styles: Record<string, number>;
 }
@@ -23,7 +25,7 @@ const CARD = '[data-testid="card-box"], [id^="card-"]';
 /** Before the first navigation. */
 export async function countRenders(page: Page): Promise<void> {
   await page.addInitScript((card: string) => {
-    const fresh = () => ({ draws: {} as Record<string, number>, drewIn: {} as Record<string, number>, frames: 0, readPixels: 0, loops: {} as Record<string, number>, frameCallbacks: 0, styles: {} as Record<string, number> });
+    const fresh = () => ({ draws: {} as Record<string, number>, drewIn: {} as Record<string, number>, frames: 0, readPixels: 0, loops: {} as Record<string, number>, frameCallbacks: 0, maxFrameCallbacks: 0, styles: {} as Record<string, number> });
     let counts = fresh();
     let frame = 0;
     let lastFrame: Record<string, number> = {};
@@ -114,6 +116,7 @@ export async function countRenders(page: Page): Promise<void> {
         frame++;
         counts.frames++;
         counts.frameCallbacks = registry()!.activeFrameCallbacks.size;
+        counts.maxFrameCallbacks = Math.max(counts.maxFrameCallbacks, counts.frameCallbacks);
         requestAnimationFrame(tick);
       };
       exempt.add(tick);
@@ -201,11 +204,15 @@ export interface EndBLean {
 /** Opacity the end-B layer must move by across the samples: its sway runs the whole of 0 to 1, so two seconds of it cannot lie within this. */
 const SWAY_SHOWN = 0.02;
 
-/** Whether the sway is visible without the felt redrawing: every sample found the layer with an animation running and its opacity moved between them, and the picture on the layer leans toward the far end of the sway by at least `LEAN_FLOOR` levels. A table with no such layer, a frozen one, or one whose end B is a copy of end A is not. */
-export function swayShows(samples: (EndBSample | null)[], picture: EndBLean | null): boolean {
+/** Whether the end-B layer sways: every sample found it with an animation running, and its opacity moved between them. A table with no such layer, or a frozen one, does not. */
+export function swayRuns(samples: (EndBSample | null)[]): boolean {
   const seen = samples.filter((s): s is EndBSample => s !== null);
   if (seen.length < 2 || seen.length !== samples.length || seen.some((s) => s.running < 1)) return false;
-  if (!picture || !(picture.lean >= LEAN_FLOOR)) return false;
   const opacities = seen.map((s) => s.opacity);
   return Math.max(...opacities) - Math.min(...opacities) >= SWAY_SHOWN;
+}
+
+/** Whether the sway is visible without the felt redrawing: `swayRuns`, and the picture on the layer leans toward the far end of the sway by at least `LEAN_FLOOR` levels, so end B is no copy of end A. */
+export function swayShows(samples: (EndBSample | null)[], picture: EndBLean | null): boolean {
+  return swayRuns(samples) && !!picture && picture.lean >= LEAN_FLOOR;
 }
