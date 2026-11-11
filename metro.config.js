@@ -19,13 +19,22 @@ config.resolver.assetExts.push("flac");
 // `z.locales` (tests/tooling/zodLocales.test.ts).
 const ZOD_LOCALES = path.join(path.dirname(require.resolve("zod/package.json")), "v4", "locales", "index.");
 
+// Reanimated runs its worklets-version check only under `__DEV__`, but imports it unconditionally, and
+// its semver code cost a production first load about 9 KB gzipped. A release build gets a check that
+// passes, so a caller that ever runs it there still gets an answer rather than a crash.
+const WORKLETS_CHECK = path.join("react-native-reanimated", "scripts", "validate-worklets-version.js");
+const WORKLETS_CHECK_PASSES = path.resolve(__dirname, "scripts", "metro", "workletsVersionOk.js");
+
 const defaultResolve = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const family = Object.keys(ICON_SUBSETS).find((f) => moduleName.endsWith(`/Fonts/${f}.ttf`));
   if (family) return { type: "sourceFile", filePath: ICON_SUBSETS[family] };
   const resolved = (defaultResolve ?? context.resolveRequest)(context, moduleName, platform);
-  return resolved.type === "sourceFile" && resolved.filePath.startsWith(ZOD_LOCALES) ? { type: "empty" } : resolved;
+  if (resolved.type !== "sourceFile") return resolved;
+  if (resolved.filePath.startsWith(ZOD_LOCALES)) return { type: "empty" };
+  if (!context.dev && resolved.filePath.endsWith(path.sep + WORKLETS_CHECK)) return { type: "sourceFile", filePath: WORKLETS_CHECK_PASSES };
+  return resolved;
 };
 
 // Metro's transform cache is machine-wide, and its key covers neither the project root nor
