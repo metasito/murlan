@@ -204,8 +204,8 @@ round 1, then the sha the previous round reviewed.
 **Rounds.** After a `HOLD`, run `node tools/loop/loop-gate.mjs --review-round` first. At the cap it
 exits non-zero: fix nothing, say on the issue which Blocking finding is still open, and stand down.
 
-**A round is a process.** Otherwise say `PHASE C`, fix exactly the Blocking findings (no
-sweep for siblings, no nits) and list each in `FIX-NOTES`, then leave through **Leaving C**. A
+**A round is a process.** Otherwise say `PHASE C`, fix the Blocking findings
+(rule 34) and list each in `FIX-NOTES`, then leave through **Leaving C**. A
 product decision goes to the owner (**Never stall**), never into `FIX-NOTES`.
 A failure only a local run showed, which neither the review nor CI named, is ruled out (rule 37)
 and named in `FIX-NOTES`. Then hand off:
