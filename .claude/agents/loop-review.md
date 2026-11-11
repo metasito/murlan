@@ -32,7 +32,8 @@ How rare its sequence is never makes a bug a Nit: a sequence the code allows is 
 finding that contradicts a Definition-of-done line is Blocking, quoted, even when the box is ticked.
 Any other rule breach, a name, a comment, an untested branch or a style preference is a Nit, with one
 exception: when a box's deliverable is a check, scan or guard, a common input it misses is an unmet
-box: name the input. A defect this change did not introduce is Pre-existing. Every finding names a file:line.
+box: name the input. A change to the table whose newest `DOD-CHECK` lacks rule 51's parity run,
+captures or frame numbers for the head you read is Blocking; read those numbers as its evidence. A defect this change did not introduce is Pre-existing. Every finding names a file:line.
 Before posting, move to Blocking every Nit or Pre-existing item that names an input or sequence this
 change introduced.
 

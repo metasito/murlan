@@ -79,11 +79,11 @@ The *why* lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a r
 32. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
 33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog: a new one labelled
-    `ready-for-human`, or a comment on the open `noticed` issue. A ticket's session never adds `ready-for-agent`.
+    `ready-for-human`, or a comment on the open `noticed` issue. A ticket's session never adds `ready-for-agent`. A symptom fix links its root-cause issue and, in a comment there, asks the owner to re-rank it.
 34. **Fix it in this session before you file it.** A defect you hit in your own tools, checks or
-    worktree is yours to close, not to hand on — outside a review round, which fixes only the Blocking findings its review or CI
-    named. File an issue (rule 33's channels) only for what you tried and could
-    not finish, and say what you tried.
+    worktree is yours to close, not to hand on — outside a review round, which fixes only its review's or CI's
+    Blocking findings and the same defect elsewhere in its diff. File an issue (rule 33's channels) only for what you tried and could
+    not finish, saying what you tried.
 35. **File what you measured, not what you concluded.** If two explanations survive, write both and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
 36. **A defect seen on iOS is closed on an iOS capture, never on a Chromium run** — unless you
     have watched it reproduce in Chromium, and then either proof closes it.
@@ -113,6 +113,6 @@ Another agent is working in this repository, on this machine, right now.
 48. **One decision has one copy.** A change that adds a second copy of a constant, rule, policy or mapping, or edits one of two existing copies without merging them, deletes one or routes it through the other in the same change. A rules model under `tests/model/` compared with the engine is not a second copy (ADR 0012).
 49. **A new guard, check or scan lands proven and floored**: it meets rule 6, and it fails when what it inspects is gone, empty or renamed, so it cannot pass by not looking.
 50. **No seam, interface or adapter layer until a second adapter exists.**
-51. **The table costs nothing at rest, and its speed is measured as it is played.** A frame loop, mapper or canvas that redraws when what it draws has not changed is a defect, and so is a full-screen canvas sized above DPR 1 that does not need the detail. A speed number taken under reduced motion, or only at full CPU speed, measures nothing: measure with motion on and at 4x CPU throttle, before and after, in the PR body (`docs/research/2026-11-03-table-perf/REPORT.md`). The owner's ruling, 2026-11-03.
+51. **The table costs nothing at rest, and its speed is measured as it is played.** A frame loop, mapper or canvas that redraws when what it draws has not changed is a defect, and so is a full-screen canvas sized above DPR 1 that does not need the detail. A speed number taken under reduced motion, or only at full CPU speed, measures nothing: measure with motion on and at 4x CPU throttle, before and after, in the PR body (`docs/research/2026-11-03-table-perf/REPORT.md`). A table change puts in its PR body and `DOD-CHECK` the nightly parity run on its head, before/after captures and frame numbers. Owner's rulings 2026-11-03, -07.
 52. **The target never moves with the code.** A change set that touches a parity target (`TARGETS` in `tools/ci/target-freeze.mjs`: the mockups, their staging, exemptions and thresholds) touches nothing under `app/`, `components/` or `lib/`; `Target freeze`, decided by main's copy in a `pull_request_target` workflow, refuses one that does; the ruleset is to require it. A target moves only in a pull request of its own that cites the decision moving it (a `docs/GAME-RULES.md` decision, an ADR, or an owner ruling); the code that meets the new target lands after it, in another (`docs/agents/target-freeze.md`).
 53. **A flake is fixed at its source the day it is seen.** No retry, and no test skipped, left todo or filtered out of a run unless it passed elsewhere in that run; CI gate judges it from the runners' own results with the base's `tools/ci/test-verdict.mjs`, which also bounds `tools/ci/quarantine.json`, the only wait for a flake not fixed that day (`docs/agents/suites.md` § A flake is fixed, never retried or quietly skipped).
