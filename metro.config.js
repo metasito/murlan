@@ -19,13 +19,20 @@ config.resolver.assetExts.push("flac");
 // `z.locales` (tests/tooling/zodLocales.test.ts).
 const ZOD_LOCALES = path.join(path.dirname(require.resolve("zod/package.json")), "v4", "locales", "index.");
 
+// Reanimated checks its worklets version only under `__DEV__`, but the import of the check stays, and
+// with it all of `semver` (about 5 KB gzipped) in a production first load
+// (tests/tooling/reanimatedVersionCheck.test.ts).
+const WORKLETS_CHECK = path.join(path.dirname(require.resolve("react-native-reanimated/package.json")), "scripts", "validate-worklets-version.js");
+
 const defaultResolve = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const family = Object.keys(ICON_SUBSETS).find((f) => moduleName.endsWith(`/Fonts/${f}.ttf`));
   if (family) return { type: "sourceFile", filePath: ICON_SUBSETS[family] };
   const resolved = (defaultResolve ?? context.resolveRequest)(context, moduleName, platform);
-  return resolved.type === "sourceFile" && resolved.filePath.startsWith(ZOD_LOCALES) ? { type: "empty" } : resolved;
+  if (resolved.type !== "sourceFile") return resolved;
+  const empty = resolved.filePath.startsWith(ZOD_LOCALES) || (!context.dev && resolved.filePath === WORKLETS_CHECK);
+  return empty ? { type: "empty" } : resolved;
 };
 
 // Metro's transform cache is machine-wide, and its key covers neither the project root nor
