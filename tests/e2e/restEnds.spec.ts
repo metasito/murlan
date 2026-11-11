@@ -90,12 +90,12 @@ const GRID = 0.01;
  * The rig's clock at a sample as the page's clock has it from `from`, the frame the layer shows, when the rig still steps: the rig
  * may stop stepping only once an end shows. Read from the page, never from the rig, so a held rig is measured, not believed.
  */
-function clockFrom(from: Sample): (s: Sample) => number {
+function clockFrom(from: Pick<Sample, "clock" | "wall">): (s: Pick<Sample, "wall">) => number {
   return (s) => from.clock + (s.wall - from.wall);
 }
 
 /** The sway, -1 to 1, `lib/swayTable.ts` bakes from the rig's state at `from`, at a sample's `clockFrom`. After `from`, the clock steps the animations before the frame's timers, so a read after a step has the layer and the rig both at the frame's end; at `from` itself the animation is a frame behind. */
-function tableFrom(from: Sample): (s: Sample) => number {
+function tableFrom(from: Pick<Sample, "clock" | "wall" | "ph">): (s: Pick<Sample, "wall">) => number {
   const track = bakeSway({ ph: from.ph, t: from.clock }, TRACK_SECONDS);
   const clock = clockFrom(from);
   return (s) => trackAt(track, clock(s) - from.clock);
@@ -111,20 +111,21 @@ function stuck(from: Pick<Sample, "clock" | "wall">, samples: Pick<Sample, "rig"
 }
 
 /** The drawn lamp's centre, `lx` less its sway, at each sample, their mean, and the most one lies off it. */
-function centred(samples: Sample[]): { centres: number[]; centre: number; moved: number } {
+function centred(samples: Pick<Sample, "lx" | "ph">[]): { centres: number[]; centre: number; moved: number } {
   const centres = samples.map((s) => s.lx - SWAY_PT * Math.sin(s.ph));
   const centre = centres.reduce((sum, c) => sum + c, 0) / centres.length;
   return { centres, centre, moved: Math.max(...centres.map((c) => Math.abs(c - centre))) };
 }
 
 /**
- * How far, -1 to 1, the rig's sway may lie off the table baked at `samples[0]`, at each sample, one rig step apart. The rig
- * adds `dt * speedOf(t)` at the step's end, which runs ahead of the integral `bakeSway` carries by `dt / 2` times the change of
- * speed since `samples[0]`, to within a trapezoid's `dt^3 / 12` of its bend a step; a track, linear between stops, is off a sine
- * by `TRACK_STEP^2 / 8` of its curvature. `TRACK_VS_EULER` is measured at 60 Hz from fixed settles, not at this clock's step from
- * this start, so it is no bound here.
+ * How far, -1 to 1, the rig's sway may lie off the table baked at `samples[0]`, at each sample, one rig step apart. Over a run
+ * of steps the rig adds `dt * speedOf(t)` at each step's end, which runs ahead of the integral `bakeSway` carries by `dt / 2`
+ * times the change of speed over the run, to within a trapezoid's `dt^3 / 12` of its bend a step, and a step cut short by a
+ * wake by `dt^2 / 2` of its slope; a held rig is carried on that integral, so adds nothing. A track, linear between stops, is off
+ * a sine by `TRACK_STEP^2 / 8` of its curvature. `TRACK_VS_EULER` is measured at 60 Hz from fixed settles, not at this clock's
+ * step from this start, so it is no bound here.
  */
-function swayBounds(t0: number, samples: Sample[]): number[] {
+function swayBounds(t0: number, samples: Pick<Sample, "clock" | "held">[]): number[] {
   let [top, slope, bend] = [0, 0, 0];
   for (let t = t0; t <= samples.at(-1)!.clock + TRACK_STEP; t += GRID) {
     top = Math.max(top, speedOf(t));
@@ -133,7 +134,15 @@ function swayBounds(t0: number, samples: Sample[]): number[] {
   }
   const between = (TRACK_STEP ** 2 / 8) * (top ** 2 + slope);
   const dt = STEP_MS / 1000;
-  return samples.map((s) => Math.abs((dt / 2) * (speedOf(s.clock) - speedOf(t0))) + (((s.clock - t0) / dt) * dt ** 3 / 12) * bend + between);
+  const run = (from: number, to: number, steps: number) => Math.abs((dt / 2) * (speedOf(to) - speedOf(from))) + ((steps * dt ** 3) / 12) * bend;
+  let [closed, from, steps, last] = [0, t0, 0, t0];
+  return samples.map((s, k) => {
+    if (k > 0 && !s.held) {
+      if (samples[k - 1]!.held) [closed, from, steps] = [closed + (dt ** 2 / 2) * slope, samples[k - 1]!.clock, 0];
+      [steps, last] = [steps + 1, s.clock];
+    } else if (k > 0 && steps > 0) [closed, steps] = [closed + run(from, last, steps), 0];
+    return closed + (steps > 0 ? run(from, s.clock, steps) : 0) + between;
+  });
 }
 
 test("the end-B layer's opacity follows the lamp's light to within half a point", async ({ browser, baseURL }) => {
@@ -243,9 +252,13 @@ test("a held rig whose end leaves steps on, though nothing moved the lamp", asyn
 test("a rig held and woken many times keeps to the page's clock", async ({ browser, baseURL }) => {
   test.setTimeout(5 * 60_000);
   const { page, context, shown } = await restedTable(browser, baseURL!);
-  const READ_RIG = `(() => { const f = window.murlanTrace.frames.at(-1); return { rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000 }; })()`;
-  type Rig = Pick<Sample, "rig" | "held" | "ends" | "rested" | "wall">;
-  const next = () => stepThen<Rig>(page, STEP_MS, READ_RIG);
+  const READ_RIG = `(() => { const f = window.murlanTrace.frames.at(-1); return { clock: f.lamp.clock, rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000, lx: f.lamp.x, ph: f.lamp.ph }; })()`;
+  type Rig = Pick<Sample, "clock" | "rig" | "held" | "ends" | "rested" | "wall" | "lx" | "ph">;
+  const samples: Rig[] = [shown];
+  const next = async () => {
+    samples.push(await stepThen<Rig>(page, STEP_MS, READ_RIG));
+    return samples.at(-1)!;
+  };
   const offs: number[] = [];
   for (let cycle = 0; cycle < CYCLES; cycle++) {
     let s = await next();
@@ -259,5 +272,19 @@ test("a rig held and woken many times keeps to the page's clock", async ({ brows
   }
   console.log(`after each of ${CYCLES} holds and wakes, the stepping rig's clock is off the page's by ${offs.map((o) => o.toFixed(3)).join(", ")} ms`);
   expect(Math.max(...offs.map(Math.abs)) / STEP_MS, "frames a stepping rig's clock is off the page's after holds and wakes").toBeLessThan(0.5);
+
+  const clock = clockFrom(shown);
+  const timed = samples.filter((s) => Math.abs(s.clock - clock(s)) * 1000 < 1e-3 && s.clock - shown.clock < TRACK_SECONDS);
+  const stepped = timed.filter((s) => !s.held).length;
+  const sway = tableFrom(shown);
+  const { centres, centre, moved } = centred(timed);
+  const allowed = swayBounds(shown.clock, timed).map((b, k) => SWAY_PT * b + Math.abs(centres[k]! - centre));
+  const excess = timed.map((s, k) => Math.abs(s.lx - centre - SWAY_PT * sway(s)) - allowed[k]!);
+  const worst = excess.indexOf(Math.max(...excess));
+  console.log(`of ${samples.length} frames ${timed.length} are on the page's clock and the rig stepped the lamp on ${stepped}; its centre moves ${moved.toExponential(1)} pt, and the lamp is ${(excess[worst]! + allowed[worst]!).toFixed(3)} pt off the keyframe table where ${allowed[worst]!.toFixed(3)} pt is allowed`);
+  expect(timed.length, "frames on the page's clock").toBeGreaterThan(samples.length - 2 * CYCLES);
+  expect(stepped, "frames the rig stepped the lamp between its holds").toBeGreaterThan(CYCLES * 10);
+  expect(moved, "points the rig's centre moves while it only sways").toBeLessThan(REST_PT);
+  expect(excess[worst]!, "points the rig's lamp, stepped and held in turn, is past the keyframe table's stepping error and its centre's motion").toBeLessThan(0);
   await context.close();
 });
