@@ -6,6 +6,7 @@ import { GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
 import { OFFLINE_SAVE_VERSION } from "../../lib/offlineSave.ts";
 import { PROTOCOL_VERSION } from "../../shared/protocol.ts";
 import { programFor, shapeHash, typeShape } from "../helpers/typeShape.ts";
+import { atMain, rewritten } from "../helpers/appendOnly.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
@@ -31,12 +32,12 @@ const DOCUMENTS = {
   offlineSave: {
     version: OFFLINE_SAVE_VERSION,
     bump: "OFFLINE_SAVE_VERSION in lib/offlineSave.ts",
-    golden: " and regenerate tests/fixtures/offlineSave.json through encodeOfflineSave",
+    golden: " Regenerate tests/fixtures/offlineSave.json through encodeOfflineSave.",
   },
   wire: {
     version: PROTOCOL_VERSION,
     bump: "PROTOCOL_VERSION in shared/protocol.ts",
-    golden: ", raising MIN_PROTOCOL_VERSION if bundles in the field cannot read the change",
+    golden: " Raise MIN_PROTOCOL_VERSION if bundles in the field cannot read the change.",
   },
 } as const;
 type Document = keyof typeof DOCUMENTS;
@@ -63,23 +64,31 @@ function edit(file: string, from: string, to: string): Record<string, string> {
 }
 
 let current: Record<Document, string> | undefined;
+const SHAPES = "tests/fixtures/storedShapes.json";
 
 for (const name of Object.keys(DOCUMENTS) as Document[]) {
   test(`the stored ${name} shape does not change without its version`, () => {
-    const recorded: Record<Document, Record<string, string>> = JSON.parse(read("tests/fixtures/storedShapes.json"));
+    const atBase = atMain(SHAPES) as Partial<Record<Document, Record<string, string>>> | undefined;
+    const recorded: Record<Document, Record<string, string>> = JSON.parse(read(SHAPES));
     const { version, bump, golden } = DOCUMENTS[name];
     for (const at of Object.keys(recorded[name] ?? {})) {
       assert.ok(Number(at) <= version, `${name} records version ${at}, above ${bump} (${version})`);
     }
+    const base = atBase?.[name];
+    if (atBase) assert.deepEqual(rewritten(base ?? {}, recorded[name] ?? {}), [], `${SHAPES} only grows: restore what origin/main records for ${name}`);
     current ??= hashes();
-    assert.equal(
-      current[name],
-      recorded[name]?.[String(version)],
-      recorded[name]?.[String(version)] === undefined
-        ? `no ${name} shape is recorded for version ${version}: add "${name}" → "${version}": "${current[name]}" ` +
-            `to tests/fixtures/storedShapes.json${golden}.`
-        : `the stored ${name} shape changed at version ${version}. Bump ${bump}, add the new hash under ` +
-            `"${name}" → "<new version>" in tests/fixtures/storedShapes.json${golden}.`
+    const missing = recorded[name]?.[String(version)] === undefined;
+    const rerun =
+      "Rerun `node --test tests/server/storedShapeVersions.test.ts` in a clone that holds origin/main: it prints the entry to add.";
+    // assert.ok, not equal: equal's report prints the hash, and a hash handed out where the base
+    // cannot be read is one pasted over the entry it replaces.
+    assert.ok(
+      current[name] === recorded[name]?.[String(version)],
+      !missing
+        ? `the stored ${name} shape changed at version ${version}. Bump ${bump}. ${rerun}${golden}`
+        : atBase
+          ? `no ${name} shape is recorded for version ${version}: add "${name}" → "${version}": "${current[name]}" to ${SHAPES}.${golden}`
+          : `no ${name} shape is recorded for version ${version}. ${rerun}${golden}`
     );
   });
 }

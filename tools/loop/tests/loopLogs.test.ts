@@ -168,7 +168,7 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 9);
+    assert.equal(r.schema, 10);
   });
 
   test("carries the session's own model, read off its init line, and no token split", () => {
@@ -180,12 +180,6 @@ describe("sessionRow", () => {
   test("carries the time the session's machine was asleep, null when none was measured", () => {
     assert.equal(sessionRow(session({ asleepMs: 7_200_000 })).asleep_ms, 7_200_000);
     assert.equal(r.asleep_ms, null);
-  });
-
-  test("carries the run and tests a rerun turned green, null when none did", () => {
-    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
-    assert.deepEqual(sessionRow(session({ flake })).flake, flake);
-    assert.equal(r.flake, null);
   });
 
   test("carries the park steps the tracker never received", () => {
@@ -600,18 +594,11 @@ describe("ticketTally", () => {
       retries: 0,
       rebases: 0,
       undeclared: 0,
-      armedFlake: null,
     });
   });
 
-  // Written when runSettle arms on a rerun's green, so a restart before the merge still knows the flake.
-  test("an armed row carries its flake and head to the tally, is no session, and a landing clears it", () => {
-    const flake = { runId: 7, tests: ["t"], step: "Test" };
-    const armed = row({ outcome: "armed", head: "h1", flake });
-    const t = ticketTally(1, [row({ outcome: "pushed" }), armed]);
-    assert.deepEqual(t.armedFlake, { ...flake, head: "h1" });
-    assert.equal(t.sessions, 0);
-    assert.equal(ticketTally(1, [armed, row({ outcome: "landed" })]).armedFlake, null);
+  test("an armed row an older ledger wrote is no session", () => {
+    assert.equal(ticketTally(1, [row({ outcome: "pushed" }), row({ outcome: "armed", head: "h1" })]).sessions, 0);
   });
 
   test("a pushed row and its settle row are one session", () => {

@@ -237,7 +237,6 @@ export function ghTracker(gh = ghCli, repo = REPO) {
       if (why) gh(["api", "-X", "POST", `${issues}/${n}/comments`, "-f", `body=${why}`], opts);
       gh(["api", "-X", "PATCH", `${issues}/${n}`, "-f", "state=closed", "-f", "state_reason=completed"], opts);
     },
-    rerunFailed: (runId, opts) => void gh(["api", "-X", "POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`], opts),
     updateBranch: (n, opts) => void gh(["api", "-X", "PUT", `${pulls}/${n}/update-branch`], opts),
   };
 }
@@ -369,7 +368,6 @@ export function fakeTracker(issues = {}, { fail = [], prs = [] } = {}) {
       post(issue, why, why);
       issue.state = "CLOSED";
     }),
-    rerunFailed: list("rerunFailed", (runId) => void writes.push(["rerunFailed", runId])),
     updateBranch: list("updateBranch", (n) => void writes.push(["updateBranch", n])),
     arm: list("arm", (n, sha) => void writes.push(["arm", n, sha])),
     disarm: list("disarm", (n) => void writes.push(["disarm", n])),

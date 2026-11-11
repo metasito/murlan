@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { coverageGap, timingsFromReport } from "../../tools/ci/e2e-timings.mjs";
+import { coverageGap, timingsFromReport, withoutGone } from "../../tools/ci/e2e-timings.mjs";
 
 /** The shape `playwright merge-reports --reporter json` produces: one suite per file. */
 function report(files: Record<string, { title: string; status?: string; ms: number[] }[]>) {
@@ -108,5 +108,14 @@ describe("covering the suite", () => {
 
   test("a set covering the whole suite has no gap", () => {
     assert.equal(coverageGap({ "a.spec.ts": 1, "b.spec.ts": 2 }, ["a.spec.ts", "b.spec.ts"]), null);
+  });
+});
+
+describe("pruning without a report", () => {
+  test("drops only the specs that are gone, and keeps every number it does not drop", () => {
+    assert.deepEqual(withoutGone({ "a.spec.ts": 12.3, "gone.spec.ts": 9, "b.spec.ts": 4 }, ["a.spec.ts", "b.spec.ts", "new.spec.ts"]), {
+      "a.spec.ts": 12.3,
+      "b.spec.ts": 4,
+    });
   });
 });
