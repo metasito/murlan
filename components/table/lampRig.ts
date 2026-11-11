@@ -99,8 +99,6 @@ export interface Lamp {
   freeze: number;
   /** Seconds the rig has run: the sway's period drifts with it. */
   t: number;
-  /** `performance.now()` when the rig stopped stepping this lamp, NaN while it steps: `lampNow` is the lamp since. */
-  heldAt: number;
   /** What a frame draws: the light point, swayed, and its level and flare. */
   lx: number;
   ly: number;
@@ -128,7 +126,6 @@ export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
     holds: { lost: RELEASED, breath: level, link: RELEASED },
     freeze: 0,
     t: 0,
-    heldAt: NaN,
     lx: x,
     ly: y - LIGHT_ABOVE,
     level,
@@ -168,9 +165,8 @@ const clamp01 = (v: number) => {
   return Math.min(1, Math.max(0, v));
 };
 
-export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
+function advance(s: Lamp, dt: number, swing: number, reduced: boolean): void {
   "worklet";
-  const dt = Math.min(MAX_DT, Math.max(0, seconds));
   s.t += dt;
   if (reduced) {
     s.x = s.tx;
@@ -183,9 +179,7 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
     s.r += (s.tr - s.r) * e;
   }
   s.lvl += (s.lvlT - s.lvl) * (1 - Math.exp(-dt * s.lvlRate));
-  const run = 1 - s.freeze;
-  const w = speedOf(s.t);
-  s.ph += dt * w * run;
+  s.ph += swing * (1 - s.freeze);
   const sway = reduced ? 0 : Math.sin(s.ph) * (SWAY + SWAY_KICKED * s.kick);
   s.kick *= Math.exp(-dt * KICK_DECAY);
   s.level = clamp01(s.lvl);
@@ -195,35 +189,18 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
   s.flare *= Math.exp(-dt * FLARE_DECAY);
 }
 
-/** Carries a lamp the rig stopped stepping on to `now` on the integral of its motion, and steps it again; a stepping lamp is left as it is. */
-export function resumeLamp(s: Lamp, now?: number): void {
+/** One frame: at most `MAX_DT`, the phase at the frame's end speed, as the mockup's `lampStep`. */
+export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
   "worklet";
-  if (Number.isNaN(s.heldAt)) return;
-  const dt = Math.max(0, ((now ?? performance.now()) - s.heldAt) / 1000);
-  s.heldAt = NaN;
-  const t = s.t + dt;
-  s.ph += (1 - s.freeze) * swept(s.t, t);
-  s.t = t;
-  const e = 1 - Math.exp(-dt * GLIDE);
-  s.x += (s.tx - s.x) * e;
-  s.y += (s.ty - s.y) * e;
-  s.r += (s.tr - s.r) * e;
-  s.lvl += (s.lvlT - s.lvl) * (1 - Math.exp(-dt * s.lvlRate));
-  s.kick *= Math.exp(-dt * KICK_DECAY);
-  s.flare *= Math.exp(-dt * FLARE_DECAY);
-  s.level = clamp01(s.lvl);
-  s.lx = lightX(s.x, Math.sin(s.ph) * (SWAY + SWAY_KICKED * s.kick));
-  s.ly = lightY(s.y);
-  s.f = s.flare;
+  const dt = Math.min(MAX_DT, Math.max(0, seconds));
+  advance(s, dt, dt * speedOf(s.t + dt), reduced);
 }
 
-/** The lamp as it is at `now`: the rig's own while it steps, a copy carried on from where it was held otherwise. */
-export function lampNow(s: Lamp, now?: number): Lamp {
+/** `seconds` the rig did not step, at once, the phase on the exact integral of the speed: what the compositor's track played meanwhile. */
+export function resumeLamp(s: Lamp, seconds: number, reduced: boolean): void {
   "worklet";
-  if (Number.isNaN(s.heldAt)) return s;
-  const at = { ...s, holds: { ...s.holds }, drawn: { ...s.drawn } };
-  resumeLamp(at, now);
-  return at;
+  const dt = Math.max(0, seconds);
+  advance(s, dt, swept(s.t, s.t + dt), reduced);
 }
 
 const SETTLED = 1e-4;

@@ -36,7 +36,7 @@ const still = makeMutable(light(300));
 
 function Table({ tracks, live, children }: { tracks: boolean; live?: boolean; children: React.ReactNode }) {
   const [store] = React.useState(() => {
-    const made = tracks ? createGlossTracks(makeMutable(restingLamp([437, 180, 1])), makeMutable(light(437)), restingLamp([437, 180, 1])) : undefined;
+    const made = tracks ? createGlossTracks(makeMutable(restingLamp([437, 180, 1])), makeMutable(light(437)), makeMutable(0), makeMutable(false), restingLamp([437, 180, 1])) : undefined;
     made?.update(!live);
     return made;
   });

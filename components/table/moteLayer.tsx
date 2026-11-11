@@ -11,7 +11,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ambient } from "@/lib/motion";
 import { RestAir } from "@/lib/tokens";
 import { createAir, isDrawn, M, MOTE_STRIDE, type Air } from "./air";
-import { DESIGN, lampNow, LIGHT_ABOVE } from "./lampRig";
+import { DESIGN, LIGHT_ABOVE } from "./lampRig";
 import { LAMP_SETTLE_MS, type LampRig } from "./useLampRig";
 import { tableRng } from "./particles";
 import {
@@ -104,8 +104,8 @@ const Moth = memo(function Moth({ flights, paused }: { flights: Flight[]; paused
   );
 });
 
-export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & Partial<Pick<LampRig, "stillLight">> }) {
-  const { lamp, stillLight, sx, sy } = rig;
+export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & Partial<Pick<LampRig, "stillLight" | "tracks">> }) {
+  const { lamp, stillLight, tracks: rigTracks, sx, sy } = rig;
   const reduced = usePrefersReducedMotion();
   const [frozen, setFrozen] = useState(false);
   const elapsed = useAirClock(frozen);
@@ -118,9 +118,9 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & 
   const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const lightNow = useCallback((): RestLight => {
-    const s = lampNow(lamp.get());
+    const s = rigTracks?.now() ?? lamp.get();
     return { x: s.tx, ly: s.ty - LIGHT_ABOVE, level: s.lvlT, r: s.tr, ph: s.ph, t: s.t };
-  }, [lamp]);
+  }, [lamp, rigTracks]);
 
   const rebuild = useCallback(() => {
     const light = lightNow();

@@ -1,7 +1,7 @@
 // The felt, the rail and the lamp on them (#1252 § The felt, § The rail): one Skia canvas for the
 // whole table. On web it is only ever reached through `feltSkia.web.tsx`'s lazy boundary, once
 // CanvasKit has loaded — `Skia` is bound to it when this module is evaluated.
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ComponentType, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type ComponentType, type RefObject } from "react";
 import { PixelRatio, Platform, StyleSheet, View } from "react-native";
 import {
   AlphaType,
@@ -44,6 +44,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames } from "@/lib/motion";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
 import { NOT_SHOWN, nextShown, type Shown } from "./restEnds";
+import type { GlossTracks } from "./glossTrackStore";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
@@ -64,14 +65,15 @@ export interface FeltCanvasProps {
   cards: CardTable;
   /** `useLinkHold`'s grey: drawn here on iOS only, where the view filter is not. */
   grey?: SharedValue<number>;
-  /** The rig's `ends`, which `Ends` writes as its `side`; a canvas without one keeps its own. */
-  side?: SharedValue<number>;
+  /** The rig's tracks, whose `ends` `Ends` writes as its `side`: web only, and `Ends` is drawn only with them. */
+  tracks?: GlossTracks;
   /** The settled felt's second end, laid over this canvas (web only: `feltEndB.tsx`, reached only through `skiaCanvases.ts`, so no native import names it). */
   Ends?: ComponentType<EndsProps>;
 }
 
 export interface EndsProps {
   lamp: SharedValue<Lamp>;
+  tracks: GlossTracks;
   /** 1 while the canvas still crosses its two ends itself, 0 once it has. */
   settle: SharedValue<number>;
   /** Moves when anything an end draws changes besides the sway. */
@@ -494,7 +496,8 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, side: rigSide, Ends }: FeltCanvasProps) {
+export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, tracks, Ends: given }: FeltCanvasProps) {
+  const Ends = tracks && given;
   const greyLayer = useGreyLayer(grey);
   const canvas = useCanvasRef();
   const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
@@ -560,7 +563,11 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, side: ri
   const content = useSharedValue(0);
   const host = useRef<ComponentRef<typeof View>>(null);
   const ownSide = useSharedValue(0);
-  const side = rigSide ?? ownSide;
+  const side = tracks?.ends ?? ownSide;
+  useLayoutEffect(() => {
+    side.set(0);
+    return () => side.set(0);
+  }, [side]);
   const held = useSharedValue<Shown>(NOT_SHOWN);
   const view = useDerivedValue(() => {
     const next = nextShown(held.value, lamp.value, side.value);
@@ -698,13 +705,13 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, side: ri
       </Group>
     </Canvas>
   );
-  if (!Ends) return drawn;
+  if (!Ends || !tracks) return drawn;
   return (
     <>
       <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">
         {drawn}
       </View>
-      <Ends lamp={lamp} settle={settle} content={content} side={side} host={host} canvas={canvas} />
+      <Ends lamp={lamp} tracks={tracks} settle={settle} content={content} side={side} host={host} canvas={canvas} />
     </>
   );
 }
