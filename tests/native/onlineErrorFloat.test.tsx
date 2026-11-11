@@ -34,9 +34,9 @@ jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { error?: { text: string } | null; overlays?: (v: object) => React.ReactNode }) => {
+    GameTable: (props: { error?: { text: string } | null; overlays?: (v: object, layout: { rail: { width: number } }) => React.ReactNode }) => {
       mockTable(props.error?.text);
-      return react.createElement(rn.View, null, props.overlays ? props.overlays({}) : null);
+      return react.createElement(rn.View, null, props.overlays ? props.overlays({}, { rail: { width: 0 } }) : null);
     },
   };
 });

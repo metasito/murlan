@@ -7,7 +7,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { cardScale } from "../../components/cardFaceModel.ts";
-import { voteTop } from "../../components/table/scorePillModel.ts";
 import { bannerTop, type EdgeInsets } from "../../components/tableFrame.ts";
 import { tableLayout } from "../../components/tableLayout.ts";
 import { TABLETS } from "../helpers/tableScenes.ts";
@@ -50,7 +49,7 @@ function current(c: { viewport: string; insets: string }) {
     chipsBottom: bannerTop(at.width > at.height ? layout : null, at.insets.top),
     tableBox: layout.tableBox,
     pill: layout.pill,
-    voteTop: { rest: voteTop(layout.pill, false, at.scale), open: voteTop(layout.pill, true, at.scale) },
+    voteTop: { rest: layout.votes.rest.top, open: layout.votes.open.top },
   };
 }
 

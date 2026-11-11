@@ -56,11 +56,11 @@ jest.mock('@/components/GameTable', () => {
   return {
     GameTable: (props: {
       endMatchVote?: import('@/components/table/notices/netNotes').EndMatchVoteNote | null;
-      overlays?: (v: object) => React.ReactNode;
+      overlays?: (v: object, layout: { rail: { width: number } }) => React.ReactNode;
     }) =>
       react.createElement(rn.View, null, [
         props.endMatchVote ? react.createElement(EndMatchVote, { key: 'vote', ...props.endMatchVote, scale: 1 }) : null,
-        react.createElement(rn.View, { key: 'overlays' }, props.overlays ? props.overlays({}) : null),
+        react.createElement(rn.View, { key: 'overlays' }, props.overlays ? props.overlays({}, { rail: { width: 0 } }) : null),
       ]),
   };
 });

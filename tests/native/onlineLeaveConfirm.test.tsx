@@ -49,7 +49,7 @@ jest.mock('@/components/GameTable', () => {
       matchActions?: { onHome: () => void };
       gameState: { roundOver: boolean };
       matchOver: boolean;
-      overlays?: (v: object) => React.ReactNode;
+      overlays?: (v: object, layout: { rail: { width: number } }) => React.ReactNode;
     }) =>
       react.createElement(
         rn.View,
@@ -58,7 +58,7 @@ jest.mock('@/components/GameTable', () => {
         props.matchActions && props.gameState.roundOver && props.matchOver
           ? react.createElement(rn.Pressable, { testID: 'btn-home', onPress: props.matchActions.onHome })
           : null,
-        props.overlays ? props.overlays({}) : null
+        props.overlays ? props.overlays({}, { rail: { width: 0 } }) : null
       ),
   };
 });
