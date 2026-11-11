@@ -40,15 +40,16 @@ test("the exchanged cards fly through the pile, never jumping, face up from the 
       for (let n: Element | null = el; n && n !== stop.parentElement; n = n.parentElement) k *= Number(getComputedStyle(n).opacity);
       return k;
     };
-    const frame = () => {
+    // The legs are posed from the frame's timestamp; `performance.now()` here lags it by however long the frame ran.
+    const frame = (now: number) => {
       for (const leg of legs) {
         const el = document.querySelector(`[data-testid="${leg}"]`);
         if (!el || shown(el, el) === 0) continue;
         const r = el.getBoundingClientRect();
         const back = el.querySelector('[data-testid="card-box-back"]');
-        out.push({ leg, t: performance.now() - t0, x: r.x + r.width / 2, y: r.y + r.height / 2, back: back ? shown(back, el) : 0 });
+        out.push({ leg, t: now - t0, x: r.x + r.width / 2, y: r.y + r.height / 2, back: back ? shown(back, el) : 0 });
       }
-      if (performance.now() - t0 < sampleMs) return;
+      if (now - t0 < sampleMs) return;
       (window as unknown as { __tracked: boolean }).__tracked = true;
       return false;
     };
