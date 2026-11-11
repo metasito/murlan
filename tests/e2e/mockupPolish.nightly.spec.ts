@@ -7,9 +7,8 @@ import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } f
 import { exchangeSave, offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { captureGameState, captureStateById, seatedSituation, type CaptureState } from "../../lib/captureStates";
-import { CARD_H, HAND_SCALE } from "../../components/cardFaceModel";
+import { CARD_H, HAND_SCALE, tableScale } from "../../components/cardFaceModel";
 import { mockupPx } from "../../components/table/noticeModel";
-import { tableScale } from "../../components/tableLayout";
 import { handVisibleH } from "../../components/seatLayout";
 import type { Card } from "../../lib/game/gameEngine";
 import { HAND_CARD_BOXES, HAND_SELECTED } from "./helpers/selectors.ts";
