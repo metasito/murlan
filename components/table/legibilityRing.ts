@@ -1,28 +1,53 @@
-// The ring the lamp's legibility sampler reads round a seat, in the felt box's points
-// (lib/diagnostics/lampLegibility.ts). JSX-free, runtime imports relative.
+// The ring the lamp's legibility sampler reads round a seat, and the felt it may read, on the table
+// laid out in a viewport: in that viewport's points (lib/diagnostics/lampLegibility.ts). JSX-free,
+// runtime imports relative.
 
 import type { Pixels, Ring } from "../../lib/diagnostics/lampLegibility.ts";
-import { SEAT_DISC } from "../seatLayout.ts";
+import { tableScale } from "../cardFaceModel.ts";
+import { drawnDisc } from "../seatLayout.ts";
 import { designScale } from "./lampRig.ts";
 import { RAIL_BAND, ringRect } from "./rail.ts";
 
 /** The research model's outer edge, `zoneMean(…, 17, 45)` in murlan-plans/2026-09-28-1259-lantern-review/scripts/lamp3.mjs. */
 export const ANNULUS_OUTER = 45;
 
-/** Starts at the drawn disc's edge (`SEAT_DISC * scale`, as `tableLayout` draws it); reaches 45 design pt of the stretched table. */
-export function legibilityRing(width: number, height: number, scale: number): Ring {
-  const { sx, sy } = designScale(width, height);
+type Viewport = { width: number; height: number };
+
+/** From the drawn disc's edge to 45 design pt of the table stretched to `viewport`. */
+export function legibilityRing(viewport: Viewport): Ring;
+/** The parity targets' form (docs/agents/target-freeze.md): a `width` x `height` viewport whose table is drawn at `scale`. */
+export function legibilityRing(width: number, height: number, scale: number): Ring;
+export function legibilityRing(at: Viewport | number, height?: number, scale?: number): Ring {
+  const viewport = typeof at === "number" ? { width: at, height: height! } : at;
+  const { sx, sy } = designScale(viewport.width, viewport.height);
   return {
-    inner: (SEAT_DISC * scale) / 2,
+    inner: drawnDisc(scale ?? tableScale(viewport)) / 2,
     outerX: ANNULUS_OUTER * sx,
     outerY: ANNULUS_OUTER * sy,
   };
 }
 
-/** The felt box's pixels with everything outside the cloth, the rail and the room, made transparent: the sampler counts only felt. */
-export function feltOnly(pixels: Pixels, perPt: number): Pixels {
+/** A shot of the whole `viewport`'s pixels per point, the same on both axes: `annulusLuminance` reads it as one. */
+export function pixelsPerPt(pixels: Pixels, viewport: Viewport): number {
+  const perPt = pixels.width / viewport.width;
+  if (Math.abs(pixels.height - viewport.height * perPt) > 1) {
+    throw new Error(`a ${pixels.width}x${pixels.height} shot is not of a ${viewport.width}x${viewport.height} viewport`);
+  }
+  return perPt;
+}
+
+/**
+ * A shot of the whole `viewport` with everything outside the cloth, the rail and the room, made
+ * transparent: the sampler counts only felt.
+ */
+export function feltOnly(pixels: Pixels, viewport: Viewport): Pixels;
+/** The parity targets' form (docs/agents/target-freeze.md): the shot's own size over `perPt` is its viewport. */
+export function feltOnly(pixels: Pixels, perPt: number): Pixels;
+export function feltOnly(pixels: Pixels, at: Viewport | number): Pixels {
   const { width, height } = pixels;
-  const { sx, sy } = designScale(width / perPt, height / perPt);
+  const viewport = typeof at === "number" ? { width: width / at, height: height / at } : at;
+  const perPt = pixelsPerPt(pixels, viewport);
+  const { sx, sy } = designScale(viewport.width, viewport.height);
   const { x, y, w, h, r } = ringRect(RAIL_BAND);
   const data = Uint8ClampedArray.from(pixels.data);
   for (let j = 0; j < height; j++) {

@@ -11,11 +11,11 @@ import {
   type Ring,
   type Pixels,
 } from "../../lib/diagnostics/lampLegibility.ts";
-import { SEAT_DISC } from "../../components/seatLayout.ts";
+import { drawnDisc, SEAT_DISC } from "../../components/seatLayout.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { designScale } from "../../components/table/lampRig.ts";
 import { ANNULUS_OUTER, feltOnly, legibilityRing } from "../../components/table/legibilityRing.ts";
-import { tableScale } from "../../components/tableLayout.ts";
+import { tableLayout, tableScale } from "../../components/tableLayout.ts";
 import { RAIL_BAND, ringRect } from "../../components/table/rail.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { phoneTable } from "../helpers/phoneTable.ts";
@@ -33,11 +33,11 @@ const OUTER = 45;
 
 const PHONE = PHONES.find((p) => p.name === "iPhone SE")!;
 const SCALE = designScale(PHONE.width, PHONE.height);
-const CARD = tableScale(PHONE);
-const RING = legibilityRing(PHONE.width, PHONE.height, CARD);
+const RING = legibilityRing(PHONE);
 const DISC = RING.inner;
 const PER_PT = 2;
-const anchors = phoneTable(PHONE.width, PHONE.height, { top: 8, bottom: 8, left: 40, right: 40 }).anchors;
+const INSETS = { top: 8, bottom: 8, left: 40, right: 40 };
+const anchors = phoneTable(PHONE.width, PHONE.height, INSETS).anchors;
 const SEATS = (["bottom", "right", "top", "left"] as FlyDirection[]).map((dir) => ({ dir, at: anchors[dir] }));
 const RIGHT = anchors.right;
 
@@ -101,7 +101,7 @@ describe("annulusLuminance", () => {
       ["iPhone 17 Pro Max", 18.6154, 49.2, 49.2],
     ] as const) {
       const p = PHONES.find((q) => q.name === phone)!;
-      const r = legibilityRing(p.width, p.height, tableScale(p));
+      const r = legibilityRing(p);
       near(r.inner, inner, 0.01);
       near(r.outerX, outerX, 0.5);
       near(r.outerY, outerY, 0.5);
@@ -119,7 +119,7 @@ describe("annulusLuminance", () => {
   });
 
   test("the ring starts at the drawn disc's edge, which scales with the card and not the table", () => {
-    assert.equal(SEAT_DISC * CARD / 2, DISC);
+    assert.equal(drawnDisc(tableLayout({ ...PHONE, insets: INSETS }).scale) / 2, DISC);
     near(DISC, 13.5, 0.1);
     const discWhite = (w: Where) => (w.pt < DISC ? WHITE : GREY);
     for (const { at } of SEATS) near(read(paint(at, discWhite), at), GREY_LINEAR, 0.001);
@@ -179,15 +179,25 @@ describe("annulusLuminance", () => {
 
   test("feltOnly keeps the rail and the room out of every ring", () => {
     const { x: feltLeft } = ringRect(RAIL_BAND);
-    const box = { width: 874, height: 402 };
-    const data = new Uint8ClampedArray(box.width * box.height * 4);
-    for (let i = 0; i < box.width * box.height; i++) data.set(i % box.width < feltLeft ? WHITE : GREY, i * 4);
-    const whole = { ...box, data };
-    const rim = { x: feltLeft + 7, y: box.height / 2 };
-    const r = legibilityRing(box.width, box.height, tableScale(box));
+    const win = { width: 874, height: 402 };
+    const data = new Uint8ClampedArray(win.width * win.height * 4);
+    for (let i = 0; i < win.width * win.height; i++) data.set(i % win.width < feltLeft ? WHITE : GREY, i * 4);
+    const whole = { ...win, data };
+    const rim = { x: feltLeft + 7, y: win.height / 2 };
+    const r = legibilityRing(win);
     assert.ok(read(whole, rim, 1, r) > GREY_LINEAR + 0.1, "the fixture's rail does not reach the ring");
-    near(read(feltOnly(whole, 1), rim, 1, r), GREY_LINEAR, 0.001);
-    assert.throws(() => read(feltOnly(whole, 1), { x: feltLeft - 20, y: box.height / 2 }, 1, r), /is felt/);
+    near(read(feltOnly(whole, win), rim, 1, r), GREY_LINEAR, 0.001);
+    assert.throws(() => read(feltOnly(whole, win), { x: feltLeft - 20, y: win.height / 2 }, 1, r), /is felt/);
+    assert.throws(() => feltOnly(whole, { width: win.width, height: win.height + 2 }), /is not of a/);
+  });
+
+  test("the parity targets' perPt and scale forms read the same felt and ring as the viewport form", () => {
+    const win = { width: 874, height: 402 };
+    const perPt = 2;
+    const data = new Uint8ClampedArray(win.width * perPt * win.height * perPt * 4).fill(128);
+    const shot = { width: win.width * perPt, height: win.height * perPt, data };
+    assert.deepEqual(feltOnly(shot, perPt), feltOnly(shot, win));
+    assert.deepEqual(legibilityRing(win.width, win.height, tableScale(win)), legibilityRing(win));
   });
 });
 

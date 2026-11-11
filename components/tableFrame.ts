@@ -8,8 +8,8 @@ import {
   FIELD_WIDTH_SHARE,
   HAND_WIDTH_SHARE,
   HAND_ZONE_GAP,
-  SEAT_DISC,
   actionBtnSize,
+  drawnDisc,
   seatGap,
   seatLabelH,
 } from "./seatLayout.ts";
@@ -113,7 +113,7 @@ export const SIDE_SEAT_GAP = Spacing.sm;
 
 /** What a side seat takes from its table edge: its ring and the fan leaning in from it. */
 function sideColumnW(scale: number): number {
-  return SIDE_SEAT_GAP + (SEAT_DISC * scale) / 2 + drawnFanBounds(scale).sideReach;
+  return SIDE_SEAT_GAP + drawnDisc(scale) / 2 + drawnFanBounds(scale).sideReach;
 }
 
 /**
@@ -190,10 +190,10 @@ export function bannerTop(layout: Pick<TableLayout, "chipsBottom"> | null, topPa
 
 /** The top seat's column: its label, ring and fan (components/table/seats.tsx `OpponentSeat`). */
 export function topBandHeight(scale: number): number {
-  return seatLabelH(scale) + SEAT_DISC * scale + seatGap(scale) + drawnFanBounds(scale).topH;
+  return seatLabelH(scale) + drawnDisc(scale) + seatGap(scale) + drawnFanBounds(scale).topH;
 }
 
 /** A side seat's slot: its ring, or its turned fan when that is taller; the ring centres in it. */
 export function sideSlotHeight(scale: number): number {
-  return Math.max(SEAT_DISC * scale, drawnFanBounds(scale).sideH);
+  return Math.max(drawnDisc(scale), drawnFanBounds(scale).sideH);
 }

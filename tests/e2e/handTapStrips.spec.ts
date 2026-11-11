@@ -12,8 +12,7 @@
 // delivered to that element whatever its box says. Neither a press nor a
 // rendered box can see this.
 import type { Page } from "@playwright/test";
-import { handCardSize } from "../../components/cardFaceModel";
-import { tableScale } from "../../components/tableLayout";
+import { handCardSize, tableScale } from "../../components/cardFaceModel";
 import { layoutHandRow } from "../../components/handLayout";
 import { computeTableFrame } from "../../components/tableFrame";
 import { test, expect } from "./fixtures";

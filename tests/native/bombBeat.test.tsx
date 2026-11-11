@@ -28,7 +28,7 @@ jest.mock('@/components/impact', () => {
 });
 
 import { GameTable } from '@/components/GameTable';
-import { tableScale } from '@/components/tableLayout';
+import { tableScale } from '@/components/cardFaceModel';
 import { BombFlash } from '@/components/table/moments';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 import { farthest, fireLanding, frameOfFirst } from './helpers/landing';

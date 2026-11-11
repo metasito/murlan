@@ -227,6 +227,9 @@ export function arrangeOpponents<T>(
 
 /** The seat disc's diameter at scale 1 (components/table/seats.tsx `SeatRing`). */
 export const SEAT_DISC = 33;
+export function drawnDisc(scale: number): number {
+  return SEAT_DISC * scale;
+}
 /**
  * Ring to fan, the same on every seat (components/table/seats.tsx `SeatWho`).
  * A share of the table, like the ring and the fan it separates — a flat gap is
@@ -271,7 +274,7 @@ export function seatNameRise(place: OpponentSide, scale: number, height: number,
  * seat's stands to the disc's right, centred on its height.
  */
 export function seatBadgeSlot(place: OpponentSide, scale: number, inset: number, height: number, rise: number, width: number): { left: number; top: number; width: number; align: Align } {
-  const disc = SEAT_DISC * scale;
+  const disc = drawnDisc(scale);
   const strip = Math.min(SEAT_BADGE_SLOT_W * scale, width);
   if (place === "top") return { left: disc + seatGap(scale), top: (disc - height) / 2, width: strip, align: "flex-start" };
   const anchor = seatAnchor(place);
@@ -328,7 +331,7 @@ export function seatLabelLeft(anchor: SeatAnchor, scale: number, inset: number):
 }
 
 function stripLeft(anchor: SeatAnchor, scale: number, inset: number, labelW: number): number {
-  const disc = SEAT_DISC * scale;
+  const disc = drawnDisc(scale);
   return anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? inset : disc - labelW - inset;
 }
 

@@ -5,7 +5,7 @@ import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
 import { mockupPx, NOTICE_FACES, seatBadgeH, type SeatBadge } from "./noticeModel";
 import {
   FAN_DRAWN_CARDS,
-  SEAT_DISC,
+  drawnDisc,
   seatGap,
   seatLabelH,
   seatBadgeSlot,
@@ -466,7 +466,7 @@ function SeatRing({
     .join("")
     .toUpperCase();
 
-  const size = SEAT_DISC * scale;
+  const size = drawnDisc(scale);
   const lastCard = finishPos === undefined && held === 1;
   const badge = SEAT_BADGE * (lastCard ? LAST_CARD_BADGE : 1) * scale;
   const showCount = finishPos !== undefined || !focusMode;
@@ -710,7 +710,7 @@ function SeatWho({
   focusMode?: boolean;
 }) {
   const anchor = seatAnchor(place);
-  const disc = SEAT_DISC * scale;
+  const disc = drawnDisc(scale);
   const lit = seatLit(isActive, mark);
   const labelW = seatLabelW(anchor, scale);
   const labelLeft = seatLabelLeft(anchor, scale, nameInset);
