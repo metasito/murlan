@@ -6,7 +6,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
-import { SHADOW_PATHS } from "../../components/table/cardShadows";
+import { SHADOW_PATHS, type ShadowPath } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { cardViewShadows, feltHolds, SHADE_CANVAS, type ViewCard } from "./helpers/cardContact";
 import { feltPixels, rgbaOf, skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
@@ -124,7 +124,7 @@ test("the felt's shadow round the pile is the mockup's, and no card view casts m
     shadeCanvas ? "card views' own contacts while the hand-shade canvas draws them" : "each card's own contact, a seat fan's drawn by the felt"
   ).toEqual(table.cards.map((c) => [`${c.path} ${c.key}`, viewContacts(c)]));
   const feltDraws = new Set<string>(["cast", ...table.cards.filter((c) => viewContacts(c) === 0).map((c) => c.path)]);
-  const holds = await feltHolds(page, () => expect.poll(rebuiltOverASecond).toEqual(still));
+  const holds = await feltHolds(page, () => expect.poll(rebuiltOverASecond).toEqual(still), [...feltDraws] as ShadowPath[]);
   expect(Object.keys(holds).sort(), "the shadow paths the felt holds for the seeded table").toEqual(SHADOW_PATHS.filter((path) => feltDraws.has(path)).sort());
   expect(
     table.cards.filter((c) => viewContacts(c) === 0 && !holds[c.path]?.includes(c.key)).map((c) => `${c.path} ${c.key}`),

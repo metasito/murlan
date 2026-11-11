@@ -22,9 +22,9 @@ const SETTLE = 120;
 /** Past a throw's flight, landing, dust and the lamp's glide to the next seat. */
 const AFTER_MOVE = 300;
 const PLAY_CONTROL = SETTLE * 2;
-/** Each leg of the resize that reads what the felt holds: its layout and one rebuild. */
+/** Each leg of the resize that reads what the felt holds, run on a table at rest: its layout and the felt's rebuild. */
 const RESIZED = 12;
-const AFTER_CONTROL = AFTER_MOVE - PLAY_CONTROL - 2 * RESIZED;
+const AFTER_CONTROL = AFTER_MOVE - PLAY_CONTROL;
 /** The lamp's glide to the next seat moves its light more than half a point a frame for about this long. */
 const GLIDE = 80;
 
@@ -138,12 +138,10 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   const glide = played.slice(moved, moved + GLIDE);
   const shadeCanvas = (await page.locator(SHADE_CANVAS).count()) > 0;
   const pile = await cardViewShadows(page, '[id^="card-pile:"]');
-  const held = await feltHolds(page, () => run(page, RESIZED));
   const control = {
     felt: drew(glide, FELT),
     handShade: drew(played, HAND_SHADE),
     pileContacts: pile.cards.map((c) => c.contacts),
-    pileOnFelt: pile.cards.map((c) => held[c.path]?.includes(c.key) ?? false),
     particles: drew(played, PARTICLES),
     styles: total(played, (f) => f.styles.cards ?? 0),
   };
@@ -155,15 +153,19 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   if (shadeCanvas) {
     expect(control.handShade, "the hand shade never drew the played hand").toBeGreaterThanOrEqual(1);
     expect(control.pileContacts, "pile cards' own contacts while the felt and the hand shade draw them").toEqual(pile.cards.map(() => 0));
-    expect(control.pileOnFelt, "each pile card in the felt's contact path").toEqual(pile.cards.map(() => true));
   } else {
     expect(control.pileContacts, "each pile card's contacts").toEqual(pile.cards.map(() => 1));
-    expect(control.pileOnFelt, "pile cards the felt's contact path also holds, a second contact").toEqual(pile.cards.map(() => false));
   }
   expect(control.particles, "the motes never drew").toBeGreaterThanOrEqual(1);
   expect(control.styles, "no card's view was styled through a play").toBeGreaterThan(0);
   await run(page, AFTER_CONTROL);
   await expectAtRest(page, info, "3. a bot on move over the viewer's card, motion on", true, SETTLED);
+
+  const held = await feltHolds(page, () => run(page, RESIZED), shadeCanvas ? ["face", "fan"] : ["fan"]);
+  const pileOnFelt = pile.cards.map((c) => held[c.path]?.includes(c.key) ?? false);
+  console.log(`pile cards the felt holds at rest: ${JSON.stringify(pileOnFelt)}`);
+  if (shadeCanvas) expect(pileOnFelt, "each pile card in the felt's contact path").toEqual(pile.cards.map(() => true));
+  else expect(pileOnFelt, "pile cards the felt's contact path also holds, a second contact").toEqual(pile.cards.map(() => false));
 
   const beforeBot = await table(page);
   await botMove(page);
