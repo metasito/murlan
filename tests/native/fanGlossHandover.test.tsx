@@ -1,5 +1,5 @@
 // tests/native/fanGlossHandover.test.tsx — where the table has tracks (web), a fan back draws no gloss of its own
-// while the fan's picture does, and draws it live, from the swaying light, when it has no `placed` (a glide, or
+// while the fan's picture does, and draws it live, from the light the tracks pose, when it has no `placed` (a glide, or
 // the picture not yet drawn); with no tracks it reads the still light, as native does.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
@@ -11,7 +11,7 @@ import { CardView } from '@/components/CardView';
 import { LampGloss } from '@/components/table/LampGloss';
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';
 import type { GlossLight } from '@/components/table/cardGloss';
-import { createGlossTracks } from '@/components/table/glossTrackStore';
+import { createGlossTracks, type GlossTracks } from '@/components/table/glossTrackStore';
 import { restingLamp, steppedLamp } from '@/components/table/lampRig';
 import { CardTableProvider, useCardTableValue, type OwnedRects } from '@/components/table/useCardRects';
 import { bootFeedback } from './helpers/feedback';
@@ -33,10 +33,11 @@ const card = { id: '3_spades', rank: '3', suit: 'spades', isJoker: false } as co
 
 const sway = makeMutable(light(457));
 const still = makeMutable(light(300));
+let made: GlossTracks | undefined;
 
 function Table({ tracks, live, children }: { tracks: boolean; live?: boolean; children: React.ReactNode }) {
   const [store] = React.useState(() => {
-    const made = tracks ? createGlossTracks(steppedLamp(makeMutable(restingLamp([437, 180, 1]))), makeMutable(light(437)), makeMutable(0), restingLamp([437, 180, 1])) : undefined;
+    made = tracks ? createGlossTracks(steppedLamp(makeMutable(restingLamp([437, 180, 1]))), { rest: makeMutable(light(437)), light: makeMutable(light(457)), ends: makeMutable(0) }, restingLamp([437, 180, 1])) : undefined;
     made?.update(!live);
     return made;
   });
@@ -62,7 +63,7 @@ describe('an opponent\'s back on a table with tracks', () => {
     expect(spots()).toBe(1);
   });
 
-  it('draws it live from the still light at rest, and from the swaying light through a glide', async () => {
+  it('draws it live from the still light at rest, and from the light the tracks pose through a glide', async () => {
     const streak = () => JSON.stringify(getAnimatedStyle(screen.getAllByTestId('card-gloss-streak', { includeHiddenElements: true })[0] as never));
     const view = await render(<Table tracks><CardView card={card} faceDown rectKey="fan:top:0" rects={fan()} /></Table>);
     const resting = streak();
@@ -73,10 +74,16 @@ describe('an opponent\'s back on a table with tracks', () => {
     expect(streak()).toBe(resting);
     await view.unmount();
     await render(<Table tracks live><CardView card={card} faceDown rectKey="fan:top:0" rects={fan()} /></Table>);
+    const gliding = streak();
     await act(async () => {
       sway.value = light(500);
       jest.advanceTimersByTime(16);
     });
-    expect(streak()).not.toBe(resting);
+    expect(streak()).toBe(gliding);
+    await act(async () => {
+      made!.pose({ ...light(500), t: 1 });
+      jest.advanceTimersByTime(16);
+    });
+    expect(streak()).not.toBe(gliding);
   });
 });

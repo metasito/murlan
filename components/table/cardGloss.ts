@@ -27,6 +27,8 @@ const GLOSS_POINT_STEP = 2;
 const GLOSS_LIGHT_STEP = 1 / 256;
 /** Under a 60 Hz frame, so its jitter never skips one: a faster display, or jest's 1 ms frames, poses a gloss no oftener. */
 export const GLOSS_FRAME_S = 0.012;
+/** How often an opponent's back drawn live re-poses its gloss while the table moves: between three and four 60 Hz frames and between seven and eight 120 Hz ones, clear of each by more than a frame's jitter, so either display poses it evenly, 15 times a second. */
+export const FAN_GLOSS_FRAME_S = 0.062;
 
 export function glossLightOf(lamp: GlossLight): GlossLight {
   "worklet";
@@ -43,18 +45,28 @@ const withinStep = (shown: GlossLight, lx: number, ly: number, level: number, r:
   return Math.abs(lx - shown.lx) < GLOSS_POINT_STEP && Math.abs(ly - shown.ly) < GLOSS_POINT_STEP && withinLightStep(level, shown.level) && withinLightStep(r, shown.r);
 };
 
+const posedEvery = (frameS: number, shown: GlossLight, lx: number, lamp: Omit<GlossLight, "lx">): GlossLight | null => {
+  "worklet";
+  if (lamp.t - shown.t < frameS) return null;
+  return withinStep(shown, lx, lamp.ly, lamp.level, lamp.r) ? null : { lx, ly: lamp.ly, level: lamp.level, r: lamp.r, t: lamp.t };
+};
+
 /** The light every gloss should now read, or null while `lamp` is within a step or a frame of `shown`. */
 export function nextGlossLight(shown: GlossLight, lamp: GlossLight): GlossLight | null {
   "worklet";
-  if (lamp.t - shown.t < GLOSS_FRAME_S) return null;
-  return withinStep(shown, lamp.lx, lamp.ly, lamp.level, lamp.r) ? null : glossLightOf(lamp);
+  return posedEvery(GLOSS_FRAME_S, shown, lamp.lx, lamp);
+}
+
+/** `nextGlossLight` for an opponent's back drawn live, at its own cadence (`FAN_GLOSS_FRAME_S`). */
+export function nextFanLight(shown: GlossLight, lamp: GlossLight): GlossLight | null {
+  "worklet";
+  return posedEvery(FAN_GLOSS_FRAME_S, shown, lamp.lx, lamp);
 }
 
 /** The light an opponent's back reads: the lamp where it points, unswayed (`x`, not `lx`), so it moves with a target or a level and never with the sway. */
 export function nextStillLight(shown: GlossLight, lamp: Pick<Lamp, "x" | "ly" | "level" | "r" | "t">): GlossLight | null {
   "worklet";
-  if (lamp.t - shown.t < GLOSS_FRAME_S) return null;
-  return withinStep(shown, lamp.x, lamp.ly, lamp.level, lamp.r) ? null : glossLightOf({ ...lamp, lx: lamp.x });
+  return posedEvery(GLOSS_FRAME_S, shown, lamp.x, lamp);
 }
 
 /** The level the cards' shade should now read, or null while `lamp` is within a step of `shown`: a shade needs the level alone, so it hears nothing of the sway. The glide never reaches `lvlT`, so within a step of it the shade lands on it exactly, where the mockup's shade rests. */

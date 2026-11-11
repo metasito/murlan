@@ -4,7 +4,7 @@ import type { OpponentSide } from "@/components/seatLayout";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { designRect, sameRect, scopeOf, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
 import type { GlossLight } from "./cardGloss";
-import type { GlossTracks } from "./glossTrackStore";
+import type { GlossTracks, LightReader } from "./glossTrackStore";
 
 /**
  * The one registry, and the laid-out places every owner measures its cards from, in window points.
@@ -45,10 +45,11 @@ export function useCardTable(): CardTable | null {
 const NEVER_SUBSCRIBED = () => () => {};
 const NEVER_LIVE = () => false;
 
-/** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway; with `tracks`, a back drawn live through a glide, a kick or a dim follows it too, as the mockup's. */
-export function useGlossLight(table: CardTable, rectKey: string): SharedValue<GlossLight> {
+/** The light a card at `rectKey` reads: an opponent's back glints at the lamp's pose, the rest follow its sway; with `tracks`, a back drawn live through a glide, a kick or a dim follows it too, as the mockup's, in the tracks' own steps. */
+export function useGlossLight(table: CardTable, rectKey: string): LightReader {
   const live = useSyncExternalStore(table.tracks?.subscribe ?? NEVER_SUBSCRIBED, table.tracks?.live ?? NEVER_LIVE);
-  return scopeOf(rectKey) === "fan" && !live ? table.stillLight : table.glossLight;
+  if (scopeOf(rectKey) !== "fan") return table.glossLight;
+  return live && table.tracks ? table.tracks.light : table.stillLight;
 }
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
