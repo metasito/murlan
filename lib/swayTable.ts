@@ -37,11 +37,8 @@ export interface SwayStart {
 
 /** The sway, -1 to 1, at `TRACK_STEP` intervals over `seconds` from `start`, carrying the rig's phase forward on the exact integral of its speed. */
 export function bakeSway({ ph, t }: SwayStart, seconds: number): number[] {
-  const from = phaseOf(t);
   const stops = Math.ceil(seconds / TRACK_STEP);
-  return Array.from({ length: stops + 1 }, (_, i) =>
-    Math.sin(ph + phaseOf(t + i * TRACK_STEP) - from),
-  );
+  return Array.from({ length: stops + 1 }, (_, i) => Math.sin(ph + swept(t, t + i * TRACK_STEP)));
 }
 
 /** A baked track at `s` seconds from its start, linear between its stops. */

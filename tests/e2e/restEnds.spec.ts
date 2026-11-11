@@ -20,6 +20,10 @@ const WINDOW = 640;
 /** Milliseconds the animation is stepped ahead of the rig, and the frames watched after: past two checks of `DRIFT_CHECK_MS`, and a second more. */
 const STALL_MS = 300;
 const STALL_FRAMES = 150;
+/** Holds and wakes in a row: a frame gained or lost at each would be past half a frame by the second. */
+const CYCLES = 8;
+/** Frames from a wake to the rig's first step on: one arms its callback, the next runs it. */
+const WAKE_FRAMES = 2;
 
 const END = '[data-testid="felt-end-b"]';
 const READ = `(() => {
@@ -97,9 +101,13 @@ function tableFrom(from: Sample): (s: Sample) => number {
   return (s) => trackAt(track, clock(s) - from.clock);
 }
 
-/** Frames the rig neither stepped with the page's clock nor held while it may: a rig left stopped by a wake that never came. */
+/**
+ * Frames the rig neither stepped with the page's clock nor held while it may: a rig left stopped by a wake that never came. A woken
+ * rig's callback runs from the frame after the wake, so a frame off the page's clock is stuck unless the next one is back on it.
+ */
 function stuck(from: Pick<Sample, "clock" | "wall">, samples: Pick<Sample, "rig" | "held" | "ends" | "rested" | "wall">[]): number {
-  return samples.filter((s) => (s.held ? s.ends === 0 || !s.rested : Math.abs(s.rig - (from.clock + s.wall - from.wall)) * 1000 > 1e-3)).length;
+  const off = (s: Pick<Sample, "rig" | "held" | "wall">) => !s.held && Math.abs(s.rig - (from.clock + s.wall - from.wall)) * 1000 > 1e-3;
+  return samples.filter((s, i) => (s.held ? s.ends === 0 || !s.rested : off(s) && (i === samples.length - 1 || off(samples[i + 1]!)))).length;
 }
 
 /** The drawn lamp's centre, `lx` less its sway, at each sample, their mean, and the most one lies off it. */
@@ -228,6 +236,28 @@ test("a held rig whose end leaves steps on, though nothing moved the lamp", asyn
   const woken = after.find((s) => !s.held);
   expect(woken, `the rig still held the lamp ${STALL_FRAMES} frames after its end left`).toBeDefined();
   expect((Math.abs(woken!.rig - (shown.clock + woken!.wall - shown.wall)) * 1000) / STEP_MS, "frames the woken rig's clock is off the page's").toBeLessThan(1.5);
-  expect(stuck({ clock: woken!.rig, wall: woken!.wall }, after), "frames the rig neither stepped on from its wake nor held the lamp while an end showed").toBe(0);
+  expect(stuck(shown, after.slice(after.indexOf(woken!))), "frames the rig neither stepped on with the page's clock from its wake nor held the lamp while an end showed").toBe(0);
+  await context.close();
+});
+
+test("a rig held and woken many times keeps to the page's clock", async ({ browser, baseURL }) => {
+  test.setTimeout(5 * 60_000);
+  const { page, context, shown } = await restedTable(browser, baseURL!);
+  const READ_RIG = `(() => { const f = window.murlanTrace.frames.at(-1); return { rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000 }; })()`;
+  type Rig = Pick<Sample, "rig" | "held" | "ends" | "rested" | "wall">;
+  const next = () => stepThen<Rig>(page, STEP_MS, READ_RIG);
+  const offs: number[] = [];
+  for (let cycle = 0; cycle < CYCLES; cycle++) {
+    let s = await next();
+    for (let i = 0; i < WINDOW && !s.held; i++) s = await next();
+    expect(s.held, `cycle ${cycle}: the rig never held the lamp in ${WINDOW} frames`).toBe(true);
+    await page.evaluate((on) => (window as unknown as { murlanCardGlow(on: boolean): void }).murlanCardGlow(on), cycle % 2 === 1);
+    for (let i = 0; i < STALL_FRAMES && s.held; i++) s = await next();
+    expect(s.held, `cycle ${cycle}: the rig still held the lamp ${STALL_FRAMES} frames after its end left`).toBe(false);
+    for (let i = 0; i < WAKE_FRAMES; i++) s = await next();
+    offs.push((s.rig - (shown.clock + s.wall - shown.wall)) * 1000);
+  }
+  console.log(`after each of ${CYCLES} holds and wakes, the stepping rig's clock is off the page's by ${offs.map((o) => o.toFixed(3)).join(", ")} ms`);
+  expect(Math.max(...offs.map(Math.abs)) / STEP_MS, "frames a stepping rig's clock is off the page's after holds and wakes").toBeLessThan(0.5);
   await context.close();
 });

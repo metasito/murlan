@@ -183,6 +183,31 @@ describe("createLampHold", () => {
     mock.restoreAll();
   });
 
+  test("held and resumed between frames, again and again, keeps the rig's clock on the page's", () => {
+    let wall = 1000;
+    mock.method(performance, "now", () => wall);
+    const lamp = mutable(rested());
+    const hold = createLampHold(lamp, mutable(false));
+    const frame = () => {
+      wall += 16;
+      if (!hold.held()) stepLamp(lamp.get(), hold.step(wall), false);
+    };
+    frame();
+    const offset = lamp.get().t - wall / 1000;
+    for (let cycle = 0; cycle < 20; cycle++) {
+      for (let i = 0; i < 5; i++) frame();
+      hold.hold();
+      for (let i = 0; i < 7; i++) frame();
+      wall += 5 + cycle;
+      hold.resume(lamp.get());
+      wall += 16 * (cycle % 3);
+      for (let i = 0; i < 5; i++) frame();
+      assert.ok(Math.abs(lamp.get().t - wall / 1000 - offset) < 1e-9, `cycle ${cycle}: the rig's clock is ${((lamp.get().t - wall / 1000 - offset) * 1000).toFixed(3)} ms off the page's`);
+      assert.ok(Math.abs(hold.clock() - lamp.get().t) < 1e-12);
+    }
+    mock.restoreAll();
+  });
+
   test("stops its clock while the page is hidden, as the rig's steps do", () => {
     const { hold, advance } = held();
     advance(500);

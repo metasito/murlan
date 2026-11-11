@@ -46,7 +46,7 @@ function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight
     "worklet";
     const s = lamp.value;
     if (hold?.held()) hold.resume(s);
-    else stepLamp(s, (frame.timeSincePreviousFrame ?? 0) / 1000, reduced.value);
+    else stepLamp(s, hold ? hold.step(frame.timestamp) : (frame.timeSincePreviousFrame ?? 0) / 1000, reduced.value);
     if (lampMoved(s)) lamp.modify(undefined, true);
     const gloss = nextGlossLight(glossLight.value, s);
     if (gloss) glossLight.value = gloss;
@@ -113,7 +113,7 @@ export function useLampRig({
     }, true);
     wake();
   });
-  const [resumeRig] = useState(() => () => {
+  const [resumeRig] = useState(() => (then?: () => void) => {
     "worklet";
     if (hold?.held())
       lamp.modify((s) => {
@@ -121,12 +121,15 @@ export function useLampRig({
         hold.resume(s);
         return s;
       }, true);
+    then?.();
     wake();
   });
 
   useEffect(() => {
-    resumeRig();
-    reduced.set(reduceMotion);
+    resumeRig(() => {
+      "worklet";
+      reduced.set(reduceMotion);
+    });
   }, [reduceMotion, reduced, resumeRig]);
 
   useEffect(() => {

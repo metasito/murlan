@@ -229,7 +229,9 @@ export function steppedLamp(lamp: { readonly value: Lamp }): LampNow {
 
 /** A rig that may stop stepping its lamp while the compositor carries its sway (`endsCarry`), the lamp carried on for readers by the page's clock. */
 export interface LampHold extends LampNow {
-  /** The rig stops stepping the lamp from this instant; its clock runs on while the page shows. */
+  /** Seconds a frame at `timestamp` (ms, the page's clock) steps the lamp: from the instant the lamp stands at, so a lamp resumed between frames steps only what is left. */
+  step(timestamp: number): number;
+  /** The rig stops stepping the lamp from the instant it stands at; its clock runs on while the page shows. */
   hold(): void;
   held(): boolean;
   /** Carries the rig's own lamp `s` on to now if it was held, and leaves it to the rig's steps again. */
@@ -241,6 +243,7 @@ export interface LampHold extends LampNow {
 export function createLampHold(lamp: { get(): Lamp }, reduced: { get(): boolean }): LampHold {
   let heldAt = NaN;
   let hiddenAt = NaN;
+  let at = NaN;
   const carried = { ...lamp.get() };
   const heldFor = () => {
     if (Number.isNaN(heldAt)) return 0;
@@ -257,13 +260,19 @@ export function createLampHold(lamp: { get(): Lamp }, reduced: { get(): boolean 
       return carried;
     },
     clock: () => lamp.get().t + heldFor(),
+    step: (timestamp) => {
+      const from = Number.isNaN(at) ? timestamp : at;
+      at = Math.max(from, timestamp);
+      return (at - from) / 1000;
+    },
     hold: () => {
-      heldAt = performance.now();
+      heldAt = Number.isNaN(at) ? performance.now() : at;
     },
     held: () => !Number.isNaN(heldAt),
     resume: (s) => {
       if (Number.isNaN(heldAt)) return;
       resumeLamp(s, heldFor(), reduced.get());
+      at = performance.now();
       heldAt = NaN;
     },
     shown: (visible) => {
