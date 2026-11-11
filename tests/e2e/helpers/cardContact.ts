@@ -44,6 +44,19 @@ export function isContact(css: string, s: number, kind: CardKind): boolean {
 
 export type ViewCard = { key: string; kind: CardKind; path: ShadowKind; contacts: number };
 
+/** Who draws a table card's contact: a seat fan's is the felt's, every other card's is its own view's. */
+export const contactOnFelt = (path: ShadowKind): boolean => path === "fan";
+
+/** The felt's contact paths, those `contactOnFelt` gives it. */
+export const FELT_CONTACTS: ShadowPath[] = (["face", "back", "fan"] as const).filter(contactOnFelt);
+
+/** The contacts a card's own view casts: none where the felt draws it. */
+export const viewContacts = (card: Pick<ViewCard, "path">): number => (contactOnFelt(card.path) ? 0 : 1);
+
+/** Whether any contact path the felt holds, whatever its kind, holds `key`; the cast is not a contact. */
+export const feltContactHolds = (held: Partial<Record<ShadowPath, string[]>>, key: string): boolean =>
+  Object.entries(held).some(([path, keys]) => path !== "cast" && keys.includes(key));
+
 const LIT_RGB = (Colors.goldLit.match(/[\da-f]{2}/gi) ?? []).map((h) => parseInt(h, 16));
 
 /** True when `css` is the lit pile card's ring (`Shadow.litCard`): one unscaled goldLit glow. */

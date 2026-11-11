@@ -8,7 +8,7 @@ import { installVirtualClock, stepFrames, stepUntil } from "./helpers/virtualClo
 import { STEP_MS, type TraceFrame } from "./helpers/traceDiff";
 import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayRuns, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { HAND_CARD_BOXES, TABLE_STATE } from "./helpers/selectors";
-import { cardViewShadows, feltHolds } from "./helpers/cardContact";
+import { cardViewShadows, contactOnFelt, FELT_CONTACTS, feltContactHolds, feltHolds, viewContacts } from "./helpers/cardContact";
 
 const VIEWPORT = { width: 874, height: 402 };
 const SEED = 1255;
@@ -148,16 +148,18 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   expect(control.felt, "frames the felt drew while its light glided").toBeGreaterThanOrEqual(GLIDE * 0.8);
   expect(pile.cards.length, "cards on the pile").toBeGreaterThan(0);
   expect(pile.others, "pile cards' shadows and glows beyond their contact").toEqual([]);
-  expect(control.pileContacts, "each pile card's contacts").toEqual(pile.cards.map(() => 1));
+  expect(control.pileContacts, "each pile card's contacts").toEqual(pile.cards.map(viewContacts));
   expect(control.particles, "the motes never drew").toBeGreaterThanOrEqual(1);
   expect(control.styles, "no card's view was styled through a play").toBeGreaterThan(0);
   await run(page, AFTER_CONTROL);
   await expectAtRest(page, info, "3. a bot on move over the viewer's card, motion on", true, SETTLED);
 
-  const held = await feltHolds(page, () => run(page, RESIZED), ["fan"]);
-  const pileOnFelt = pile.cards.map((c) => held[c.path]?.includes(c.key) ?? false);
-  console.log(`pile cards the felt holds at rest: ${JSON.stringify(pileOnFelt)}`);
-  expect(pileOnFelt, "pile cards the felt's contact path also holds, a second contact").toEqual(pile.cards.map(() => false));
+  const held = await feltHolds(page, () => run(page, RESIZED), FELT_CONTACTS);
+  expect(Object.keys(held).sort(), "the shadow paths the felt holds at rest").toEqual(["cast", ...FELT_CONTACTS].sort());
+  expect(
+    pile.cards.map((c) => feltContactHolds(held, c.key)),
+    "pile cards a contact path of the felt holds"
+  ).toEqual(pile.cards.map((c) => contactOnFelt(c.path)));
 
   const beforeBot = await table(page);
   await botMove(page);

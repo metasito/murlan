@@ -1,5 +1,6 @@
 // tests/e2e/tableCanvases.spec.ts — the Skia table holds one WebGL context, the felt's: each one more is
-// a full-viewport redraw a frame (#1988 item 8), and the cards cast their contacts themselves.
+// a full-viewport redraw a frame (#1988 item 8). No other canvas lies over the table to draw the cards'
+// contacts, under any name or renderer; which view draws each contact is `cardContact.ts`'s `contactOnFelt`.
 import { test, expect } from "./fixtures";
 import { offlineSave, resumeSaved } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
@@ -7,7 +8,10 @@ import { legalGioca } from "./helpers/bot.ts";
 import { tap } from "./helpers/press";
 import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
-type Live = { felt: number; elsewhere: string[]; opened: number; offscreen: number };
+/** Every canvas in the document, named by the view it lies in: the felt, its end-B layer and the motes. */
+const CANVASES = ["felt-end-b", "particles", "table-felt"];
+
+type Live = { felt: number; elsewhere: string[]; opened: number; offscreen: number; canvases: string[] };
 
 test("the Skia table draws on one WebGL context, the felt's, and a play in flight opens no other", async ({ page, baseURL }) => {
   test.setTimeout(3 * 60_000);
@@ -37,7 +41,8 @@ test("the Skia table draws on one WebGL context, the felt's, and a play in fligh
       const inFelt = (c: HTMLCanvasElement) => !!c.closest('[data-testid="table-felt"]');
       const live = [...gl].filter((c) => c.isConnected);
       const name = (c: HTMLCanvasElement) => c.closest("[data-testid]")?.getAttribute("data-testid") ?? "(no testid)";
-      return { felt: live.filter(inFelt).length, elsewhere: live.filter((c) => !inFelt(c)).map(name), opened: contexts.size, offscreen };
+      const canvases = [...document.querySelectorAll("canvas")].map(name).sort();
+      return { felt: live.filter(inFelt).length, elsewhere: live.filter((c) => !inFelt(c)).map(name), opened: contexts.size, offscreen, canvases };
     };
   });
   await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }));
@@ -46,6 +51,7 @@ test("the Skia table draws on one WebGL context, the felt's, and a play in fligh
 
   const rest = await live();
   expect({ felt: rest.felt, elsewhere: rest.elsewhere }).toEqual({ felt: 1, elsewhere: [] });
+  expect(rest.canvases, "every canvas in the document, of any renderer").toEqual(CANVASES);
   await tap(page, page.locator(HAND_CARD_BOXES).last());
   await tap(page, legalGioca(page));
   await expect(page.getByTestId("flying-card").first()).toBeAttached({ timeout: 30_000 });
