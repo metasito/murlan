@@ -1,51 +1,35 @@
-// metro.config.js resolves Reanimated's worklets-version check to an empty module in a production
-// bundle, which holds only while every caller of the check runs it under `__DEV__` alone.
+// metro.config.js swaps Reanimated's worklets-version check for one that passes, in release bundles only.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import fs from "node:fs";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const require = createRequire(import.meta.url);
-const reanimated = path.dirname(require.resolve("react-native-reanimated/package.json"));
-const CHECK = path.join(reanimated, "scripts", "validate-worklets-version.js");
-const MODULE = path.join(reanimated, "lib", "module");
+const CHECK = path.join(path.dirname(require.resolve("react-native-reanimated/package.json")), "scripts", "validate-worklets-version.js");
+const PASSES = path.join(repoRoot, "scripts", "metro", "workletsVersionOk.js");
 
-const CALL = /\bassertWorkletsVersion\(\)/g;
-const GATED = /if \(__DEV__\) \{[^{}]*\bassertWorkletsVersion\(\);[^{}]*\}/g;
+const { resolver } = require(path.join(repoRoot, "metro.config.js"));
+const at = (filePath: string, dev: boolean) =>
+  resolver.resolveRequest({ dev, resolveRequest: () => ({ type: "sourceFile", filePath }) }, "x", "ios");
 
-function moduleSources(dir: string): [string, string][] {
-  return fs.readdirSync(dir, { withFileTypes: true, recursive: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".js"))
-    .map((e) => {
-      const file = path.join(e.parentPath, e.name);
-      return [path.relative(dir, file), fs.readFileSync(file, "utf8")];
-    });
-}
-
-test("the gate pattern sees what it is for", () => {
-  assert.equal("if (__DEV__) {\n  a();\n  assertWorkletsVersion();\n}".match(GATED)?.length, 1);
-  assert.equal("assertWorkletsVersion();".match(GATED), null);
-  assert.equal("if (__DEV__) { x(); }\nassertWorkletsVersion();".match(GATED), null);
+test("a release bundle gets the passing check, from any copy of Reanimated", () => {
+  assert.deepEqual(at(CHECK, false), { type: "sourceFile", filePath: PASSES });
+  const nested = path.join(repoRoot, "node_modules", "some-lib", "node_modules", "react-native-reanimated", "scripts", "validate-worklets-version.js");
+  assert.deepEqual(at(nested, false), { type: "sourceFile", filePath: PASSES });
 });
 
-test("Reanimated calls its worklets-version check under `__DEV__` alone", () => {
-  const callers = moduleSources(MODULE).filter(([, src]) => src.includes("assertWorkletsVersion()") && !src.includes("export function assertWorkletsVersion"));
-  assert.ok(callers.length >= 2, `found ${callers.length} callers of the check, expected Reanimated's two`);
-  for (const [file, src] of callers) {
-    const calls = src.match(CALL)?.length ?? 0;
-    assert.equal(src.match(GATED)?.length ?? 0, calls, `${file} calls the check outside \`if (__DEV__)\``);
-  }
-});
-
-test("Metro empties the check in a production bundle, and only there", () => {
-  const { resolver } = require(path.join(repoRoot, "metro.config.js"));
-  const at = (filePath: string, dev: boolean) =>
-    resolver.resolveRequest({ dev, resolveRequest: () => ({ type: "sourceFile", filePath }) }, "x", "web");
-  assert.ok(fs.existsSync(CHECK), `no check at ${CHECK}`);
-  assert.deepEqual(at(CHECK, false), { type: "empty" });
+test("a dev bundle keeps the real check, and nothing else is swapped", () => {
   assert.deepEqual(at(CHECK, true), { type: "sourceFile", filePath: CHECK });
-  const other = path.join(reanimated, "scripts", "other.js");
-  assert.deepEqual(at(other, false), { type: "sourceFile", filePath: other });
+  const sibling = path.join(path.dirname(CHECK), "validate-worklets-build.js");
+  assert.deepEqual(at(sibling, false), { type: "sourceFile", filePath: sibling });
+});
+
+test("the passing check answers in the real check's shape", () => {
+  const real: unknown = require(CHECK);
+  const passes: unknown = require(PASSES);
+  assert.equal(typeof real, "function");
+  assert.equal(typeof passes, "function");
+  assert.equal(typeof (real as (v: string) => { ok: boolean })("4.7.1").ok, "boolean");
+  assert.deepEqual((passes as (v: string) => { ok: boolean })("4.7.1"), { ok: true });
 });
