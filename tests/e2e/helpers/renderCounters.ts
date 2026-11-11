@@ -1,6 +1,4 @@
 import type { Page } from "@playwright/test";
-import { SWAY } from "../../../components/table/lampRig.ts";
-import { endWeight } from "../../../components/table/restEnds.ts";
 
 /** What the page drew since it was last read, keyed by the `data-testid` nearest each canvas or styled element. */
 export interface RenderCounts {
@@ -149,6 +147,9 @@ export const TAKE_RENDER_COUNTS = "window.murlanRenderCounts.take()";
 export const COUNTED = { felt: "table-felt webgl",handShade: "card-shade webgl", particles: "particles 2d" } as const;
 
 const DESIGN_WIDTH = 874;
+/** The rested lamp's sway either side of its centre, in design points, and the sway, -1 to 1, an end-B opacity shows: the harness's own, not the app's, so a change to the rig's swing or the layer's mapping is caught rather than followed. */
+export const SWAY_PT = 20;
+export const swayOfOpacity = (opacity: number) => 2 * opacity - 1;
 const LEAN_REACH_PT = 120;
 /** Levels end B must lean: end B reads +5.4 at 874 x 402, DPR 1, a copy of end A -1.3 and a blank canvas 0. */
 const LEAN_FLOOR = 1;
@@ -174,7 +175,7 @@ export const END_B_LEAN = `(() => {
   const opacity = Number(getComputedStyle(canvas.parentElement).opacity);
   const pt = innerWidth / ${DESIGN_WIDTH};
   const px = canvas.width / innerWidth;
-  const target = frame.lamp.x - ${SWAY} * pt * ((opacity - ${endWeight(0)}) / ${endWeight(1) - endWeight(0)});
+  const target = frame.lamp.x - ${SWAY_PT} * pt * (${String(swayOfOpacity)})(opacity);
   const reach = ${LEAN_REACH_PT} * pt;
   const half = Math.round(8 * px);
   const left = Math.round((target - reach) * px) - half;
