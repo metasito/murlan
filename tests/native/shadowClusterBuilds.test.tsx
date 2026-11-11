@@ -8,7 +8,7 @@ import type { CardRect, CardRects } from '@/components/table/cardRects';
 import { TABLE_AT_REST } from '@/components/table/cardRects';
 import { SHADOW_PATHS, shadowShape } from '@/components/table/cardShadows';
 import { FeltCanvas } from '@/components/table/feltCanvas';
-import { TABLE_CENTRE, restingLamp } from '@/components/table/lampRig';
+import { TABLE_CENTRE, restingLamp, steppedLamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
 import { FeltGradient } from '@/lib/tokens';
 import { frames } from './helpers/exchangeLegs';
@@ -81,9 +81,9 @@ describe('the felt on a resize', () => {
     type Scale = { sx: number; sy: number; s: number };
     const table = (scale: Scale, handX: number) =>
       ({ rects, felt: { ...scale, kickAt: at, shakeAt: at }, motion: makeMutable(TABLE_AT_REST), pile: at, hand: { x: handX, y: 0 }, seats: {} }) as unknown as CardTable;
-    const felt = (scale: Scale, handX: number) => (
-      <FeltCanvas lamp={makeMutable(restingLamp(TABLE_CENTRE))} sx={1} sy={1} stops={FeltGradient} cards={table(scale, handX)} />
-    );
+    const lamp = makeMutable(restingLamp(TABLE_CENTRE));
+    const { now } = steppedLamp(lamp);
+    const felt = (scale: Scale, handX: number) => <FeltCanvas lamp={lamp} now={now} sx={1} sy={1} stops={FeltGradient} cards={table(scale, handX)} />;
     const counts = () => Object.values(e2e.murlanShadowClusterBuilds ?? {});
     const kinds = () => new Set(Object.keys(e2e.murlanShadowClusterBuilds ?? {}).map((cluster) => cluster.split('|')[0]));
 

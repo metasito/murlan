@@ -1,11 +1,10 @@
 // tests/ui-rules/lampHeld.test.ts — a lamp the rig stops stepping at rest (`endsCarry`) is carried on as stepping would have
-// carried it (`resumeLamp`), on the phase the compositor's track plays (`swept`), and read the same by every reader (`GlossTracks.now`).
+// carried it (`resumeLamp`), on the phase the compositor's track plays (`swept`), and read the same by every reader (`LampHold.now`).
 import { test, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { SharedValue } from "react-native-reanimated";
-import { lampControls, restingLamp, resumeLamp, stepLamp, type Lamp } from "../../components/table/lampRig.ts";
-import { endsCarry } from "../../components/table/restEnds.ts";
-import { createGlossTracks } from "../../components/table/glossTrackStore.ts";
+import { createLampHold, lampControls, restingLamp, resumeLamp, stepLamp, steppedLamp, SWAY, SWAY_KICKED, type Lamp } from "../../components/table/lampRig.ts";
+import { endsCarry, showsEnd } from "../../components/table/restEnds.ts";
 import { speedOf, swept } from "../../lib/swayTable.ts";
 
 const FRAME = 1 / 60;
@@ -49,6 +48,24 @@ describe("resumeLamp", () => {
       const euler = (FRAME / 2) * Math.abs(speedOf(held.t) - speedOf(moving().t)) + 1e-5;
       assert.ok(Math.abs(stepped.ph - held.ph) <= euler, `phase ${stepped.ph} vs ${held.ph}, Euler's ${euler}`);
     }
+  });
+
+  test("draws the sway and flare a kicked, flared lamp has at the span's end, as the frame stepping there draws them", () => {
+    const frames = 30;
+    const stepped = moving();
+    const held = moving();
+    for (let i = 0; i < frames; i++) stepLamp(stepped, FRAME, false);
+    resumeLamp(held, frames * FRAME, false);
+    const one = moving();
+    stepLamp(one, FRAME, false);
+    const kickFrame = one.kick / moving().kick;
+    const flareFrame = one.flare / moving().flare;
+    assert.ok(held.kick > 0.1 && held.f > 0.1, `kick ${held.kick}, flare ${held.f}`);
+    assert.ok(Math.abs(held.f - held.flare) < 1e-12, `drawn flare ${held.f} vs flare ${held.flare}`);
+    assert.ok(Math.abs(stepped.f * flareFrame - held.f) < 1e-9, `stepping drew ${stepped.f} a frame before ${held.f}`);
+    const euler = (FRAME / 2) * Math.abs(speedOf(held.t) - speedOf(moving().t)) + 1e-5;
+    const sway = (SWAY + SWAY_KICKED * moving().kick) * euler + SWAY_KICKED * held.kick * (1 / kickFrame - 1);
+    assert.ok(Math.abs(stepped.lx - held.lx) <= sway, `lx ${stepped.lx} vs ${held.lx}, within ${sway}`);
   });
 
   test("carried in pieces lands where it lands carried at once", () => {
@@ -96,6 +113,15 @@ describe("swept", () => {
   });
 });
 
+describe("showsEnd", () => {
+  test("only a rested lamp, with an end named, under reduced motion too", () => {
+    assert.equal(showsEnd(rested(), -1), true);
+    assert.equal(showsEnd(rested(), 1), true);
+    assert.equal(showsEnd(rested(), 0), false, "no end named");
+    assert.equal(showsEnd(moving(), 1), false, "gliding");
+  });
+});
+
 describe("endsCarry", () => {
   test("only a rested lamp, with an end shown, under motion", () => {
     assert.equal(endsCarry(rested(), -1, false), true);
@@ -106,64 +132,88 @@ describe("endsCarry", () => {
   });
 });
 
-describe("GlossTracks.now", () => {
+describe("steppedLamp", () => {
+  test("is the rig's own lamp, and its clock", () => {
+    const lamp = mutable(rested());
+    const rig = steppedLamp(lamp);
+    assert.equal(rig.now(), lamp.value);
+    assert.equal(rig.clock(), 12);
+  });
+});
+
+describe("createLampHold", () => {
   function held(reduced = false) {
     let wall = 1000;
     mock.method(performance, "now", () => wall);
     const lamp = mutable(rested());
-    const tracks = createGlossTracks(lamp, mutable({ lx: 0, ly: 0, level: 1, r: 1, t: 0 }), mutable(-1), mutable(reduced), rested());
-    tracks.hold();
-    return { lamp, tracks, advance: (ms: number) => void (wall += ms) };
+    const hold = createLampHold(lamp, mutable(reduced));
+    hold.hold();
+    return { lamp, hold, advance: (ms: number) => void (wall += ms) };
   }
 
   test("is the rig's own lamp while it steps", () => {
     const lamp = mutable(rested());
-    const tracks = createGlossTracks(lamp, mutable({ lx: 0, ly: 0, level: 1, r: 1, t: 0 }), mutable(0), mutable(false), rested());
-    assert.equal(tracks.now(), lamp.get());
-    assert.equal(tracks.clock(), lamp.get().t);
+    const hold = createLampHold(lamp, mutable(false));
+    assert.equal(hold.now(), lamp.get());
+    assert.equal(hold.clock(), lamp.get().t);
   });
 
   test("is the held lamp carried on by the wall's time, its clock the same, and the rig's own lamp left where it was held", () => {
-    const { lamp, tracks, advance } = held();
+    const { lamp, hold, advance } = held();
     advance(1500);
     const expected = rested();
     resumeLamp(expected, 1.5, false);
-    const now = tracks.now();
+    const now = hold.now();
     for (const k of [...FIELDS, "ph", "lx"] as const) assert.ok(Math.abs(now[k] - expected[k]) < 1e-12, k);
-    assert.ok(Math.abs(tracks.clock() - expected.t) < 1e-12);
+    assert.ok(Math.abs(hold.clock() - expected.t) < 1e-12);
     assert.equal(lamp.get().t, 12);
     mock.restoreAll();
   });
 
   test("resumes the rig's own lamp to where `now` had it, once", () => {
-    const { lamp, tracks, advance } = held();
+    const { lamp, hold, advance } = held();
     advance(800);
-    const ph = tracks.now().ph;
-    tracks.resume(lamp.get());
-    assert.equal(tracks.held(), false);
+    const ph = hold.now().ph;
+    hold.resume(lamp.get());
+    assert.equal(hold.held(), false);
     assert.ok(Math.abs(lamp.get().ph - ph) < 1e-12);
     advance(800);
-    tracks.resume(lamp.get());
+    hold.resume(lamp.get());
     assert.ok(Math.abs(lamp.get().ph - ph) < 1e-12, "a second resume carries nothing");
     mock.restoreAll();
   });
 
   test("stops its clock while the page is hidden, as the rig's steps do", () => {
-    const { tracks, advance } = held();
+    const { hold, advance } = held();
     advance(500);
-    tracks.shown(false);
+    hold.shown(false);
     advance(4000);
-    assert.ok(Math.abs(tracks.clock() - 12.5) < 1e-12, `hidden: ${tracks.clock()}`);
-    tracks.shown(true);
+    assert.ok(Math.abs(hold.clock() - 12.5) < 1e-12, `hidden: ${hold.clock()}`);
+    hold.shown(true);
     advance(250);
-    assert.ok(Math.abs(tracks.clock() - 12.75) < 1e-12, `shown again: ${tracks.clock()}`);
+    assert.ok(Math.abs(hold.clock() - 12.75) < 1e-12, `shown again: ${hold.clock()}`);
+    mock.restoreAll();
+  });
+
+  test("held while hidden, runs its clock from when the page shows", () => {
+    let wall = 1000;
+    mock.method(performance, "now", () => wall);
+    const hold = createLampHold(mutable(rested()), mutable(false));
+    hold.shown(false);
+    wall += 500;
+    hold.hold();
+    wall += 1500;
+    assert.equal(hold.clock(), 12, "hidden");
+    hold.shown(true);
+    wall += 250;
+    assert.ok(Math.abs(hold.clock() - 12.25) < 1e-12, `shown: ${hold.clock()}`);
     mock.restoreAll();
   });
 
   test("honours reduced motion", () => {
-    const { tracks, advance } = held(true);
+    const { hold, advance } = held(true);
     advance(300);
-    const now = tracks.now();
+    const now = hold.now();
     assert.equal(now.lx, now.x);
     assert.equal(now.f, 0);
     mock.restoreAll();

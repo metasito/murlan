@@ -1,7 +1,7 @@
 // tests/e2e/restEnds.spec.ts — a table at rest carries its sway on the compositor (rule 51): the opacity of the
 // end-B layer, a CSS animation baked from the rig's own state, stays within half a point of the light
 // `lib/swayTable.ts` bakes from that state at the page's own clock, and of the lamp the rig moves on any frame it
-// steps; a frame the rig neither steps nor holds is a stuck rig. On the virtual clock.
+// steps; a frame the rig neither steps nor may hold is a stuck rig. On the virtual clock.
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { heldTurnTable } from "./helpers/mockupParity";
@@ -28,7 +28,7 @@ const READ = `(() => {
   if (!canvas || canvas.style.visibility !== "visible" || !f) return null;
   const layer = canvas.parentElement;
   const timing = layer.getAnimations()[0]?.effect?.getComputedTiming();
-  return { clock: f.lamp.clock, rig: f.lamp.rig, held: f.lamp.held, wall: performance.now() / 1000, t0: Number(canvas.dataset.trackT), at: timing ? (timing.progress * timing.duration) / 1000 : null, lx: f.lamp.x, ph: f.lamp.ph, o:Number(getComputedStyle(layer).opacity), playing: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
+  return { clock: f.lamp.clock, rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000, t0: Number(canvas.dataset.trackT), at: timing ? (timing.progress * timing.duration) / 1000 : null, lx: f.lamp.x, ph: f.lamp.ph, o:Number(getComputedStyle(layer).opacity), playing: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
 })()`;
 
 interface Sample {
@@ -37,6 +37,9 @@ interface Sample {
   rig: number;
   /** The rig has stopped stepping the lamp, its sway left to the layer's animation. */
   held: boolean;
+  /** The end the felt shows, 0 for none, and whether the rig's own lamp has rested: a rig may hold only while both are so. */
+  ends: number;
+  rested: boolean;
   /** The page's `performance.now()`, in seconds. */
   wall: number;
   t0: number;
@@ -94,9 +97,9 @@ function tableFrom(from: Sample): (s: Sample) => number {
   return (s) => trackAt(track, clock(s) - from.clock);
 }
 
-/** Frames the rig neither stepped with the page's clock nor held: a rig left stopped by a wake that never came. */
-function stuck(from: Sample, samples: Pick<Sample, "rig" | "held" | "wall">[]): number {
-  return samples.filter((s) => !s.held && Math.abs(s.rig - (from.clock + s.wall - from.wall)) * 1000 > 1e-3).length;
+/** Frames the rig neither stepped with the page's clock nor held while it may: a rig left stopped by a wake that never came. */
+function stuck(from: Pick<Sample, "clock" | "wall">, samples: Pick<Sample, "rig" | "held" | "ends" | "rested" | "wall">[]): number {
+  return samples.filter((s) => (s.held ? s.ends === 0 || !s.rested : Math.abs(s.rig - (from.clock + s.wall - from.wall)) * 1000 > 1e-3)).length;
 }
 
 /** The drawn lamp's centre, `lx` less its sway, at each sample, their mean, and the most one lies off it. */
@@ -206,5 +209,25 @@ test("a rig that stalls behind its animation is caught up with, and the light is
   const off = after.map((s) => SWAY_PT * Math.abs(swayOfOpacity(s.o) - sway(s)));
   expect(Math.max(...off.slice(0, 5)), "points the stall put the light off the rig's").toBeGreaterThan(HANDOFF_PT);
   expect(Math.max(...off.slice(-60)), "points the light is still off the rig's a second after the stall").toBeLessThan(HANDOFF_PT);
+  await context.close();
+});
+
+test("a held rig whose end leaves steps on, though nothing moved the lamp", async ({ browser, baseURL }) => {
+  test.setTimeout(3 * 60_000);
+  const { page, context, shown } = await restedTable(browser, baseURL!);
+  let held = false;
+  for (let i = 0; i < WINDOW && !held; i++) held = (await stepThen<Sample | null>(page, STEP_MS, READ))?.held ?? false;
+  expect(held, `the rig never held the lamp in ${WINDOW} frames of an end shown`).toBe(true);
+  // New felt content takes the end down and moves no lamp: only the end's leaving can wake the rig.
+  await page.evaluate(() => (window as unknown as { murlanCardGlow(on: boolean): void }).murlanCardGlow(false));
+  const READ_RIG = `(() => { const f = window.murlanTrace.frames.at(-1); return { rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000 }; })()`;
+  type Rig = Pick<Sample, "rig" | "held" | "ends" | "rested" | "wall">;
+  const after: Rig[] = [];
+  for (let i = 0; i < STALL_FRAMES; i++) after.push(await stepThen<Rig>(page, STEP_MS, READ_RIG));
+  expect(after.filter((s) => s.ends === 0).length, "frames the felt showed no end after its content changed").toBeGreaterThan(0);
+  const woken = after.find((s) => !s.held);
+  expect(woken, `the rig still held the lamp ${STALL_FRAMES} frames after its end left`).toBeDefined();
+  expect((Math.abs(woken!.rig - (shown.clock + woken!.wall - shown.wall)) * 1000) / STEP_MS, "frames the woken rig's clock is off the page's").toBeLessThan(1.5);
+  expect(stuck({ clock: woken!.rig, wall: woken!.wall }, after), "frames the rig neither stepped on from its wake nor held the lamp while an end showed").toBe(0);
   await context.close();
 });

@@ -12,7 +12,7 @@ import { LampGloss } from '@/components/table/LampGloss';
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';
 import type { GlossLight } from '@/components/table/cardGloss';
 import { createGlossTracks } from '@/components/table/glossTrackStore';
-import { restingLamp } from '@/components/table/lampRig';
+import { restingLamp, steppedLamp } from '@/components/table/lampRig';
 import { CardTableProvider, useCardTableValue, type OwnedRects } from '@/components/table/useCardRects';
 import { bootFeedback } from './helpers/feedback';
 
@@ -36,7 +36,7 @@ const still = makeMutable(light(300));
 
 function Table({ tracks, live, children }: { tracks: boolean; live?: boolean; children: React.ReactNode }) {
   const [store] = React.useState(() => {
-    const made = tracks ? createGlossTracks(makeMutable(restingLamp([437, 180, 1])), makeMutable(light(437)), makeMutable(0), makeMutable(false), restingLamp([437, 180, 1])) : undefined;
+    const made = tracks ? createGlossTracks(steppedLamp(makeMutable(restingLamp([437, 180, 1]))), makeMutable(light(437)), makeMutable(0), restingLamp([437, 180, 1])) : undefined;
     made?.update(!live);
     return made;
   });

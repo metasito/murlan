@@ -165,7 +165,8 @@ const clamp01 = (v: number) => {
   return Math.min(1, Math.max(0, v));
 };
 
-function advance(s: Lamp, dt: number, swing: number, reduced: boolean): void {
+/** `drawnAt` is the seconds into `dt` the kick and flare are drawn at: a frame draws what it starts with, as the mockup's `lampStep`; a span carried at once, what it ends with. */
+function advance(s: Lamp, dt: number, swing: number, reduced: boolean, drawnAt: number): void {
   "worklet";
   s.t += dt;
   if (reduced) {
@@ -180,27 +181,101 @@ function advance(s: Lamp, dt: number, swing: number, reduced: boolean): void {
   }
   s.lvl += (s.lvlT - s.lvl) * (1 - Math.exp(-dt * s.lvlRate));
   s.ph += swing * (1 - s.freeze);
+  s.kick *= Math.exp(-drawnAt * KICK_DECAY);
+  s.flare *= Math.exp(-drawnAt * FLARE_DECAY);
   const sway = reduced ? 0 : Math.sin(s.ph) * (SWAY + SWAY_KICKED * s.kick);
-  s.kick *= Math.exp(-dt * KICK_DECAY);
   s.level = clamp01(s.lvl);
   s.lx = lightX(s.x, sway);
   s.ly = lightY(s.y);
   s.f = reduced ? 0 : s.flare;
-  s.flare *= Math.exp(-dt * FLARE_DECAY);
+  s.kick *= Math.exp(-(dt - drawnAt) * KICK_DECAY);
+  s.flare *= Math.exp(-(dt - drawnAt) * FLARE_DECAY);
 }
 
 /** One frame: at most `MAX_DT`, the phase at the frame's end speed, as the mockup's `lampStep`. */
 export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
   "worklet";
   const dt = Math.min(MAX_DT, Math.max(0, seconds));
-  advance(s, dt, dt * speedOf(s.t + dt), reduced);
+  advance(s, dt, dt * speedOf(s.t + dt), reduced, 0);
 }
 
 /** `seconds` the rig did not step, at once, the phase on the exact integral of the speed: what the compositor's track played meanwhile. */
 export function resumeLamp(s: Lamp, seconds: number, reduced: boolean): void {
   "worklet";
   const dt = Math.max(0, seconds);
-  advance(s, dt, swept(s.t, s.t + dt), reduced);
+  advance(s, dt, swept(s.t, s.t + dt), reduced, dt);
+}
+
+/** The lamp as every reader takes it: `now()` is valid until the next call, and only the rig writes it. */
+export interface LampNow {
+  now(): Lamp;
+  /** `now().t`, without carrying the rest of the lamp on. */
+  clock(): number;
+}
+
+/** A lamp the rig steps every frame it moves: native, where nothing holds it. */
+export function steppedLamp(lamp: { readonly value: Lamp }): LampNow {
+  return {
+    now: () => {
+      "worklet";
+      return lamp.value;
+    },
+    clock: () => {
+      "worklet";
+      return lamp.value.t;
+    },
+  };
+}
+
+/** A rig that may stop stepping its lamp while the compositor carries its sway (`endsCarry`), the lamp carried on for readers by the page's clock. */
+export interface LampHold extends LampNow {
+  /** The rig stops stepping the lamp from this instant; its clock runs on while the page shows. */
+  hold(): void;
+  held(): boolean;
+  /** Carries the rig's own lamp `s` on to now if it was held, and leaves it to the rig's steps again. */
+  resume(s: Lamp): void;
+  /** The page shows or is hidden: a hidden page steps no rig, so a held clock stops with it. */
+  shown(visible: boolean): void;
+}
+
+export function createLampHold(lamp: { get(): Lamp }, reduced: { get(): boolean }): LampHold {
+  let heldAt = NaN;
+  let hiddenAt = NaN;
+  const carried = { ...lamp.get() };
+  const heldFor = () => {
+    if (Number.isNaN(heldAt)) return 0;
+    const until = Number.isNaN(hiddenAt) ? performance.now() : hiddenAt;
+    return Math.max(0, until - heldAt) / 1000;
+  };
+  return {
+    // `advance` writes neither `holds` nor `drawn`: the copy shares them with the rig's lamp.
+    now: () => {
+      const s = lamp.get();
+      if (Number.isNaN(heldAt)) return s;
+      Object.assign(carried, s);
+      resumeLamp(carried, heldFor(), reduced.get());
+      return carried;
+    },
+    clock: () => lamp.get().t + heldFor(),
+    hold: () => {
+      heldAt = performance.now();
+    },
+    held: () => !Number.isNaN(heldAt),
+    resume: (s) => {
+      if (Number.isNaN(heldAt)) return;
+      resumeLamp(s, heldFor(), reduced.get());
+      heldAt = NaN;
+    },
+    shown: (visible) => {
+      const at = performance.now();
+      if (!visible) {
+        if (Number.isNaN(hiddenAt)) hiddenAt = at;
+        return;
+      }
+      if (!Number.isNaN(heldAt) && !Number.isNaN(hiddenAt)) heldAt += at - Math.max(heldAt, hiddenAt);
+      hiddenAt = NaN;
+    },
+  };
 }
 
 const SETTLED = 1e-4;

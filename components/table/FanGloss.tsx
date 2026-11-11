@@ -76,7 +76,7 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
     if (reduceMotion || gaveUp) return;
     const elements = () => [fadeANode, fadeBNode, spotNode].map((n) => n.current as unknown as Element | null).filter((e): e is Element => !!e);
     const steer = (to: { place: number } | { paused: boolean }) => elements().forEach((e) => steerAmbient(e, to));
-    const place = () => ({ place: placeOf(track, tracks.clock()) });
+    const place = () => ({ place: placeOf(track, tracks.rig.clock()) });
     // The animation starts when the commit does, not when the track was baked: it is moved to where the rig is the frame it exists.
     let started = false;
     let cancel = () => {};
@@ -95,7 +95,7 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
     const check = setInterval(() => {
       const first = elements()[0];
       if (!started || !first || tracks.live()) return;
-      const next = steering(track, ambientPlace(first), tracks.clock());
+      const next = steering(track, ambientPlace(first), tracks.rig.clock());
       if (next.kind === "rebake") tracks.rebake();
       else if (next.kind === "steer") steer({ place: next.place });
     }, DRIFT_CHECK_MS);

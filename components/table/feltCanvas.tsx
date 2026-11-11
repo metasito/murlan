@@ -42,7 +42,7 @@ import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames } from "@/lib/motion";
-import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type Pool } from "./lampRig";
+import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type LampNow, type Pool } from "./lampRig";
 import { NOT_SHOWN, nextShown, type Shown } from "./restEnds";
 import type { GlossTracks } from "./glossTrackStore";
 import { useGreyLayer } from "./greyLayer";
@@ -56,7 +56,9 @@ import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
 import { webDeps } from "@/lib/platform";
 
 export interface FeltCanvasProps {
+  /** The rig's own lamp, read to run when the rig writes; what the canvas draws is `now()`. */
   lamp: SharedValue<Lamp>;
+  now: LampNow["now"];
   sx: number;
   sy: number;
   stops: FeltStops;
@@ -496,8 +498,8 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, tracks, Ends: given }: FeltCanvasProps) {
-  const Ends = tracks && given;
+export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tracks, Ends: given }: FeltCanvasProps) {
+  const withEnds = useMemo(() => (tracks && given ? { Ends: given, tracks } : null), [tracks, given]);
   const greyLayer = useGreyLayer(grey);
   const canvas = useCanvasRef();
   const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
@@ -531,7 +533,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, tracks, 
     }
   );
   const [target, setTarget] = useState("");
-  const ends = !!Ends;
+  const ends = !!withEnds;
   useAnimatedReaction(
     () => (ends ? `${lamp.value.tx},${lamp.value.ty},${lamp.value.tr}` : ""),
     (now, before) => {
@@ -545,10 +547,10 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, tracks, 
   }, [weave, aim, gx, gy, stops, base]);
   // The ends of the lamp's next target, one a frame while it glides there, so settling bakes nothing.
   useEffect(() => {
-    if (!Ends || !weave || !target) return;
+    if (!withEnds || !weave || !target) return;
     const cancels = CLOTH_ENDS.map((lean, i) => afterFrames(i + 1, () => endCloth(weave, target, stops, base, gx, gy, lean)));
     return () => cancels.forEach((cancel) => cancel());
-  }, [Ends, weave, target, gx, gy, stops, base]);
+  }, [withEnds, weave, target, gx, gy, stops, base]);
   const reduceMotion = usePrefersReducedMotion();
   useEffect(() => {
     if (!rest) return void settle.set(1);
@@ -569,8 +571,9 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, tracks, 
     return () => side.set(0);
   }, [side]);
   const held = useSharedValue<Shown>(NOT_SHOWN);
+  // `lamp.value` subscribes the view to the rig's writes; a held rig writes none, and an end that leaves draws the lamp carried on, not where it was held.
   const view = useDerivedValue(() => {
-    const next = nextShown(held.value, lamp.value, side.value);
+    const next = nextShown(held.value, lamp.value && now(), side.value);
     if (next !== held.value) held.value = next;
     return next;
   });
@@ -705,13 +708,14 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, tracks, 
       </Group>
     </Canvas>
   );
-  if (!Ends || !tracks) return drawn;
+  if (!withEnds) return drawn;
+  const { Ends } = withEnds;
   return (
     <>
       <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">
         {drawn}
       </View>
-      <Ends lamp={lamp} tracks={tracks} settle={settle} content={content} side={side} host={host} canvas={canvas} />
+      <Ends lamp={lamp} tracks={withEnds.tracks} settle={settle} content={content} side={side} host={host} canvas={canvas} />
     </>
   );
 }
