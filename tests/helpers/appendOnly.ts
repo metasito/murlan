@@ -4,22 +4,23 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
 /**
- * `file` as the merge base with origin/main recorded it, or undefined where that commit is not in
- * the clone: CI's test checkout is one commit deep.
+ * `file` as origin/main's tip records it. Undefined only outside CI, where a clone may not hold
+ * origin/main; in CI that throws, because a check skipped where it counts reports green by not
+ * looking. ci.yml's test job fetches origin/main for it.
  */
-export function atMergeBase(file: string): unknown {
-  const git = (args: string[]) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+export function atMain(file: string): unknown {
+  const git = (args: string[]) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   try {
-    const base = git(["merge-base", "HEAD", "origin/main"]).trim();
-    return JSON.parse(git(["show", `${base}:${file}`]));
-  } catch {
+    return JSON.parse(git(["show", `origin/main:${file}`]));
+  } catch (e) {
+    if (process.env.CI) throw new Error(`could not read ${file} at origin/main: ${(e as Error).message}`);
     return undefined;
   }
 }
 
-/** Every recorded entry `now` drops or rewrites: a version once recorded keeps its hash. */
-export function rewritten(base: Record<string, string>, now: Record<string, string>): string[] {
-  return Object.entries(base)
+/** Every entry main records that `now` drops or rewrites: a version once recorded keeps its hash. */
+export function rewritten(main: Record<string, string>, now: Record<string, string>): string[] {
+  return Object.entries(main)
     .filter(([version, hash]) => now[version] !== hash)
     .map(([version, hash]) => `${version}: was ${hash}, now ${now[version] ?? "missing"}`);
 }

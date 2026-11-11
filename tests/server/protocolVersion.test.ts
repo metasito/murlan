@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { MIN_PROTOCOL_VERSION, PROTOCOL_VERSION } from "../../shared/protocol.ts";
-import { atMergeBase, rewritten } from "../helpers/appendOnly.ts";
+import { atMain, rewritten } from "../helpers/appendOnly.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
@@ -44,7 +44,7 @@ test("shared/protocol.ts does not change without a PROTOCOL_VERSION bump", () =>
     protocolHash(source),
     "a renamed string literal must move the hash"
   );
-  const base = atMergeBase(HASHES) as Record<string, string> | undefined;
+  const base = atMain(HASHES) as Record<string, string> | undefined;
   if (base) assert.deepEqual(rewritten(base, recorded), [], `${HASHES} only grows: restore what origin/main records`);
   const hash = protocolHash(source);
   const missing = recorded[String(PROTOCOL_VERSION)] === undefined;

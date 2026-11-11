@@ -6,7 +6,7 @@ import { GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
 import { OFFLINE_SAVE_VERSION } from "../../lib/offlineSave.ts";
 import { PROTOCOL_VERSION } from "../../shared/protocol.ts";
 import { programFor, shapeHash, typeShape } from "../helpers/typeShape.ts";
-import { atMergeBase, rewritten } from "../helpers/appendOnly.ts";
+import { atMain, rewritten } from "../helpers/appendOnly.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
@@ -65,10 +65,10 @@ function edit(file: string, from: string, to: string): Record<string, string> {
 
 let current: Record<Document, string> | undefined;
 const SHAPES = "tests/fixtures/storedShapes.json";
-const atBase = atMergeBase(SHAPES) as Partial<Record<Document, Record<string, string>>> | undefined;
 
 for (const name of Object.keys(DOCUMENTS) as Document[]) {
   test(`the stored ${name} shape does not change without its version`, () => {
+    const atBase = atMain(SHAPES) as Partial<Record<Document, Record<string, string>>> | undefined;
     const recorded: Record<Document, Record<string, string>> = JSON.parse(read(SHAPES));
     const { version, bump, golden } = DOCUMENTS[name];
     for (const at of Object.keys(recorded[name] ?? {})) {
