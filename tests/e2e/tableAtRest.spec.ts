@@ -74,7 +74,7 @@ const table = (page: Page) =>
 /** `lean` reads end B's picture back as well: once a spec, for a second readback of that canvas warns, and a warning fails the test. */
 async function expectAtRest(page: Page, info: TestInfo, state: string, motion: boolean, length: number, lean = false): Promise<void> {
   await take(page);
-  const traced =await page.evaluate<number>("window.murlanTrace.frames.length");
+  const traced = await page.evaluate<number>("window.murlanTrace.frames.length");
   const airBefore = await page.evaluate<Air>(AIR);
   const sway: (EndBSample | null)[] = [await page.evaluate<EndBSample | null>(END_B_SAMPLE)];
   let at = 0;
