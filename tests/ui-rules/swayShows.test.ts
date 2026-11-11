@@ -1,7 +1,7 @@
 // tests/ui-rules/swayShows.test.ts — the floor that stands in for "the felt redrew a swaying light" once the sway rides the compositor.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { swayShows } from "../e2e/helpers/renderCounters.ts";
+import { swayOfOpacity, swayShows } from "../e2e/helpers/renderCounters.ts";
 
 const at = (opacity: number, running = 1) => ({ opacity, running });
 const leaning = { lean: 6 };
@@ -25,4 +25,9 @@ test("a picture that is a copy of end A, is blank, or was not read does not", ()
   assert.equal(swayShows(samples, { lean: 0 }), false, "end B blank");
   assert.equal(swayShows(samples, { lean: NaN }), false);
   assert.equal(swayShows(samples, null), false);
+});
+
+test("swayOfOpacity keeps its meaning as the source END_B_LEAN inlines into the page", () => {
+  const inlined = new Function(`"use strict"; return (${String(swayOfOpacity)});`)() as (opacity: number) => number;
+  for (const o of [0, 0.25, 0.5, 0.9, 1]) assert.equal(inlined(o), swayOfOpacity(o), `opacity ${o}`);
 });
