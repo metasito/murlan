@@ -3,8 +3,7 @@
 // here — docs/agents/checks.md.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { CARD_H, CARD_W, handCardSize } from "../../components/cardFaceModel.ts";
-import { tableScale } from "../../components/tableLayout.ts";
+import { CARD_H, CARD_W, handCardSize, tableScale } from "../../components/cardFaceModel.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { dealCards } from "../../lib/game/gameEngine.ts";

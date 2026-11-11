@@ -8,9 +8,9 @@ import {
   CHIP_H,
   HAND_WIDTH_SHARE,
 } from "../../components/seatLayout.ts";
-import { drawnShortEdge } from "../../components/cardFaceModel.ts";
+import { drawnShortEdge, tableScale } from "../../components/cardFaceModel.ts";
 import { bannerTop, computeTableFrame, railWidth } from "../../components/tableFrame.ts";
-import { tableLayout, tableScale } from "../../components/tableLayout.ts";
+import { tableLayout } from "../../components/tableLayout.ts";
 
 
 

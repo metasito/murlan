@@ -23,8 +23,8 @@ import {
   faceMarks,
   SUIT_GLYPHS,
   suitMarksPath,
+  tableScale,
 } from "../../components/cardFaceModel.ts";
-import { tableScale } from "../../components/tableLayout.ts";
 
 // Every face card draws the full pip field and the index at whatever size the
 // table's own scale resolves to — checked across the realistic range, from a

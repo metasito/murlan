@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { View } from "react-native";
-import { SEAT_DISC } from "@/components/seatLayout";
+import { drawnDisc } from "@/components/seatLayout";
 import { START_CARD } from "@/lib/game/gameEngine";
 import type { KindTone, NoticeKind } from "../noticeModel";
 import { ErrorToast, PassFloat, RejectFloat } from "./floats";
@@ -12,7 +12,7 @@ import { TrickWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
 
 const underDisc = (scale: number) => {
-  const disc = SEAT_DISC * scale;
+  const disc = drawnDisc(scale);
   return (
     <View style={{ width: disc, height: disc }}>
       <PassedMark side="side" disc={disc} scale={scale} />

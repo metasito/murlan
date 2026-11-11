@@ -17,8 +17,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { HAND_ZONE_H } from "../../components/seatLayout.ts";
 import { computeTableFrame, surplusHeight, topBandHeight } from "../../components/tableFrame.ts";
-import { CARD_H, HAND_SCALE } from "../../components/cardFaceModel.ts";
-import { tableScale } from "../../components/tableLayout.ts";
+import { CARD_H, HAND_SCALE, tableScale } from "../../components/cardFaceModel.ts";
 import { TABLETS } from "../helpers/tableScenes.ts";
 
 /** The ticket's own list: two phones, a large phone, and two tablets. */

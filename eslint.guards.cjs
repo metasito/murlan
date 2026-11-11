@@ -518,7 +518,7 @@ const GUARDS = [
   },
   {
     id: "one-table-scale",
-    why: "The table's scale is components/tableLayout.ts's decision: read `tableLayout(…).scale`, ask `tableScale(window)`, or take the scale as a parameter, never `cardScale` of a short edge, or a short edge over the base one, worked out again here.",
+    why: "The table's scale is components/cardFaceModel.ts's decision: read `tableLayout(…).scale`, ask `tableScale(window)`, or take the scale as a parameter, never `cardScale` of a short edge, or a short edge over the base one, worked out again here.",
     selector: [
       'ImportSpecifier[imported.name="cardScale"]',
       'ExportSpecifier[local.name="cardScale"]',
@@ -534,7 +534,6 @@ const GUARDS = [
     files: [...CLIENT, "tests/**/*.{ts,tsx}"],
     ignores: [
       { glob: "components/cardFaceModel.ts", reason: "cardScale and the base short edge it divides by are declared here" },
-      { glob: "components/tableLayout.ts", reason: "tableScale is the one place the table's scale is taken from a window" },
       { glob: "components/table/noticeModel.ts", reason: "the mockup's own stage height, a design constant the notices are authored at, not a window" },
       { glob: "tests/ui-rules/cardFace.test.ts", reason: "pins cardScale itself, short edge in and scale out" },
       { glob: "tests/ui-rules/tableLayoutPin.test.ts", reason: "the deliberate independent copy of tableScale, which a regression in the owner cannot move" },

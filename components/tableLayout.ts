@@ -5,9 +5,9 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { Player } from "@/lib/game/gameEngine";
-import { CARD_H, cardScale, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "./cardFaceModel.ts";
+import { CARD_H, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget, tableScale } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
-import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatGap, seatLabelH } from "./seatLayout.ts";
+import { actionBtnSize, CHIP_H, drawnDisc, HAND_ZONE_ALIGN, HAND_ZONE_H, seatGap, seatLabelH } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
 import { drawnFanBounds } from "./fanGeometry.ts";
@@ -15,6 +15,9 @@ import { sideNameInset } from "./table/legibilityRing.ts";
 import { pillAnchorFor, scorePillBox, voteTop, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot, noticeBox, pileNoteBelowPile } from "./table/noticeModel.ts";
 import { computeTableFrame, SIDE_SEAT_GAP, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
+
+/** The parity targets still import it from here; docs/agents/target-freeze.md moves them in a target-only PR. */
+export { tableScale } from "./cardFaceModel.ts";
 
 /** Where the rail holds each knob across its width: `rail`'s slots and `ControlRail` both read it. */
 export const RAIL_KNOB_ALIGN: Align = "center";
@@ -72,15 +75,6 @@ export interface TableLayout {
 }
 
 /**
- * The window's own short edge, never that minus the safe-area insets: the rail absorbs the cutout
- * and the hand zone carries the home indicator, and taking the insets off here instead shrinks the
- * cards on a device only, away from the web table at the same size.
- */
-export function tableScale(window: { width: number; height: number }): number {
-  return cardScale(Math.min(window.width, window.height));
-}
-
-/**
  * The bands are the drawn cap's (`topBandHeight`, `sideSlotHeight`), never a count's, so no seat
  * moves as a hand shrinks. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
  */
@@ -90,7 +84,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const frame = computeTableFrame({ ...i, scale });
   const handCardH = CARD_H(scale * HAND_SCALE);
   const handZoneH = HAND_ZONE_H(handCardH, frame.bottomPad);
-  const ring = SEAT_DISC * scale;
+  const ring = drawnDisc(scale);
   const midTop = frame.tableTop + topBandHeight(scale);
   const tableFloor = height - frame.surplus;
   const midH = tableFloor - midTop - handZoneH;

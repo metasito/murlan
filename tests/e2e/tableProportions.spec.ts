@@ -13,7 +13,7 @@ import { openSeededGame } from "./helpers/offlineSeed";
 import { HAND_ZONE, TABLE_SCREEN } from "./helpers/selectors";
 import { atRest } from "./helpers/settle";
 import { CHIP_H, SEAT_DISC, actionBtnSize } from "../../components/seatLayout";
-import { tableScale } from "../../components/tableLayout";
+import { tableScale } from "../../components/cardFaceModel";
 
 // tests/e2e/handParity.spec.ts's own handsets.
 const PHONES = [
