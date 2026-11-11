@@ -58,6 +58,9 @@ export interface ShadowLayer {
  * Architecture this app enables — on native too, so both layers ride one prop
  * on one node rather than a wrapper view per shadow.
  */
+const shadowCss = (x: string, y: string, radius: number, color: string, opacity: number) =>
+  `${x} ${y} ${radius}px ${withAlpha(color, opacity)}`;
+
 export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Record<string, any> {
   // Android draws an outset `boxShadow` only from 9. Below it the prop is
   // ignored outright, so those devices keep the single-shadow props, carrying
@@ -76,8 +79,7 @@ export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Rec
   }
   return {
     boxShadow: layers
-      .map(({ color, offsetX = 0, offsetY, opacity, radius }) =>
-        `${offsetX}px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}`)
+      .map(({ color, offsetX = 0, offsetY, opacity, radius }) => shadowCss(`${offsetX}px`, `${offsetY}px`, radius, color, opacity))
       .join(", "),
   };
 }
@@ -98,11 +100,18 @@ const CARD_LAYERS = {
 } as const;
 const CARD_ELEVATION = { face: 3, lifted: 14, back: 5 } as const;
 
-/** A card view's own contact+fall pair; a resting card's fall moved to `cast` where the table gives one. */
-export function cardShadow(kind: keyof typeof CARD_LAYERS, cast?: { x: number; y: number } | null): Record<string, any> {
+/** The web table's cast, in window points, which `useCardCast` sets on the table's root as these custom properties. */
+export const TABLE_CAST = { x: "--card-cast-x", y: "--card-cast-y" } as const;
+
+/** A card view's own contact+fall pair; on the web table a resting card's fall reads `TABLE_CAST`. */
+export function cardShadow(kind: keyof typeof CARD_LAYERS, cast: "table" | null = null): Record<string, any> {
   const [contact, fall] = CARD_LAYERS[kind];
-  const moved = cast && kind !== "lifted" ? { ...fall, offsetX: cast.x, offsetY: cast.y } : fall;
-  return makeLayeredShadow([contact, moved], CARD_ELEVATION[kind]);
+  if (!cast || kind === "lifted") return makeLayeredShadow([contact, fall], CARD_ELEVATION[kind]);
+  const x = `var(${TABLE_CAST.x}, 0px)`;
+  const y = `var(${TABLE_CAST.y}, ${fall.offsetY}px)`;
+  return {
+    boxShadow: `${shadowCss("0px", `${contact.offsetY}px`, contact.radius, contact.color, contact.opacity)}, ${shadowCss(x, y, fall.radius, fall.color, fall.opacity)}`,
+  };
 }
 
 // Authored at scale 1, where the table's own shadows are quoted. The art

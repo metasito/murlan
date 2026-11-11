@@ -1,8 +1,9 @@
-import { createContext, useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { Platform } from "react-native";
+import { createContext, useCallback, useLayoutEffect, useState, useSyncExternalStore, type ComponentRef } from "react";
+import { Platform, type View } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
 import { E2E_FAST } from "@/lib/e2eConfig";
+import { TABLE_CAST } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { CardTable } from "./useCardRects";
 import type { Point } from "./cardRects";
@@ -29,14 +30,23 @@ export interface HandShadeProps {
 
 /**
  * How a card view on the table shades itself: `felt` where the felt draws every card's shadow, else
- * today's static shadow cast at this offset. Off the table, null: a static shadow.
+ * `table`, a static shadow cast at the offset the table's root holds (`TABLE_CAST`). Off the table,
+ * null: a static shadow.
  */
-export type CardCast = "felt" | Point;
+export type CardCast = "felt" | "table";
 export const CardCastContext = createContext<CardCast | null>(null);
 
-/** One value per offset, so the table's card views re-render only when the seat on move changes it. */
-export function useCardCast(ready: boolean, { x, y }: Point): CardCast {
-  return useMemo(() => (Platform.OS !== "web" || ready ? "felt" : { x, y }), [ready, x, y]);
+/** The cast, and the ref for the table's root: the offset is set on that one view, so a new one re-renders no card. */
+export function useCardCast(ready: boolean, { x, y }: Point): [CardCast, (root: ComponentRef<typeof View> | null) => void] {
+  const cast = Platform.OS !== "web" || ready ? "felt" : "table";
+  const [root, setRoot] = useState<HTMLElement | null>(null);
+  const attach = useCallback((node: ComponentRef<typeof View> | null) => setRoot(node as unknown as HTMLElement | null), []);
+  useLayoutEffect(() => {
+    if (cast !== "table" || !root?.style) return;
+    root.style.setProperty(TABLE_CAST.x, `${x}px`);
+    root.style.setProperty(TABLE_CAST.y, `${y}px`);
+  }, [cast, x, y, root]);
+  return [cast, attach];
 }
 
 let shadowsOn = true;
