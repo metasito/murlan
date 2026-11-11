@@ -69,22 +69,29 @@ async function sampled(page: Page, frames: number): Promise<Sample[]> {
   return samples;
 }
 
-/** The share of the table's smallest allowance the rig's centre may move by in the window: a glide or kick still running would move it more. */
-const CENTRE_SHARE = 0.1;
+/** Points a rested lamp's centre may move by: `isRested`'s glide residual and its kick's swing, the harness's own copy. */
+const REST_PT = 0.25 + 0.1;
 /** Seconds apart `swayBounds` reads the speed's top, slope and bend. */
 const GRID = 0.01;
 
-/** The sway, -1 to 1, `lib/swayTable.ts` bakes from the rig's state at `from`, at a sample's clock. The clock steps the animations before the frame's timers, so a read after a step has the layer and the rig both at the frame's end. */
+/** The sway, -1 to 1, `lib/swayTable.ts` bakes from the rig's state at `from`, at a sample's clock. After `from`, the clock steps the animations before the frame's timers, so a read after a step has the layer and the rig both at the frame's end; at `from` itself the animation is a frame behind. */
 function tableFrom(from: Sample): (s: Sample) => number {
   const track = bakeSway({ ph: from.ph, t: from.clock }, TRACK_SECONDS);
   return (s) => trackAt(track, s.clock - from.clock);
 }
 
+/** The rig's centre, `lx` less its sway, at each sample, their mean, and the most one lies off it. */
+function centred(samples: Sample[]): { centres: number[]; centre: number; moved: number } {
+  const centres = samples.map((s) => s.lx - SWAY_PT * Math.sin(s.ph));
+  const centre = centres.reduce((sum, c) => sum + c, 0) / centres.length;
+  return { centres, centre, moved: Math.max(...centres.map((c) => Math.abs(c - centre))) };
+}
+
 /**
  * How far, -1 to 1, the rig's sway may lie off the table baked at `samples[0]`, at each sample, one rig step apart. The rig
- * adds `dt * speedOf(t)` at the step's end, which runs ahead of the integral `bakeSway` carries by `dt / 2` times the step's
- * change of speed, to within a trapezoid's `dt^3 / 12` of its bend; a track, linear between stops, is off a sine by
- * `TRACK_STEP^2 / 8` of its curvature. `TRACK_VS_EULER` is measured at 60 Hz from fixed settles, not at this clock's step from
+ * adds `dt * speedOf(t)` at the step's end, which runs ahead of the integral `bakeSway` carries by `dt / 2` times the change of
+ * speed since `samples[0]`, to within a trapezoid's `dt^3 / 12` of its bend a step; a track, linear between stops, is off a sine
+ * by `TRACK_STEP^2 / 8` of its curvature. `TRACK_VS_EULER` is measured at 60 Hz from fixed settles, not at this clock's step from
  * this start, so it is no bound here.
  */
 function swayBounds(samples: Sample[]): number[] {
@@ -96,16 +103,8 @@ function swayBounds(samples: Sample[]): number[] {
     bend = Math.max(bend, Math.abs(speedOf(t + GRID) - 2 * speedOf(t) + speedOf(t - GRID)) / GRID ** 2);
   }
   const between = (TRACK_STEP ** 2 / 8) * (top ** 2 + slope);
-  let [ahead, trapezoid] = [0, 0];
-  return samples.map((s, k) => {
-    if (k > 0) {
-      const last = samples[k - 1]!.clock;
-      const dt = s.clock - last;
-      ahead += (dt / 2) * (speedOf(s.clock) - speedOf(last));
-      trapezoid += (dt ** 3 / 12) * bend;
-    }
-    return Math.abs(ahead) + trapezoid + between;
-  });
+  const dt = STEP_MS / 1000;
+  return samples.map((s, k) => Math.abs((dt / 2) * (speedOf(s.clock) - speedOf(t0))) + ((k * dt ** 3) / 12) * bend + between);
 }
 
 test("the end-B layer's opacity follows the lamp's light to within half a point", async ({ browser, baseURL }) => {
@@ -127,20 +126,19 @@ test("the end-B layer's opacity follows the lamp's light to within half a point"
   const steps = samples.slice(1).map((s, i) => s.clock - samples[i]!.clock);
   expect(Math.max(...steps.map((dt) => Math.abs(dt * 1000 - STEP_MS))), "milliseconds a frame's rig step is off the clock's step").toBeLessThan(1e-6);
   const sway = tableFrom(shown);
-  const bounds = swayBounds(samples);
-  const centres = samples.map((s) => s.lx - SWAY_PT * Math.sin(s.ph));
-  const centre = centres.reduce((sum, c) => sum + c, 0) / centres.length;
-  const moved = Math.max(...centres.map((c) => Math.abs(c - centre)));
+  const { centres, centre, moved } = centred(samples);
   const rig = samples.map((s) => Math.abs(s.lx - centre - SWAY_PT * sway(s)));
-  const allowed = bounds.map((b) => SWAY_PT * b * (1 + CENTRE_SHARE));
-  const worst = rig.reduce((w, r, i) => (r - allowed[i]! > rig[w]! - allowed[w]! ? i : w), 0);
-  const light = Math.max(...samples.map((s) => SWAY_PT * Math.abs(swayOfOpacity(s.o) - sway(s))));
-  const toRig = Math.max(...samples.map((s) => Math.abs(s.lx - centre - SWAY_PT * swayOfOpacity(s.o))));
+  const allowed = swayBounds(samples).map((b, k) => SWAY_PT * b + Math.abs(centres[k]! - centre));
+  const excess = rig.map((r, k) => r - allowed[k]!);
+  const worst = excess.indexOf(Math.max(...excess));
+  const steady = samples.slice(1);
+  const light = Math.max(...steady.map((s) => SWAY_PT * Math.abs(swayOfOpacity(s.o) - sway(s))));
+  const toRig = Math.max(...steady.map((s) => Math.abs(s.lx - centre - SWAY_PT * swayOfOpacity(s.o))));
   console.log(
-    `over ${WINDOW} frames the rig's centre moves ${moved.toExponential(1)} pt, under ${(CENTRE_SHARE * SWAY_PT * Math.min(...bounds)).toExponential(1)}; its lamp is ${rig[worst]!.toFixed(3)} pt off the keyframe table where ${allowed[worst]!.toFixed(3)} pt is allowed (at most ${Math.max(...rig).toFixed(3)} pt); the end-B layer's light is at most ${light.toFixed(3)} pt off the table and ${toRig.toFixed(3)} pt off the rig's`,
+    `over ${WINDOW} frames the rig's centre moves ${moved.toExponential(1)} pt, under ${REST_PT} pt; its lamp is ${rig[worst]!.toFixed(3)} pt off the keyframe table where ${allowed[worst]!.toFixed(3)} pt is allowed (at most ${Math.max(...rig).toFixed(3)} pt); after the frame it shows, the end-B layer's light is at most ${light.toFixed(3)} pt off the table and ${toRig.toFixed(3)} pt off the rig's`,
   );
-  expect(moved, "points the rig's centre moves while it only sways: a glide or kick is still running, or its swing is not SWAY_PT").toBeLessThan(CENTRE_SHARE * SWAY_PT * Math.min(...bounds));
-  expect(rig[worst]! - allowed[worst]!, "points the rig's lamp is past the keyframe table's stepping error").toBeLessThan(0);
+  expect(moved, "points the rig's centre moves while it only sways: more than a rested lamp's, so a glide or kick is still running or its swing is not SWAY_PT").toBeLessThan(REST_PT);
+  expect(excess[worst]!, "points the rig's lamp is past the keyframe table's stepping error and its centre's motion").toBeLessThan(0);
   expect(light, "points the end-B layer's light is off the keyframe table's").toBeLessThan(HANDOFF_PT);
   expect(toRig, "points the end-B layer's light is off the rig's").toBeLessThan(HANDOFF_PT);
   await context.close();
@@ -148,14 +146,15 @@ test("the end-B layer's opacity follows the lamp's light to within half a point"
 
 test("a rig that stalls behind its animation is caught up with, and the light is back within half a point", async ({ browser, baseURL }) => {
   test.setTimeout(3 * 60_000);
-  const { page, context, shown } = await restedTable(browser, baseURL!);
-  await sampled(page, WINDOW);
+  const { page, context } = await restedTable(browser, baseURL!);
+  await page.evaluate(`(async () => { for (let i = 0; i < ${WINDOW}; i++) await globalThis.murlanStep(${STEP_MS}); })()`);
   // The animation runs on while the rig, as a stalled page's does, does not: 300 ms is 6 pt of sway.
   await page.evaluate((ms) => window.murlanStepAnimations(ms), STALL_MS);
   const after = await sampled(page, STALL_FRAMES);
-  const sway = tableFrom(shown);
-  const off = after.map((s) => SWAY_PT * Math.abs(swayOfOpacity(s.o) - sway(s)));
-  expect(Math.max(...off.slice(0, 5)), "points the stall put the light off the keyframe table's").toBeGreaterThan(HANDOFF_PT);
-  expect(Math.max(...off.slice(-60)), "points the light is still off the keyframe table's a second after the stall").toBeLessThan(HANDOFF_PT);
+  const { centre, moved } = centred(after);
+  expect(moved, "points the rig's centre moves while it only sways: more than a rested lamp's").toBeLessThan(REST_PT);
+  const off = after.map((s) => Math.abs(s.lx - centre - SWAY_PT * swayOfOpacity(s.o)));
+  expect(Math.max(...off.slice(0, 5)), "points the stall put the light off the rig's").toBeGreaterThan(HANDOFF_PT);
+  expect(Math.max(...off.slice(-60)), "points the light is still off the rig's a second after the stall").toBeLessThan(HANDOFF_PT);
   await context.close();
 });
