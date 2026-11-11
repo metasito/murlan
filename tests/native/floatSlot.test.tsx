@@ -19,7 +19,7 @@ const AT = { x: 200, y: 100 };
 const { enter, exit } = Motion.mark;
 const hold = Hold.mark;
 
-const BESIDE = { giocaTop: 60, left: 0, right: 0, mirrored: false };
+const BESIDE = { giocaTopFromBottom: 60, left: 0, right: 0, mirrored: false };
 const slot = (float: Float | null) => <FloatSlot float={float} at={AT} beside={BESIDE} scale={1} veiled={false} />;
 const drawn = () => {
   const style = getAnimatedStyle(screen.getByTestId(PLATE, hidden)) as { opacity?: number; transform?: Record<string, number>[] };

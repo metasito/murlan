@@ -265,7 +265,7 @@ export interface GameTableProps {
    * Takes the veil rather than returning plain nodes: whether the settings
    * sheet is open is this component's own state, and a layer that renders a
    * `<Modal>` is above the veil while one that does not is behind it — which
-   * only the caller knows.
+   * only the caller knows. `layout` is the one this table drew this render.
    */
   overlays?: (veiled: AccessibilityProps, layout: TableLayout) => React.ReactNode;
 
@@ -754,7 +754,7 @@ export function GameTable({
         sy: rig.sy,
         s: scale,
         kickAt: { x: W / 2, y: H / 2 },
-        shakeAt: { x: (frame.tableLeft + W - frame.tableRight) / 2, y: (frame.tableTop + H - frame.surplus) / 2 },
+        shakeAt: layout.tableCentre,
       },
     },
     tableMotion,
@@ -1014,7 +1014,7 @@ export function GameTable({
             pointerEvents="box-none"
             style={[
               styles.voteSpot,
-              layout.votes.rest,
+              { right: layout.votes.right, top: layout.votes.top.rest },
             ]}
           >
             <A11yVeil veil={behindVeil}>
@@ -1030,7 +1030,7 @@ export function GameTable({
             pointerEvents="box-none"
             style={[
               styles.voteSpot,
-              layout.votes.open,
+              { right: layout.votes.right, top: layout.votes.top.open },
               roundVoteStyle,
             ]}
           >
@@ -1121,7 +1121,7 @@ export function GameTable({
         <View
           testID="banner-band"
           {...behindVeil}
-          style={[styles.bannerBand, layout.bannerBand]}
+          style={[styles.bannerBand, { top: layout.chipsBottom, ...layout.bannerBand }]}
         >
           <A11yVeil veil={behindVeil}>{banners}</A11yVeil>
         </View>

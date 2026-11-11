@@ -53,14 +53,19 @@ jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   const { EndMatchVote } = require('@/components/table/notices/netNotes') as typeof import('@/components/table/notices/netNotes');
+  const { tableLayout } = require('@/components/tableLayout') as typeof import('@/components/tableLayout');
   return {
     GameTable: (props: {
       endMatchVote?: import('@/components/table/notices/netNotes').EndMatchVoteNote | null;
-      overlays?: (v: object, layout: { rail: { width: number } }) => React.ReactNode;
+      overlays?: (v: object, layout: import('@/components/tableLayout').TableLayout) => React.ReactNode;
     }) =>
       react.createElement(rn.View, null, [
         props.endMatchVote ? react.createElement(EndMatchVote, { key: 'vote', ...props.endMatchVote, scale: 1 }) : null,
-        react.createElement(rn.View, { key: 'overlays' }, props.overlays ? props.overlays({}, { rail: { width: 0 } }) : null),
+        react.createElement(
+          rn.View,
+          { key: 'overlays' },
+          props.overlays ? props.overlays({}, tableLayout({ ...rn.Dimensions.get('window'), insets: { top: 0, bottom: 0, left: 0, right: 0 } })) : null
+        ),
       ]),
   };
 });

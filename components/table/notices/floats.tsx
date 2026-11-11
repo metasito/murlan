@@ -13,7 +13,7 @@ const FLOAT_SLOT = 440;
 const ABOVE_GIOCA = 8;
 
 /** GIOCA's top edge, up from the window's foot, and the table's edges it sits against. */
-export type BesideGioca = { giocaTop: number; left: number; right: number; mirrored: boolean };
+export type BesideGioca = { giocaTopFromBottom: number; left: number; right: number; mirrored: boolean };
 
 export function PassFloat({ text, scale }: { text: string; scale: number }) {
   return (
@@ -62,7 +62,7 @@ export function FloatSlot({
   const slot = mockupPx(FLOAT_SLOT, scale);
   const place =
     float?.kind === "reject"
-      ? [styles.beside, { bottom: beside.giocaTop + mockupPx(ABOVE_GIOCA, scale), left: beside.left, right: beside.right }, beside.mirrored && styles.mirrored]
+      ? [styles.beside, { bottom: beside.giocaTopFromBottom +mockupPx(ABOVE_GIOCA, scale), left: beside.left, right: beside.right }, beside.mirrored && styles.mirrored]
       : [styles.slot, float?.kind === "toast" && styles.overBoard, { width: slot, left: at.x - slot / 2, top: at.y }];
   return (
     <>

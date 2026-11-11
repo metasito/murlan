@@ -60,7 +60,7 @@ const lastTable = () =>
     catchUp: boolean;
     connection: Connection;
     matchActions?: object;
-    overlays: (veiled: object, layout: { rail: { width: number } }) => React.ReactNode;
+    overlays: (veiled: object) => React.ReactNode;
   };
 
 describe('the online table under a reconnect notice', () => {

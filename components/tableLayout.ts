@@ -36,13 +36,15 @@ export interface TableLayout {
   /** The float slot's top edge: `.floatchip`, above the hand row's floor. */
   floatTop: number;
   /** The band a refused play's float stands in beside GIOCA: GIOCA's top as a distance from the window's bottom, and the table's side margins. */
-  floatBeside: { giocaTop: number; left: number; right: number };
+  floatBeside: { giocaTopFromBottom: number; left: number; right: number };
   /** Bottom edge of the chip row: the banner band's top, and the notification banner's in landscape. */
   chipsBottom: number;
-  /** The banner band, under the chip row and a pad inside the table's sides; `left` and `right` are distances from the window's edges. */
-  bannerBand: { top: number; left: number; right: number };
-  /** A vote's corner under the score pill, at rest and open: `right` from the window's right edge, `top` from its top. */
-  votes: Record<"rest" | "open", { right: number; top: number }>;
+  /** The banner band's sides, a pad inside the table's, as distances from the window's edges; its top is `chipsBottom`. */
+  bannerBand: { left: number; right: number };
+  /** A vote's corner under the score pill: `right` from the window's right edge, `top` from its top, at rest and open. */
+  votes: { right: number; top: Record<"rest" | "open", number> };
+  /** The middle of the felt the table is drawn on, between the rail and the far margin and inside the surplus. */
+  tableCentre: Point;
   /** The scale the HUD's chips are drawn at: the table's, or less where the window is too narrow for the row. */
   chips: number;
   /** The chip row for pills drawn `widths` wide: the combo pill from the left, the score pill at rest on the right, and the turn chip between, a gap clear of both. */
@@ -131,13 +133,11 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     anchors,
     seatPoint: (dir) => ({ dx: anchors[dir].x - anchors.pile.x, dy: anchors[dir].y - anchors.pile.y }),
     floatTop: tableFloor - frame.bottomPad - floatAboveFoot(scale),
-    floatBeside: { giocaTop: height - gioca.y, left: frame.tableLeft, right: frame.tableRight },
+    floatBeside: { giocaTopFromBottom: height - gioca.y, left: frame.tableLeft, right: frame.tableRight },
     chipsBottom,
-    bannerBand: { top: chipsBottom, left: frame.tableLeft + frame.pad, right: frame.tableRight + frame.pad },
-    votes: {
-      rest: { right: width - pill.right, top: voteTop(pill, false, scale) },
-      open: { right: width - pill.right, top: voteTop(pill, true, scale) },
-    },
+    bannerBand: { left: frame.tableLeft + frame.pad, right: frame.tableRight + frame.pad },
+    votes: { right: width - pill.right, top: { rest: voteTop(pill, false, scale), open: voteTop(pill, true, scale) } },
+    tableCentre: { x: (frame.tableLeft + width - frame.tableRight) / 2, y: (frame.tableTop + height - frame.surplus) / 2 },
     chips,
     chipRow: (widths) => chipRow(frame, pill, widths),
     pileNote: pileNote(x, anchors.pile.y, scale, frame.fieldRoomW),

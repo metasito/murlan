@@ -33,10 +33,12 @@ const mockTable = jest.fn();
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
+  const { tableLayout } = require('@/components/tableLayout') as typeof import('@/components/tableLayout');
   return {
-    GameTable: (props: { error?: { text: string } | null; overlays?: (v: object, layout: { rail: { width: number } }) => React.ReactNode }) => {
+    GameTable: (props: { error?: { text: string } | null; overlays?: (v: object, layout: import('@/components/tableLayout').TableLayout) => React.ReactNode }) => {
       mockTable(props.error?.text);
-      return react.createElement(rn.View, null, props.overlays ? props.overlays({}, { rail: { width: 0 } }) : null);
+      const layout = tableLayout({ ...rn.Dimensions.get('window'), insets: { top: 0, bottom: 0, left: 0, right: 0 } });
+      return react.createElement(rn.View, null, props.overlays ? props.overlays({}, layout) : null);
     },
   };
 });
