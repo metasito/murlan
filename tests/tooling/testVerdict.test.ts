@@ -1,13 +1,14 @@
 import { before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { parse } from "yaml";
 import { escape, LEDGER, readArtifacts, renames, run, SUITES, verdict, wiringOf } from "../../tools/ci/test-verdict.mjs";
 import { ownedBy } from "../../tools/ci/codeowners.mjs";
+import { TIMINGS_SUFFIX } from "../../tools/ci/results-writer.mjs";
 import { JOBS } from "../../tools/ci/scopeOf.mjs";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -250,6 +251,15 @@ describe("the runners' own reports, judged", () => {
     has(problems, /b\/none\.test\.ts is in npm test's listing and no test in it passed/);
     has(problems, /b\/exit\.test\.ts is in npm test's listing and no test in it passed/);
     assert.ok(!problems.some((p) => /b\/ok\.test\.ts/.test(p)), problems.join("\n"));
+  });
+
+  test("node: each file's measured seconds sit beside its records, in a file the verdict does not read", () => {
+    const dir = path.join(results, "test-results-verify-0-2");
+    const timings = readdirSync(dir).filter((f) => f.endsWith(TIMINGS_SUFFIX));
+    assert.equal(timings.length, 1, readdirSync(dir).join(", "));
+    const seconds: Record<string, number> = JSON.parse(readFileSync(path.join(dir, timings[0]!), "utf8"));
+    assert.deepEqual(Object.keys(seconds).sort(), [CLEAN, PLANTS].sort());
+    for (const [file, s] of Object.entries(seconds)) assert.ok(s > 0, `${file} measured ${s} s`);
   });
 });
 

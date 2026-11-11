@@ -1,13 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { deadlineMs, EXIT_MARKERS_ENV, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
-import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMarginMs, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
+import { EXIT_GRACE_MARGIN_MS, EXIT_GRACE_MS, exitGraceMarginMs, exitGraceMs, MIN_EXIT_GRACE_MS, RUN_IDLE_MS, runIdleMs, unloaded } from "../helpers/filesRunReporter.mjs";
 import { EXIT_TICK_MS, exitGuard, haltable } from "../helpers/exitGuard.mjs";
 import { MIN_TABLE_TIMEOUT_MS, TABLE_TIMEOUT_MS, tableTimeoutMs } from "../../scripts/lib/proc.mjs";
 import { posixWorld, windowsWorld } from "../helpers/processWorlds.ts";
@@ -201,6 +201,25 @@ describe("a planted run starts from nothing of its parent's environment", () => 
     assert.match(await see({ ...process.env }), /ENV-LEAK/);
     assert.match(await see(Object.assign({}, process.env)), /ENV-LEAK/);
     noLeak(await see(scrubbedEnv({ MURLAN_ASKED: "1" })));
+  });
+});
+
+describe("a run handed a list of files answers for each, and a run handed a glob for its whole root", () => {
+  test("a listed file that never loaded is named; an unlisted one is another shard's", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "files-run-"));
+    try {
+      for (const f of [["tests", "a.test.ts"], ["tests", "engine", "b.test.ts"]]) {
+        mkdirSync(path.join(dir, ...f.slice(0, -1)), { recursive: true });
+        writeFileSync(path.join(dir, ...f), "");
+      }
+      const loaded = [path.join(dir, "tests", "a.test.ts")];
+      assert.deepEqual(unloaded(loaded, dir, ["tests/a.test.ts"]), []);
+      assert.deepEqual(unloaded(loaded, dir, ["tests/a.test.ts", "tests/engine/b.test.ts"]), ["tests/engine/b.test.ts"]);
+      assert.deepEqual(unloaded(loaded, dir, ["tests/**/*.test.ts"]), ["tests/engine/b.test.ts"]);
+      assert.deepEqual(unloaded(loaded, dir, ["tests/a.test.ts", "tests/engine"]), ["tests/engine/b.test.ts"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

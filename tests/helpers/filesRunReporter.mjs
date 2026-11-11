@@ -62,7 +62,8 @@ const isFile = (data) => data?.nesting === 0 && path.resolve(data.name ?? "") ==
  * node reports for a file that declared no test at all.
  *
  * It also fails the run when a `*.test.ts` under a root the run touched never loaded: a narrowed
- * glob drops whole directories and still exits 0.
+ * glob drops whole directories and still exits 0. A run handed only `*.test.ts` paths, one CI shard
+ * of the suite, answers for those; CI gate's verdict holds every shard together to the whole listing.
  */
 export default async function* filesRun(source) {
   const loaded = new Set();
@@ -115,15 +116,24 @@ export default async function* filesRun(source) {
   }
   for (const [dir, count] of [...perDir].sort()) yield `test files run in ${dir}: ${count}\n`;
 
-  const missing = unloaded([...loaded]);
+  // In `node --test`, everything after the executable is a file argument; the flags are execArgv.
+  const missing = unloaded([...loaded], process.cwd(), process.argv.slice(1));
   if (loaded.size === 0) missing.push("(no test file loaded at all)");
   for (const file of missing) yield `test file never loaded: ${file}\n`;
   if (missing.length > 0) process.exitCode = 1;
 }
 
-/** @param {string[]} loaded absolute paths */
-export function unloaded(loaded, cwd = process.cwd()) {
+/** A path to one test file; a glob or a directory names whatever its root holds. */
+const namesOneFile = (/** @type {string} */ arg) => arg.endsWith(".test.ts") && !/[*?[\]{}]/.test(arg);
+
+/**
+ * @param {string[]} loaded absolute paths
+ * @param {string[]} args the runner's file arguments
+ */
+export function unloaded(loaded, cwd = process.cwd(), args = []) {
   const rel = loaded.map((f) => path.relative(cwd, f).split(path.sep).join("/"));
+  if (args.length > 0 && args.every(namesOneFile))
+    return args.map((a) => path.relative(cwd, path.resolve(cwd, a)).split(path.sep).join("/")).filter((f) => !rel.includes(f));
   return ROOTS.filter((root) => rel.some((f) => f.startsWith(`${root}/`))).flatMap((root) =>
     readdirSync(path.join(cwd, root), { recursive: true, encoding: "utf8" })
       .map((f) => `${root}/${f.split(path.sep).join("/")}`)
