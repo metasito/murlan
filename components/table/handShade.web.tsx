@@ -2,7 +2,8 @@
 // shadows fall on the neighbouring cards, and this draws nothing.
 import { Suspense, useEffect, useState } from "react";
 import type { HandShadeProps } from "./feltReady";
-import { drawsOnGpu, skiaPiece, SkiaLoadFailed } from "./feltSkia.web";
+import { drawsOnGpu } from "./drawsOnGpu";
+import { skiaPiece, SkiaLoadFailed } from "./feltSkia.web";
 
 const SkiaHandShade = skiaPiece((m) => m.HandShadeBoundary);
 

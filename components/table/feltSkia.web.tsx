@@ -4,7 +4,7 @@
 import { Component, lazy, Suspense, useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
-import { E2E_FAST } from "@/lib/e2eConfig";
+import { drawsOnGpu } from "./drawsOnGpu";
 import { FeltFallback } from "./feltFallback";
 import type { FeltProps } from "./feltReady";
 import { levelShade } from "./rail";
@@ -20,23 +20,6 @@ export function skiaPiece<P>(pick: (m: typeof import("./feltSkiaBoundary")) => C
 }
 
 const SkiaFelt = skiaPiece((m) => m.default);
-
-const SOFTWARE_GL = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i;
-
-let onGpu: boolean | undefined;
-
-/** The felt's shader covers the table: on a software rasteriser a swaying lamp takes the main thread. */
-export function drawsOnGpu(): boolean {
-  if (onGpu !== undefined) return onGpu;
-  const e2e = globalThis as { murlanSkiaOnSoftware?: boolean };
-  if (E2E_FAST && e2e.murlanSkiaOnSoftware) return (onGpu = true);
-  const gl = document.createElement("canvas").getContext("webgl", { failIfMajorPerformanceCaveat: true });
-  if (!gl) return (onGpu = false);
-  const info = gl.getExtension("WEBGL_debug_renderer_info");
-  const renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
-  gl.getExtension("WEBGL_lose_context")?.loseContext();
-  return (onGpu = !SOFTWARE_GL.test(renderer));
-}
 
 /** When the Skia chunk itself cannot load, the fallback felt stays and the table plays on. */
 export class SkiaLoadFailed extends Component<{ children: ReactNode }, { failed: boolean }> {

@@ -46,7 +46,7 @@ import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type LampNow, type
 import { NOT_SHOWN, nextShown, type Shown } from "./restEnds";
 import type { GlossTracks } from "./glossTrackStore";
 import { useGreyLayer } from "./greyLayer";
-import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
+import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, opaquePlane, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
@@ -359,8 +359,6 @@ function drewAtCentre(image: SkImage, gx: number, gy: number, drew: (rgba: Uint8
   return !(px instanceof Uint8Array) || drew(px);
 }
 
-/** Every plane is opaque where it drew. */
-const opaquePlane = (px: Uint8Array) => px[3] === 255;
 const litCloth = (px: Uint8Array) => px[3] > 0 && px[0] + px[1] + px[2] > 24;
 
 /** The weave's planes at `gx` × `gy` device pixels a point, the ones the canvas fills; `null` where no offscreen surface can be made or a plane came out blank. */

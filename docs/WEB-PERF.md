@@ -96,7 +96,7 @@ landing, the lamp's glide to the next seat and the bots behind it.
 
 `PERF_SKIA=1 npm run perf:web` records the Skia felt instead of the fallback. This browser draws
 WebGL on SwiftShader, where the table keeps its fallback felt (`drawsOnGpu`,
-`components/table/feltSkia.web.tsx`), and only an e2e build lets a spec ask for Skia anyway, so this
+`components/table/drawsOnGpu.ts`), and only an e2e build lets a spec ask for Skia anyway, so this
 mode runs against the e2e build, never `PERF_URL`, and fails a window whose trace saw any felt but
 Skia's. It records at device pixel ratio 1: at 3 SwiftShader draws the Skia table at about four
 frames a second, under every window's floor, and `drag` misses its floor of 20 frames even at 1

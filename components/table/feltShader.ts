@@ -212,6 +212,9 @@ export function weaveUniforms(k: number, plane: number): ClothUniforms {
 
 export type ClothUniforms = Record<string, number | number[]>;
 
+/** A weave plane is opaque wherever it drew: what both renderers read at the felt's centre to keep a bake. */
+export const opaquePlane = (rgba: Uint8Array) => rgba[3] === 255;
+
 function rgb(hex: string): number[] {
   "worklet";
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
