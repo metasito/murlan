@@ -6,13 +6,16 @@ import { Asset } from "expo-asset";
 import Svg, { Path, Circle, G, Rect } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/game/gameEngine";
 import {
+  cardContact,
   cardShadow,
   Colors,
   FontSize,
   Layer,
   withAlpha,
 } from "@/lib/theme";
-import { CardCastContext } from "@/components/table/feltReady";
+import { CardCastContext, useCardShadowsOn } from "@/components/table/feltReady";
+import { viewDrawsContact } from "@/components/table/cardShadows";
+import { useCardTable } from "@/components/table/useCardRects";
 import { FOIL_ART, FoilGlint, GLOSS_SPOT_ART, LampGloss, LevelShade } from "@/components/table/LampGloss";
 import type { OwnedRects } from "@/components/table/useCardRects";
 import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
@@ -449,7 +452,12 @@ function CardViewBase({
   const w = faceDown ? CARD_BACK_W(scale) : CARD_W(scale);
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
   const cast = useContext(CardCastContext);
-  const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast);
+  const table = useCardTable();
+  const shadowsOn = useCardShadowsOn();
+  const kind = faceDown ? "back" : "face";
+  const contact = !!table && shadowsOn && !!rectKey && viewDrawsContact(rectKey);
+  const shadow =
+    cast !== "felt" ? cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast) : contact ? cardContact(kind, table.felt.s) : null;
 
   if (faceDown) {
     const backStyle = {

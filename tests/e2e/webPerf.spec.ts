@@ -38,7 +38,6 @@ interface RenderReport {
   /** Frames per second each canvas drew in, and style writes a second inside cards' views. */
   feltFps: number;
   particlesFps: number;
-  handShadeFps: number;
   cardStylesPerS: number;
   /** Animation-frame callbacks a second by caller, and the Reanimated frame callbacks active in the last frame. */
   loopsPerS: Record<string, number>;
@@ -181,7 +180,6 @@ async function renderReport(page: Page, perS: (n: number | undefined) => number)
   return {
     feltFps: perS(counts.drewIn[COUNTED.felt]),
     particlesFps: perS(counts.drewIn[COUNTED.particles]),
-    handShadeFps: perS(counts.drewIn[COUNTED.handShade]),
     cardStylesPerS: perS(counts.styles.cards),
     loopsPerS: Object.fromEntries(Object.entries(counts.loops).map(([caller, n]) => [caller, perS(n)])),
     frameCallbacks: counts.frameCallbacks,

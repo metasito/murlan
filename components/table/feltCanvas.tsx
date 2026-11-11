@@ -599,7 +599,7 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   const glow = useGlow(rects, felt, cards.hand.x);
   const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };
   const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: view.value.lx, y: view.value.ly }), felt));
-  const contact = shadowTransform(shadowFall("face", pile, pile), felt);
+  const contact = shadowTransform(shadowFall("fan", pile, pile), felt);
   const flat = shadowTransform({ x: 0, y: 0 }, felt);
   // State, not a group's opacity: a picture is drawn without the group's paint.
   const shadows = useCardShadowsOn();

@@ -1,5 +1,5 @@
 // tests/native/tableCards.test.tsx — every card the table draws is in the registry under its owner's scope,
-// and no card view on the table carries a platform shadow (the felt draws them all), judged on the same
+// and no card view on the table carries a platform shadow but its own contact (the felt draws the casts), judged on the same
 // frames at rest, mid-throw, mid-deal and mid-exchange (#1259 plan 4, tasks 11 and 12).
 import { describe, it, expect, jest, beforeAll, beforeEach, afterEach, afterAll } from '@jest/globals';
 import React from 'react';
@@ -14,7 +14,7 @@ import { restingCast } from '@/components/table/cardShadows';
 import { CardCastContext, useCardCast } from '@/components/table/feltReady';
 import type { Pool } from '@/components/table/lampRig';
 import { dealCards } from '@/lib/game/gameEngine';
-import { CardShadow, cardShadow, Colors, Shadow, TABLE_CAST, withAlpha } from '@/lib/theme';
+import { CardShadow, cardContact, cardShadow, Colors, Shadow, TABLE_CAST, withAlpha } from '@/lib/theme';
 import { card } from '../support/game.ts';
 import { FLYING, THROW, cardTable, dealtTable, pairThrownBy3, runScenario, type Scenario } from './helpers/cardScenarios';
 import { frames } from './helpers/exchangeLegs';
@@ -57,17 +57,29 @@ function scopeOf(n: TestInstance): string | null {
 const styleOf = (n: TestInstance) => (StyleSheet.flatten(n.props.style as StyleProp<ViewStyle>) ?? {}) as Record<string, unknown>;
 const isGlow = (n: TestInstance) => SHADOW_PROPS.every((p) => styleOf(n)[p] === Shadow.cardGlow[p]);
 
-/** Every view in every card's scope, and those carrying a platform shadow, the gold glows apart. */
-function cardHosts() {
-  const scopes = screen.container.queryAll((n) => scopeOf(n) !== null);
-  const hosts = new Set(scopes.flatMap((s) => (shadowJudged.add(scopeOf(s)!), [s, ...s.queryAll(() => true)])));
-  const shadowed = [...hosts].filter((n) => SHADOW_PROPS.some((p) => styleOf(n)[p] !== undefined));
-  return { scopes: scopes.length, shadowed: shadowed.filter((n) => !isGlow(n)), glows: shadowed.filter(isGlow) };
+const CONTACT = /^0px ([\d.]+)px [\d.]+px rgba\(0,0,0,([\d.]+)\)$/;
+/** A face's or back's own contact at the table's scale, the one shadow a card view on the felt carries. */
+function isContact(n: TestInstance, scope: string): boolean {
+  const style = styleOf(n);
+  const hit = typeof style.boxShadow === 'string' ? CONTACT.exec(style.boxShadow) : null;
+  if (!hit || scope === 'fan' || SHADOW_PROPS.some((p) => p !== 'boxShadow' && style[p] !== undefined)) return false;
+  const kind = Number(hit[2]) === CardShadow.alpha.back ? 'back' : 'face';
+  return style.boxShadow === cardContact(kind, Number(hit[1]) / CardShadow.contact.y).boxShadow;
 }
 
-function expectNoCardShadow() {
-  const { scopes, shadowed } = cardHosts();
+/** Every view in every card's scope, and those carrying a platform shadow, the gold glows and contacts apart. */
+function cardHosts() {
+  const scopes = screen.container.queryAll((n) => scopeOf(n) !== null);
+  const hosts = new Map(scopes.flatMap((s) => (shadowJudged.add(scopeOf(s)!), [s, ...s.queryAll(() => true)].map((n) => [n, scopeOf(s)!] as const))));
+  const shadowed = [...hosts.keys()].filter((n) => SHADOW_PROPS.some((p) => styleOf(n)[p] !== undefined));
+  const contacts = shadowed.filter((n) => isContact(n, hosts.get(n)!));
+  return { scopes: scopes.length, shadowed: shadowed.filter((n) => !isGlow(n) && !contacts.includes(n)), glows: shadowed.filter(isGlow), contacts };
+}
+
+function expectContactOnly() {
+  const { scopes, shadowed, contacts } = cardHosts();
   expect(scopes).toBeGreaterThan(0);
+  expect(contacts.length).toBeGreaterThan(0);
   expect(shadowed.map(styleOf)).toEqual([]);
 }
 
@@ -88,11 +100,11 @@ afterEach(() => {
 });
 
 describe('a card on the table', () => {
-  it.each<Scenario>(['throw', 'deal', 'exchange'])('is registered exactly as drawn and casts no shadow of its own through a %s', async (scenario) => {
+  it.each<Scenario>(['throw', 'deal', 'exchange'])('is registered exactly as drawn and casts only its own contact through a %s', async (scenario) => {
     let peak = 0;
     await runScenario(scenario, (t) => {
       expectExactlyDrawn();
-      expectNoCardShadow();
+      expectContactOnly();
       peak = Math.max(peak, scoped(FLYING[scenario]).length);
       if (scenario !== 'throw' || (t !== THROW.air && t !== THROW.rest)) return;
       expect(scoped('pile')).toEqual(['pile:a', 'pile:b']);
@@ -122,7 +134,7 @@ describe('a card on the table', () => {
     expect(kept).toBe(0);
   }, 120_000);
 
-  it('carries no shadow however many cards are held', async () => {
+  it('carries no shadow but its contact however many cards are held', async () => {
     const counts: number[] = [];
     for (const held of [13, 3]) {
       const dealt = dealtTable();

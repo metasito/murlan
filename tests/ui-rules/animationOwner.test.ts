@@ -23,11 +23,10 @@ const CALL = /\b(?:useFrameCallback|requestAnimationFrame|withRepeat)\b|\banimat
 const EXEMPT: Record<string, number> = {
   "lib/e2eTrace.ts": 5,
   "lib/diagnostics/FrameProbe.tsx": 2,
-  "components/table/handShade.web.tsx": 1,
   "components/table/feltSkia.web.tsx": 1,
   "components/table/feltCanvas.tsx": 2,
 };
-const MAX_EXEMPT_FILES = 5;
+const MAX_EXEMPT_FILES = 4;
 
 const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\/|(?<![:"'`])\/\/.*$/gm, "");
 const hitsIn = (source: string) => code(source).match(CALL)?.length ?? 0;

@@ -114,6 +114,12 @@ export function cardShadow(kind: keyof typeof CARD_LAYERS, cast: "table" | null 
   };
 }
 
+/** A table card's contact alone, at the table's scale `s`, where the Skia felt draws its cast (`viewDrawsContact`). */
+export function cardContact(kind: "face" | "back", s: number): Record<string, any> {
+  const contact = contactLayer(CardShadow.alpha[kind]);
+  return makeLayeredShadow([{ ...contact, offsetY: contact.offsetY * s, radius: contact.radius * s }], 1);
+}
+
 // Authored at scale 1, where the table's own shadows are quoted. The art
 // direction measures them at 2x, so every distance here is half the figure on
 // artboard A.

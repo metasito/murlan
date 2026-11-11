@@ -21,17 +21,10 @@ export interface FeltProps {
   grey?: SharedValue<number>;
 }
 
-export interface HandShadeProps {
-  lamp: LampRig["lamp"];
-  cards: CardTable;
-  /** The Skia felt has drawn: the card views have given their own shadows up to the felt. */
-  ready: boolean;
-}
-
 /**
- * How a card view on the table shades itself: `felt` where the felt draws every card's shadow, else
- * `table`, a static shadow cast at the offset the table's root holds (`TABLE_CAST`). Off the table,
- * null: a static shadow.
+ * How a card view on the table shades itself: `felt` where the felt draws every card's cast and the
+ * view its contact alone (`viewDrawsContact`), else `table`, a static shadow cast at the offset the
+ * table's root holds (`TABLE_CAST`). Off the table, null: a static shadow.
  */
 export type CardCast = "felt" | "table";
 export const CardCastContext = createContext<CardCast | null>(null);

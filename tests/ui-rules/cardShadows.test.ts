@@ -6,7 +6,7 @@ import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addOutline, buildGlow, CARD_ON_CARD_PATHS, buildShadow, castOffset, cardShades, handCardZ, handPaintOrder, pileGroupZ, pilePaintOrder, restingCast, shadeCards, shadeShape, SHADE_STEP, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, pileGroupZ, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, viewDrawsContact, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { CARD_ON_CARD_CSS } from "../e2e/helpers/cardOnCardCss.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
@@ -17,19 +17,19 @@ import { fixtureLine } from "../helpers/lanternFixture.ts";
 describe("the card shadows are the owner's ruling, not the mockup's", () => {
   test("a card on a card casts only a contact: at most 0.5 pt down, 1 pt of blur, 0.35 of black", () => {
     assert.ok(CardShadow.contact.y <= 0.5 && CardShadow.contact.blur <= 1);
-    for (const k of CARD_ON_CARD_PATHS) {
-      const { sigma, alpha } = shadowPaint(k, 1);
-      assert.ok(alpha <= 0.35 && sigma <= 0.5, k);
-      assert.deepEqual(shadowFall(k, { x: 457, y: 222 }, { x: 120, y: 40 }), { x: 0, y: CardShadow.contact.y });
-    }
-    assert.ok(CardShadow.alpha.fan <= 0.35);
+    for (const k of ["face", "back", "fan"] as const) assert.ok(CardShadow.alpha[k] <= 0.35, k);
+    const { sigma, alpha } = shadowPaint("fan", 1);
+    assert.ok(alpha <= 0.35 && sigma <= 0.5);
+    assert.deepEqual(shadowFall("fan", { x: 457, y: 222 }, { x: 120, y: 40 }), { x: 0, y: CardShadow.contact.y });
   });
 
-  test("no lamp-driven cast reaches a card: the hand shade draws no cast path and reads no lamp fall", () => {
-    assert.ok(!(CARD_ON_CARD_PATHS as readonly string[]).includes("cast"));
-    const src = fs.readFileSync(fileURLToPath(new URL("../../components/table/handShadeCanvas.tsx", import.meta.url)), "utf8");
-    assert.doesNotMatch(src, /shadowFall|"cast"|castOffset|lamp\.value/);
-    assert.match(src, /CARD_ON_CARD_PATHS/);
+  test("a face's or back's contact is its own view's, which reads no lamp; no canvas draws a card on a card", () => {
+    const src = (file: string) => fs.readFileSync(fileURLToPath(new URL(`../../${file}`, import.meta.url)), "utf8");
+    const view = src("components/CardView.tsx");
+    assert.match(view, /viewDrawsContact\(rectKey\)/);
+    assert.match(view, /cardContact\(/);
+    assert.doesNotMatch(src("lib/theme.ts").match(/export function cardContact[\s\S]*?\n}/)![0], /fall|cast|TABLE_CAST/);
+    assert.deepEqual(fs.readdirSync(fileURLToPath(new URL("../../components/table/", import.meta.url))).filter((f) => /^handShade/.test(f)), []);
   });
 
   test("the Skia felt's passes paint the tokens, and the mockup's Skia-mode card-on-card is the contact tokens alone", () => {
@@ -50,7 +50,7 @@ describe("the card shadows are the owner's ruling, not the mockup's", () => {
 
   test("every contact and cast is black, and each path paints one of them", () => {
     assert.deepEqual(shadowPaint("cast", 1), { sigma: CardShadow.cast.blur / 2, alpha: CardShadow.cast.alpha });
-    for (const k of ["face", "back", "fan"] as const) assert.deepEqual(shadowPaint(k, 1), { sigma: CardShadow.contact.blur / 2, alpha: CardShadow.alpha[k] });
+    assert.deepEqual(shadowPaint("fan", 1), { sigma: CardShadow.contact.blur / 2, alpha: CardShadow.alpha.fan });
     assert.equal(Colors.shadow, "#000000");
   });
 
@@ -74,16 +74,17 @@ describe("the card shadows are the owner's ruling, not the mockup's", () => {
 describe("the shadow paths", () => {
   const rect = (over: Partial<CardRect> = {}): CardRect => ({ x: 100, y: 50, w: 64, h: 90, rot: 0, back: false, lift: 0, glow: 0, seen: 1, ...over });
 
-  test("a seat fan's backs cast nothing; every other card casts", () => {
+  test("a seat fan's backs cast nothing and their contact is the felt's; every other card casts and draws its own contact", () => {
     assert.equal(shadowKind("fan:top:0", rect({ back: true })), "fan");
     assert.equal(shadowKind("deal:3", rect({ back: true })), "back");
     assert.equal(shadowKind("hand:5_clubs", rect()), "face");
+    assert.deepEqual(["fan:top:0", "deal:3", "hand:5_clubs", "pile:a", "leg:x"].map(viewDrawsContact), [false, true, true, true, true]);
     const counted = (path: (typeof SHADOW_PATHS)[number]) => {
       let n = 0;
       buildShadow({ moveTo: () => n++, lineTo: () => {}, conicTo: () => {}, close: () => {} }, path, { "fan:left:0": rect({ back: true }), "deal:0": rect({ back: true }), "pile:a": rect() }, { sx: 1, sy: 1, s: 1 }, 0);
       return n;
     };
-    assert.deepEqual(SHADOW_PATHS.map(counted), [2, 1, 1, 1]);
+    assert.deepEqual(SHADOW_PATHS.map(counted), [2, 1]);
   });
 
   test("split into the sets of cards whose blurs meet, each card in one of them", () => {
@@ -95,84 +96,16 @@ describe("the shadow paths", () => {
     assert.deepEqual([gap(5.9), gap(6.1)], [1, 2]);
   });
 
-  test("a card shades the cards painted under it, never the ones over it, a card not drawn, or a flight over them", () => {
-    const felt = { sx: 1, sy: 1, s: 1 };
-    const rects = { "hand:a": rect(), "hand:b": rect({ x: 120 }), "hand:c": rect({ x: 140 }), "hand:gone": rect({ seen: 0 }), "leg:x": rect(), "deal:gone": rect({ seen: 0 }), "pile:far": rect({ x: 400 }) };
-    const read = shadeCards(rects, ["hand:c", "hand:gone", "hand:a", "hand:missing", "hand:b"], felt);
-    assert.deepEqual(read, { stack: ["hand:c", "hand:a", "hand:b"], over: ["leg:x"] });
-    assert.deepEqual(cardShades(read), [
-      { caster: "hand:a", below: ["hand:c"], above: ["hand:a", "hand:b", "leg:x"] },
-      { caster: "hand:b", below: ["hand:c", "hand:a"], above: ["hand:b", "leg:x"] },
-    ]);
-    assert.deepEqual(cardShades(shadeCards({ "hand:a": rect() }, ["hand:a"], felt)), []);
-  });
-
-  test("a pile card shades the pile cards and hand cards painted under it", () => {
-    const felt = { sx: 1, sy: 1, s: 1 };
-    const rects = { "hand:a": rect(), "pile:b1": rect({ x: 110 }), "pile:t1": rect({ x: 120 }), "pile:t2": rect({ x: 130 }), "fan:top:0": rect({ x: 125 }) };
-    const read = shadeCards(rects, ["hand:a", "pile:b1", "pile:t1", "pile:t2"], felt);
-    assert.deepEqual(read, { stack: ["hand:a", "pile:b1", "pile:t1", "pile:t2"], over: ["fan:top:0"] });
-    assert.deepEqual(
-      cardShades(read).map(({ caster, below }) => [caster, below]),
-      [
-        ["pile:b1", ["hand:a"]],
-        ["pile:t1", ["hand:a", "pile:b1"]],
-        ["pile:t2", ["hand:a", "pile:b1", "pile:t1"]],
-      ]
-    );
-  });
-
-  test("the pile paints by its groups' zIndex, a play's cards in their order, the flight over every resting play", () => {
-    const play = (key: string, ids: string[], role: "top" | "beaten" | "buried", flying = false, sweep = false) => ({ key, ids, role, flying, sweep });
-    assert.deepEqual(
-      pilePaintOrder([play("s", ["s1"], "top", false, true), play("t", ["t1", "t2"], "top"), play("b", ["b1", "b2"], "beaten"), play("f", ["f1"], "top", true), play("x", ["x1"], "buried")]),
-      ["pile:x1", "pile:b1", "pile:b2", "pile:t1", "pile:t2", "pile:s1", "pile:f1"]
-    );
+  test("the pile paints by its groups' zIndex, the flight over every resting play", () => {
     assert.ok(pileGroupZ(false, false, "beaten") < pileGroupZ(false, false, "top"));
     assert.ok(pileGroupZ(false, false, "top") < pileGroupZ(false, true, "buried"));
     assert.ok(pileGroupZ(false, true, "top") < pileGroupZ(true, false, "top"));
-  });
-
-  test("the card shade lies over every resting pile play and the hand, and under the moments", () => {
-    assert.ok(pileGroupZ(false, false, "top") < Layers.cardShade, `top play ${pileGroupZ(false, false, "top")} against the shade's ${Layers.cardShade}`);
-    assert.ok(Layers.cardShade < Layers.moment);
-  });
-
-  test("the card shade rebuilds on an outline moving a visible step, never on a drift under it", () => {
-    const felt = { sx: 2, sy: 1.5, s: 1.25 };
-    const shape = (over: Partial<CardRect> = {}, f = felt, midX = 0) => {
-      const rects = { "hand:a": rect(), "hand:b": rect({ x: 120, ...over }) };
-      return shadeShape(rects, shadeCards(rects, ["hand:a", "hand:b"], f), f, midX);
-    };
-    const drift = SHADE_STEP / 4;
-    const still = [shape({ x: 120 + drift / felt.sx }), shape({ y: 50 + drift / felt.sy }), shape({ w: 64 + drift / felt.s }), shape({ h: 90 + drift / felt.s }), shape({ rot: drift / 100 })];
-    assert.deepEqual(still, still.map(() => shape()));
-    const step = SHADE_STEP;
-    const moved = [shape({ x: 120 + step / felt.sx }), shape({ y: 50 + step / felt.sy }), shape({ w: 64 + step / felt.s }), shape({ h: 90 + step / felt.s }), shape({ seen: 0.5 }), shape({ back: true }), shape({}, { ...felt, sx: 2.5 }), shape({}, felt, 30)];
-    assert.equal(new Set([shape(), ...moved]).size, moved.length + 1);
-    const pose = { x: 120, y: 50, w: 64, h: 90, rot: 0 };
-    assert.notEqual(shape({ shadow: pose }), shape({ shadow: { ...pose, rot: 1 } }));
-    assert.equal(shape({ shadow: pose }), shape());
-  });
-
-  test("a card off the stack reaches the shade only while it may overlap a stacked card, at the felt's scale", () => {
-    const at = (x: number, y = 50) => ({ "hand:a": rect(), "fan:top:0": rect({ x, y, rot: 90 }) });
-    const over = (rects: Record<string, CardRect>, felt = { sx: 1, sy: 1, s: 1 }) => shadeCards(rects, ["hand:a"], felt).over;
-    assert.deepEqual([over(at(100 + 153)), over(at(100 + 155)), over(at(100, 50 + 155))], [["fan:top:0"], [], []]);
-    assert.deepEqual(over(at(100 + 155), { sx: 1, sy: 1, s: 1.1 }), ["fan:top:0"]);
   });
 
   test("the hand paints in its cards' zIndex order: a giveable card over its neighbours, the held card over all", () => {
     assert.deepEqual(handCardZ(2, 5, undefined), 2);
     assert.deepEqual(handCardZ(2, 5, true), 7);
     assert.ok(handCardZ(200, 500, true) < Layers.held, "a giveable lift stays under the held card");
-    assert.deepEqual(handPaintOrder(["a", "b", "c", "d"], (id) => (id === "b" ? true : id === "c" ? false : undefined), "h"), ["hand:a", "hand:c", "hand:d", "hand:b", "hand:h"]);
-    assert.deepEqual(handPaintOrder(["a", "b"], () => undefined, null), ["hand:a", "hand:b"]);
-  });
-
-  test("the hand's shades are rebuilt when its paint order changes, though no card moved", () => {
-    const rects = { "hand:a": rect(), "hand:b": rect({ x: 120 }) };
-    assert.notEqual(shadowShape(rects, ["hand:a", "hand:b"]), shadowShape(rects, ["hand:b", "hand:a"]));
   });
 
   test("are rebuilt for a change of any field they read, and not for a lift or glow alone", () => {
@@ -186,7 +119,7 @@ describe("the shadow paths", () => {
     const felt = { sx: 1, sy: 1, s: 1 };
     const rects = { "pile:a": rect(), "pile:b": rect({ x: 200 }), "pile:c": rect({ x: 900 }) };
     const id = (over: Partial<Record<string, CardRect>> = {}, f = felt, midX = 0, keys = ["pile:a", "pile:b"]) =>
-      shadowClusterId("face", { ...rects, ...over } as Record<string, CardRect>, f, midX, keys);
+      shadowClusterId("fan", { ...rects, ...over } as Record<string, CardRect>, f, midX, keys);
     assert.equal(id({}, felt, 0, ["pile:b", "pile:a"]), id());
     assert.equal(id({ "pile:c": rect({ x: 901 }) }), id());
     const changed = [id({ "pile:b": rect({ x: 201 }) }), id({}, { ...felt, sx: 2 }), id({}, { ...felt, sy: 2 }), id({}, { ...felt, s: 2 }), id({}, felt, 1), shadowClusterId("cast", rects, felt, 0, ["pile:a", "pile:b"])];
@@ -203,8 +136,8 @@ describe("the shadow paths", () => {
       return at;
     };
     assert.equal(shadowShape({ "pile:a": held }), shadowShape({ "pile:a": there }));
-    assert.deepEqual(first((s) => buildShadow(s, "face", { "pile:a": held }, felt, 0)), first((s) => buildShadow(s, "face", { "pile:a": there }, felt, 0)));
-    assert.deepEqual(shadowClusters("face", { "pile:a": held, "pile:b": rect({ x: 160 }) }, felt, 0, 3), [["pile:b", "pile:a"]]);
+    assert.deepEqual(first((s) => buildShadow(s, "cast", { "pile:a": held }, felt, 0)), first((s) => buildShadow(s, "cast", { "pile:a": there }, felt, 0)));
+    assert.deepEqual(shadowClusters("cast", { "pile:a": held, "pile:b": rect({ x: 160 }) }, felt, 0, 3), [["pile:b", "pile:a"]]);
     assert.notDeepEqual(first((s) => buildGlow(s, { "pile:a": held }, felt, 0)), first((s) => buildGlow(s, { "pile:a": there }, felt, 0)));
   });
 

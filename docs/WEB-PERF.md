@@ -85,7 +85,7 @@ refuses to publish a number unless the hand's order actually changed.
 | `transformed` | elements carrying a non-identity transform when sampled |
 | `domNodes` | elements in the document |
 | `taskMsPerS`, `scriptMsPerS` | main-thread and script milliseconds a second, CDP's `Performance.getMetrics` `TaskDuration` and `ScriptDuration` |
-| `feltFps`, `particlesFps`, `handShadeFps` | `PERF_SKIA` only: frames a second the Skia felt's, the motes' and the hand shade's canvas drew in (`tests/e2e/helpers/renderCounters.ts`) |
+| `feltFps`, `particlesFps` | `PERF_SKIA` only: frames a second the Skia felt's and the motes' canvas drew in (`tests/e2e/helpers/renderCounters.ts`) |
 | `cardStylesPerS` | `PERF_SKIA` only: style writes a second inside cards' own views |
 | `felts` | `PERF_SKIA` only: which felt the trace saw draw through the window |
 | `feltKs` | `PERF_SKIA` only: the k the Skia felt reported drawing at through the window (`feltK` in `lib/e2eTrace.ts`) |
