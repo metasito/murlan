@@ -7,17 +7,21 @@ import { legalGioca } from "./helpers/bot.ts";
 import { tap } from "./helpers/press";
 import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
-type Live = { felt: number; elsewhere: string[]; offscreen: number };
+type Live = { felt: number; elsewhere: string[]; opened: number; offscreen: number };
 
 test("the Skia table draws on one WebGL context, the felt's, and a play in flight opens no other", async ({ page, baseURL }) => {
   test.setTimeout(3 * 60_000);
   await skiaOnSoftware(page);
   await page.addInitScript(() => {
     const gl = new Set<HTMLCanvasElement>();
+    const contexts = new Set<unknown>();
     const getContext = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, id: string, ...rest: unknown[]) {
       const ctx = (getContext as (this: HTMLCanvasElement, ...a: unknown[]) => unknown).call(this, id, ...rest);
-      if (ctx && /^(webgl2?|experimental-webgl)$/.test(id)) gl.add(this);
+      if (ctx && /^(webgl2?|experimental-webgl)$/.test(id)) {
+        gl.add(this);
+        contexts.add(ctx);
+      }
       return ctx;
     } as typeof getContext;
     let offscreen = 0;
@@ -30,10 +34,10 @@ test("the Skia table draws on one WebGL context, the felt's, and a play in fligh
       } as typeof offscreenContext;
     }
     (window as unknown as { murlanGlCanvases: () => Live }).murlanGlCanvases = () => {
-      const live = [...gl].filter((c) => c.isConnected);
       const inFelt = (c: HTMLCanvasElement) => !!c.closest('[data-testid="table-felt"]');
+      const live = [...gl].filter((c) => c.isConnected);
       const name = (c: HTMLCanvasElement) => c.closest("[data-testid]")?.getAttribute("data-testid") ?? "(no testid)";
-      return { felt: live.filter(inFelt).length, elsewhere: live.filter((c) => !inFelt(c)).map(name), offscreen };
+      return { felt: live.filter(inFelt).length, elsewhere: live.filter((c) => !inFelt(c)).map(name), opened: contexts.size, offscreen };
     };
   });
   await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }));
@@ -41,11 +45,10 @@ test("the Skia table draws on one WebGL context, the felt's, and a play in fligh
   const live = () => page.evaluate(() => (window as unknown as { murlanGlCanvases: () => Live }).murlanGlCanvases());
 
   const rest = await live();
-  expect({ ...rest, offscreen: 0 }).toEqual({ felt: 1, elsewhere: [], offscreen: 0 });
+  expect({ felt: rest.felt, elsewhere: rest.elsewhere }).toEqual({ felt: 1, elsewhere: [] });
   await tap(page, page.locator(HAND_CARD_BOXES).last());
   await tap(page, legalGioca(page));
   await expect(page.getByTestId("flying-card").first()).toBeAttached({ timeout: 30_000 });
-  expect(await live()).toEqual(rest);
   await expect(page.getByTestId("pile-card").first()).toBeAttached({ timeout: 30_000 });
   await expect(page.getByTestId("flying-card")).toHaveCount(0, { timeout: 30_000 });
   expect(await live()).toEqual(rest);

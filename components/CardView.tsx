@@ -9,12 +9,13 @@ import {
   cardContact,
   cardShadow,
   Colors,
+  drawsBoxShadow,
   FontSize,
   Layer,
   withAlpha,
 } from "@/lib/theme";
 import { CardCastContext, useCardShadowsOn } from "@/components/table/feltReady";
-import { viewDrawsContact } from "@/components/table/cardShadows";
+import { shadowKind, viewDrawsContact } from "@/components/table/cardShadows";
 import { useCardTable } from "@/components/table/useCardRects";
 import { FOIL_ART, FoilGlint, GLOSS_SPOT_ART, LampGloss, LevelShade } from "@/components/table/LampGloss";
 import type { OwnedRects } from "@/components/table/useCardRects";
@@ -462,7 +463,7 @@ function CardViewBase({
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
   const cast = useContext(CardCastContext);
   const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast);
-  const contact = cast === "felt" && !!rectKey && viewDrawsContact(rectKey) && (
+  const contact = cast === "felt" && !!rectKey && viewDrawsContact(shadowKind(rectKey, { back: faceDown }), drawsBoxShadow()) && (
     <CardContact kind={faceDown ? "back" : "face"} width={w} height={h} />
   );
 

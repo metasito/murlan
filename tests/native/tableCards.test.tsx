@@ -10,7 +10,7 @@ import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { CardView } from '@/components/CardView';
 import { CARD_SCOPES, type CardRects } from '@/components/table/cardRects';
-import { restingCast } from '@/components/table/cardShadows';
+import { restingCast, shadowRect } from '@/components/table/cardShadows';
 import { CardCastContext, useCardCast } from '@/components/table/feltReady';
 import type { Pool } from '@/components/table/lampRig';
 import { dealCards } from '@/lib/game/gameEngine';
@@ -24,6 +24,8 @@ import { bootFeedback } from './helpers/feedback';
 jest.mock('@/lib/e2eConfig', () =>
   (require('./helpers/e2eBuildMock') as typeof import('./helpers/e2eBuildMock')).e2eConfigAsBuilt()
 );
+
+jest.mock('@/components/table/cardShadows', () => jest.requireActual('@/components/table/cardShadows'));
 
 const HIDDEN = { includeHiddenElements: true };
 const SHADOW_PROPS = ['boxShadow', 'shadowOpacity', 'shadowRadius', 'elevation'];
@@ -64,7 +66,7 @@ function isContact(n: TestInstance, scope: string): boolean {
   const style = styleOf(n);
   if (scope === 'fan' || SHADOW_PROPS.some((p) => p !== 'boxShadow' && style[p] !== undefined)) return false;
   const s = feltScale();
-  return (['face', 'back'] as const).some((kind) => style.boxShadow === cardContact(kind, s)?.boxShadow);
+  return (['face', 'back'] as const).some((kind) => style.boxShadow === cardContact(kind, s).boxShadow);
 }
 
 /** Every view in every card's scope, and those carrying a platform shadow, the gold glows and contacts apart. */
@@ -120,19 +122,33 @@ describe('a card on the table', () => {
     expect(registry()).toEqual({});
   }, 120_000);
 
-  it("carries no elevation below Android 9, where it would paint a card's box over its own level shade", async () => {
+  it("carries no elevation below Android 9, where it would paint a card's box over its own level shade, and the felt draws its contact", async () => {
     const os = jest.replaceProperty(Platform, 'OS', 'android');
     const version = jest.spyOn(Platform, 'Version', 'get').mockReturnValue(27);
+    const e2e = globalThis as { murlanShadowClusterBuilds?: Record<string, number> };
+    delete e2e.murlanShadowClusterBuilds;
     try {
       let seen = 0;
       const elevated: Record<string, unknown>[] = [];
+      const viewContacts: Record<string, unknown>[] = [];
+      const owed = new Set<string>();
       await runScenario('throw', () => {
         const { scopes, shadowed, contacts } = cardHosts();
         seen += scopes;
         elevated.push(...[...shadowed, ...contacts].map(styleOf).filter((s) => s.elevation !== undefined));
+        viewContacts.push(...contacts.map(styleOf));
+        const rects = registry();
+        for (const key of Object.keys(rects)) if (!key.startsWith('fan:') && shadowRect(rects[key]).seen > 0) owed.add(`${shadowRect(rects[key]).back ? 'back' : 'face'}|${key}`);
       });
+      const drawn = new Set(Object.keys(e2e.murlanShadowClusterBuilds ?? {}).flatMap((cluster) => {
+        const [kind, members] = cluster.split('|');
+        return members.split(',').map((key) => `${kind}|${key}`);
+      }));
       expect(seen).toBeGreaterThan(0);
       expect(elevated).toEqual([]);
+      expect(viewContacts).toEqual([]);
+      expect(owed.size).toBeGreaterThan(0);
+      expect([...owed].filter((at) => !drawn.has(at))).toEqual([]);
     } finally {
       version.mockRestore();
       os.restore();

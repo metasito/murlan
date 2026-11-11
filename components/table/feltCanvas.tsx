@@ -39,7 +39,7 @@ import { useBenchHandle } from "@/lib/diagnostics";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
-import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
+import { CardGlow, Colors, drawsBoxShadow, motionMs, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames } from "@/lib/motion";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type LampNow, type Pool } from "./lampRig";
@@ -48,7 +48,7 @@ import type { GlossTracks } from "./glossTrackStore";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, opaquePlane, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
-import { buildGlow, buildShadow, inPath, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
+import { buildGlow, buildShadow, feltContactPaths, inPath, shadowClusterId, shadowClusters, shadowFall, shadowKind, shadowRect, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
 import { useCardShadowsOn } from "./feltReady";
@@ -127,24 +127,31 @@ function countClusterBuild(kind: ShadowPath, members: readonly string[]) {
   builds[cluster] = (builds[cluster] ?? 0) + 1;
 }
 
-/** Moves on when the outline of a card in `paths` does, and not when only its lift or glow does. */
-function useShadowShape(paths: readonly ShadowPath[], rects: SharedValue<CardRects>): SharedValue<number> {
-  const version = useSharedValue(0);
-  const last = useSharedValue("");
+/** Each moves on when the outline of a card in its paths does, and not when only its lift or glow does. */
+function useShadowShapes(contacts: readonly ShadowPath[], rects: SharedValue<CardRects>): { cast: SharedValue<number>; contact: SharedValue<number> } {
+  const cast = useSharedValue(0);
+  const contact = useSharedValue(0);
+  const last = useSharedValue({ cast: "", contact: "" });
   useAnimatedReaction(
     () => rects.value,
     (all) => {
-      const shape = shadowShape(all, Object.keys(all).filter((key) => paths.some((path) => inPath(path, key))));
-      if (shape === last.value) return;
-      last.value = shape;
-      version.value += 1;
+      const castKeys: string[] = [];
+      const contactKeys: string[] = [];
+      for (const key of Object.keys(all)) {
+        const kind = shadowKind(key, shadowRect(all[key]));
+        if (inPath("cast", kind)) castKeys.push(key);
+        if (contacts.some((path) => inPath(path, kind))) contactKeys.push(key);
+      }
+      const shapes = { cast: shadowShape(all, castKeys), contact: shadowShape(all, contactKeys) };
+      if (shapes.cast !== last.value.cast) cast.value += 1;
+      if (shapes.contact !== last.value.contact) contact.value += 1;
+      last.value = shapes;
     }
   );
-  return version;
+  return { cast, contact };
 }
 
 const CAST: readonly ShadowPath[] = ["cast"];
-const CONTACT = SHADOW_PATHS.filter((k) => k !== "cast");
 
 function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<number>, rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: number): SharedValue<SkPicture> {
   const recorder = useMemo(() => Skia.PictureRecorder(), []);
@@ -593,10 +600,10 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   const shade = useDerivedValue(() => levelShade(view.value.level));
 
   const { rects, felt } = cards;
-  const castShape = useShadowShape(CAST, rects);
-  const contactShape = useShadowShape(CONTACT, rects);
-  const cast = useShadowPicture(CAST, castShape, rects, felt, cards.hand.x);
-  const contacts = useShadowPicture(CONTACT, contactShape, rects, felt, cards.hand.x);
+  const contactPaths = useMemo(() => feltContactPaths(drawsBoxShadow()), []);
+  const shapes = useShadowShapes(contactPaths, rects);
+  const cast = useShadowPicture(CAST, shapes.cast, rects, felt, cards.hand.x);
+  const contacts = useShadowPicture(contactPaths, shapes.contact, rects, felt, cards.hand.x);
   const glow = useGlow(rects, felt, cards.hand.x);
   const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };
   const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: view.value.lx, y: view.value.ly }), felt));

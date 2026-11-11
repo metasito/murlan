@@ -6,7 +6,7 @@ import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, pileGroupZ, restingCast, shadowClusters, inPath, shadowFall, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, viewDrawsContact, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, pileGroupZ, restingCast, shadowClusters, feltContactPaths, inPath, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, viewDrawsContact, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { CARD_ON_CARD_CSS } from "../e2e/helpers/cardOnCardCss.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
@@ -26,7 +26,8 @@ describe("the card shadows are the owner's ruling, not the mockup's", () => {
   test("a face's or back's contact is its own view's, which reads no lamp; no canvas draws a card on a card", () => {
     const src = (file: string) => fs.readFileSync(fileURLToPath(new URL(`../../${file}`, import.meta.url)), "utf8");
     const view = src("components/CardView.tsx");
-    assert.match(view, /viewDrawsContact\(rectKey\)/);
+    assert.match(view, /viewDrawsContact\(shadowKind\(rectKey, \{ back: faceDown \}\), drawsBoxShadow\(\)\)/);
+    assert.match(src("components/table/feltCanvas.tsx"), /feltContactPaths\(drawsBoxShadow\(\)\)/);
     assert.match(view, /cardContact\(/);
     assert.doesNotMatch(src("lib/theme.ts").match(/export function cardContact[\s\S]*?\n}/)![0], /fall|cast|TABLE_CAST/);
     assert.deepEqual(fs.readdirSync(fileURLToPath(new URL("../../components/table/", import.meta.url))).filter((f) => /^handShade/.test(f)), []);
@@ -74,17 +75,23 @@ describe("the card shadows are the owner's ruling, not the mockup's", () => {
 describe("the shadow paths", () => {
   const rect = (over: Partial<CardRect> = {}): CardRect => ({ x: 100, y: 50, w: 64, h: 90, rot: 0, back: false, lift: 0, glow: 0, seen: 1, ...over });
 
-  test("a seat fan's backs cast nothing and their contact is the felt's; every other card casts and draws its own contact", () => {
+  test("a seat fan's backs cast nothing and their contact is the felt's; every other card casts, and draws its own contact where the platform draws a view's boxShadow, else the felt does", () => {
     const keys = ["fan:top:0", "deal:3", "hand:5_clubs", "pile:a", "leg:x"];
-    assert.deepEqual(keys.map(viewDrawsContact), [false, true, true, true, true]);
-    assert.deepEqual(keys.map((k) => inPath("cast", k)), [false, true, true, true, true]);
-    assert.deepEqual(keys.map((k) => inPath("fan", k)), [true, false, false, false, false]);
+    const kinds = keys.map((k, i) => shadowKind(k, { back: i === 1 }));
+    assert.deepEqual(kinds, ["fan", "back", "face", "face", "face"]);
+    assert.deepEqual(kinds.map((k) => viewDrawsContact(k, true)), [false, true, true, true, true]);
+    assert.deepEqual(kinds.map((k) => viewDrawsContact(k, false)), [false, false, false, false, false]);
+    assert.deepEqual(feltContactPaths(true), ["fan"]);
+    assert.deepEqual(feltContactPaths(false), ["face", "back", "fan"]);
+    for (const boxShadow of [true, false]) for (const k of kinds) assert.equal(feltContactPaths(boxShadow).filter((p) => inPath(p, k)).length + Number(viewDrawsContact(k, boxShadow)), 1, `${k} ${boxShadow}`);
+    assert.deepEqual(kinds.map((k) => inPath("cast", k)), [false, true, true, true, true]);
+    assert.deepEqual(kinds.map((k) => inPath("fan", k)), [true, false, false, false, false]);
     const counted = (path: (typeof SHADOW_PATHS)[number]) => {
       let n = 0;
       buildShadow({ moveTo: () => n++, lineTo: () => {}, conicTo: () => {}, close: () => {} }, path, { "fan:left:0": rect({ back: true }), "deal:0": rect({ back: true }), "pile:a": rect() }, { sx: 1, sy: 1, s: 1 }, 0);
       return n;
     };
-    assert.deepEqual(SHADOW_PATHS.map(counted), [2, 1]);
+    assert.deepEqual(SHADOW_PATHS.map(counted), [2, 1, 1, 1]);
   });
 
   test("split into the sets of cards whose blurs meet, each card in one of them", () => {

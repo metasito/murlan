@@ -8,19 +8,34 @@ import type { CardRect, CardRects, Felt, Point } from "./cardRects.ts";
 import { LIGHT_ABOVE, type Pool } from "./lampRig.ts";
 import type { PlayRole } from "./trick.ts";
 
-/** The felt's paths: `cast` for every card but a seat fan's backs, which cast nothing (`.bk`); `fan`, their contact. */
-export const SHADOW_PATHS = ["cast", "fan"] as const;
+export type ShadowKind = "face" | "back" | "fan";
+/** One path each; the cast is every face and back, a seat fan's backs cast nothing (`.bk`). */
+export const SHADOW_PATHS = ["cast", "face", "back", "fan"] as const;
 export type ShadowPath = (typeof SHADOW_PATHS)[number];
 
-/** Whether the table card at `key` draws its own contact, on the felt and on the cards under it alike; else the felt's `fan` path does. */
-export function viewDrawsContact(key: string): boolean {
+export function shadowKind(key: string, rect: Pick<CardRect, "back">): ShadowKind {
   "worklet";
-  return !key.startsWith("fan:");
+  if (key.startsWith("fan:")) return "fan";
+  return rect.back ? "back" : "face";
 }
 
-export function inPath(path: ShadowPath, key: string): boolean {
+/**
+ * Whether a table card of `kind` draws its own contact, on the felt and on the cards under it alike, where
+ * `boxShadow` says the platform draws a view's outset `boxShadow`; else the felt's path of that kind does.
+ */
+export function viewDrawsContact(kind: ShadowKind, boxShadow: boolean): boolean {
   "worklet";
-  return (path === "cast") === viewDrawsContact(key);
+  return boxShadow && kind !== "fan";
+}
+
+/** The contact paths the felt draws: those whose cards do not draw their own. */
+export function feltContactPaths(boxShadow: boolean): ShadowPath[] {
+  return (["face", "back", "fan"] as const).filter((kind) => !viewDrawsContact(kind, boxShadow));
+}
+
+export function inPath(path: ShadowPath, kind: ShadowKind): boolean {
+  "worklet";
+  return path === "cast" ? kind !== "fan" : path === kind;
 }
 
 /** `--shx`/`--shy` in design points at card scale 1, from the pile and the light point in design points. */
@@ -172,7 +187,7 @@ export function shadowClusters(path: ShadowPath, rects: CardRects, felt: Pick<Fe
   let clusters: { keys: string[]; box: Box }[] = [];
   for (const key of Object.keys(rects)) {
     const r = shadowRect(rects[key]);
-    const box = inPath(path, key) ? outlineBox(r, felt, midX) : null;
+    const box = inPath(path, shadowKind(key, r)) ? outlineBox(r, felt, midX) : null;
     if (!box) continue;
     let joined = { keys: [key], box };
     for (let grew = true; grew; ) {
@@ -191,5 +206,8 @@ export function shadowClusters(path: ShadowPath, rects: CardRects, felt: Pick<Fe
 
 export function buildShadow(sink: PathSink, path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, keys: readonly string[] = Object.keys(rects)): void {
   "worklet";
-  for (const key of keys) if (inPath(path, key)) addOutline(sink, shadowRect(rects[key]), felt, midX);
+  for (const key of keys) {
+    const r = shadowRect(rects[key]);
+    if (inPath(path, shadowKind(key, r))) addOutline(sink, r, felt, midX);
+  }
 }
