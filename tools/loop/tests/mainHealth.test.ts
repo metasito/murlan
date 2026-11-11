@@ -337,11 +337,12 @@ describe("mainFailures", () => {
     assert.equal(mainFailures(keyed(GREEN, JOBS), REPO), null);
   });
 
-  test("a red main gives its run and the failing test paths from its failed log", () => {
+  test("a red main gives its run, the failing test paths from its failed log, and its failed jobs", () => {
     assert.deepEqual(mainFailures(keyed(RED, JOBS), REPO), {
       runId: RED.databaseId,
       url: RED.url,
       ids: ["tests/native/a.test.tsx"],
+      jobs: ["Typecheck and tests"],
     });
   });
 
@@ -363,7 +364,7 @@ describe("mainFailures", () => {
       }
       return base(args);
     };
-    assert.deepEqual(mainFailures(gh, REPO), { runId: RED.databaseId, url: RED.url, ids: ["tests/native/slow.test.tsx"] });
+    assert.deepEqual(mainFailures(gh, REPO), { runId: RED.databaseId, url: RED.url, ids: ["tests/native/slow.test.tsx"], jobs: ["Typecheck and tests"] });
   });
 
   test("an unreachable gh is null, never a throw", () => {

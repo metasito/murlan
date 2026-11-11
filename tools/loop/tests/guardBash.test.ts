@@ -556,7 +556,7 @@ describe("a device run's dispatch is the workflow's own to refuse", () => {
 });
 
 describe("a loop session reruns no run: a red is fixed at its source", () => {
-  const NO_RERUN = /^A red is never rerun: .*rule 53/;
+  const NO_RERUN = /^A red is never rerun \(rule 53\)\.$/;
   for (const cmd of [
     "gh run rerun 33428375221 --failed",
     "gh -R o/r run rerun 33428375221",

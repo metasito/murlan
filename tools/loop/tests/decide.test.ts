@@ -299,7 +299,7 @@ const ROWS: Row[] = [
   ["a CI fix round keeps the worktree, and hands it back", settled(), { kind: "retry" }],
   ["a red settle leaves the worktree standing and the next pass spawns C with the fix", settled(), { kind: "retry", loop: { ...fresh, pinned: 42 } }],
   ["the retry row carries the head CI judged, not the one before update-branch", settled({ head: "h9" }), { kind: "retry", head: "h9" }],
-  ["#1100's report-upload red is a fix round", settled({ reason: "CI failed at Browser test report", head: "2f2a885" }), { kind: "retry", head: "2f2a885" }],
+  ["a hand-back at a job no test names is a fix round", settled({ reason: "CI failed at Browser test report", head: "2f2a885" }), { kind: "retry", head: "2f2a885" }],
   [`runOnce: red round ${CI_ROUNDS} parks`, settled({}, { tally: { ...empty, retries: CI_ROUNDS - 1 } }),
     { kind: "park", phase: "E", ciRed: true, why: `${CI_ROUNDS} CI rounds on the same branch did not go green — last: CI failed at Typecheck and tests` }],
   ["a restart mid fix round keeps the round count: the third red run parks", settled({}, { tally: { ...empty, retries: CI_ROUNDS - 1 } }), { kind: "park" }],

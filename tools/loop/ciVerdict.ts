@@ -21,23 +21,31 @@ export interface JobRow {
   status?: string;
   id?: number;
   timedOut?: boolean;
+  /** GitHub shut its runner down mid-job, per the job's annotation. */
+  runnerShutDown?: boolean;
   failedSteps?: string[];
 }
 
 /**
- * GitHub reports a job stopped by its own `timeout-minutes` exactly as one cancelled by a newer
- * push: job and run `cancelled`, a cancelled step. Only its check-run annotation tells them apart.
+ * Only a job's check-run annotation tells a job stopped by its own `timeout-minutes` from one a
+ * newer push cancelled (both read job and run `cancelled`, a cancelled step), and a runner GitHub
+ * shut down from a failing suite (both read `failure`).
  */
-export function markTimedOut(jobs: JobRow[], tracker: Pick<Tracker, "annotations">): void {
-  for (const job of jobs) {
-    if (job.conclusion !== "cancelled" || job.steps === 0 || job.id === undefined) continue;
+export function markFromAnnotations(jobs: JobRow[], tracker: Pick<Tracker, "annotations">): void {
+  const read = (job: JobRow) => {
     try {
-      const messages = tracker.annotations(job.id);
-      job.timedOut = messages.some((m: string) => /exceeded the maximum execution time/.test(m));
+      return tracker.annotations(job.id!) as string[];
     } catch {
-      job.timedOut = false;
+      return [];
     }
-    if (job.timedOut) return;
+  };
+  for (const job of jobs) {
+    if (job.steps === 0 || job.id === undefined) continue;
+    if (job.conclusion === "failure") {
+      job.runnerShutDown = read(job).some((m) => /^The runner has received a shutdown signal\b/.test(m));
+    } else if (job.conclusion === "cancelled" && !jobs.some((j) => j.timedOut)) {
+      job.timedOut = read(job).some((m) => /exceeded the maximum execution time/.test(m));
+    }
   }
 }
 
@@ -124,7 +132,17 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   // fails fast cancels its siblings, and a cancelled job that never reached its first step is
   // stepless. A cancelled run is the same case: rereading it never changes its jobs, so a red among
   // them must reach the fix round.
-  const realFailure = jobs.find((j) => j.conclusion === "failure" && j.steps > 0) ?? jobs.find((j) => j.timedOut);
+  const realFailure = jobs.find((j) => j.conclusion === "failure" && j.steps > 0 && !j.runnerShutDown) ?? jobs.find((j) => j.timedOut);
+  const shutDown = jobs.find((j) => j.runnerShutDown);
+  if (!realFailure && shutDown) {
+    return {
+      pass: false,
+      runId: run.databaseId,
+      infrastructure: true,
+      failedStep: shutDown.name,
+      reason: `GitHub shut down ${shutDown.name}'s runner mid-job, so the run says nothing about the diff`,
+    };
+  }
 
   // ci.yml's concurrency group cancels an in-progress pull-request run on every new push, so this
   // is the common path, not an edge. Asked through the jobs instead, the ones that never started
@@ -253,6 +271,27 @@ export function jobRowsOf(jobs: ReturnType<Tracker["runJobs"]>): JobRow[] {
   }));
 }
 
+const ARTIFACT_STEP = /^(?:Upload\b|Collect every shard's report$)/;
+const SERVER_ERROR = /\bHTTP 5\d\d\b|\(5\d\d\)|\b5\d\d (?:Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout|Egress)/;
+
+/**
+ * The red job, when every red job failed only at a step moving artifacts and its own lines of the
+ * failed log show storage answering 5xx. An artifact step failing without one is the diff's: an
+ * upload with no files to upload, a download no shard wrote.
+ */
+export function storageOutage(jobs: JobRow[], log: string[]): string | undefined {
+  if (jobs.some((j) => j.timedOut)) return undefined;
+  const reds = jobs.filter((j) => j.conclusion === "failure" && j.steps > 0 && j.name !== CI_GATE && !j.runnerShutDown);
+  const outage = (j: JobRow) =>
+    j.failedSteps?.length &&
+    j.failedSteps.every((s) => ARTIFACT_STEP.test(s)) &&
+    log.some((line) => {
+      const [job, step] = line.split("\t");
+      return job === j.name && j.failedSteps!.includes(step) && SERVER_ERROR.test(line);
+    });
+  return reds.length > 0 && reds.every(outage) ? reds[0].name : undefined;
+}
+
 /** One read's tracker, and the `gh` its failed log is read through: both bounded by the read's deadline. */
 interface Reads {
   tracker: Tracker;
@@ -272,17 +311,21 @@ function jobsAndLog(repo: string, run: RunRow | undefined, { tracker, log }: Rea
   if (run.status !== "completed") {
     return { verdict: { ...decideVerdict(run, []), progress: ciProgress(jobs) }, testIds: [] };
   }
-  markTimedOut(jobs, tracker);
+  markFromAnnotations(jobs, tracker);
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
   if (!verdict.pass && !verdict.infrastructure) {
     verdict.logArgs = failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep);
     try {
-      const strippedLines = log(verdict.logArgs)
-        .split("\n")
-        .map(stripLogPrefix);
+      const lines = log(verdict.logArgs).split("\n");
+      const strippedLines = lines.map(stripLogPrefix);
       testIds = failingTestIds(strippedLines.join("\n"));
       verdict.output = strippedLines.slice(-FAILED_LOG_LINES).join("\n");
+      const outage = storageOutage(jobs, lines);
+      if (outage) {
+        verdict.infrastructure = true;
+        verdict.reason = `${outage} failed only where artifact storage answered 5xx, so the run says nothing about the diff`;
+      }
     } catch (error) {
       // Naming the reason: a fix agent told only that the log is unreadable cannot tell a tooling
       // failure from a job that logged nothing, and reproduces the run either way. `logUnread` says

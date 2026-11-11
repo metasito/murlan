@@ -224,9 +224,13 @@ export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "",
 
 /**
  * @param {string[]} failing the red head's test ids
- * @param {{url?: string, ids: string[], flaky?: boolean}|null} main `mainFailures()`'s answer
+ * @param {{url?: string, ids: string[], jobs?: string[], flaky?: boolean}|null} main `mainFailures()`'s answer
+ * @param {string} [step] the red head's failed job, the overlap when no test id parsed
  */
-export function onMainLine(failing, main) {
+export function onMainLine(failing, main, step) {
+  if (failing.length === 0) {
+    return main && !main.flaky && step && main.jobs?.includes(step) ? `${step} also failed on main (${main.url ?? "main's latest run"})` : "none";
+  }
   const onMain = new Set(main?.ids ?? []);
   const ids = failing.filter((id) => onMain.has(id));
   if (!main || ids.length === 0) return "none";
@@ -344,8 +348,11 @@ function prepareRed(ticket, ci, { mkdir, write, mainFailures, log, dir }) {
     log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
   }
   const failing = ci.testIds ?? [];
-  const main = failing.length ? mainFailures() : null;
-  return { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+  const main = failing.length || ci.failedStep ? mainFailures() : null;
+  return {
+    onMain: onMainLine(failing, main?.flaky ? null : main, ci.failedStep),
+    flaky: onMainLine(failing, main?.flaky ? main : null, ci.failedStep),
+  };
 }
 
 /**

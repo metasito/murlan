@@ -368,6 +368,74 @@ describe("a job stopped by its own timeout-minutes", () => {
   });
 });
 
+describe("a red only the runner or artifact storage caused", () => {
+  const RUN = 40;
+  const red = (jobs: object[], { log = "", annotations = {} as Record<number, string[]> } = {}) => {
+    const gate = { name: "CI gate", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: `https://github.com/o/r/actions/runs/${RUN}/job/1` };
+    const gh = (args: string[]) => {
+      const landing = landingAnswer(args, { headRefOid: "h", state: "OPEN", statusCheckRollup: [gate] });
+      if (landing !== null) return landing;
+      if (ciCall(args)?.kind === "run") return JSON.stringify(restRun({ databaseId: RUN, status: "completed", conclusion: "failure", headSha: "h" }));
+      const annotated = /^repos\/o\/r\/check-runs\/(\d+)\/annotations$/.exec(args[1] ?? "");
+      if (args[0] === "api" && annotated) return JSON.stringify((annotations[Number(annotated[1])] ?? []).map((message) => ({ message })));
+      if (args.includes("--log-failed")) return log;
+      return JSON.stringify(restJobs(jobs as never));
+    };
+    return readLandingState("o/r", 1, gh, Date.now() + 60_000).ci;
+  };
+  const LINT = { name: "Lint", conclusion: "success", steps: 9, id: 1 };
+  const REPORT = { name: "Browser test report", conclusion: "failure", steps: 9, id: 2, failedSteps: ["Collect every shard's report"] };
+  const at = (job: string, step: string, text: string) => `${job}\t${step}\t2026-09-21T22:20:01.0000000Z ${text}`;
+
+  test("a runner GitHub shut down mid-job is infrastructure", () => {
+    const v = red([LINT, { name: "Typecheck and tests", conclusion: "failure", steps: 13, id: 3 }], {
+      annotations: { 3: ["The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled."] },
+    });
+    assert.equal(v.infrastructure, true);
+    assert.equal(v.failedStep, "Typecheck and tests");
+  });
+
+  // GitHub's own annotation names the workflow starving the runner as a cause, which a diff can be.
+  test("a runner that lost communication is still the diff's red", () => {
+    const v = red([LINT, { name: "Typecheck and tests", conclusion: "failure", steps: 13, id: 3 }], {
+      annotations: { 3: ["The hosted runner: GitHub Actions 12 lost communication with the server. Anything in your workflow that terminates the runner process, starves it for CPU/Memory, or blocks its network access can cause this error."] },
+    });
+    assert.notEqual(v.infrastructure, true);
+  });
+
+  test("a shut-down runner beside a genuine red hands back the red", () => {
+    const v = red([{ name: "Lint", conclusion: "failure", steps: 9, id: 1 }, { name: "Typecheck and tests", conclusion: "failure", steps: 13, id: 3 }], {
+      annotations: { 3: ["The runner has received a shutdown signal."] },
+    });
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "Lint");
+  });
+
+  test("an artifact step storage answered 5xx is infrastructure", () => {
+    for (const [step, text] of [
+      ["Collect every shard's report", "HTTP 503: Egress is over the account limit"],
+      ["Upload playwright-report again after a failed attempt", "Error: Failed to CreateArtifact: Received non-retryable error: Failed request: (500) Internal Server Error"],
+    ]) {
+      const v = red([LINT, { ...REPORT, failedSteps: [step] }], { log: at(REPORT.name, step, text) });
+      assert.equal(v.infrastructure, true, step);
+      assert.equal(v.failedStep, REPORT.name);
+    }
+  });
+
+  test("an artifact step that failed for any other reason is the diff's red", () => {
+    const v = red([LINT, REPORT], { log: at(REPORT.name, "Collect every shard's report", "no valid artifacts found to download") });
+    assert.notEqual(v.infrastructure, true);
+  });
+
+  test("a 5xx another job logged does not clear the job that failed", () => {
+    const tests = { name: "Typecheck and tests", conclusion: "failure", steps: 13, id: 3, failedSteps: ["Test"] };
+    const v = red([REPORT, tests], { log: [at(REPORT.name, "Collect every shard's report", "HTTP 503: Egress is over the account limit"), at(tests.name, "Test", "✖ breaks")].join("\n") });
+    assert.notEqual(v.infrastructure, true);
+    const own = red([LINT, { ...REPORT, failedSteps: ["Every shard reported"] }], { log: at(REPORT.name, "Every shard reported", "HTTP 503") });
+    assert.notEqual(own.infrastructure, true, "a 5xx line under a step that is not an artifact's");
+  });
+});
+
 describe("failing test ids from a CI log", () => {
   test("a Playwright failure names its file and title, line:col dropped, retries de-duplicated", () => {
     const log = [
@@ -516,7 +584,9 @@ describe("readLandingState, from rollups recorded off live pull requests", () =>
     assert.equal(state.ci.failedStep, "Typecheck and tests");
     assert.deepEqual(state.ci.testIds, ["tools/loop/tests/x.test.ts › breaks"]);
     const landing = ["pull", "check-runs", "status"];
-    assert.ok(asked.every((a) => landing.includes(String(ciCall(a)?.kind)) || a.some((x) => x.includes("38295085768"))), JSON.stringify(asked));
+    const jobIds = (fixture("red").jobs as { id?: number; databaseId?: number }[]).map((j) => j.id ?? j.databaseId);
+    const ofItsJobs = (a: string[]) => jobIds.some((id) => a[1] === `repos/metasito/murlan/check-runs/${id}/annotations`);
+    assert.ok(asked.every((a) => landing.includes(String(ciCall(a)?.kind)) || a.some((x) => x.includes("38295085768")) || ofItsJobs(a)), JSON.stringify(asked));
   });
 
   test("a red gate carries its run's attempt, so a rerun from outside the loop is a new reading", () => {

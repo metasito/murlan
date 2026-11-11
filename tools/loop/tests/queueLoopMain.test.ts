@@ -2112,16 +2112,16 @@ describe("a park that never reached the tracker", () => {
 describe("a stop no rule names parks; a red is a fix round", () => {
   const RUN = 35661862241;
   const silent = async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "C", declared: null });
-  const redAt1100 = async () => ({
+  const redAtReport = async () => ({
     action: "hand-back",
     reason: "CI failed at Browser test report",
     head: "2f2a885",
     runId: RUN,
   });
 
-  test("#1100's report-upload red is a fix round", async () => {
+  test("a hand-back at a job no test names is a fix round", async () => {
     const ledger: any[] = [];
-    const r = await runOnce(io({ settle: redAt1100 }, ledger));
+    const r = await runOnce(io({ settle: redAtReport }, ledger));
     assert.equal(r.outcome, "retry");
     assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "retry"]);
   });

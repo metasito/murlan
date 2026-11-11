@@ -18,7 +18,6 @@ export const rowOf = (x: any) => ({
   head: x.head ?? null,
   handoff: x.handoff ?? null,
   park_failed: x.parkFailed ?? null,
-  flake: x.flake ?? null,
 });
 
 export const fakeTrackerPort = (): Port => ({

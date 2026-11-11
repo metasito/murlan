@@ -827,6 +827,14 @@ describe("a red head's failures that main has too", () => {
     assert.equal(onMainLine(["a"], null), "none");
   });
 
+  test("a red that names no test says whether its step failed on main too", () => {
+    const main = { url: "u", ids: [], jobs: ["Build"] };
+    assert.equal(onMainLine([], main, "Build"), "Build also failed on main (u)");
+    assert.equal(onMainLine([], main, "Lint"), "none");
+    assert.equal(onMainLine([], { ...main, flaky: true }, "Build"), "none");
+    assert.equal(onMainLine([], null, "Build"), "none");
+  });
+
   test("a failure main's latest run has too is named on CI-RED with main's run, and nothing blocks", async () => {
     const written: string[][] = [];
     const { gh, asked } = red();
@@ -856,15 +864,17 @@ describe("a red head's failures that main has too", () => {
     assert.doesNotMatch(String(bodyOf(asked, written)), /flaky on main/);
   });
 
-  test("a red with no failing test id never reads main", async () => {
-    const written: string[][] = [];
-    const { gh, asked } = red("error TS2322: Type 'string' is not assignable to type 'number'.");
-    let reads = 0;
-    const main = () => (reads++, { runId: 1, ids: [ID] });
-    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: main });
-    assert.deepEqual(out, HAND_BACK, "a type error is a red a fix round can aim at");
-    assert.equal(reads, 0);
-    assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
+  test("a red with no failing test id is matched to main by its step", async () => {
+    for (const [jobs, line] of [
+      [["Typecheck and tests"], /^on main: Typecheck and tests also failed on main \(u\)$/m],
+      [["Build"], /^on main: none$/m],
+    ] as const) {
+      const written: string[][] = [];
+      const { gh, asked } = red("error TS2322: Type 'string' is not assignable to type 'number'.");
+      const out = await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => ({ runId: 1, url: "u", ids: [ID], jobs: [...jobs] }) });
+      assert.deepEqual(out, HAND_BACK, "a type error is a red a fix round can aim at");
+      assert.match(String(bodyOf(asked, written)), line);
+    }
   });
 });
 
