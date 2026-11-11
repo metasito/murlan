@@ -33,8 +33,8 @@ export const AROUND_SHARDS_SECONDS = 39;
 export const SHARD_OVERHEAD_SECONDS = 52;
 /** Same run: the slowest shard's specs against the mean shard's, 1.32. */
 export const SHARD_NOISE = 1.32;
-/** Not the documented 20: run 37792764075 ran 25 jobs at once with none queued. */
-export const MAX_CONCURRENT_JOBS = 25;
+/** Not the documented 20: at 2026-11-11T13:48:34Z, 42 Linux jobs of every workflow ran at once with none queued over 5 s (#2070). */
+export const MAX_CONCURRENT_JOBS = 42;
 /** What that leaves beside every job ci.yml starts with the shards; `e2eShardSplit.test.ts` counts them. */
 export const MAX_SHARDS = 17;
 

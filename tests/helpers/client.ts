@@ -120,6 +120,18 @@ export function openSocket(at: TestServer | string, how: SocketCredentials = {})
     latestTurn.set(socket, state.turn);
     if (!withholding.has(socket)) ack?.();
   });
+  // An event read in the same burst as the connect ack dispatches before the caller's `await`
+  // resumes, to listeners it has not attached yet; socket.io-client routes every received event
+  // through `emitEvent`, so they wait here until a task after "connect" (connectBurst.test.ts).
+  const dispatch = socket as unknown as { emitEvent?: (args: unknown[]) => void };
+  const held: unknown[][] = [];
+  dispatch.emitEvent = (args) => void held.push(args);
+  socket.once("connect", () =>
+    setImmediate(() => {
+      delete dispatch.emitEvent;
+      for (const args of held) dispatch.emitEvent!(args);
+    })
+  );
   return new Promise((resolve) => {
     socket.once("connect", () => resolve({ ok: true, socket }));
     socket.once("connect_error", (e) => {
