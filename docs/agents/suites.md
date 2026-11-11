@@ -84,7 +84,7 @@ waits out `Reconnect.giveUp`, so the parity spec takes ~1.5 min.
 
 ## A table card's shadow
 
-`tests/ui-rules/cardShadows.test.ts`, `tests/native/{tableCards,handShadeWiring,handShadeRebuild}.test.tsx`,
+`tests/ui-rules/cardShadows.test.ts`, `tests/native/tableCards.test.tsx`, `tests/e2e/tableCanvases.spec.ts` (blocking: one WebGL context, the felt's),
 `tests/e2e/landingShadowStill.spec.ts` (blocking: no shadow rebuilt through a landing wobble),
 then `tests/e2e/cardShadowParity.nightly.spec.ts` and `mockupParity.nightly.spec.ts`'s `rest`
 alone, and `mockupParityBomb{Skia,Fallback}.nightly.spec.ts`, under

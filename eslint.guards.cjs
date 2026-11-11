@@ -1402,7 +1402,6 @@ const GUARDS = [
       { glob: "lib/motion.ts", reason: "the owner" },
       { glob: "lib/e2eTrace.ts", reason: "wraps the host's requestAnimationFrame to count frames for the specs" },
       { glob: "lib/diagnostics/FrameProbe.tsx", reason: "measures the frame callback itself, so it cannot be driven by one it owns" },
-      { glob: "components/table/handShade.web.tsx", reason: "a one-shot, deferring the Skia probe past first paint" },
       { glob: "components/table/feltSkia.web.tsx", reason: "a one-shot, deferring the Skia probe past first paint" },
       { glob: "components/table/feltCanvas.tsx", reason: "a one-shot, waiting two frames for the canvas to be drawn" },
     ],

@@ -131,7 +131,6 @@ const VEILED_UNDER: Record<string, Record<Reason, boolean>> = {
 /** Every child the game layer can hold, and the role that veils it; `silent` holds nothing to stop on. */
 const ROLE: Record<string, keyof typeof VEILED_UNDER | 'silent'> = {
   sweep: 'silent',
-  'card-shade': 'silent',
   'table-particles': 'silent',
   'grey-scrim': 'silent',
   'notice-whoStarts': 'silent',

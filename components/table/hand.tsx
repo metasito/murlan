@@ -55,7 +55,7 @@ import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { designRect, handCard, panShown, type Felt, type HandPlace, type TableMotion } from "./cardRects";
 import { useCardRect, useCardTable, type CardTable } from "./useCardRects";
-import { handCardZ, handPaintOrder } from "./cardShadows";
+import { handCardZ } from "./cardShadows";
 
 /**
  * The viewer's hand as the table draws it while a exchanged card is on its way in or out.
@@ -862,9 +862,6 @@ export const StraightHand = React.memo(function StraightHand({
     const clipHalf = scrollable ? availW / 2 : 0;
     return { table: cardTable, place: { felt, x: hand.x - rowMid, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, motion } };
   }, [cardTable, rowMid, rowBase, scrollable, availW, pan, panLimit]);
-  useEffect(() => {
-    cardTable?.handOrder.set(handPaintOrder(rest.map((c) => c.id), (id) => giveableSet?.has(id), heldCard?.id ?? null));
-  }, [cardTable, rest, giveableSet, heldCard]);
   const heldPlace = handRow?.place;
   const heldRects = useCardRect(
     cardTable,

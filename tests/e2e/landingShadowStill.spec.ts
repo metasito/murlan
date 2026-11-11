@@ -10,7 +10,7 @@ import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
 type ThrowFrame = {
   t: number;
-  cards: { key: string; tx: number; ty: number; scale: number }[];
+  cards: { key: string; tx: number; ty: number; scale: number; contact: number[] | null }[];
   wobble: { scale: number; rot: number } | null;
   clusters: Record<string, number>;
   builds: number;
@@ -25,7 +25,8 @@ const THROW_FRAME = `(() => {
   };
   const cards = [...document.querySelectorAll('[data-testid="flying-card"]')].map((el) => {
     const { a, b, e, f } = m(el);
-    return { key: el.id.replace(/^card-/, ""), tx: e, ty: f, scale: Math.hypot(a, b) };
+    const own = el.querySelector('[data-testid="card-contact"]')?.getBoundingClientRect();
+    return { key: el.id.replace(/^card-/, ""), tx: e, ty: f, scale: Math.hypot(a, b), contact: own ? [own.x, own.y, own.width, own.height] : null };
   });
   const group = document.querySelector('[data-testid="flying-cards"]');
   const w = group && m(group);
@@ -78,5 +79,10 @@ test("a thrown card's shadow holds still through its landing wobble, while the c
   const [from, to] = [frames[contact + 1], frames[contact + landing.length]];
   expect(to, "frames past the wobble window").toBeDefined();
   expect(withThrown(to) - withThrown(from), "builds of a shadow cluster holding the thrown card, contact to contact + LAND_WOBBLE_MS").toBe(0);
+  const contacts = frames.slice(contact + 1, contact + landing.length + 1).map((f) => f.cards[0]?.contact ?? null);
+  const first = contacts[0];
+  expect(first, "the thrown card draws its own contact on web").not.toBeNull();
+  const moved = contacts.map((c) => (c ? Math.max(...c.map((v, i) => Math.abs(v - first![i]))) : Infinity));
+  expect(Math.max(...moved), "how far the thrown card's own contact view moves, contact to contact + LAND_WOBBLE_MS, in px").toBeLessThan(0.5);
   await page.context().close();
 });
