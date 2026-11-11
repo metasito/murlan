@@ -3,8 +3,9 @@ import { Platform, type View } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
 import { E2E_FAST } from "@/lib/e2eConfig";
-import { TABLE_CAST } from "@/lib/theme";
+import { drawsBoxShadow, TABLE_CAST } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
+import { feltContactPaths, viewContact, type ShadowKind, type ShadowPath } from "./cardShadows";
 import type { CardTable } from "./useCardRects";
 import type { Point } from "./cardRects";
 import type { Pool } from "./lampRig";
@@ -23,10 +24,16 @@ export interface FeltProps {
 
 /**
  * How a card view on the table shades itself: `felt` where the felt draws every card's cast and the
- * view its contact alone (`viewDrawsContact`), else `table`, a static shadow cast at the offset the
+ * view its contact alone (`cardContacts`), else `table`, a static shadow cast at the offset the
  * table's root holds (`TABLE_CAST`). Off the table, null: a static shadow.
  */
 export type CardCast = "felt" | "table";
+
+/** Who draws a table card's contact on this platform: `view`, the contact a card's own view draws, or null; `felt`, the paths that leaves the felt. */
+export function cardContacts(): { view: (kind: ShadowKind) => "face" | "back" | null; felt: ShadowPath[] } {
+  const boxShadow = drawsBoxShadow();
+  return { view: (kind) => viewContact(kind, boxShadow), felt: feltContactPaths(boxShadow) };
+}
 export const CardCastContext = createContext<CardCast | null>(null);
 
 /** The cast, and the ref for the table's root: the offset is set on that one view, so a new one re-renders no card. */

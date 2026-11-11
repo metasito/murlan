@@ -39,7 +39,7 @@ import { useBenchHandle } from "@/lib/diagnostics";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
-import { CardGlow, Colors, drawsBoxShadow, motionMs, withAlpha } from "@/lib/theme";
+import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames } from "@/lib/motion";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type LampNow, type Pool } from "./lampRig";
@@ -48,10 +48,10 @@ import type { GlossTracks } from "./glossTrackStore";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, opaquePlane, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
-import { buildGlow, buildShadow, feltContactPaths, inPath, shadowClusterId, shadowClusters, shadowFall, shadowKind, shadowRect, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
+import { buildGlow, buildShadow, inPath, shadowClusterId, shadowClusters, shadowFall, shadowKind, shadowRect, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
-import { useCardShadowsOn } from "./feltReady";
+import { cardContacts, useCardShadowsOn } from "./feltReady";
 import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
 import { webDeps } from "@/lib/platform";
 
@@ -600,7 +600,7 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   const shade = useDerivedValue(() => levelShade(view.value.level));
 
   const { rects, felt } = cards;
-  const contactPaths = useMemo(() => feltContactPaths(drawsBoxShadow()), []);
+  const contactPaths = useMemo(() => cardContacts().felt, []);
   const shapes = useShadowShapes(contactPaths, rects);
   const cast = useShadowPicture(CAST, shapes.cast, rects, felt, cards.hand.x);
   const contacts = useShadowPicture(contactPaths, shapes.contact, rects, felt, cards.hand.x);

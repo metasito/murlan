@@ -61,13 +61,23 @@ const styleOf = (n: TestInstance) => (StyleSheet.flatten(n.props.style as StyleP
 const isGlow = (n: TestInstance) => SHADOW_PROPS.every((p) => styleOf(n)[p] === Shadow.cardGlow[p]);
 
 const feltScale = () => (globalThis as { murlanCardFelt?: () => { s: number } }).murlanCardFelt!().s;
-/** A face's or back's own contact at the table's scale, the one shadow a card view on the felt carries. */
+/** A card's own contact at the table's scale, of its own kind (its sibling box's), the one shadow a card view on the felt carries. */
 function isContact(n: TestInstance, scope: string): boolean {
   const style = styleOf(n);
-  if (scope === 'fan' || SHADOW_PROPS.some((p) => p !== 'boxShadow' && style[p] !== undefined)) return false;
-  const s = feltScale();
-  return (['face', 'back'] as const).some((kind) => style.boxShadow === cardContact(kind, s).boxShadow);
+  if (scope === 'fan' || n.props.testID !== 'card-contact' || SHADOW_PROPS.some((p) => p !== 'boxShadow' && style[p] !== undefined)) return false;
+  const boxes = (n.parent?.children ?? []).filter((c): c is TestInstance => typeof c !== 'string' && /^card-box(-back)?$/.test(String(c.props.testID)));
+  if (boxes.length !== 1) return false;
+  const kind = boxes[0].props.testID === 'card-box-back' ? 'back' : 'face';
+  return style.boxShadow === cardContact(kind, feltScale()).boxShadow;
 }
+
+describe('a card contact', () => {
+  it("is the contact token's at the table's scale: half a point down times the scale, one point of blur times it, the kind's alpha", () => {
+    expect(cardContact('face', 2).boxShadow).toBe(`0px 1px 2px ${withAlpha('#000000', 0.3)}`);
+    expect(cardContact('back', 2).boxShadow).toBe(`0px 1px 2px ${withAlpha('#000000', 0.35)}`);
+    expect(cardContact('face', 1.5).boxShadow).toBe(`0px 0.75px 1.5px ${withAlpha('#000000', 0.3)}`);
+  });
+});
 
 /** Every view in every card's scope, and those carrying a platform shadow, the gold glows and contacts apart. */
 function cardHosts() {

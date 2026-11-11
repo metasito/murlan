@@ -6,7 +6,7 @@ import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, pileGroupZ, restingCast, shadowClusters, feltContactPaths, inPath, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, viewDrawsContact, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, pileGroupZ, restingCast, shadowClusters, feltContactPaths, inPath, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, viewContact, contactPose, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { CARD_ON_CARD_CSS } from "../e2e/helpers/cardOnCardCss.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
@@ -26,8 +26,9 @@ describe("the card shadows are the owner's ruling, not the mockup's", () => {
   test("a face's or back's contact is its own view's, which reads no lamp; no canvas draws a card on a card", () => {
     const src = (file: string) => fs.readFileSync(fileURLToPath(new URL(`../../${file}`, import.meta.url)), "utf8");
     const view = src("components/CardView.tsx");
-    assert.match(view, /viewDrawsContact\(shadowKind\(rectKey, \{ back: faceDown \}\), drawsBoxShadow\(\)\)/);
-    assert.match(src("components/table/feltCanvas.tsx"), /feltContactPaths\(drawsBoxShadow\(\)\)/);
+    assert.match(view, /cardContacts\(\)\.view\(shadowKind\(rectKey, \{ back: faceDown \}\)\)/);
+    assert.match(src("components/table/feltCanvas.tsx"), /cardContacts\(\)\.felt/);
+    for (const file of ["components/CardView.tsx", "components/table/feltCanvas.tsx"]) assert.doesNotMatch(src(file), /drawsBoxShadow|viewContact\(|feltContactPaths\(/, file);
     assert.match(view, /cardContact\(/);
     assert.doesNotMatch(src("lib/theme.ts").match(/export function cardContact[\s\S]*?\n}/)![0], /fall|cast|TABLE_CAST/);
     assert.deepEqual(fs.readdirSync(fileURLToPath(new URL("../../components/table/", import.meta.url))).filter((f) => /^handShade/.test(f)), []);
@@ -79,11 +80,11 @@ describe("the shadow paths", () => {
     const keys = ["fan:top:0", "deal:3", "hand:5_clubs", "pile:a", "leg:x"];
     const kinds = keys.map((k, i) => shadowKind(k, { back: i === 1 }));
     assert.deepEqual(kinds, ["fan", "back", "face", "face", "face"]);
-    assert.deepEqual(kinds.map((k) => viewDrawsContact(k, true)), [false, true, true, true, true]);
-    assert.deepEqual(kinds.map((k) => viewDrawsContact(k, false)), [false, false, false, false, false]);
+    assert.deepEqual(kinds.map((k) => viewContact(k, true)), [null, "back", "face", "face", "face"]);
+    assert.deepEqual(kinds.map((k) => viewContact(k, false)), [null, null, null, null, null]);
     assert.deepEqual(feltContactPaths(true), ["fan"]);
     assert.deepEqual(feltContactPaths(false), ["face", "back", "fan"]);
-    for (const boxShadow of [true, false]) for (const k of kinds) assert.equal(feltContactPaths(boxShadow).filter((p) => inPath(p, k)).length + Number(viewDrawsContact(k, boxShadow)), 1, `${k} ${boxShadow}`);
+    for (const boxShadow of [true, false]) for (const k of kinds) assert.equal(feltContactPaths(boxShadow).filter((p) => inPath(p, k)).length + Number(viewContact(k, boxShadow) !== null), 1, `${k} ${boxShadow}`);
     assert.deepEqual(kinds.map((k) => inPath("cast", k)), [false, true, true, true, true]);
     assert.deepEqual(kinds.map((k) => inPath("fan", k)), [true, false, false, false, false]);
     const counted = (path: (typeof SHADOW_PATHS)[number]) => {
@@ -92,6 +93,28 @@ describe("the shadow paths", () => {
       return n;
     };
     assert.deepEqual(SHADOW_PATHS.map(counted), [2, 1, 1, 1]);
+  });
+
+  test("a view's contact lies at its card's rest pose while the landing wobbles the card, and under the card otherwise", () => {
+    const felt = { sx: 1.3, sy: 0.9, s: 1.1 };
+    const viewW = 50;
+    const live = rect({ x: 300, y: 200, w: 70, rot: 12, shadow: { x: 296, y: 207, w: 64, h: 90, rot: -3 } });
+    const window = (r: Pick<CardRect, "x" | "y" | "w" | "rot">, q: { x: number; y: number }) => {
+      const k = (r.w * felt.s) / viewW;
+      const a = (r.rot * Math.PI) / 180;
+      return { x: r.x * felt.sx + k * (q.x * Math.cos(a) - q.y * Math.sin(a)), y: r.y * felt.sy + k * (q.x * Math.sin(a) + q.y * Math.cos(a)) };
+    };
+    const p = contactPose(live, felt, viewW)!;
+    const posed = (q: { x: number; y: number }) => {
+      const a = (p.rot * Math.PI) / 180;
+      return { x: p.x + p.scale * (q.x * Math.cos(a) - q.y * Math.sin(a)), y: p.y + p.scale * (q.x * Math.sin(a) + q.y * Math.cos(a)) };
+    };
+    for (const q of [{ x: -25, y: -35 }, { x: 25, y: -35 }, { x: 25, y: 35 }, { x: 0, y: 0 }]) {
+      const [got, want] = [window(live, posed(q)), window(live.shadow!, q)];
+      assert.ok(Math.abs(got.x - want.x) < 1e-9 && Math.abs(got.y - want.y) < 1e-9, `${q.x},${q.y}: ${JSON.stringify(got)} vs ${JSON.stringify(want)}`);
+    }
+    assert.equal(contactPose(rect(), felt, viewW), null);
+    assert.equal(contactPose(undefined, felt, viewW), null);
   });
 
   test("split into the sets of cards whose blurs meet, each card in one of them", () => {

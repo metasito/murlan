@@ -122,7 +122,7 @@ const contacts: Partial<Record<"face" | "back", { s: number; style: { boxShadow:
 
 /**
  * A table card's contact alone, at the table's scale `s`, where the Skia felt draws its cast. Only where
- * `boxShadow` is drawn (`viewDrawsContact`): `elevation`, the only fallback, paints a card over its later siblings.
+ * `boxShadow` is drawn (`cardContacts`): `elevation`, the only fallback, paints a card over its later siblings.
  */
 export function cardContact(kind: "face" | "back", s: number): { boxShadow: string } {
   const last = contacts[kind];

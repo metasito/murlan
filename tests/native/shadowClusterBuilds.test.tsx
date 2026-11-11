@@ -6,8 +6,8 @@ import { makeMutable } from 'react-native-reanimated';
 
 import type { CardRect, CardRects } from '@/components/table/cardRects';
 import { TABLE_AT_REST } from '@/components/table/cardRects';
-import { feltContactPaths, inPath, shadowKind, shadowRect, shadowShape, type ShadowKind, type ShadowPath } from '@/components/table/cardShadows';
-import { drawsBoxShadow } from '@/lib/theme';
+import { inPath, shadowKind, shadowRect, shadowShape, type ShadowKind, type ShadowPath } from '@/components/table/cardShadows';
+import { cardContacts } from '@/components/table/feltReady';
 import { FeltCanvas } from '@/components/table/feltCanvas';
 import { TABLE_CENTRE, restingLamp, steppedLamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
@@ -62,7 +62,7 @@ describe('the felt during a bot throw', () => {
       const [kind, members] = cluster.split('|');
       for (const key of members.split(',')) if (moves.has(key)) movedIn.set(`${kind}|${key}`, (movedIn.get(`${kind}|${key}`) ?? 0) + n);
     }
-    const drawn: ShadowPath[] = ['cast', ...feltContactPaths(drawsBoxShadow())];
+    const drawn: ShadowPath[] = ['cast', ...cardContacts().felt];
     const owed = [...moves.keys()].flatMap((key) => drawn.filter((path) => [...kinds.get(key)!].some((kind) => inPath(path, kind))).map((path) => `${path}|${key}`));
     expect(still.length).toBeGreaterThan(0);
     expect(owed.some((at) => at.startsWith('cast|'))).toBe(true);
@@ -94,7 +94,7 @@ describe('the felt on a resize', () => {
 
     const view = await render(felt({ sx: 1, sy: 1, s: 1 }, 0));
     await frames(48);
-    expect([...kinds()].sort()).toEqual(['cast', ...feltContactPaths(drawsBoxShadow())].sort());
+    expect([...kinds()].sort()).toEqual(['cast', ...cardContacts().felt].sort());
     expect(counts()).toEqual(counts().map(() => 1));
     const steps: [Scale, number][] = [
       [{ sx: 1.1, sy: 1, s: 1 }, 0],

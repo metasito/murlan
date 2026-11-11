@@ -20,17 +20,32 @@ export function shadowKind(key: string, rect: Pick<CardRect, "back">): ShadowKin
 }
 
 /**
- * Whether a table card of `kind` draws its own contact, on the felt and on the cards under it alike, where
- * `boxShadow` says the platform draws a view's outset `boxShadow`; else the felt's path of that kind does.
+ * The contact a table card of `kind` draws in its own view, on the felt and on the cards under it alike, where
+ * `boxShadow` says the platform draws a view's outset `boxShadow`; null where the felt's path of that kind does.
  */
-export function viewDrawsContact(kind: ShadowKind, boxShadow: boolean): boolean {
+export function viewContact(kind: ShadowKind, boxShadow: boolean): "face" | "back" | null {
   "worklet";
-  return boxShadow && kind !== "fan";
+  return boxShadow && kind !== "fan" ? kind : null;
 }
 
 /** The contact paths the felt draws: those whose cards do not draw their own. */
 export function feltContactPaths(boxShadow: boolean): ShadowPath[] {
-  return (["face", "back", "fan"] as const).filter((kind) => !viewDrawsContact(kind, boxShadow));
+  return (["face", "back", "fan"] as const).filter((kind) => viewContact(kind, boxShadow) === null);
+}
+
+/**
+ * Where a view drawn at `rect` moves its contact so that it lies at the rest pose `rect.shadow`, in the view's own
+ * points (`w` wide, turned and scaled about its centre); null where the card's shadow is where the card is.
+ */
+export function contactPose(rect: CardRect | undefined, felt: Pick<Felt, "sx" | "sy" | "s">, w: number): { x: number; y: number; rot: number; scale: number } | null {
+  "worklet";
+  const to = rect?.shadow;
+  if (!rect || !to) return null;
+  const k = (rect.w * felt.s) / w;
+  const dx = (to.x - rect.x) * felt.sx;
+  const dy = (to.y - rect.y) * felt.sy;
+  const r = (-rect.rot * Math.PI) / 180;
+  return { x: (dx * Math.cos(r) - dy * Math.sin(r)) / k, y: (dx * Math.sin(r) + dy * Math.cos(r)) / k, rot: to.rot - rect.rot, scale: to.w / rect.w };
 }
 
 export function inPath(path: ShadowPath, kind: ShadowKind): boolean {
