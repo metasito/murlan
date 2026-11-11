@@ -108,6 +108,34 @@ export async function stepThen<T>(page: Page, ms: number | null, read: string): 
 }
 
 /**
+ * Tasks yielded after each frame. The paused clock never lets React's scheduler yield mid-work, but a render, the passive
+ * effects of its commit and an update those effects schedule are each a task of their own, all behind the frame.
+ */
+const TASKS_AFTER_FRAME = 3;
+
+/**
+ * `n` frames in one round trip, each its own `murlanStep` followed by `TASKS_AFTER_FRAME` tasks, as a round trip per
+ * frame gives React; `read` is evaluated after each. The same log caveat as `stepThen`.
+ */
+export function stepFrames<T = null>(page: Page, n: number, read = "null"): Promise<T[]> {
+  if (!Number.isInteger(n) || n < 0) throw new Error(`stepFrames: ${n} is not a count of frames`);
+  return page.evaluate(`(async () => {
+    const task = () => new Promise((resolve) => {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = () => resolve();
+      ch.port2.postMessage(null);
+    });
+    const out = [];
+    for (let i = 0; i < ${n}; i++) {
+      await globalThis.murlanStep(${STEP_MS});
+      for (let k = 0; k < ${TASKS_AFTER_FRAME}; k++) await task();
+      out.push(${read});
+    }
+    return out;
+  })()`) as Promise<T[]>;
+}
+
+/**
  * The app boots on real network events, so this advances virtual time in chunks while it polls,
  * against a real-time budget: a virtual one runs out before the bundle arrives.
  */
