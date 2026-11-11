@@ -10,6 +10,7 @@ import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { CardView } from '@/components/CardView';
 import { CARD_SCOPES, type CardRects } from '@/components/table/cardRects';
+import type * as Shadows from '@/components/table/cardShadows';
 import { restingCast, shadowRect } from '@/components/table/cardShadows';
 import { CardCastContext, useCardCast } from '@/components/table/feltReady';
 import type { Pool } from '@/components/table/lampRig';
@@ -24,8 +25,6 @@ import { bootFeedback } from './helpers/feedback';
 jest.mock('@/lib/e2eConfig', () =>
   (require('./helpers/e2eBuildMock') as typeof import('./helpers/e2eBuildMock')).e2eConfigAsBuilt()
 );
-
-jest.mock('@/components/table/cardShadows', () => jest.requireActual('@/components/table/cardShadows'));
 
 const HIDDEN = { includeHiddenElements: true };
 const SHADOW_PROPS = ['boxShadow', 'shadowOpacity', 'shadowRadius', 'elevation'];
@@ -135,6 +134,7 @@ describe('a card on the table', () => {
   it("carries no elevation below Android 9, where it would paint a card's box over its own level shade, and the felt draws its contact", async () => {
     const os = jest.replaceProperty(Platform, 'OS', 'android');
     const version = jest.spyOn(Platform, 'Version', 'get').mockReturnValue(27);
+    const clusters = jest.spyOn(jest.requireMock<typeof Shadows>('@/components/table/cardShadows'), 'shadowClusters').mockImplementation(jest.requireActual<typeof Shadows>('@/components/table/cardShadows').shadowClusters);
     const e2e = globalThis as { murlanShadowClusterBuilds?: Record<string, number> };
     delete e2e.murlanShadowClusterBuilds;
     try {
@@ -160,6 +160,7 @@ describe('a card on the table', () => {
       expect(owed.size).toBeGreaterThan(0);
       expect([...owed].filter((at) => !drawn.has(at))).toEqual([]);
     } finally {
+      clusters.mockRestore();
       version.mockRestore();
       os.restore();
     }

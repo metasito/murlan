@@ -428,7 +428,7 @@ const CardContact = React.memo(function CardContact({ kind, rectKey, rects, widt
 // One array for every run that leaves the contact under its card: an equal style writes nothing.
 const UNDER_CARD = [{ translateX: 0 }, { translateY: 0 }, { rotate: "0deg" }, { scale: 1 }];
 
-/** At the card's rest pose while its landing wobbles it (`rect.shadow`), where the felt drew the contact. */
+/** At the card's rest pose while its landing wobbles it (`rect.shadow`), where the felt draws its contact. */
 function RestingContact({ felt, rectKey, rects, style, width }: { felt: Felt; rectKey: string; rects: OwnedRects | undefined; style: StyleProp<ViewStyle>; width: number }) {
   const pose = useAnimatedStyle(() => {
     const p = contactPose(rects?.value[rectKey], felt, width);
@@ -476,7 +476,7 @@ function CardViewBase({
   const cast = useContext(CardCastContext);
   const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast);
   const contactKind = cast === "felt" && rectKey ? cardContacts().view(shadowKind(rectKey, { back: faceDown })) : null;
-  const contact = contactKind && rectKey && <CardContact kind={contactKind} rectKey={rectKey} rects={rects} width={w} height={h} />;
+  const contact = contactKind && <CardContact kind={contactKind} rectKey={rectKey as string} rects={rects} width={w} height={h} />;
 
   if (faceDown) {
     const backStyle = {

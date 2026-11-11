@@ -30,10 +30,11 @@ export interface FeltProps {
 export type CardCast = "felt" | "table";
 
 /** Who draws a table card's contact on this platform: `view`, the contact a card's own view draws, or null; `felt`, the paths that leaves the felt. */
-export function cardContacts(): { view: (kind: ShadowKind) => "face" | "back" | null; felt: ShadowPath[] } {
-  const boxShadow = drawsBoxShadow();
-  return { view: (kind) => viewContact(kind, boxShadow), felt: feltContactPaths(boxShadow) };
+export function cardContacts(): CardContacts {
+  return BY_BOX_SHADOW[Number(drawsBoxShadow())];
 }
+type CardContacts = { view: (kind: ShadowKind) => "face" | "back" | null; felt: ShadowPath[] };
+const BY_BOX_SHADOW: CardContacts[] = [false, true].map((boxShadow) => ({ view: (kind) => viewContact(kind, boxShadow), felt: feltContactPaths(boxShadow) }));
 export const CardCastContext = createContext<CardCast | null>(null);
 
 /** The cast, and the ref for the table's root: the offset is set on that one view, so a new one re-renders no card. */

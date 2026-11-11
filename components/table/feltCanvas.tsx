@@ -48,7 +48,7 @@ import type { GlossTracks } from "./glossTrackStore";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, opaquePlane, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM } from "./rail";
-import { buildGlow, buildShadow, inPath, shadowClusterId, shadowClusters, shadowFall, shadowKind, shadowRect, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
+import { buildGlow, buildShadow, inPath, shadowClusterId, shadowClusters, shadowFall, shadowKind, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
 import { cardContacts, useCardShadowsOn } from "./feltReady";
@@ -138,7 +138,7 @@ function useShadowShapes(contacts: readonly ShadowPath[], rects: SharedValue<Car
       const castKeys: string[] = [];
       const contactKeys: string[] = [];
       for (const key of Object.keys(all)) {
-        const kind = shadowKind(key, shadowRect(all[key]));
+        const kind = shadowKind(key, all[key]);
         if (inPath("cast", kind)) castKeys.push(key);
         if (contacts.some((path) => inPath(path, kind))) contactKeys.push(key);
       }
