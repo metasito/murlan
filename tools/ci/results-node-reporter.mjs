@@ -1,5 +1,6 @@
 /** node:test's side of tools/ci/results-writer.mjs: `--test-reporter=./tools/ci/results-node-reporter.mjs`. */
-import { openResults, repoPath } from "./results-writer.mjs";
+import { writeFileSync } from "node:fs";
+import { openResults, repoPath, TIMINGS_SUFFIX } from "./results-writer.mjs";
 
 const FILTER = /^--test-(name-pattern|skip-pattern|only|shard)\b/;
 const filters = [...process.execArgv, ...(process.env.NODE_OPTIONS ?? "").split(/\s+/)].filter((a) => FILTER.test(a));
@@ -14,8 +15,12 @@ export default async function* results(source) {
   const pending = new Map();
   const at = (/** @type {any} */ data) => `${data.file}\0${data.nesting}\0${data.name}`;
   let summary;
+  /** @type {Record<string, number>} */
+  const seconds = {};
   for await (const { type, data } of source) {
     if (type === "test:summary" && data.file === undefined) summary = data;
+    if (type === "test:complete" && data?.file && data.nesting === 0 && repoPath(data.name) === repoPath(data.file))
+      seconds[repoPath(data.file)] = (data.details?.duration_ms ?? 0) / 1000;
     if (!data?.file || !["test:enqueue", "test:start", "test:pass", "test:fail"].includes(type)) continue;
     const stack = stacks.get(data.file) ?? [];
     stacks.set(data.file, stack);
@@ -40,4 +45,5 @@ export default async function* results(source) {
   // A file that exits mid-run still reports a green summary, and never mentions the tests it cut off.
   for (const t of [...pending.values()].flat()) out.write({ type: "test", ...t, title: `${t.title} (exited before it finished)`, status: "failed" });
   out.write({ type: "end", ok: summary?.success === true, counts: summary?.counts });
+  if (out.file) writeFileSync(out.file.replace(/\.jsonl$/, TIMINGS_SUFFIX), JSON.stringify(seconds));
 }
