@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { logger } from "../shared/logger.ts";
 import { track } from "../shared/inFlight.ts";
 import { currentKeyspace, instanceId, openRedis, WatchError, type RedisClient } from "./redis.ts";
+import { DRAINING_SPREAD_MS } from "../../lib/reconnectDelay.ts";
 
 export const HEARTBEAT_MS = 3_000;
 /** How often this instance fills its entries Redis lost: every beat. */
@@ -18,6 +19,8 @@ export function healChunks<T>(entries: readonly T[]): T[][] {
   return chunks.length > 0 ? chunks : [[]];
 }
 export const INSTANCE_TTL_MS = 10_000;
+/** How long after `leave()` its accounts' entries are left unswept: the drain's reconnect spread, and a beat for the reconnect itself. */
+export const LEAVING_MS = DRAINING_SPREAD_MS + HEARTBEAT_MS;
 /** Accounts a sweep claims per transaction, so a large dead instance never holds the sweeper past its own TTL. */
 const SWEEP_BATCH = 100;
 /** How often a guarded transaction is tried again after its key moved or its link reconnected. */
@@ -57,8 +60,14 @@ export interface PresenceStore {
   bumpSocial(userIds: readonly string[]): void;
   /** What the account's lists were last marked with; null when that cannot be known. Rejects while Redis is unreachable. */
   social(userId: string): Promise<string | null>;
-  /** Stops reading as alive at once, for a graceful stop: peers stop waiting on it. */
+  /**
+   * Stops reading as alive at once, for a graceful stop: peers stop waiting on it. A socket that
+   * goes after it keeps its entry, and a peer's sweep reports it lost once LEAVING_MS has passed,
+   * unless a reconnect elsewhere replaced it.
+   */
   leave(): void;
+  /** Whether `leave()` was called: a departure since is a sweep's to report, not this instance's. */
+  leaving(): boolean;
   close(): void;
 }
 
@@ -98,6 +107,7 @@ export function openPresenceStore({
     table: (socketId: string) => `${ns}:table:${socketId}`,
     instance: (of: string) => `${ns}:instance:${of}`,
     instances: `${ns}:instances`,
+    leaving: (of: string) => `${ns}:instance-leaving:${of}`,
     users: (of: string) => `${ns}:instance-users:${of}`,
     social: (userId: string) => `${ns}:social:${userId}`,
     // A counter Redis lost restarts at 1, so a value is read against the store's lifetime too.
@@ -215,6 +225,7 @@ export function openPresenceStore({
     const held = mine.get(userId);
     const written = held?.socketId === socketId ? held.written : Promise.resolve();
     if (held?.socketId === socketId) mine.delete(userId);
+    if (!alive) return;
     // After its own connect's write, or a late write would put back what this clears.
     void track(
       written
@@ -272,6 +283,7 @@ export function openPresenceStore({
    * expiry, so one that came back loses nothing queued for it.
    */
   async function sweep(dead: string): Promise<void> {
+    if ((await client.exists(key.leaving(dead))) > 0) return;
     const users = await client.sMembers(key.users(dead));
     for (let i = 0; i < users.length; i += SWEEP_BATCH) {
       const batch = users.slice(i, i + SWEEP_BATCH);
@@ -421,8 +433,17 @@ export function openPresenceStore({
     leave() {
       alive = false;
       clearInterval(timer);
-      void track(client.del(key.instance(id)).catch(warn("Could not mark this instance as leaving")));
+      // One transaction: a sweep that sees the liveness gone sees the leaving mark too.
+      void track(
+        client
+          .multi()
+          .del(key.instance(id))
+          .set(key.leaving(id), "1", { expiration: { type: "PX", value: LEAVING_MS } })
+          .exec()
+          .catch(warn("Could not mark this instance as leaving"))
+      );
     },
+    leaving: () => !alive,
     close() {
       clearInterval(timer);
       client.destroy();
@@ -451,6 +472,10 @@ export function closePresence(): void {
 
 export function leavePresence(): void {
   store?.leave();
+}
+
+export function presenceLeaving(): boolean {
+  return store?.leaving() ?? false;
 }
 
 export function onPresenceLost(handler: (userIds: string[]) => void): void {

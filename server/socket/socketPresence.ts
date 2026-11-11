@@ -31,7 +31,7 @@ import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
 import { isUserOnline, onlineAmong } from "./socketRegistry.ts";
-import { onPresenceLost, onPresenceRestored, socialVersion } from "../store/presence.ts";
+import { onPresenceLost, onPresenceRestored, presenceLeaving, socialVersion } from "../store/presence.ts";
 import type { OnlineList } from "../../shared/protocol.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse } from "../shared/refusal.ts";
@@ -182,7 +182,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
             );
 
           const lastSeen = new Date(now()).toISOString();
-          offlineNotice = emitFriendStatusOffline(userId, lastSeen);
+          if (!presenceLeaving()) offlineNotice = emitFriendStatusOffline(userId, lastSeen);
 
           const currentRoomId = unseatSocket(socket.id);
           // Three paths reach a return without announcing the drop, and from

@@ -8,7 +8,8 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "redis";
 import { eventually } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
-import { openPresenceStore, type PresenceStore } from "../../server/store/presence.ts";
+import { LEAVING_MS, openPresenceStore, type PresenceStore } from "../../server/store/presence.ts";
+import { DRAINING_SPREAD_MS } from "../../lib/reconnectDelay.ts";
 import { closeRedis, redisReady } from "../../server/store/redis.ts";
 import { startProxy, targetOf, viaProxy } from "../helpers/tcpProxy.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
@@ -132,6 +133,35 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(await probe.exists(c.key(`instance-users:${dead.id}`)), 0);
     assert.equal(await probe.sIsMember(c.key("instances"), dead.id), 0);
     assert.equal((await a.locate(["alive"])).has("alive"), true, "a live instance's account was swept");
+  });
+
+  test("a leaving instance's departures are reported by a peer's sweep once the reconnect window has passed, and one that came back elsewhere never", async () => {
+    const c = cluster();
+    const [peer, leaving] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([peer.beat(), leaving.beat()]);
+    leaving.record("gone", "s-gone");
+    leaving.record("back", "s-back");
+    await eventually(async () => (await peer.locate(["gone", "back"])).size === 2, "the entries");
+    const reported: string[] = [];
+    peer.onLost((ids) => reported.push(...ids));
+
+    leaving.leave();
+    assert.equal(leaving.leaving(), true);
+    await eventually(async () => (await probe.exists(c.key(`instance:${leaving.id}`))) === 0, "the liveness to go");
+    leaving.forget("gone", "s-gone");
+    leaving.forget("back", "s-back");
+    peer.record("back", "s-back-2");
+    await eventually(async () => (await peer.locate(["back"])).get("back")?.instance === peer.id, "the reconnect's entry");
+    await peer.beat();
+    assert.deepEqual(reported, [], "a departure was reported inside the reconnect window");
+
+    const window = await probe.pTTL(c.key(`instance-leaving:${leaving.id}`));
+    assert.ok(window > DRAINING_SPREAD_MS && window <= LEAVING_MS, `the window is ${window} ms`);
+    await probe.del(c.key(`instance-leaving:${leaving.id}`));
+    await peer.beat();
+    assert.deepEqual(reported, ["gone"]);
+    assert.equal((await peer.locate(["back"])).get("back")?.instance, peer.id, "the reconnect's entry was swept");
   });
 
   test("an instance swept while its liveness lapsed puts its accounts back on its next beat", async () => {
