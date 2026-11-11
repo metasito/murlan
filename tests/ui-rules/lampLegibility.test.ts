@@ -34,7 +34,7 @@ const OUTER = 45;
 const PHONE = PHONES.find((p) => p.name === "iPhone SE")!;
 const SCALE = designScale(PHONE.width, PHONE.height);
 const CARD = tableScale(PHONE);
-const RING = legibilityRing(PHONE.width, PHONE.height, CARD);
+const RING = legibilityRing(PHONE);
 const DISC = RING.inner;
 const PER_PT = 2;
 const anchors = phoneTable(PHONE.width, PHONE.height, { top: 8, bottom: 8, left: 40, right: 40 }).anchors;
@@ -101,7 +101,7 @@ describe("annulusLuminance", () => {
       ["iPhone 17 Pro Max", 18.6154, 49.2, 49.2],
     ] as const) {
       const p = PHONES.find((q) => q.name === phone)!;
-      const r = legibilityRing(p.width, p.height, tableScale(p));
+      const r = legibilityRing(p);
       near(r.inner, inner, 0.01);
       near(r.outerX, outerX, 0.5);
       near(r.outerY, outerY, 0.5);
@@ -179,15 +179,15 @@ describe("annulusLuminance", () => {
 
   test("feltOnly keeps the rail and the room out of every ring", () => {
     const { x: feltLeft } = ringRect(RAIL_BAND);
-    const box = { width: 874, height: 402 };
-    const data = new Uint8ClampedArray(box.width * box.height * 4);
-    for (let i = 0; i < box.width * box.height; i++) data.set(i % box.width < feltLeft ? WHITE : GREY, i * 4);
-    const whole = { ...box, data };
-    const rim = { x: feltLeft + 7, y: box.height / 2 };
-    const r = legibilityRing(box.width, box.height, tableScale(box));
+    const win = { width: 874, height: 402 };
+    const data = new Uint8ClampedArray(win.width * win.height * 4);
+    for (let i = 0; i < win.width * win.height; i++) data.set(i % win.width < feltLeft ? WHITE : GREY, i * 4);
+    const whole = { ...win, data };
+    const rim = { x: feltLeft + 7, y: win.height / 2 };
+    const r = legibilityRing(win);
     assert.ok(read(whole, rim, 1, r) > GREY_LINEAR + 0.1, "the fixture's rail does not reach the ring");
     near(read(feltOnly(whole, 1), rim, 1, r), GREY_LINEAR, 0.001);
-    assert.throws(() => read(feltOnly(whole, 1), { x: feltLeft - 20, y: box.height / 2 }, 1, r), /is felt/);
+    assert.throws(() => read(feltOnly(whole, 1), { x: feltLeft - 20, y: win.height / 2 }, 1, r), /is felt/);
   });
 });
 

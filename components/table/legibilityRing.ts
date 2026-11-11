@@ -3,17 +3,21 @@
 
 import type { Pixels, Ring } from "../../lib/diagnostics/lampLegibility.ts";
 import { SEAT_DISC } from "../seatLayout.ts";
+import { tableScale } from "../tableLayout.ts";
 import { designScale } from "./lampRig.ts";
 import { RAIL_BAND, ringRect } from "./rail.ts";
 
 /** The research model's outer edge, `zoneMean(…, 17, 45)` in murlan-plans/2026-09-28-1259-lantern-review/scripts/lamp3.mjs. */
 export const ANNULUS_OUTER = 45;
 
-/** Starts at the drawn disc's edge (`SEAT_DISC * scale`, as `tableLayout` draws it); reaches 45 design pt of the stretched table. */
-export function legibilityRing(width: number, height: number, scale: number): Ring {
-  const { sx, sy } = designScale(width, height);
+/**
+ * The ring round a seat of the table laid out in `window`: from the drawn disc's edge to 45 design
+ * pt of the table stretched to that window (`GameTable` lights and sizes both from it).
+ */
+export function legibilityRing(window: { width: number; height: number }): Ring {
+  const { sx, sy } = designScale(window.width, window.height);
   return {
-    inner: (SEAT_DISC * scale) / 2,
+    inner: (SEAT_DISC * tableScale(window)) / 2,
     outerX: ANNULUS_OUTER * sx,
     outerY: ANNULUS_OUTER * sy,
   };
@@ -37,16 +41,3 @@ export function feltOnly(pixels: Pixels, perPt: number): Pixels {
   return { width, height, data };
 }
 
-/** Clear air between a side seat's name and the rail's lit line, in points. */
-const NAME_CLEAR = 3;
-
-/**
- * How far a side seat's name slides inboard of its disc's outer edge so the whole name stands on the
- * felt: the felt is stretched to the window while the frame is not, so on a wide window the rail's
- * lit line crosses the name (seatNameContrast).
- */
-export function sideNameInset(side: "left" | "right", discCentreX: number, disc: number, windowWidth: number): number {
-  const { x, w } = ringRect(RAIL_BAND);
-  const { sx } = designScale(windowWidth, 1);
-  return Math.max(0, side === "left" ? x * sx + NAME_CLEAR - (discCentreX - disc / 2) : discCentreX + disc / 2 - ((x + w) * sx - NAME_CLEAR));
-}
