@@ -7,11 +7,10 @@ import { legalGioca } from "./helpers/bot.ts";
 import { tap } from "./helpers/press";
 import { HAND_CARD_BOXES } from "./helpers/selectors.ts";
 
-type Live = { felt: number; elsewhere: string[] };
+type Live = { felt: number; elsewhere: string[]; offscreen: number };
 
-test("the Skia table draws on one WebGL context, the felt's, before and after a play", async ({ page, baseURL }) => {
+test("the Skia table draws on one WebGL context, the felt's, and a play in flight opens no other", async ({ page, baseURL }) => {
   test.setTimeout(3 * 60_000);
-  await page.emulateMedia({ reducedMotion: "reduce" });
   await skiaOnSoftware(page);
   await page.addInitScript(() => {
     const gl = new Set<HTMLCanvasElement>();
@@ -21,22 +20,34 @@ test("the Skia table draws on one WebGL context, the felt's, before and after a 
       if (ctx && /^(webgl2?|experimental-webgl)$/.test(id)) gl.add(this);
       return ctx;
     } as typeof getContext;
+    let offscreen = 0;
+    if (typeof OffscreenCanvas !== "undefined") {
+      const offscreenContext = OffscreenCanvas.prototype.getContext;
+      OffscreenCanvas.prototype.getContext = function (this: OffscreenCanvas, id: string, ...rest: unknown[]) {
+        const ctx = (offscreenContext as (this: OffscreenCanvas, ...a: unknown[]) => unknown).call(this, id, ...rest);
+        if (ctx && /^webgl2?$/.test(id)) offscreen++;
+        return ctx;
+      } as typeof offscreenContext;
+    }
     (window as unknown as { murlanGlCanvases: () => Live }).murlanGlCanvases = () => {
       const live = [...gl].filter((c) => c.isConnected);
       const inFelt = (c: HTMLCanvasElement) => !!c.closest('[data-testid="table-felt"]');
       const name = (c: HTMLCanvasElement) => c.closest("[data-testid]")?.getAttribute("data-testid") ?? "(no testid)";
-      return { felt: live.filter(inFelt).length, elsewhere: live.filter((c) => !inFelt(c)).map(name) };
+      return { felt: live.filter(inFelt).length, elsewhere: live.filter((c) => !inFelt(c)).map(name), offscreen };
     };
   });
   await resumeSaved(page, baseURL!, offlineSave({ seats: 2 }));
   await untilSkiaFelt(page);
   const live = () => page.evaluate(() => (window as unknown as { murlanGlCanvases: () => Live }).murlanGlCanvases());
 
-  expect(await live()).toEqual({ felt: 1, elsewhere: [] });
+  const rest = await live();
+  expect({ ...rest, offscreen: 0 }).toEqual({ felt: 1, elsewhere: [], offscreen: 0 });
   await tap(page, page.locator(HAND_CARD_BOXES).last());
   await tap(page, legalGioca(page));
+  await expect(page.getByTestId("flying-card").first()).toBeAttached({ timeout: 30_000 });
+  expect(await live()).toEqual(rest);
   await expect(page.getByTestId("pile-card").first()).toBeAttached({ timeout: 30_000 });
   await expect(page.getByTestId("flying-card")).toHaveCount(0, { timeout: 30_000 });
-  expect(await live()).toEqual({ felt: 1, elsewhere: [] });
+  expect(await live()).toEqual(rest);
   await expect(page.getByTestId("card-shade")).toHaveCount(0);
 });

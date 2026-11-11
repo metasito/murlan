@@ -6,7 +6,7 @@ import { makeMutable } from 'react-native-reanimated';
 
 import type { CardRect, CardRects } from '@/components/table/cardRects';
 import { TABLE_AT_REST } from '@/components/table/cardRects';
-import { SHADOW_PATHS, shadowShape } from '@/components/table/cardShadows';
+import { inPath, SHADOW_PATHS, shadowShape } from '@/components/table/cardShadows';
 import { FeltCanvas } from '@/components/table/feltCanvas';
 import { TABLE_CENTRE, restingLamp, steppedLamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe('the felt during a bot throw', () => {
-  it('rebuilds every cluster a moving card is in, of every kind, each frame it moves, and one holding no moving card at most once', async () => {
+  it("rebuilds every cluster a moving card is in, on its own path, each frame it moves, and one holding no moving card at most once", async () => {
     const shapes = new Map<string, string>();
     const moves = new Map<string, number>();
     const sample = () => {
@@ -59,10 +59,11 @@ describe('the felt during a bot throw', () => {
       const [kind, members] = cluster.split('|');
       for (const key of members.split(',')) if (moves.has(key)) movedIn.set(`${kind}|${key}`, (movedIn.get(`${kind}|${key}`) ?? 0) + n);
     }
-    const kinds = new Set([...movedIn.keys()].map((at) => at.split('|')[0]));
+    const owed = [...moves.keys()].flatMap((key) => SHADOW_PATHS.filter((path) => inPath(path, key)).map((path) => `${path}|${key}`));
     expect(still.length).toBeGreaterThan(0);
-    expect(kinds.size).toBeGreaterThan(1);
-    expect([...movedIn].filter(([at, n]) => n < moves.get(at.split('|')[1])!)).toEqual([]);
+    expect(owed.some((at) => at.startsWith('cast|'))).toBe(true);
+    expect(owed.filter((at) => (movedIn.get(at) ?? 0) < moves.get(at.split('|')[1])!)).toEqual([]);
+    expect([...movedIn.keys()].filter((at) => !owed.includes(at))).toEqual([]);
     expect(still.filter(([, n]) => n > 1)).toEqual([]);
   }, 120_000);
 });

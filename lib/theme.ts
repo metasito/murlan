@@ -61,13 +61,17 @@ export interface ShadowLayer {
 const shadowCss = (x: string, y: string, radius: number, color: string, opacity: number) =>
   `${x} ${y} ${radius}px ${withAlpha(color, opacity)}`;
 
-export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Record<string, any> {
-  // Android draws an outset `boxShadow` only from 9. Below it the prop is
-  // ignored outright, so those devices keep the single-shadow props, carrying
-  // the cast layer. There Android reads only `elevation`, so it is floored:
-  // a caller passing 0 would otherwise get no shadow at all.
+/** Android draws an outset `boxShadow` only from 9; below it the prop is ignored outright. */
+function drawsBoxShadow(): boolean {
   const api = Number(Platform.Version);
-  if (Platform.OS === "android" && Number.isFinite(api) && api < 28) {
+  return !(Platform.OS === "android" && Number.isFinite(api) && api < 28);
+}
+
+export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Record<string, any> {
+  // Those devices keep the single-shadow props, carrying the cast layer. There
+  // Android reads only `elevation`, so it is floored: a caller passing 0 would
+  // otherwise get no shadow at all.
+  if (!drawsBoxShadow()) {
     const cast = layers[layers.length - 1];
     return {
       shadowColor: cast.color,
@@ -114,10 +118,22 @@ export function cardShadow(kind: keyof typeof CARD_LAYERS, cast: "table" | null 
   };
 }
 
-/** A table card's contact alone, at the table's scale `s`, where the Skia felt draws its cast (`viewDrawsContact`). */
-export function cardContact(kind: "face" | "back", s: number): Record<string, any> {
-  const contact = contactLayer(CardShadow.alpha[kind]);
-  return makeLayeredShadow([{ ...contact, offsetY: contact.offsetY * s, radius: contact.radius * s }], 1);
+const contacts = new Map<string, { boxShadow: string }>();
+
+/**
+ * A table card's contact alone, at the table's scale `s`, where the Skia felt draws its cast (`viewDrawsContact`).
+ * None where `boxShadow` is not drawn: `elevation`, the only fallback, paints a card over its later siblings.
+ */
+export function cardContact(kind: "face" | "back", s: number): { boxShadow: string } | null {
+  if (!drawsBoxShadow()) return null;
+  const id = `${kind}|${s}`;
+  let style = contacts.get(id);
+  if (!style) {
+    const { color, offsetY, opacity, radius } = contactLayer(CardShadow.alpha[kind]);
+    style = { boxShadow: shadowCss("0px", `${offsetY * s}px`, radius * s, color, opacity) };
+    contacts.set(id, style);
+  }
+  return style;
 }
 
 // Authored at scale 1, where the table's own shadows are quoted. The art

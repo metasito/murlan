@@ -6,7 +6,7 @@ import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, pileGroupZ, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, viewDrawsContact, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, pileGroupZ, restingCast, shadowClusters, inPath, shadowFall, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, viewDrawsContact, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { CARD_ON_CARD_CSS } from "../e2e/helpers/cardOnCardCss.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
@@ -75,10 +75,10 @@ describe("the shadow paths", () => {
   const rect = (over: Partial<CardRect> = {}): CardRect => ({ x: 100, y: 50, w: 64, h: 90, rot: 0, back: false, lift: 0, glow: 0, seen: 1, ...over });
 
   test("a seat fan's backs cast nothing and their contact is the felt's; every other card casts and draws its own contact", () => {
-    assert.equal(shadowKind("fan:top:0", rect({ back: true })), "fan");
-    assert.equal(shadowKind("deal:3", rect({ back: true })), "back");
-    assert.equal(shadowKind("hand:5_clubs", rect()), "face");
-    assert.deepEqual(["fan:top:0", "deal:3", "hand:5_clubs", "pile:a", "leg:x"].map(viewDrawsContact), [false, true, true, true, true]);
+    const keys = ["fan:top:0", "deal:3", "hand:5_clubs", "pile:a", "leg:x"];
+    assert.deepEqual(keys.map(viewDrawsContact), [false, true, true, true, true]);
+    assert.deepEqual(keys.map((k) => inPath("cast", k)), [false, true, true, true, true]);
+    assert.deepEqual(keys.map((k) => inPath("fan", k)), [true, false, false, false, false]);
     const counted = (path: (typeof SHADOW_PATHS)[number]) => {
       let n = 0;
       buildShadow({ moveTo: () => n++, lineTo: () => {}, conicTo: () => {}, close: () => {} }, path, { "fan:left:0": rect({ back: true }), "deal:0": rect({ back: true }), "pile:a": rect() }, { sx: 1, sy: 1, s: 1 }, 0);

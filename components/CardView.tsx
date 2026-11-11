@@ -415,6 +415,15 @@ interface CardViewProps {
   a11yActionKeys?: Record<string, string>;
 }
 
+/** Outside the card's box, which clips to its corners; an outset shadow paints nothing under the card it is cast by. */
+const CardContact = React.memo(function CardContact({ kind, width, height }: { kind: "face" | "back"; width: number; height: number }) {
+  const table = useCardTable();
+  const shadowsOn = useCardShadowsOn();
+  const contact = table && shadowsOn ? cardContact(kind, table.felt.s) : null;
+  if (!contact) return null;
+  return <View testID="card-contact" pointerEvents="none" style={[styles.contact, { width, height, borderRadius: cardRadius(width) }, contact]} {...a11yHidden()} />;
+});
+
 function CardViewBase({
   card,
   selected = false,
@@ -452,12 +461,10 @@ function CardViewBase({
   const w = faceDown ? CARD_BACK_W(scale) : CARD_W(scale);
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
   const cast = useContext(CardCastContext);
-  const table = useCardTable();
-  const shadowsOn = useCardShadowsOn();
-  const kind = faceDown ? "back" : "face";
-  const contact = !!table && shadowsOn && !!rectKey && viewDrawsContact(rectKey);
-  const shadow =
-    cast !== "felt" ? cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast) : contact ? cardContact(kind, table.felt.s) : null;
+  const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast);
+  const contact = cast === "felt" && !!rectKey && viewDrawsContact(rectKey) && (
+    <CardContact kind={faceDown ? "back" : "face"} width={w} height={h} />
+  );
 
   if (faceDown) {
     const backStyle = {
@@ -467,6 +474,7 @@ function CardViewBase({
     };
     return (
       <View style={style}>
+        {contact}
         <View
           testID="card-box-back"
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
@@ -545,6 +553,7 @@ function CardViewBase({
         // corners, and a strip narrower than the card would clip the art with it.
         style={{ width: hitWidth ?? w, height: h }}
       >
+        {contact}
         {/* Named because it is not the same box as the pressable around it: in
             a hand, that one is only the strip this card exposes. Anything
             measuring what the player *sees* has to measure this.
@@ -621,6 +630,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.felt,
     borderWidth: 1,
   },
+  contact: { position: "absolute", left: 0, top: 0 },
   // A solid view under the card rather than a shadow layer: nothing to mask, on the felt or off it.
   stock: { zIndex: Layer.table },
   // The index characters sit in the drawn index column: the suit mark below

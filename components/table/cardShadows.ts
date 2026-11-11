@@ -8,29 +8,19 @@ import type { CardRect, CardRects, Felt, Point } from "./cardRects.ts";
 import { LIGHT_ABOVE, type Pool } from "./lampRig.ts";
 import type { PlayRole } from "./trick.ts";
 
-export type ShadowKind = "face" | "back" | "fan";
-/**
- * The felt's paths: the cast is every face and back, a seat fan's backs cast nothing (`.bk`). A face's
- * or a back's contact is its own view's (`viewDrawsContact`), on the felt and on the cards under it alike.
- */
+/** The felt's paths: `cast` for every card but a seat fan's backs, which cast nothing (`.bk`); `fan`, their contact. */
 export const SHADOW_PATHS = ["cast", "fan"] as const;
 export type ShadowPath = (typeof SHADOW_PATHS)[number];
 
-/** Whether the table card at `key` draws its own contact; a seat fan's is the felt's `fan` path. */
+/** Whether the table card at `key` draws its own contact, on the felt and on the cards under it alike; else the felt's `fan` path does. */
 export function viewDrawsContact(key: string): boolean {
   "worklet";
   return !key.startsWith("fan:");
 }
 
-export function shadowKind(key: string, rect: CardRect): ShadowKind {
+export function inPath(path: ShadowPath, key: string): boolean {
   "worklet";
-  if (!viewDrawsContact(key)) return "fan";
-  return rect.back ? "back" : "face";
-}
-
-export function inPath(path: ShadowPath, kind: ShadowKind): boolean {
-  "worklet";
-  return path === "cast" ? kind !== "fan" : path === kind;
+  return (path === "cast") === viewDrawsContact(key);
 }
 
 /** `--shx`/`--shy` in design points at card scale 1, from the pile and the light point in design points. */
@@ -182,7 +172,7 @@ export function shadowClusters(path: ShadowPath, rects: CardRects, felt: Pick<Fe
   let clusters: { keys: string[]; box: Box }[] = [];
   for (const key of Object.keys(rects)) {
     const r = shadowRect(rects[key]);
-    const box = inPath(path, shadowKind(key, r)) ? outlineBox(r, felt, midX) : null;
+    const box = inPath(path, key) ? outlineBox(r, felt, midX) : null;
     if (!box) continue;
     let joined = { keys: [key], box };
     for (let grew = true; grew; ) {
@@ -201,8 +191,5 @@ export function shadowClusters(path: ShadowPath, rects: CardRects, felt: Pick<Fe
 
 export function buildShadow(sink: PathSink, path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, keys: readonly string[] = Object.keys(rects)): void {
   "worklet";
-  for (const key of keys) {
-    const r = shadowRect(rects[key]);
-    if (inPath(path, shadowKind(key, r))) addOutline(sink, r, felt, midX);
-  }
+  for (const key of keys) if (inPath(path, key)) addOutline(sink, shadowRect(rects[key]), felt, midX);
 }

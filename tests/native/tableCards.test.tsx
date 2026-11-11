@@ -18,6 +18,7 @@ import { CardShadow, cardContact, cardShadow, Colors, Shadow, TABLE_CAST, withAl
 import { card } from '../support/game.ts';
 import { FLYING, THROW, cardTable, dealtTable, pairThrownBy3, runScenario, type Scenario } from './helpers/cardScenarios';
 import { frames } from './helpers/exchangeLegs';
+import { setWindow } from './harness/env';
 import { bootFeedback } from './helpers/feedback';
 
 jest.mock('@/lib/e2eConfig', () =>
@@ -57,14 +58,13 @@ function scopeOf(n: TestInstance): string | null {
 const styleOf = (n: TestInstance) => (StyleSheet.flatten(n.props.style as StyleProp<ViewStyle>) ?? {}) as Record<string, unknown>;
 const isGlow = (n: TestInstance) => SHADOW_PROPS.every((p) => styleOf(n)[p] === Shadow.cardGlow[p]);
 
-const CONTACT = /^0px ([\d.]+)px [\d.]+px rgba\(0,0,0,([\d.]+)\)$/;
+const feltScale = () => (globalThis as { murlanCardFelt?: () => { s: number } }).murlanCardFelt!().s;
 /** A face's or back's own contact at the table's scale, the one shadow a card view on the felt carries. */
 function isContact(n: TestInstance, scope: string): boolean {
   const style = styleOf(n);
-  const hit = typeof style.boxShadow === 'string' ? CONTACT.exec(style.boxShadow) : null;
-  if (!hit || scope === 'fan' || SHADOW_PROPS.some((p) => p !== 'boxShadow' && style[p] !== undefined)) return false;
-  const kind = Number(hit[2]) === CardShadow.alpha.back ? 'back' : 'face';
-  return style.boxShadow === cardContact(kind, Number(hit[1]) / CardShadow.contact.y).boxShadow;
+  if (scope === 'fan' || SHADOW_PROPS.some((p) => p !== 'boxShadow' && style[p] !== undefined)) return false;
+  const s = feltScale();
+  return (['face', 'back'] as const).some((kind) => style.boxShadow === cardContact(kind, s)?.boxShadow);
 }
 
 /** Every view in every card's scope, and those carrying a platform shadow, the gold glows and contacts apart. */
@@ -79,6 +79,7 @@ function cardHosts() {
 function expectContactOnly() {
   const { scopes, shadowed, contacts } = cardHosts();
   expect(scopes).toBeGreaterThan(0);
+  expect(feltScale()).not.toBe(1);
   expect(contacts.length).toBeGreaterThan(0);
   expect(shadowed.map(styleOf)).toEqual([]);
 }
@@ -102,6 +103,7 @@ afterEach(() => {
 describe('a card on the table', () => {
   it.each<Scenario>(['throw', 'deal', 'exchange'])('is registered exactly as drawn and casts only its own contact through a %s', async (scenario) => {
     let peak = 0;
+    await setWindow({ width: 1180, height: 820 });
     await runScenario(scenario, (t) => {
       expectExactlyDrawn();
       expectContactOnly();
@@ -116,6 +118,25 @@ describe('a card on the table', () => {
     expect(peak).toBeGreaterThan(0);
     await frames(32);
     expect(registry()).toEqual({});
+  }, 120_000);
+
+  it("carries no elevation below Android 9, where it would paint a card's box over its own level shade", async () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'android');
+    const version = jest.spyOn(Platform, 'Version', 'get').mockReturnValue(27);
+    try {
+      let seen = 0;
+      const elevated: Record<string, unknown>[] = [];
+      await runScenario('throw', () => {
+        const { scopes, shadowed, contacts } = cardHosts();
+        seen += scopes;
+        elevated.push(...[...shadowed, ...contacts].map(styleOf).filter((s) => s.elevation !== undefined));
+      });
+      expect(seen).toBeGreaterThan(0);
+      expect(elevated).toEqual([]);
+    } finally {
+      version.mockRestore();
+      os.restore();
+    }
   }, 120_000);
 
   it("lights the pile's cards through a going-out catch, and not through a play that leaves cards in hand", async () => {
