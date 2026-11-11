@@ -53,8 +53,12 @@ export interface TableLayout {
   pileNote: { centreX: number; top: number; h: number; room: number };
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
+  /** The band between the top band and the hand zone, the table's width: the side seats stand in it and the pile centres in it. */
+  midBand: { top: number; h: number };
   /** The hand zone at its designed place, and the padding its row and buttons stand on. */
   handZone: Rect & { padBottom: number };
+  /** The span the hand row is drawn in between PASSA and GIOCA, centred on the hand zone: a row wider than it scrolls under it. */
+  handWindow: { x: number; w: number };
   /** PASSA and GIOCA, in the hand zone at its designed place. */
   buttons: { passa: Rect; gioca: Rect };
   /** How far each seat's name slides inboard of its disc's outer edge. */
@@ -137,7 +141,9 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
       menu: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: frame.tableTop, w: knob, h: knob },
       foot: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: height - frame.tableBottom - knob, w: knob, h: knob },
     },
+    midBand: { top: midTop, h: midH },
     handZone,
+    handWindow: { x: x - frame.handAvailW / 2, w: frame.handAvailW },
     buttons: {
       passa: { x: frame.tableLeft, y: btnY, w: btn, h: btn },
       gioca,

@@ -25,7 +25,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { CardView, FallbackGlow, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
-import { CardGlow, Colors, Layer, LONG_PRESS_MS, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { CardGlow, Colors, Layer, LONG_PRESS_MS, Motion, motionMs, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { useTranslation } from "@/lib/i18n";
@@ -699,10 +699,8 @@ export const StraightHand = React.memo(function StraightHand({
   // Compiler will not let this file read. A shared value answers on the UI
   // thread, identically on both platforms, and needs no ref at all.
   //
-  // Measured from the middle of the hand rather than from its left edge, so
-  // zero is where the row opens and no effect has to put it there: at offset 0
-  // the row sits against the left edge of a box the buttons centre on, which
-  // reads as the whole hand having slid sideways. Playing a card narrows the
+  // Measured from the row's place at rest, `row.left`, so zero is where the row
+  // opens and no effect has to put it there. Playing a card narrows the
   // overhang, and the clamp below carries the row in with it.
   const pan = useSharedValue(0);
   const panFrom = useSharedValue(0);
@@ -713,7 +711,7 @@ export const StraightHand = React.memo(function StraightHand({
   }, [panReach, panLimit]);
   const rowShiftStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: -(panReach.value + panShown(pan.value, panReach.value)) },
+      { translateX: -panShown(pan.value, panReach.value) },
     ],
   }));
   const panToFocused = (e: { target: unknown; currentTarget: unknown }) => {
@@ -833,7 +831,6 @@ export const StraightHand = React.memo(function StraightHand({
     [cards, heldCard]
   );
 
-  const rowMid = row.width / 2;
   // Split either side of the slot, so the hand's centre holds still while the
   // gap opens and nothing shifts out from under the thumb.
   const gapW = heldCard === null ? 0 : cardW * GAP_CARDS;
@@ -856,12 +853,13 @@ export const StraightHand = React.memo(function StraightHand({
   const fieldW = CARD_W(scale * FIELD_SCALE);
   const cardTable = useCardTable();
   const rowBase = row.base;
+  const rowLeft = row.left;
   const handRow = useMemo(() => {
     if (!cardTable) return undefined;
     const { felt, hand, motion } = cardTable;
     const clipHalf = scrollable ? availW / 2 : 0;
-    return { table: cardTable, place: { felt, x: hand.x - rowMid, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, motion } };
-  }, [cardTable, rowMid, rowBase, scrollable, availW, pan, panLimit]);
+    return { table: cardTable, place: { felt, x: hand.x + rowLeft, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, motion } };
+  }, [cardTable, rowLeft, rowBase, scrollable, availW, pan, panLimit]);
   useEffect(() => {
     cardTable?.handOrder.set(handPaintOrder(rest.map((c) => c.id), (id) => giveableSet?.has(id), heldCard?.id ?? null));
   }, [cardTable, rest, giveableSet, heldCard]);
@@ -1193,48 +1191,46 @@ export const StraightHand = React.memo(function StraightHand({
   );
 
   return (
-    <View style={[handStyles.handCenter, { width: availW, height: visibleH + arcRise }]}>
-      <View style={handStyles.handGlowWrap}>
-        {/*
-          The hand compresses inside its share, so the window clips only when
-          even the finger floor cannot fit the row in availW — a full hand on
-          a small phone. The row overflows and is moved under a window that
-          clips it, rather than clipping the hand or stepping below what a
-          thumb can separate. Mounted either way: a change of parent would
-          remount every card, and a card mid-resize would snap.
+    <View style={[handStyles.handWindow, { width: availW, height: visibleH + arcRise }]}>
+      {/*
+        The hand compresses inside its share, so the window clips only when
+        even the finger floor cannot fit the row in availW — a full hand on
+        a small phone. The row overflows and is moved under a window that
+        clips it, rather than clipping the hand or stepping below what a
+        thumb can separate. Mounted either way: a change of parent would
+        remount every card, and a card mid-resize would snap.
 
-          The window clears everything the row *draws*, which is more than the
-          row is tall: `topClearance` above it, and below it the crop plus
-          what a tilt hangs past the bottom edge. `overflow` takes both axes
-          or neither, so a box sized to the row alone cuts a straight line
-          across the fan.
+        The window clears everything the row *draws*, which is more than the
+        row is tall: `topClearance` above it, and below it the crop plus
+        what a tilt hangs past the bottom edge. `overflow` takes both axes
+        or neither, so a box sized to the row alone cuts a straight line
+        across the fan.
 
-          The two negative margins give that extra room back to the layout,
-          so the box occupies exactly `visibleH` and the row lands where an
-          unclipped one sits. Stated rather than left to cancel
-          out: the parent centres its children, so a box that is taller than
-          what it stands in for moves the hand by half the difference.
-        */}
-        <View
-          style={
-            scrollable
-              ? [
-                  {
-                    width: availW,
-                    marginTop: -topClearance,
-                    marginBottom: -(crop + tiltOverhang),
-                    height: topClearance + visibleH + crop + tiltOverhang,
-                    paddingTop: topClearance,
-                    overflow: "hidden",
-                  },
-                  clipOverflow,
-                ]
-              : undefined
-          }
-          onFocus={scrollable && Platform.OS === "web" ? panToFocused : undefined}
-        >
-          <Animated.View testID="hand-pan" style={[{ width: totalW }, rowShiftStyle]}>{rowView}</Animated.View>
-        </View>
+        The two negative margins give that extra room back to the layout,
+        so the box occupies exactly `visibleH` and the row lands where an
+        unclipped one sits. Stated rather than left to cancel
+        out: the parent centres it top to bottom, so a box that is taller than
+        what it stands in for moves the hand by half the difference.
+      */}
+      <View
+        style={
+          scrollable
+            ? [
+                {
+                  width: availW,
+                  marginTop: -topClearance,
+                  marginBottom: -(crop + tiltOverhang),
+                  height: topClearance + visibleH + crop + tiltOverhang,
+                  paddingTop: topClearance,
+                  overflow: "hidden",
+                },
+                clipOverflow,
+              ]
+            : undefined
+        }
+        onFocus={scrollable && Platform.OS === "web" ? panToFocused : undefined}
+      >
+        <Animated.View testID="hand-pan" style={[{ width: totalW, left: availW / 2 + row.left }, rowShiftStyle]}>{rowView}</Animated.View>
       </View>
     </View>
   );
@@ -1249,7 +1245,7 @@ const handStyles = StyleSheet.create({
     flexDirection: "row",
     gap: Spacing.slim,
   },
-  handGlowWrap: { borderRadius: Radius.md, padding: Spacing.xs },
+  handWindow: { flexDirection: "row", alignItems: "center" },
   // The three layers of a card, in the order they paint. Stated on all of them,
   // because the iOS renderer does not promise the order they are written in
   // (#209) and two of these resolve opposite ways around the card.

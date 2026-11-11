@@ -29,7 +29,6 @@ import { isOneWay, type ExchangeAnnounceData, type ExchangeHold } from "@/lib/ga
 import {
   handRaised,
   handVisibleH,
-  HAND_ZONE_GAP,
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
@@ -1150,11 +1149,8 @@ export function GameTable({
               {opponentSeat("top") ?? <View />}
             </View>
 
-            {/* The band left over between the top band and the hand. The seats
-                and the field centre in what is actually there rather than at a
-                guessed percentage. */}
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
-            <View style={[sharedTableStyles.midSection, { marginBottom: handZone.h }, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
+            <View style={[sharedTableStyles.midSection, { top: layout.midBand.top - layout.tableBox.top, bottom: H - layout.tableBox.bottom - layout.midBand.top - layout.midBand.h }, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
                 {opponentSeat("left")}
               </View>
@@ -1237,7 +1233,6 @@ export function GameTable({
                   bottom: H - layout.tableBox.bottom - handZone.y - handZone.h,
                   height: handZone.h,
                   paddingBottom: handZone.padBottom,
-                  gap: HAND_ZONE_GAP * scale,
                 },
                 // Play on the left mirrors the row rather than moving the rail,
                 // which stays put at the physical cutout: only GIOCA changes
@@ -1257,8 +1252,9 @@ export function GameTable({
                 />
               )}
 
+              <View style={[styles.handWindow, { left: layout.handWindow.x - handZone.x, width: layout.handWindow.w, bottom: handZone.padBottom }]}>
               {wentOut ? (
-                <View style={[styles.finishedRow, { width: frame.handAvailW, height: handVisibleH(handCardH) }]}>
+                <View style={[styles.finishedRow, { width: layout.handWindow.w, height: handVisibleH(handCardH) }]}>
                   <WaitingLine scale={scale} />
                 </View>
               ) : (
@@ -1270,7 +1266,7 @@ export function GameTable({
                   exchange={{ shown: shownExchange, stages, giveableIds, lifted }}
                   deal={{ key: deal.key, hand: deal.hand && { ...deal.hand, onDealt } }}
                   geometry={{
-                    availW: frame.handAvailW,
+                    availW: layout.handWindow.w,
                     roomW: frame.handRoomW,
                     bottomPad: frame.bottomPad,
                     scale,
@@ -1279,6 +1275,7 @@ export function GameTable({
                   selection={{ store: shownSelection, ui: uiSelection, onActivate: handleCardPress }}
                 />
               )}
+              </View>
 
               {!spectating && (
                 <GiocaControl
@@ -1331,6 +1328,7 @@ const styles = StyleSheet.create({
   greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   matchDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSectionReversed: { flexDirection: "row-reverse" },
+  handWindow: { position: "absolute" },
 
 
   finishedRow: { alignItems: "center", justifyContent: "center" },
