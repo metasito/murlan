@@ -104,8 +104,8 @@ const Moth = memo(function Moth({ flights, paused }: { flights: Flight[]; paused
   );
 });
 
-export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & Partial<Pick<LampRig, "stillLight">> }) {
-  const { lamp, stillLight, sx, sy } = rig;
+export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "now" | "sx" | "sy"> & Partial<Pick<LampRig, "stillLight">> }) {
+  const { lamp, now, stillLight, sx, sy } = rig;
   const reduced = usePrefersReducedMotion();
   const [frozen, setFrozen] = useState(false);
   const elapsed = useAirClock(frozen);
@@ -118,9 +118,9 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & 
   const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const lightNow = useCallback((): RestLight => {
-    const s = lamp.get();
+    const s = now();
     return { x: s.tx, ly: s.ty - LIGHT_ABOVE, level: s.lvlT, r: s.tr, ph: s.ph, t: s.t };
-  }, [lamp]);
+  }, [now]);
 
   const rebuild = useCallback(() => {
     const light = lightNow();

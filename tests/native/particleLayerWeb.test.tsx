@@ -28,12 +28,15 @@ const g = globalThis as Record<string, unknown>;
 const savedDocument = g.document;
 import { ParticleLayer } from '@/components/table/particleLayer.web';
 import { glossLightOf } from '@/components/table/cardGloss';
-import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
+import { restingLamp, steppedLamp, TABLE_CENTRE } from '@/components/table/lampRig';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 import type { ParticleEmitter } from '@/components/table/particles';
 
 const lamp = restingLamp(TABLE_CENTRE);
-const rig = () => ({ lamp: makeMutable(lamp), stillLight: makeMutable(glossLightOf(lamp)), sx: 1, sy: 1 });
+const rig = () => {
+  const own = makeMutable(lamp);
+  return { lamp: own, ...steppedLamp(own), stillLight: makeMutable(glossLightOf(lamp)), sx: 1, sy: 1 };
+};
 const running = () => mockControllers.filter((c) => c.isActive).length;
 
 type Node = { props?: Record<string, unknown>; children?: (Node | string)[] | null };

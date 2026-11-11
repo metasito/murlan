@@ -105,7 +105,7 @@ const wingOf = (p: MothPose | null, side: number) => {
 
 export function ParticleLayer({ ref, rig, landing, grey }: {
   ref?: Ref<ParticleEmitter>;
-  rig: Pick<LampRig, "lamp" | "sx" | "sy">;
+  rig: Pick<LampRig, "lamp" | "now" | "sx" | "sy">;
   /** The landing dust is thrown on the contact frame, on this thread. */
   landing: SharedValue<LandingSignal>;
   grey?: SharedValue<number>;
