@@ -44,6 +44,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames } from "@/lib/motion";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type LampNow, type Pool } from "./lampRig";
 import { NOT_SHOWN, nextShown, type Shown } from "./restEnds";
+import { glideCloth, SETTLED_PT } from "./glideLight";
 import type { GlossTracks } from "./glossTrackStore";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, opaquePlane, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
@@ -71,6 +72,24 @@ export interface FeltCanvasProps {
   tracks?: GlossTracks;
   /** The settled felt's second end, laid over this canvas (web only: `feltEndB.tsx`, reached only through `skiaCanvases.ts`, so no native import names it). */
   Ends?: ComponentType<EndsProps>;
+  /** The gliding lamp's light pool, laid over this canvas (web only, as `Ends`: `feltPool.tsx`); without it a glide relights the cloth each frame. */
+  Pool?: ComponentType<PoolProps>;
+}
+
+/** The pool layer's light in design points: its centre, its radius, and its opacity. */
+export interface PoolLight {
+  x: number;
+  y: number;
+  r: number;
+  o: number;
+}
+
+export interface PoolProps {
+  light: SharedValue<PoolLight>;
+  sx: number;
+  sy: number;
+  /** The felt's edge in design points, which clips the layer. */
+  edge: { x: number; y: number; w: number; h: number; r: number };
 }
 
 export interface EndsProps {
@@ -104,6 +123,7 @@ function ring(d: number): SkRRect {
 }
 
 const OUTER = ring(0);
+const EDGE = ringRect(RAIL_BAND);
 const FELT_EDGE = ring(RAIL_BAND);
 const COAT = ring(RAIL_LIGHT.coatInset);
 
@@ -360,6 +380,7 @@ function drewAtCentre(image: SkImage, gx: number, gy: number, drew: (rgba: Uint8
 }
 
 const litCloth = (px: Uint8Array) => px[3] > 0 && px[0] + px[1] + px[2] > 24;
+const drewCloth = (px: Uint8Array) => px[3] > 0;
 
 /** The weave's planes at `gx` × `gy` device pixels a point, the ones the canvas fills; `null` where no offscreen surface can be made or a plane came out blank. */
 function bakeWeave(k: number, gx: number, gy: number): SkImage[] | null {
@@ -376,7 +397,7 @@ function bakeWeave(k: number, gx: number, gy: number): SkImage[] | null {
 /** Where the lamp has come to rest, as a key: its glide spent, whatever its sway or flare. `""` while it still moves. */
 function settledAim(s: Lamp): string {
   "worklet";
-  const near = Math.abs(s.x - s.tx) < 3 && Math.abs(s.y - s.ty) < 3 && Math.abs(s.r - s.tr) < 0.02;
+  const near = Math.abs(s.x - s.tx) < SETTLED_PT && Math.abs(s.y - s.ty) < SETTLED_PT && Math.abs(s.r - s.tr) < 0.02;
   return near ? `${s.tx},${s.ty},${s.tr}` : "";
 }
 
@@ -384,12 +405,26 @@ const CLOTH_ENDS = [-SWAY, SWAY] as const;
 const CACHED_TARGETS = 3;
 const CACHED_CLOTHS = CACHED_TARGETS * CLOTH_ENDS.length;
 
-/** The cloth with the lamp `lean` points off its target, unflared, on the canvas's own device pixels: lit from the planes, or in one pass where there are none. */
+/** The cloth with the lamp `lean` points off its target, unflared, on the canvas's own device pixels. */
 function bakeSettled(aim: Pool, base: ClothUniforms, planes: SkImage[] | null, gx: number, gy: number, lean: number): SkImage | null {
+  const [tx, ty, reach] = aim;
+  return bakeCloth({ ...base, uLamp: [tx + lean, ty - LIGHT_ABOVE], uFlare: 0, ...lightUniforms(reach) }, planes, gx, gy, litCloth);
+}
+
+/** Far enough off, and high enough, that the lamp's place shapes no pixel: the cloth's pool, sheen and vignette are all at their far end, and it lights straight down. */
+const UNLIT_LAMP = [DESIGN.width / 2, -1e4];
+const UNLIT_HEIGHT = 1e6;
+
+/** The cloth with no pool on it, what a glide lays its moving light over (`glideLight.ts`). */
+function bakeUnlit(base: ClothUniforms, planes: SkImage[] | null, gx: number, gy: number): SkImage | null {
+  return bakeCloth({ ...base, uLamp: UNLIT_LAMP, uLampH: UNLIT_HEIGHT, uFlare: 0, ...lightUniforms(1) }, planes, gx, gy, drewCloth);
+}
+
+/** The cloth under `light` on the canvas's own device pixels: lit from the planes, or in one pass where there are none. */
+function bakeCloth(light: ClothUniforms, planes: SkImage[] | null, gx: number, gy: number, drew: (rgba: Uint8Array) => boolean): SkImage | null {
   const effect = planes ? LIT : CLOTH;
   if (!effect) return null;
-  const [tx, ty, reach] = aim;
-  const uniforms = processUniforms(effect, { ...base, uLamp: [tx + lean, ty - LIGHT_ABOVE], uFlare: 0, ...lightUniforms(reach) });
+  const uniforms = processUniforms(effect, light);
   const texel = Skia.Matrix();
   texel.scale(1 / gx, 1 / gy);
   const children = (planes ?? []).map((plane) => plane.makeShaderOptions(TileMode.Clamp, TileMode.Clamp, FilterMode.Nearest, MipmapMode.None, texel));
@@ -398,7 +433,7 @@ function bakeSettled(aim: Pool, base: ClothUniforms, planes: SkImage[] | null, g
   shader.dispose();
   children.forEach((child) => child.dispose());
   texel.dispose();
-  if (!image || drewAtCentre(image, gx, gy, litCloth)) return image;
+  if (!image || drewAtCentre(image, gx, gy, drew)) return image;
   image.dispose();
   return null;
 }
@@ -410,7 +445,7 @@ const free = (image: SkImage) => (DISPOSE_PATHS ? disposeAfterReactions(() => im
 class ClothCache {
   private images = new Map<string, SkImage>();
 
-  get(key: string, bake: () => SkImage | null): SkImage | null {
+  get(key: string, bake: () => SkImage | null = () => null): SkImage | null {
     const hit = this.images.get(key) ?? bake();
     this.images.delete(key);
     if (!hit) return null;
@@ -434,17 +469,37 @@ class ClothCache {
 interface Weave {
   planes: SkImage[] | null;
   cloths: ClothCache;
+  /** The unlit cloth of the stops it was baked for, outside the cache: every glide draws it. */
+  unlit: { stops: string; image: SkImage } | null;
 }
+
+const endKey = (aim: string, stops: FeltStops, lean: number) => `${aim}|${stops.join()}|${lean}`;
 
 /** The cloth lit with the lamp `lean` points off the target `aim` names, from the weave's cache or baked into it. */
 function endCloth(weave: Weave, aim: string, stops: FeltStops, base: ClothUniforms, gx: number, gy: number, lean: number): SkImage | null {
   const target = aim.split(",").map(Number) as unknown as Pool;
-  return weave.cloths.get(`${aim}|${stops.join()}|${lean}`, () => bakeSettled(target, base, weave.planes, gx, gy, lean));
+  return weave.cloths.get(endKey(aim, stops, lean), () => bakeSettled(target, base, weave.planes, gx, gy, lean));
 }
 
-const freeWeave = ({ planes, cloths }: Weave) => {
+/** Both ends of the target `aim` names if the cache holds them; a glide bakes nothing. */
+function bakedEnds(weave: Weave, aim: string, stops: FeltStops): [SkImage, SkImage] | null {
+  const [left, right] = CLOTH_ENDS.map((lean) => weave.cloths.get(endKey(aim, stops, lean)));
+  return left && right ? [left, right] : null;
+}
+
+function unlitCloth(weave: Weave, stops: FeltStops, base: ClothUniforms, gx: number, gy: number): SkImage | null {
+  const key = stops.join();
+  if (weave.unlit?.stops === key) return weave.unlit.image;
+  const image = bakeUnlit(base, weave.planes, gx, gy);
+  if (weave.unlit) free(weave.unlit.image);
+  weave.unlit = image && { stops: key, image };
+  return image;
+}
+
+const freeWeave = ({ planes, cloths, unlit }: Weave) => {
   planes?.forEach(free);
   cloths.dispose();
+  if (unlit) free(unlit.image);
 };
 
 /** How long a window has to hold one size before the felt bakes for it. A one-off: a debounce on the bake, not a motion the player sees. */
@@ -496,8 +551,8 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tracks, Ends: given }: FeltCanvasProps) {
-  const withEnds = useMemo(() => (tracks && given ? { Ends: given, tracks } : null), [tracks, given]);
+export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tracks, Ends: given, Pool: PoolLayer }: FeltCanvasProps) {
+  const withEnds = useMemo(() => (tracks && given ? { Ends: given, tracks, Pool: PoolLayer ?? null } : null), [tracks, given, PoolLayer]);
   const greyLayer = useGreyLayer(grey);
   const canvas = useCanvasRef();
   const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
@@ -512,7 +567,7 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   const gy = dpr * sy;
   const rail = useMemo(() => bakeRail(k), [k]);
   useEffect(() => () => void (rail && free(rail)), [rail]);
-  const makeWeave = useCallback((): Weave => ({ planes: bakeWeave(k, gx, gy), cloths: new ClothCache() }), [k, gx, gy]);
+  const makeWeave = useCallback((): Weave => ({ planes: bakeWeave(k, gx, gy), cloths: new ClothCache(), unlit: null }), [k, gx, gy]);
   const owned = useOwned(makeWeave, freeWeave);
   const weave = owned.current ? owned.held : null;
   const planes = weave?.planes ?? null;
@@ -520,14 +575,18 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
 
   const [aim, setAim] = useState("");
+  const [from, setFrom] = useState("");
   // 1 is the lit cloth, 0 a settled lamp's cross; the reaction lights the felt the frame the lamp moves on, before React drops the cross.
+  // A glide drawn from its target's baked cloth arrives already crossed, so it is settled from its first frame there.
   const settle = useSharedValue(1);
+  const drawsGlide = useSharedValue(false);
   useAnimatedReaction(
     () => settledAim(lamp.value),
     (now, before) => {
       if (now === before) return;
-      settle.set(1);
+      settle.set(drawsGlide.value && now ? 0 : 1);
       scheduleOnRN(setAim, now);
+      if (!now && before) scheduleOnRN(setFrom, before);
     }
   );
   const [target, setTarget] = useState("");
@@ -544,11 +603,32 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
     return left && right ? { aim, left, right } : null;
   }, [weave, aim, gx, gy, stops, base]);
   // The ends of the lamp's next target, one a frame while it glides there, so settling bakes nothing.
+  const [baked, setBaked] = useState<{ weave: Weave; target: string; stops: FeltStops } | null>(null);
   useEffect(() => {
     if (!withEnds || !weave || !target) return;
-    const cancels = CLOTH_ENDS.map((lean, i) => afterFrames(i + 1, () => endCloth(weave, target, stops, base, gx, gy, lean)));
+    const cancels = CLOTH_ENDS.map((lean, i) =>
+      afterFrames(i + 1, () => {
+        endCloth(weave, target, stops, base, gx, gy, lean);
+        if (i === CLOTH_ENDS.length - 1) setBaked({ weave, target, stops });
+      })
+    );
     return () => cancels.forEach((cancel) => cancel());
   }, [withEnds, weave, target, gx, gy, stops, base]);
+  const poolLayer = !!withEnds?.Pool;
+  const [unlitFor, setUnlit] = useState<{ weave: Weave; stops: FeltStops; image: SkImage | null } | null>(null);
+  useEffect(() => {
+    if (!poolLayer || !weave) return;
+    return afterFrames(CLOTH_ENDS.length + 1, () => setUnlit({ weave, stops, image: unlitCloth(weave, stops, base, gx, gy) }));
+  }, [poolLayer, weave, stops, base, gx, gy]);
+  const unlit = poolLayer && unlitFor?.weave === weave && unlitFor.stops === stops ? unlitFor.image : null;
+  const glide = useMemo(() => {
+    if (rest || !unlit || !weave || !target) return null;
+    const to = baked?.weave === weave && baked.target === target && baked.stops === stops ? bakedEnds(weave, target, stops) : null;
+    const back = from && from !== target ? bakedEnds(weave, from, stops) : null;
+    const at = (key: string) => key.split(",").map(Number) as unknown as readonly [number, number];
+    return { unlit, to, toAt: to ? at(target) : null, from: back, fromAt: back ? at(from) : null };
+  }, [rest, unlit, weave, target, from, stops, baked]);
+  useLayoutEffect(() => drawsGlide.set(!!glide), [glide, drawsGlide]);
   const reduceMotion = usePrefersReducedMotion();
   useEffect(() => {
     if (!rest) return void settle.set(1);
@@ -591,6 +671,21 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(view.value.f));
   const coat = useDerivedValue(() => RAIL_LIGHT.coat(view.value.f));
   const shade = useDerivedValue(() => levelShade(view.value.level));
+  const toAt = glide?.toAt ?? null;
+  const fromAt = glide?.fromAt ?? null;
+  const glides = !!glide;
+  const gliding = useDerivedValue(() => (glides ? glideCloth(lamp.value && now(), fromAt, toAt) : null), [glides, toAt, fromAt]);
+  // A glide's first frame can draw before `gliding` has run for it, and that frame is still the cloth the lamp rested in.
+  const fromOpacity = useDerivedValue(() => gliding.value?.from.opacity ?? 1);
+  const toOpacity = useDerivedValue(() => gliding.value?.to.opacity ?? 0);
+  const fromLean = useDerivedValue(() => ({ uLean: gliding.value?.from.lean ?? view.value.lean }));
+  const toLean = useDerivedValue(() => ({ uLean: gliding.value?.to.lean ?? 0.5 }));
+  const pool = useDerivedValue<PoolLight>(() => ({
+    x: view.value.lx,
+    y: view.value.ly,
+    r: lightUniforms(view.value.r).uPoolR,
+    o: (gliding.value?.pool ?? 0) * Math.min(1, Math.max(0, view.value.level)),
+  }));
 
   const { rects, felt } = cards;
   const shape = useShadowShape(rects);
@@ -672,6 +767,30 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
               ))}
             </Shader>
           </Rect>
+        ) : glide && REST ? (
+          <>
+            <Rect x={0} y={0} width={width} height={height}>
+              <ImageShader image={glide.unlit} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+            </Rect>
+            {glide.from && (
+              <Rect x={0} y={0} width={width} height={height} opacity={fromOpacity}>
+                <Shader source={REST} uniforms={fromLean}>
+                  {glide.from.map((image, i) => (
+                    <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+                  ))}
+                </Shader>
+              </Rect>
+            )}
+            {glide.to && (
+              <Rect x={0} y={0} width={width} height={height} opacity={toOpacity}>
+                <Shader source={REST} uniforms={toLean}>
+                  {glide.to.map((image, i) => (
+                    <ImageShader key={i} image={image} fit="none" tx="clamp" ty="clamp" sampling={NEAREST} transform={texel} />
+                  ))}
+                </Shader>
+              </Rect>
+            )}
+          </>
         ) : planes && LIT ? (
           <Rect x={0} y={0} width={width} height={height}>
             <Shader source={LIT} uniforms={uniforms}>
@@ -707,12 +826,13 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
     </Canvas>
   );
   if (!withEnds) return drawn;
-  const { Ends } = withEnds;
+  const { Ends, Pool: Light } = withEnds;
   return (
     <>
       <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">
         {drawn}
       </View>
+      {Light && <Light light={pool} sx={sx} sy={sy} edge={EDGE} />}
       <Ends lamp={lamp} tracks={withEnds.tracks} settle={settle} content={content} side={side} host={host} canvas={canvas} />
     </>
   );

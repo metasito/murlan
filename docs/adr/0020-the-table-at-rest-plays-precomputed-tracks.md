@@ -28,6 +28,13 @@ the mockup wins.
    so there is one copy of the sway (rule 48).
 3. **Live drawing is for events only** (glide, flare, kick), started with the event and released
    at its end. The one-off bakes an event needs are done at glide time.
+   Amended 2026-11-11 (the owner chose G2 of `docs/research/2026-11-10-render-spike/RESULT.md`): on
+   web the glide is not live drawing. The felt draws a cloth baked without the lamp's pool, and a
+   gradient layer added over it (`components/table/feltPool.tsx`) moves with the lamp by transform
+   and opacity alone; near either end the cloth baked lit for that end carries the light, in shares
+   `components/table/glideLight.ts` decides, so no frame shows two pools. Native keeps the live
+   shader until the pool has a native layer. `tests/e2e/glideLight.spec.ts` fails on a lit-cloth
+   draw while the layer shows, and on too few frames of it showing.
 4. **Native keeps today's rest path** until a profile on device shows the compositor shape
    working there; a per-platform seam is added only when native needs one (rule 50).
 

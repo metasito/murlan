@@ -4,7 +4,7 @@ import type { FeltCanvasProps } from "./feltCanvas";
 import type { HandShadeProps } from "./feltReady";
 
 const loadFeltCanvas = () =>
-  import("./skiaCanvases").then((m) => ({ default: (props: FeltCanvasProps) => <m.FeltCanvas {...props} Ends={m.EndB} /> }));
+  import("./skiaCanvases").then((m) => ({ default: (props: FeltCanvasProps) => <m.FeltCanvas {...props} Ends={m.EndB} Pool={m.FeltPool} /> }));
 const loadHandShadeCanvas = () => import("./skiaCanvases").then((m) => ({ default: m.HandShadeCanvas }));
 const opts = { locateFile: (file: string) => CANVASKIT_URL + file };
 

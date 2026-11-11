@@ -3,3 +3,4 @@
 export { FeltCanvas } from "./feltCanvas";
 export { HandShadeCanvas } from "./handShadeCanvas";
 export { EndB } from "./feltEndB";
+export { FeltPool } from "./feltPool";
