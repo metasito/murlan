@@ -1,20 +1,21 @@
 // tests/e2e/restEnds.spec.ts — a table at rest carries its sway on the compositor (rule 51): the opacity of the
-// end-B layer, a CSS animation baked from the rig's own state, stays within half a point of the lamp the rig
-// moves, on the virtual clock.
+// end-B layer, a CSS animation baked from the rig's own state, stays within half a point of the lamp the rig moves
+// and of the light `lib/swayTable.ts` bakes from that state, and the rig's lamp within the stepping error of the
+// same table, on the virtual clock.
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { heldTurnTable } from "./helpers/mockupParity";
 import { installVirtualClock, stepThen, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS } from "./helpers/traceDiff";
 import { HAND_CARD_BOXES } from "./helpers/selectors";
-import { SWAY } from "../../components/table/lampRig";
-import { END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, swayShows } from "./helpers/renderCounters";
+import { bakeSway, speedOf, TRACK_SECONDS, TRACK_STEP, trackAt } from "../../lib/swayTable";
+import { END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, SWAY_PT, swayOfOpacity, swayShows } from "./helpers/renderCounters";
 
 const VIEWPORT = { width: 874, height: 402 };
 const SEED = 1255;
 /** The most the baked light may be off the rig's (RESULT.md Q3). */
 const HANDOFF_PT = 0.5;
-/** Past one whole swing at its slowest, 9.3 s, so the track's centre is read off its two extremes. */
+/** Past one whole swing at its slowest, 9.3 s, so the rig is seen through both its extremes. */
 const WINDOW = 640;
 /** Milliseconds the animation is stepped ahead of the rig, and the frames watched after: past two checks of `DRIFT_CHECK_MS`, and a second more. */
 const STALL_MS = 300;
@@ -27,7 +28,7 @@ const READ = `(() => {
   if (!canvas || canvas.style.visibility !== "visible" || !f) return null;
   const layer = canvas.parentElement;
   const timing = layer.getAnimations()[0]?.effect?.getComputedTiming();
-  return { clock: f.lamp.clock, t0: Number(canvas.dataset.trackT), at: timing ? (timing.progress * timing.duration) / 1000 : null, lx: f.lamp.x, o: Number(getComputedStyle(layer).opacity), playing: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
+  return { clock: f.lamp.clock, t0: Number(canvas.dataset.trackT), at: timing ? (timing.progress * timing.duration) / 1000 : null, lx: f.lamp.x, ph: f.lamp.ph, o:Number(getComputedStyle(layer).opacity), playing: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
 })()`;
 
 interface Sample {
@@ -36,6 +37,7 @@ interface Sample {
   t0: number;
   at: number | null;
   lx: number;
+  ph: number;
   o: number;
   playing: number;
 }
@@ -67,10 +69,43 @@ async function sampled(page: Page, frames: number): Promise<Sample[]> {
   return samples;
 }
 
-const centreOf = (samples: Sample[]) => (Math.max(...samples.map((s) => s.lx)) + Math.min(...samples.map((s) => s.lx))) / 2;
+/** Points a rested lamp's centre may move by: `isRested`'s glide residual and its kick's swing, the harness's own copy. */
+const REST_PT = 0.25 + 0.1;
+/** Seconds apart `swayBounds` reads the speed's top, slope and bend. */
+const GRID = 0.01;
 
-/** The clock steps the animations before the frame's timers, so a read after a step has both at the frame's end. */
-const offBy = (samples: Sample[], centre: number) => samples.map((s) => Math.abs(s.lx - centre - SWAY * (2 * s.o - 1)));
+/** The sway, -1 to 1, `lib/swayTable.ts` bakes from the rig's state at `from`, at a sample's clock. After `from`, the clock steps the animations before the frame's timers, so a read after a step has the layer and the rig both at the frame's end; at `from` itself the animation is a frame behind. */
+function tableFrom(from: Sample): (s: Sample) => number {
+  const track = bakeSway({ ph: from.ph, t: from.clock }, TRACK_SECONDS);
+  return (s) => trackAt(track, s.clock - from.clock);
+}
+
+/** The rig's centre, `lx` less its sway, at each sample, their mean, and the most one lies off it. */
+function centred(samples: Sample[]): { centres: number[]; centre: number; moved: number } {
+  const centres = samples.map((s) => s.lx - SWAY_PT * Math.sin(s.ph));
+  const centre = centres.reduce((sum, c) => sum + c, 0) / centres.length;
+  return { centres, centre, moved: Math.max(...centres.map((c) => Math.abs(c - centre))) };
+}
+
+/**
+ * How far, -1 to 1, the rig's sway may lie off the table baked at `samples[0]`, at each sample, one rig step apart. The rig
+ * adds `dt * speedOf(t)` at the step's end, which runs ahead of the integral `bakeSway` carries by `dt / 2` times the change of
+ * speed since `samples[0]`, to within a trapezoid's `dt^3 / 12` of its bend a step; a track, linear between stops, is off a sine
+ * by `TRACK_STEP^2 / 8` of its curvature. `TRACK_VS_EULER` is measured at 60 Hz from fixed settles, not at this clock's step from
+ * this start, so it is no bound here.
+ */
+function swayBounds(samples: Sample[]): number[] {
+  const t0 = samples[0]!.clock;
+  let [top, slope, bend] = [0, 0, 0];
+  for (let t = t0; t <= samples.at(-1)!.clock + TRACK_STEP; t += GRID) {
+    top = Math.max(top, speedOf(t));
+    slope = Math.max(slope, Math.abs(speedOf(t + GRID) - speedOf(t)) / GRID);
+    bend = Math.max(bend, Math.abs(speedOf(t + GRID) - 2 * speedOf(t) + speedOf(t - GRID)) / GRID ** 2);
+  }
+  const between = (TRACK_STEP ** 2 / 8) * (top ** 2 + slope);
+  const dt = STEP_MS / 1000;
+  return samples.map((s, k) => Math.abs((dt / 2) * (speedOf(s.clock) - speedOf(t0))) + ((k * dt ** 3) / 12) * bend + between);
+}
 
 test("the end-B layer's opacity follows the lamp's light to within half a point", async ({ browser, baseURL }) => {
   test.setTimeout(3 * 60_000);
@@ -86,21 +121,39 @@ test("the end-B layer's opacity follows the lamp's light to within half a point"
   expect(swayShows(layer, picture), "end B is not a picture lit from the far end of the sway, or its layer does not sway").toBe(true);
 
   const lows = samples.map((s) => s.lx);
-  expect((Math.max(...lows) - Math.min(...lows)) / 2, "the swing the rig made").toBeGreaterThan(SWAY - 1);
-  const worst = Math.max(...offBy(samples, centreOf(samples)));
-  console.log(`the baked light is at most ${worst.toFixed(3)} pt off the rig's over ${WINDOW} frames`);
-  expect(worst, "points the end-B layer's light is off the rig's").toBeLessThan(HANDOFF_PT);
+  expect((Math.max(...lows) - Math.min(...lows)) / 2, "the swing the rig made").toBeGreaterThan(SWAY_PT - 1);
+
+  const steps = samples.slice(1).map((s, i) => s.clock - samples[i]!.clock);
+  expect(Math.max(...steps.map((dt) => Math.abs(dt * 1000 - STEP_MS))), "milliseconds a frame's rig step is off the clock's step").toBeLessThan(1e-6);
+  const sway = tableFrom(shown);
+  const { centres, centre, moved } = centred(samples);
+  const rig = samples.map((s) => Math.abs(s.lx - centre - SWAY_PT * sway(s)));
+  const allowed = swayBounds(samples).map((b, k) => SWAY_PT * b + Math.abs(centres[k]! - centre));
+  const excess = rig.map((r, k) => r - allowed[k]!);
+  const worst = excess.indexOf(Math.max(...excess));
+  const steady = samples.slice(1);
+  const light = Math.max(...steady.map((s) => SWAY_PT * Math.abs(swayOfOpacity(s.o) - sway(s))));
+  const toRig = Math.max(...steady.map((s) => Math.abs(s.lx - centre - SWAY_PT * swayOfOpacity(s.o))));
+  console.log(
+    `over ${WINDOW} frames the rig's centre moves ${moved.toExponential(1)} pt, under ${REST_PT} pt; its lamp is ${rig[worst]!.toFixed(3)} pt off the keyframe table where ${allowed[worst]!.toFixed(3)} pt is allowed (at most ${Math.max(...rig).toFixed(3)} pt); after the frame it shows, the end-B layer's light is at most ${light.toFixed(3)} pt off the table and ${toRig.toFixed(3)} pt off the rig's`,
+  );
+  expect(moved, "points the rig's centre moves while it only sways: more than a rested lamp's, so a glide or kick is still running or its swing is not SWAY_PT").toBeLessThan(REST_PT);
+  expect(excess[worst]!, "points the rig's lamp is past the keyframe table's stepping error and its centre's motion").toBeLessThan(0);
+  expect(light, "points the end-B layer's light is off the keyframe table's").toBeLessThan(HANDOFF_PT);
+  expect(toRig, "points the end-B layer's light is off the rig's").toBeLessThan(HANDOFF_PT);
   await context.close();
 });
 
 test("a rig that stalls behind its animation is caught up with, and the light is back within half a point", async ({ browser, baseURL }) => {
   test.setTimeout(3 * 60_000);
   const { page, context } = await restedTable(browser, baseURL!);
-  const centre = centreOf(await sampled(page, WINDOW));
+  await page.evaluate(`(async () => { for (let i = 0; i < ${WINDOW}; i++) await globalThis.murlanStep(${STEP_MS}); })()`);
   // The animation runs on while the rig, as a stalled page's does, does not: 300 ms is 6 pt of sway.
   await page.evaluate((ms) => window.murlanStepAnimations(ms), STALL_MS);
   const after = await sampled(page, STALL_FRAMES);
-  const off = offBy(after, centre);
+  const { centre, moved } = centred(after);
+  expect(moved, "points the rig's centre moves while it only sways: more than a rested lamp's").toBeLessThan(REST_PT);
+  const off = after.map((s) => Math.abs(s.lx - centre - SWAY_PT * swayOfOpacity(s.o)));
   expect(Math.max(...off.slice(0, 5)), "points the stall put the light off the rig's").toBeGreaterThan(HANDOFF_PT);
   expect(Math.max(...off.slice(-60)), "points the light is still off the rig's a second after the stall").toBeLessThan(HANDOFF_PT);
   await context.close();
