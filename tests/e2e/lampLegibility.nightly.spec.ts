@@ -40,10 +40,11 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
     (globalThis as unknown as { murlanCardShadows: (on: boolean) => void }).murlanCardShadows(false);
     return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
-  const { pixels: box, perPt, origin } = await feltPixels(page);
-  const felt = { width: box.width / perPt, height: box.height / perPt };
-  const pixels = feltOnly(box, felt);
-  const ring = legibilityRing(felt);
+  const { pixels: shot, perPt, origin } = await feltPixels(page);
+  const viewport = { width: phone.width, height: phone.height };
+  expect(await page.getByTestId("table-felt").boundingBox(), "the felt fills the viewport, the window feltOnly is laid out in").toEqual({ x: 0, y: 0, ...viewport });
+  const pixels = feltOnly(shot, viewport);
+  const ring = legibilityRing(viewport);
   return Object.fromEntries(
     SEATS.map((s) => [s, annulusLuminance(pixels, { x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt, ring)])
   ) as Record<FlyDirection, number>;
