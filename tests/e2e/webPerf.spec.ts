@@ -30,7 +30,7 @@ import { mulberry32, rng } from "../../lib/game/simulate.ts";
 import { FELT_K_CAP } from "../../components/table/feltShader.ts";
 const TABLE = '[data-testid="game-table"]';
 
-/** The Skia felt on this software rasteriser, which only an e2e build honours (`drawsOnGpu`, feltSkia.web.tsx). */
+/** The Skia felt on this software rasteriser, which only an e2e build honours (`drawsOnGpu`, drawsOnGpu.ts). */
 const SKIA = process.env.PERF_SKIA === "1";
 
 /** Recorded under PERF_SKIA alone: its counters and trace cost the page they measure. */

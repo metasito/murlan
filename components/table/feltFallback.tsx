@@ -3,12 +3,12 @@
 import { useEffect, useRef } from "react";
 import type { FeltStops } from "@/lib/cosmetics";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, type LampTarget, type Pool } from "./lampRig";
-import { CLOTH_GLSL, clothUniforms } from "./feltShader";
+import { drawsOnGpu } from "./drawsOnGpu";
+import { CLOTH_GLSL, clothUniforms, LIT_GLSL, opaquePlane, QUAD_GLSL, WEAVE_GLSL, WEAVE_PLANES, weaveUniforms, type ClothUniforms } from "./feltShader";
 import { paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 
 const POOL_RADIUS = 420;
 const QUAD = [-1, -1, 1, -1, -1, 1, 1, 1];
-const VERTEX = "attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}";
 
 function ringPath(c: CanvasRenderingContext2D, d: number) {
   const r = ringRect(d);
@@ -29,60 +29,201 @@ function ringPainter(c: CanvasRenderingContext2D): RingPainter {
   };
 }
 
+interface Program {
+  p: WebGLProgram;
+  at: Map<string, WebGLUniformLocation | null>;
+}
+
+interface Planes {
+  key: string;
+  /** Empty where the planes could not be baked at this size: its aims draw the cloth in one pass. */
+  textures: WebGLTexture[];
+}
+
 interface ClothRenderer {
   cv: HTMLCanvasElement;
   gl: WebGLRenderingContext;
-  p: WebGLProgram;
+  cloth: Program;
+  /** `null` where the weave or its lighting does not link; `undefined` until the first bake compiles them. */
+  split?: { weave: Program; lit: Program } | null;
+  maxSize: number;
+  planes?: Planes;
+  pending?: { key: string; cancel: () => void };
 }
 
 let renderer: ClothRenderer | null | undefined;
+let mounted = 0;
+
+function uniformAt(gl: WebGLRenderingContext, program: Program, name: string) {
+  if (!program.at.has(name)) program.at.set(name, gl.getUniformLocation(program.p, name));
+  return program.at.get(name)!;
+}
 
 /** One WebGL context for every bake: a page may hold only a few, and the cloth compiles once. */
 function clothRenderer(): ClothRenderer | null {
-  if (renderer?.gl.isContextLost()) renderer = undefined;
+  if (renderer?.gl.isContextLost()) {
+    renderer.pending?.cancel();
+    renderer = undefined;
+  }
   if (renderer !== undefined) return renderer;
   const cv = document.createElement("canvas");
   const gl = cv.getContext("webgl", { premultipliedAlpha: true, antialias: false });
   if (!gl) return (renderer = null);
-  const shader = (type: number, src: string) => {
+  const cloth = linked(gl, CLOTH_GLSL);
+  if (!cloth) return (renderer = null);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(QUAD), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const [vw, vh] = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
+  const maxSize = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE) as number, vw, vh);
+  return (renderer = { cv, gl, cloth, maxSize });
+}
+
+function linked(gl: WebGLRenderingContext, fragment: string): Program | null {
+  const p = gl.createProgram()!;
+  for (const [type, src] of [
+    [gl.VERTEX_SHADER, QUAD_GLSL],
+    [gl.FRAGMENT_SHADER, fragment],
+  ] as const) {
     const s = gl.createShader(type)!;
     gl.shaderSource(s, src);
     gl.compileShader(s);
-    return s;
-  };
-  const p = gl.createProgram()!;
-  gl.attachShader(p, shader(gl.VERTEX_SHADER, VERTEX));
-  gl.attachShader(p, shader(gl.FRAGMENT_SHADER, CLOTH_GLSL));
+    gl.attachShader(p, s);
+  }
+  gl.bindAttribLocation(p, 0, "a");
   gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return (renderer = null);
-  gl.useProgram(p);
-  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(QUAD), gl.STATIC_DRAW);
-  const a = gl.getAttribLocation(p, "a");
-  gl.enableVertexAttribArray(a);
-  gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
-  return (renderer = { cv, gl, p });
+  return gl.getProgramParameter(p, gl.LINK_STATUS) ? { p, at: new Map() } : null;
 }
 
-/** The cloth, `null` on a page with no WebGL (a felt without cloth, for good), `undefined` when the context was lost mid-draw. */
-function drawCloth(width: number, height: number, uniforms: Record<string, number | number[]>, px: [number, number]): HTMLCanvasElement | null | undefined {
-  const r = clothRenderer();
-  if (!r) return null;
-  const { cv, gl, p } = r;
-  cv.width = width;
-  cv.height = height;
-  const all = { ...uniforms, uRes: [width, height], uPx: px };
-  for (const [name, v] of Object.entries(all)) {
-    const at = gl.getUniformLocation(p, name);
+function splitPrograms(r: ClothRenderer) {
+  if (r.split !== undefined) return r.split;
+  const { gl } = r;
+  const weave = linked(gl, WEAVE_GLSL);
+  const lit = linked(gl, LIT_GLSL);
+  if (lit) {
+    gl.useProgram(lit.p);
+    for (let i = 0; i < WEAVE_PLANES; i++) gl.uniform1i(uniformAt(gl, lit, `uG${i}`), i);
+  }
+  return (r.split = weave && lit ? { weave, lit } : null);
+}
+
+function setUniforms(gl: WebGLRenderingContext, program: Program, uniforms: ClothUniforms) {
+  gl.useProgram(program.p);
+  for (const [name, v] of Object.entries(uniforms)) {
+    const at = uniformAt(gl, program, name);
     if (typeof v === "number") gl.uniform1f(at, v);
     else if (v.length === 2) gl.uniform2fv(at, v);
     else gl.uniform3fv(at, v);
   }
-  gl.viewport(0, 0, cv.width, cv.height);
+}
+
+function freePlanes(r: ClothRenderer) {
+  r.pending?.cancel();
+  r.pending = undefined;
+  r.planes?.textures.forEach((t) => r.gl.deleteTexture(t));
+  r.planes = undefined;
+}
+
+/** The weave's planes at this size, each checked opaque at the felt's centre as Skia checks its own; none where any step fails. Yields between steps. */
+function* bakeSteps(r: ClothRenderer, key: string, width: number, height: number, px: [number, number]): Generator<void, void, void> {
+  const split = splitPrograms(r);
+  if (!split || width > r.maxSize || height > r.maxSize) {
+    r.planes = { key, textures: [] };
+    return;
+  }
+  const { gl } = r;
+  const fbo = gl.createFramebuffer();
+  const textures: WebGLTexture[] = [];
+  const centre = new Uint8Array(4);
+  let drew = true;
+  try {
+    for (let plane = 0; plane < WEAVE_PLANES && drew; plane++) {
+      yield;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.viewport(0, 0, width, height);
+      const t = gl.createTexture()!;
+      textures.push(t);
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      for (const f of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, f, gl.NEAREST);
+      for (const w of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, w, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      drew = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      if (drew) {
+        setUniforms(gl, split.weave, { ...weaveUniforms(Math.min(...px), plane), uRes: [width, height], uPx: px });
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.readPixels(width >> 1, height >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, centre);
+        drew = opaquePlane(centre);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+    drew &&= gl.getError() === gl.NO_ERROR && !gl.isContextLost();
+    r.planes = { key, textures: drew ? textures : [] };
+  } finally {
+    gl.deleteFramebuffer(fbo);
+    if (r.planes?.textures !== textures) textures.forEach((t) => gl.deleteTexture(t));
+  }
+}
+
+/** The planes bake once the aim that first needs them has shown, a step per idle period, lit in one pass meanwhile, so no aim waits on them. */
+function bakeLater(r: ClothRenderer, key: string, width: number, height: number, px: [number, number]) {
+  if (r.pending?.key === key) return;
+  freePlanes(r);
+  const steps = bakeSteps(r, key, width, height, px);
+  const step = () => {
+    r.pending = undefined;
+    if (renderer !== r || r.gl.isContextLost()) steps.return();
+    else if (!steps.next().done) schedule();
+  };
+  const schedule = () => {
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(step);
+      r.pending = { key, cancel: () => (cancelIdleCallback(id), steps.return()) };
+    } else {
+      const id = setTimeout(step);
+      r.pending = { key, cancel: () => (clearTimeout(id), steps.return()) };
+    }
+  };
+  schedule();
+}
+
+/** The cloth, `null` on a page with no WebGL (a felt without cloth, for good), `undefined` when the context was lost mid-draw. */
+function drawCloth(width: number, height: number, uniforms: ClothUniforms, px: [number, number]): HTMLCanvasElement | null | undefined {
+  const r = clothRenderer();
+  if (!r) return null;
+  const { cv, gl } = r;
+  const key = `${width}x${height}@${px}`;
+  cv.width = width;
+  cv.height = height;
+  gl.viewport(0, 0, width, height);
+  const all = { ...uniforms, uRes: [width, height], uPx: px };
+  const textures = r.planes?.key === key ? r.planes.textures : [];
+  if (r.split && textures.length) {
+    setUniforms(gl, r.split.lit, all);
+    textures.forEach((t, i) => {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D, t);
+    });
+    gl.activeTexture(gl.TEXTURE0);
+  } else {
+    setUniforms(gl, r.cloth, all);
+    // Where the GPU draws, Skia takes the felt before the planes would pay for their bake.
+    if (r.split !== null && r.planes?.key !== key && !drawsOnGpu()) bakeLater(r, key, width, height, px);
+  }
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   return gl.isContextLost() ? undefined : cv;
+}
+
+/** The last fallback to go frees the planes: Skia has taken the felt, or the table has gone. */
+function holdPlanes() {
+  mounted++;
+  return () => {
+    if (--mounted === 0 && renderer) freePlanes(renderer);
+  };
 }
 
 let grain: { key: string; cv: HTMLCanvasElement } | undefined;
@@ -214,6 +355,7 @@ export function FeltFallback({
   const ref = useRef<HTMLCanvasElement>(null);
   const cache = useRef<Baked>(new Map());
   const [px, py, reach] = pool;
+  useEffect(holdPlanes, []);
   useEffect(() => {
     if (ref.current) bakeCached(ref.current, cache.current, stops, [px, py, reach], sx, sy);
   }, [stops, px, py, reach, sx, sy]);
