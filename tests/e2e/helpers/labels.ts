@@ -63,5 +63,8 @@ export const GIVEBACK_RANK_WORDS = ranksOf(getValidGivebackCards(createDeck())).
 
 export const SUIT_WORDS = [...new Set(createDeck().flatMap((c) => (c.suit ? [suitSpokenName(c.suit, t)] : [])))];
 
+/** A card as the hand names it. */
+export const cardLabel = (card: Card): string => cardSpokenName(card, t);
+
 /** The card that opens a match whenever it is dealt, as the hand names it. */
-export const START_CARD_LABEL = cardSpokenName(START_CARD, t);
+export const START_CARD_LABEL = cardLabel(START_CARD);
