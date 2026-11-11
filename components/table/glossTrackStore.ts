@@ -5,7 +5,7 @@
 import type { SharedValue } from "react-native-reanimated";
 import type { GlossLight } from "./cardGloss.ts";
 import { isRested, restLight } from "./restEnds.ts";
-import type { Lamp } from "./lampRig.ts";
+import { lampNow, type Lamp } from "./lampRig.ts";
 
 export interface GlossTracks {
   /** The rig's lamp, which the fans read where it rests when a track is baked and where its clock is when it is steered. */
@@ -27,7 +27,7 @@ export function createGlossTracks(lamp: SharedValue<Lamp>, rest: SharedValue<Glo
   let live = !isRested(resting);
   const listeners = new Set<() => void>();
   const tell = () => {
-    taken = structuredClone(lamp.get());
+    taken = structuredClone(lampNow(lamp.get()));
     for (const listener of listeners) listener();
   };
   return {

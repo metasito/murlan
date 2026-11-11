@@ -57,6 +57,12 @@ export function isRested(s: Lamp): boolean {
   );
 }
 
+/** Whether the compositor carries all a lamp does, so the rig may stop stepping it until something moves it: rested, swaying, and the felt showing an end (`side` as `shownLamp` takes it). */
+export function endsCarry(s: Lamp, side: number, reduced: boolean): boolean {
+  "worklet";
+  return side !== 0 && !reduced && isRested(s);
+}
+
 /** How far the light is from end A toward end B, 0 to 1. */
 export function leanOf(s: Lamp): number {
   "worklet";

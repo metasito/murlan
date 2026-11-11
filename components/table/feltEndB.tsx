@@ -9,6 +9,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { afterFrames, ambientPlace, steerAmbient, useAmbient } from "@/lib/motion";
 import type { EndsProps } from "./feltCanvas";
+import { lampNow } from "./lampRig";
 import { DRIFT_CHECK_MS, endTrack, isRested, placeOf, QUIET_MS, steering, type EndTrack } from "./restEnds";
 
 function copyOf(host: unknown, into: HTMLCanvasElement): boolean {
@@ -81,10 +82,10 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
     const steer = (to?: { paused: boolean }) => {
       const element = canvas.parentElement;
       if (!element || !baked) return;
-      steerAmbient(element, to ?? { place: placeOf(baked, lamp.get().t) });
+      steerAmbient(element, to ?? { place: placeOf(baked, lampNow(lamp.get()).t) });
     };
     const bake = () => {
-      const s = lamp.get();
+      const s = lampNow(lamp.get());
       baked = endTrack(s.ph, s.t);
       setPlaying(baked);
       // The animation starts when the commit does, not when the track was read: it is moved to where the rig is, the frame it exists.
@@ -124,7 +125,7 @@ export function EndB({ lamp, settle, content, side, host, canvas: skia }: EndsPr
     check = setInterval(() => {
       const element = canvas.parentElement;
       if (!element || !baked) return;
-      const next = steering(baked, ambientPlace(element), lamp.get().t);
+      const next = steering(baked, ambientPlace(element), lampNow(lamp.get()).t);
       if (next.kind === "rebake") bake();
       else if (next.kind === "steer") steerAmbient(element, { place: next.place });
     }, DRIFT_CHECK_MS);

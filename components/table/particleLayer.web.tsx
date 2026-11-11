@@ -6,7 +6,7 @@ import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useDuring } from "@/lib/motion";
 import { MOTES } from "./air";
-import { DESIGN } from "./lampRig";
+import { DESIGN, lampNow } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { bombFx, landingDust, spawn, tableRng, type ParticleEmitter } from "./particles";
 import { burstIdle, createBurstScene, stepBurst, type BurstScene } from "./burstScene";
@@ -97,7 +97,7 @@ export function ParticleLayer({ ref, rig, landing }: {
   const canvas = useRef<HTMLCanvasElement | null>(null);
   // The canvas stays mounted and the frame callback released: a throw wakes it on the contact frame, and it releases itself when nothing flies.
   const [frame] = useState(() => (info: FrameInfo): boolean => {
-    stepBurst(scene, lamp.value, Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000), rng);
+    stepBurst(scene, lampNow(lamp.value), Math.min(0.05, (info.timeSincePreviousFrame ?? 0) / 1000), rng);
     const cv = canvas.current;
     const c = cv?.getContext?.("2d");
     if (cv && c) paintScene(c, cv, scene, paint.current, cv.width / DESIGN.width, cv.height / DESIGN.height);

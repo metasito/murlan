@@ -11,7 +11,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { ambient } from "@/lib/motion";
 import { RestAir } from "@/lib/tokens";
 import { createAir, isDrawn, M, MOTE_STRIDE, type Air } from "./air";
-import { DESIGN, LIGHT_ABOVE } from "./lampRig";
+import { DESIGN, lampNow, LIGHT_ABOVE } from "./lampRig";
 import { LAMP_SETTLE_MS, type LampRig } from "./useLampRig";
 import { tableRng } from "./particles";
 import {
@@ -118,7 +118,7 @@ export function MoteLayer({ rig }: { rig: Pick<LampRig, "lamp" | "sx" | "sy"> & 
   const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const lightNow = useCallback((): RestLight => {
-    const s = lamp.get();
+    const s = lampNow(lamp.get());
     return { x: s.tx, ly: s.ty - LIGHT_ABOVE, level: s.lvlT, r: s.tr, ph: s.ph, t: s.t };
   }, [lamp]);
 

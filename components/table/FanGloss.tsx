@@ -13,7 +13,7 @@ import { designRect, TABLE_AT_REST, type DrawnCard, type Felt } from "./cardRect
 import { fadeA, spotPose, spotSlide, streakPose, type Placed, type StreakEnd } from "./fanTrack";
 import { SPOT_STOPS, STREAK_STOPS } from "./glossStops";
 import type { GlossTracks } from "./glossTrackStore";
-import { SWAY } from "./lampRig";
+import { lampNow, SWAY } from "./lampRig";
 import { DRIFT_CHECK_MS, endLamp, endTrack, endWeight, placeOf, steering, type Shown } from "./restEnds";
 
 interface Props {
@@ -76,7 +76,7 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
     if (reduceMotion || gaveUp) return;
     const elements = () => [fadeANode, fadeBNode, spotNode].map((n) => n.current as unknown as Element | null).filter((e): e is Element => !!e);
     const steer = (to: { place: number } | { paused: boolean }) => elements().forEach((e) => steerAmbient(e, to));
-    const place = () => ({ place: placeOf(track, tracks.lamp.get().t) });
+    const place = () => ({ place: placeOf(track, lampNow(tracks.lamp.get()).t) });
     // The animation starts when the commit does, not when the track was baked: it is moved to where the rig is the frame it exists.
     let started = false;
     let cancel = () => {};
@@ -95,7 +95,7 @@ export const FanGloss = React.memo(function FanGloss({ tracks, felt, drawn, card
     const check = setInterval(() => {
       const first = elements()[0];
       if (!started || !first || tracks.live()) return;
-      const next = steering(track, ambientPlace(first), tracks.lamp.get().t);
+      const next = steering(track, ambientPlace(first), lampNow(tracks.lamp.get()).t);
       if (next.kind === "rebake") tracks.rebake();
       else if (next.kind === "steer") steer({ place: next.place });
     }, DRIFT_CHECK_MS);

@@ -65,7 +65,7 @@ export function Felt({ rig, stops, pool, ready, onReady, cards }: FeltProps) {
       {skia && (
         <SkiaLoadFailed>
           <Suspense fallback={null}>
-            <SkiaFelt lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} cards={cards} />
+            <SkiaFelt lamp={rig.lamp} side={rig.ends} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} cards={cards} />
           </Suspense>
         </SkiaLoadFailed>
       )}

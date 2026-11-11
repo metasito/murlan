@@ -64,6 +64,8 @@ export interface FeltCanvasProps {
   cards: CardTable;
   /** `useLinkHold`'s grey: drawn here on iOS only, where the view filter is not. */
   grey?: SharedValue<number>;
+  /** The rig's `ends`, which `Ends` writes as its `side`; a canvas without one keeps its own. */
+  side?: SharedValue<number>;
   /** The settled felt's second end, laid over this canvas (web only: `feltEndB.tsx`, reached only through `skiaCanvases.ts`, so no native import names it). */
   Ends?: ComponentType<EndsProps>;
 }
@@ -492,7 +494,7 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, Ends }: FeltCanvasProps) {
+export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, side: rigSide, Ends }: FeltCanvasProps) {
   const greyLayer = useGreyLayer(grey);
   const canvas = useCanvasRef();
   const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
@@ -557,7 +559,8 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey, Ends }: 
 
   const content = useSharedValue(0);
   const host = useRef<ComponentRef<typeof View>>(null);
-  const side = useSharedValue(0);
+  const ownSide = useSharedValue(0);
+  const side = rigSide ?? ownSide;
   const held = useSharedValue<Shown>(NOT_SHOWN);
   const view = useDerivedValue(() => {
     const next = nextShown(held.value, lamp.value, side.value);

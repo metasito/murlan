@@ -5,7 +5,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { speedOf } from "../../lib/swayTable.ts";
+import { speedOf, swept } from "../../lib/swayTable.ts";
 import type { FlyDirection } from "../seatLayout.ts";
 
 export const DESIGN = { width: 874, height: 402 } as const;
@@ -99,6 +99,8 @@ export interface Lamp {
   freeze: number;
   /** Seconds the rig has run: the sway's period drifts with it. */
   t: number;
+  /** `performance.now()` when the rig stopped stepping this lamp, NaN while it steps: `lampNow` is the lamp since. */
+  heldAt: number;
   /** What a frame draws: the light point, swayed, and its level and flare. */
   lx: number;
   ly: number;
@@ -126,6 +128,7 @@ export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
     holds: { lost: RELEASED, breath: level, link: RELEASED },
     freeze: 0,
     t: 0,
+    heldAt: NaN,
     lx: x,
     ly: y - LIGHT_ABOVE,
     level,
@@ -190,6 +193,37 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
   s.ly = lightY(s.y);
   s.f = reduced ? 0 : s.flare;
   s.flare *= Math.exp(-dt * FLARE_DECAY);
+}
+
+/** Carries a lamp the rig stopped stepping on to `now` on the integral of its motion, and steps it again; a stepping lamp is left as it is. */
+export function resumeLamp(s: Lamp, now?: number): void {
+  "worklet";
+  if (Number.isNaN(s.heldAt)) return;
+  const dt = Math.max(0, ((now ?? performance.now()) - s.heldAt) / 1000);
+  s.heldAt = NaN;
+  const t = s.t + dt;
+  s.ph += (1 - s.freeze) * swept(s.t, t);
+  s.t = t;
+  const e = 1 - Math.exp(-dt * GLIDE);
+  s.x += (s.tx - s.x) * e;
+  s.y += (s.ty - s.y) * e;
+  s.r += (s.tr - s.r) * e;
+  s.lvl += (s.lvlT - s.lvl) * (1 - Math.exp(-dt * s.lvlRate));
+  s.kick *= Math.exp(-dt * KICK_DECAY);
+  s.flare *= Math.exp(-dt * FLARE_DECAY);
+  s.level = clamp01(s.lvl);
+  s.lx = lightX(s.x, Math.sin(s.ph) * (SWAY + SWAY_KICKED * s.kick));
+  s.ly = lightY(s.y);
+  s.f = s.flare;
+}
+
+/** The lamp as it is at `now`: the rig's own while it steps, a copy carried on from where it was held otherwise. */
+export function lampNow(s: Lamp, now?: number): Lamp {
+  "worklet";
+  if (Number.isNaN(s.heldAt)) return s;
+  const at = { ...s, holds: { ...s.holds }, drawn: { ...s.drawn } };
+  resumeLamp(at, now);
+  return at;
 }
 
 const SETTLED = 1e-4;
