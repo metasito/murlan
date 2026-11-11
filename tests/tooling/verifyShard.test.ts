@@ -54,10 +54,11 @@ describe("the split evens wall clock, not seconds", () => {
 
 describe("a shard runs npm test's own command", () => {
   test("the glob is swapped for the shard's files and nothing else changes", () => {
-    const command = commandFor(script, ["tests/a.test.ts", "tests/b.test.ts"]);
-    assert.equal(command, script.replace(TEST_GLOB, "tests/a.test.ts tests/b.test.ts"));
-    assert.notEqual(command, script);
-    assert.throws(() => commandFor(script.replace(TEST_GLOB, '"tests/**/*.spec.ts"'), ["tests/a.test.ts"]), /no longer names/);
+    const files = ["a", "b"];
+    const words = script.split(/\s+/);
+    assert.deepEqual(commandFor(script, files), words.flatMap((w) => (w === TEST_GLOB ? files : [w])));
+    assert.throws(() => commandFor(script.replace(TEST_GLOB, '"tests/**/*.spec.ts"'), files), /no longer names/);
+    assert.throws(() => commandFor(`${script} && echo`, files), /without a shell/);
     assert.throws(() => commandFor(script, []), /no files/);
   });
 

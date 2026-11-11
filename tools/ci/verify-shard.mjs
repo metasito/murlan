@@ -78,14 +78,17 @@ export const timingsOf = (runs) =>
   medianTimings(runs.map((files) => Object.assign({}, ...files.filter((f) => existsSync(f)).map((f) => JSON.parse(readFileSync(f, "utf8"))))));
 
 /**
- * `npm test`'s own command with the glob swapped for `files`.
+ * `npm test`'s own command as an argv, its glob swapped for `files`.
  * @param {string} script
  * @param {string[]} files
  */
 export function commandFor(script, files) {
-  if (!script.includes(TEST_GLOB)) throw new Error(`package.json's test script no longer names ${TEST_GLOB}`);
+  const words = script.trim().split(/\s+/);
+  if (!words.includes(TEST_GLOB)) throw new Error(`package.json's test script no longer names ${TEST_GLOB}`);
+  const odd = words.filter((w) => w !== TEST_GLOB && !/^[\w./=:-]+$/.test(w));
+  if (odd.length) throw new Error(`package.json's test script no longer runs without a shell: ${odd.join(" ")}`);
   if (!files.length) throw new Error("a shard with no files would run the runner's default set");
-  return script.replace(TEST_GLOB, files.join(" "));
+  return words.flatMap((w) => (w === TEST_GLOB ? files : [w]));
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
@@ -103,7 +106,8 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     const files = shards[Number(index) - 1];
     if (!files) throw new Error(`shard ${index} of ${total} does not exist`);
     process.stdout.write(`Shard ${index}/${total}: ${files.length} files\n`);
-    process.exitCode = spawnSync(commandFor(script, files), { shell: true, stdio: "inherit" }).status ?? 1;
+    const [bin, ...argv] = commandFor(script, files);
+    process.exitCode = spawnSync(bin === "node" ? process.execPath : bin, argv, { stdio: "inherit" }).status ?? 1;
   } else {
     throw new Error("usage: verify-shard.mjs plan <run> ... | run <index> <total> [timings.json]");
   }
