@@ -26,13 +26,15 @@ const CYCLES = 8;
 const WAKE_FRAMES = 2;
 
 const END = '[data-testid="felt-end-b"]';
+const LAMP = "clock: f.lamp.clock, rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000, lx: f.lamp.x, ph: f.lamp.ph";
+const READ_RIG = `(() => { const f = window.murlanTrace.frames.at(-1); return { ${LAMP} }; })()`;
 const READ = `(() => {
   const canvas = document.querySelector('${END}');
   const f = window.murlanTrace.frames.at(-1);
   if (!canvas || canvas.style.visibility !== "visible" || !f) return null;
   const layer = canvas.parentElement;
   const timing = layer.getAnimations()[0]?.effect?.getComputedTiming();
-  return { clock: f.lamp.clock, rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000, t0: Number(canvas.dataset.trackT), at: timing ? (timing.progress * timing.duration) / 1000 : null, lx: f.lamp.x, ph: f.lamp.ph, o:Number(getComputedStyle(layer).opacity), playing: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
+  return { ${LAMP}, t0: Number(canvas.dataset.trackT), at: timing ? (timing.progress * timing.duration) / 1000 : null, o: Number(getComputedStyle(layer).opacity), playing: layer.getAnimations().filter((a) => a.playState === "running" || a.playState === "paused").length };
 })()`;
 
 interface Sample {
@@ -53,6 +55,8 @@ interface Sample {
   o: number;
   playing: number;
 }
+
+type Rig = Pick<Sample, "clock" | "rig" | "held" | "ends" | "rested" | "wall" | "lx" | "ph">;
 
 async function restedTable(browser: Browser, baseURL: string): Promise<{ page: Page; context: BrowserContext; shown: Sample }> {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, locale: "it-IT", baseURL });
@@ -118,7 +122,7 @@ function centred(samples: Pick<Sample, "lx" | "ph">[]): { centres: number[]; cen
 }
 
 /**
- * How far, -1 to 1, the rig's sway may lie off the table baked at `samples[0]`, at each sample, one rig step apart. Over a run
+ * How far, -1 to 1, the rig's sway may lie off the table baked at `samples[0]`, at each frame, its steps counted by its clock. Over a run
  * of steps the rig adds `dt * speedOf(t)` at each step's end, which runs ahead of the integral `bakeSway` carries by `dt / 2`
  * times the change of speed over the run, to within a trapezoid's `dt^3 / 12` of its bend a step, and a step cut short by a
  * wake by `dt^2 / 2` of its slope; a held rig is carried on that integral, so adds nothing. A track, linear between stops, is off
@@ -134,15 +138,26 @@ function swayBounds(t0: number, samples: Pick<Sample, "clock" | "held">[]): numb
   }
   const between = (TRACK_STEP ** 2 / 8) * (top ** 2 + slope);
   const dt = STEP_MS / 1000;
-  const run = (from: number, to: number, steps: number) => Math.abs((dt / 2) * (speedOf(to) - speedOf(from))) + ((steps * dt ** 3) / 12) * bend;
-  let [closed, from, steps, last] = [0, t0, 0, t0];
+  const run = (a: number, b: number, n: number) => Math.abs((dt / 2) * (speedOf(b) - speedOf(a))) + ((n * dt ** 3) / 12) * bend;
+  let [closed, start, steps] = [0, t0, 0];
   return samples.map((s, k) => {
-    if (k > 0 && !s.held) {
-      if (samples[k - 1]!.held) [closed, from, steps] = [closed + (dt ** 2 / 2) * slope, samples[k - 1]!.clock, 0];
-      [steps, last] = [steps + 1, s.clock];
-    } else if (k > 0 && steps > 0) [closed, steps] = [closed + run(from, last, steps), 0];
-    return closed + (steps > 0 ? run(from, s.clock, steps) : 0) + between;
+    const prev = samples[k - 1];
+    if (prev && !s.held) {
+      if (prev.held) [closed, start, steps] = [closed + (dt ** 2 / 2) * slope, prev.clock, 0];
+      steps += Math.round((s.clock - prev.clock) / dt);
+    } else if (prev && steps > 0) [closed, steps] = [closed + run(start, prev.clock, steps), 0];
+    return closed + (steps > 0 ? run(start, s.clock, steps) : 0) + between;
   });
+}
+
+/** The drawn lamp against the table baked at `from`, at the lamp's own clock, about its centre: the worst sample's distance, its allowance and their difference. */
+function offTable(from: Rig, samples: Rig[]): { centre: number; moved: number; off: number; allowed: number; excess: number } {
+  const track = bakeSway({ ph: from.ph, t: from.clock }, TRACK_SECONDS);
+  const { centres, centre, moved } = centred(samples);
+  const allowed = swayBounds(from.clock, samples).map((b, k) => SWAY_PT * b + Math.abs(centres[k]! - centre));
+  const excess = samples.map((s, k) => Math.abs(s.lx - centre - SWAY_PT * trackAt(track, s.clock - from.clock)) - allowed[k]!);
+  const worst = excess.indexOf(Math.max(...excess));
+  return { centre, moved, off: excess[worst]! + allowed[worst]!, allowed: allowed[worst]!, excess: excess[worst]! };
 }
 
 test("the end-B layer's opacity follows the lamp's light to within half a point", async ({ browser, baseURL }) => {
@@ -167,18 +182,14 @@ test("the end-B layer's opacity follows the lamp's light to within half a point"
   expect(Math.max(...steady.map((s) => Math.abs(s.clock - clock(s)))) * 1000, "milliseconds the drawn lamp's clock is off the page's").toBeLessThan(1e-3);
 
   const held = samples.filter((s) => s.held).length;
-  const { centres, centre, moved } = centred(samples);
-  const rig = samples.map((s) => Math.abs(s.lx - centre - SWAY_PT * sway(s)));
-  const allowed = swayBounds(shown.clock, samples).map((b, k) => SWAY_PT * b + Math.abs(centres[k]! - centre));
-  const excess = rig.map((r, k) => r - allowed[k]!);
-  const worst = excess.indexOf(Math.max(...excess));
+  const { centre, moved, off, allowed, excess } = offTable(shown, samples);
   const light = Math.max(...steady.map((s) => SWAY_PT * Math.abs(swayOfOpacity(s.o) - sway(s))));
   const toRig = Math.max(...steady.map((s) => Math.abs(s.lx - centre - SWAY_PT * swayOfOpacity(s.o))));
   console.log(
-    `over ${WINDOW} frames the rig held the lamp ${held} and stepped it ${WINDOW - held}; the drawn lamp's centre moves ${moved.toExponential(1)} pt, under ${REST_PT} pt, and the lamp is ${rig[worst]!.toFixed(3)} pt off the keyframe table where ${allowed[worst]!.toFixed(3)} pt is allowed; after the frame it shows, the end-B layer's light is at most ${light.toFixed(3)} pt off the table and ${toRig.toFixed(3)} pt off the drawn lamp's`,
+    `over ${WINDOW} frames the rig held the lamp ${held} and stepped it ${WINDOW - held}; the drawn lamp's centre moves ${moved.toExponential(1)} pt, under ${REST_PT} pt, and the lamp is ${off.toFixed(3)} pt off the keyframe table where ${allowed.toFixed(3)} pt is allowed; after the frame it shows, the end-B layer's light is at most ${light.toFixed(3)} pt off the table and ${toRig.toFixed(3)} pt off the drawn lamp's`,
   );
   expect(moved, "points the rig's centre moves while it only sways: more than a rested lamp's, so a glide or kick is still running or its swing is not SWAY_PT").toBeLessThan(REST_PT);
-  expect(excess[worst]!, "points the rig's lamp is past the keyframe table's stepping error and its centre's motion").toBeLessThan(0);
+  expect(excess, "points the rig's lamp is past the keyframe table's stepping error and its centre's motion").toBeLessThan(0);
   expect(light, "points the end-B layer's light is off the keyframe table's at the page's clock").toBeLessThan(HANDOFF_PT);
   expect(toRig, "points the end-B layer's light is off the drawn lamp's").toBeLessThan(HANDOFF_PT);
   await context.close();
@@ -192,8 +203,6 @@ test("a held rig woken goes on from the page's clock, not from where it stopped"
   expect(stuck(shown, rested), "frames the rig neither stepped with the page's clock nor held the lamp").toBe(0);
   // Any write wakes the rig; reduced motion is one a viewer can make, and the end-B layer leaves with it.
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const READ_RIG = `(() => { const f = window.murlanTrace.frames.at(-1); return { rig: f.lamp.rig, held: f.lamp.held, wall: performance.now() / 1000, lx: f.lamp.x }; })()`;
-  type Rig = Pick<Sample, "rig" | "held" | "wall" | "lx">;
   let woken: Rig | null = null;
   for (let i = 0; i < 30 && !woken; i++) {
     const s = await stepThen<Rig>(page, STEP_MS, READ_RIG);
@@ -237,8 +246,6 @@ test("a held rig whose end leaves steps on, though nothing moved the lamp", asyn
   expect(held, `the rig never held the lamp in ${WINDOW} frames of an end shown`).toBe(true);
   // New felt content takes the end down and moves no lamp: only the end's leaving can wake the rig.
   await page.evaluate(() => (window as unknown as { murlanCardGlow(on: boolean): void }).murlanCardGlow(false));
-  const READ_RIG = `(() => { const f = window.murlanTrace.frames.at(-1); return { rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000 }; })()`;
-  type Rig = Pick<Sample, "rig" | "held" | "ends" | "rested" | "wall">;
   const after: Rig[] = [];
   for (let i = 0; i < STALL_FRAMES; i++) after.push(await stepThen<Rig>(page, STEP_MS, READ_RIG));
   expect(after.filter((s) => s.ends === 0).length, "frames the felt showed no end after its content changed").toBeGreaterThan(0);
@@ -252,8 +259,6 @@ test("a held rig whose end leaves steps on, though nothing moved the lamp", asyn
 test("a rig held and woken many times keeps to the page's clock", async ({ browser, baseURL }) => {
   test.setTimeout(5 * 60_000);
   const { page, context, shown } = await restedTable(browser, baseURL!);
-  const READ_RIG = `(() => { const f = window.murlanTrace.frames.at(-1); return { clock: f.lamp.clock, rig: f.lamp.rig, held: f.lamp.held, ends: f.lamp.ends, rested: f.lamp.rested, wall: performance.now() / 1000, lx: f.lamp.x, ph: f.lamp.ph }; })()`;
-  type Rig = Pick<Sample, "clock" | "rig" | "held" | "ends" | "rested" | "wall" | "lx" | "ph">;
   const samples: Rig[] = [shown];
   const next = async () => {
     samples.push(await stepThen<Rig>(page, STEP_MS, READ_RIG));
@@ -274,17 +279,16 @@ test("a rig held and woken many times keeps to the page's clock", async ({ brows
   expect(Math.max(...offs.map(Math.abs)) / STEP_MS, "frames a stepping rig's clock is off the page's after holds and wakes").toBeLessThan(0.5);
 
   const clock = clockFrom(shown);
-  const timed = samples.filter((s) => Math.abs(s.clock - clock(s)) * 1000 < 1e-3 && s.clock - shown.clock < TRACK_SECONDS);
-  const stepped = timed.filter((s) => !s.held).length;
-  const sway = tableFrom(shown);
-  const { centres, centre, moved } = centred(timed);
-  const allowed = swayBounds(shown.clock, timed).map((b, k) => SWAY_PT * b + Math.abs(centres[k]! - centre));
-  const excess = timed.map((s, k) => Math.abs(s.lx - centre - SWAY_PT * sway(s)) - allowed[k]!);
-  const worst = excess.indexOf(Math.max(...excess));
-  console.log(`of ${samples.length} frames ${timed.length} are on the page's clock and the rig stepped the lamp on ${stepped}; its centre moves ${moved.toExponential(1)} pt, and the lamp is ${(excess[worst]! + allowed[worst]!).toFixed(3)} pt off the keyframe table where ${allowed[worst]!.toFixed(3)} pt is allowed`);
-  expect(timed.length, "frames on the page's clock").toBeGreaterThan(samples.length - 2 * CYCLES);
+  const wakes = samples.flatMap((s, k) => (k > 0 && samples[k - 1]!.held && !s.held ? [k] : []));
+  const late = samples.flatMap((s, k) => (Math.abs(s.clock - clock(s)) * 1000 > 1e-3 ? [k] : []));
+  const stepped = samples.filter((s) => !s.held).length;
+  const { moved, off, allowed, excess } = offTable(shown, samples);
+  console.log(`over ${samples.length} frames the rig stepped the lamp on ${stepped}, woke ${wakes.length} times and drew ${late.length} frames off the page's clock; its centre moves ${moved.toExponential(1)} pt, and the lamp is ${off.toFixed(3)} pt off the keyframe table at its own clock where ${allowed.toFixed(3)} pt is allowed`);
+  expect(samples.at(-1)!.clock - shown.clock, "seconds the frames ran past the table baked when the layer showed").toBeLessThan(TRACK_SECONDS);
+  expect(late.filter((k) => !wakes.includes(k) && !wakes.includes(k - 1)), "frames drawn off the page's clock but neither a wake nor the frame after it").toEqual([]);
+  expect(late.length, "frames drawn off the page's clock: more than one a wake").toBeLessThanOrEqual(CYCLES);
   expect(stepped, "frames the rig stepped the lamp between its holds").toBeGreaterThan(CYCLES * 10);
   expect(moved, "points the rig's centre moves while it only sways").toBeLessThan(REST_PT);
-  expect(excess[worst]!, "points the rig's lamp, stepped and held in turn, is past the keyframe table's stepping error and its centre's motion").toBeLessThan(0);
+  expect(excess, "points the rig's lamp, stepped and held in turn, is past the keyframe table's stepping error and its centre's motion").toBeLessThan(0);
   await context.close();
 });
