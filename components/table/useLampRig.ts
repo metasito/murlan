@@ -56,6 +56,7 @@ function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight
     if (tracks) {
       const rested = isRested(s);
       if (rested === tracks.live()) tracks.update(rested);
+      tracks.pose(s);
     }
     const level = nextShadeLevel(shadeLevel.value, s);
     if (level !== null) shadeLevel.value = level;
@@ -94,10 +95,11 @@ export function useLampRig({
   const shadeLevel = useSharedValue(resting.level);
   const [px, py, reach] = pool;
   const rest = useSharedValue<GlossLight>(restLight(resting));
+  const fanLight = useSharedValue<GlossLight>(glossLightOf(resting));
   const ends = useSharedValue(0);
   const [hold] = useState(() => (Platform.OS === "web" ? createLampHold(lamp, reduced) : undefined));
   const [reader] = useState(() => hold ?? steppedLamp(lamp));
-  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(reader, rest, ends, resting) : undefined));
+  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(reader, rest, fanLight, ends, resting) : undefined));
 
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.

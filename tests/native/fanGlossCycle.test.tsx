@@ -63,7 +63,7 @@ describe('the fan\'s gloss against the rig', () => {
     css.playing = 0;
     css.steered = [];
     const lamp = rested();
-    const tracks = createGlossTracks(steppedLamp(lamp), light, makeMutable(0), lamp.get());
+    const tracks = createGlossTracks(steppedLamp(lamp), light, makeMutable(light.value), makeMutable(0), lamp.get());
     await render(<FanGloss tracks={tracks} {...props} onCover={() => {}} />);
     const track = endTrack(lamp.get().ph, lamp.get().t);
     await act(async () => void jest.advanceTimersByTime(100));
@@ -85,7 +85,7 @@ describe('the fan\'s gloss against the rig', () => {
   it('bakes anew before the track wraps, and at the settle', async () => {
     css.playing = 0;
     const lamp = rested();
-    const tracks = createGlossTracks(steppedLamp(lamp), light, makeMutable(0), lamp.get());
+    const tracks = createGlossTracks(steppedLamp(lamp), light, makeMutable(light.value), makeMutable(0), lamp.get());
     await render(<FanGloss tracks={tracks} {...props} onCover={() => {}} />);
     await act(async () => void jest.advanceTimersByTime(100));
     const before = css.started;
@@ -99,7 +99,7 @@ describe('the fan\'s gloss against the rig', () => {
   it('gives up a track that never starts, and the backs draw their own, rather than rebaking at every check', async () => {
     css.none = true;
     const lamp = rested();
-    const tracks = createGlossTracks(steppedLamp(lamp), light, makeMutable(0), lamp.get());
+    const tracks = createGlossTracks(steppedLamp(lamp), light, makeMutable(light.value), makeMutable(0), lamp.get());
     const covered = jest.fn();
     await render(<FanGloss tracks={tracks} {...props} onCover={covered} />);
     await act(async () => void jest.advanceTimersByTime(1500));
@@ -113,7 +113,7 @@ describe('the fan\'s gloss against the rig', () => {
 
   it('stays drawn through a glide, transparent, and is covered only while the lamp rests', async () => {
     const lamp = rested();
-    const tracks = createGlossTracks(steppedLamp(lamp), light, makeMutable(0), lamp.get());
+    const tracks = createGlossTracks(steppedLamp(lamp), light, makeMutable(light.value), makeMutable(0), lamp.get());
     const covered = jest.fn();
     await render(<FanGloss tracks={tracks} {...props} onCover={covered} />);
     expect(covered).toHaveBeenLastCalledWith(true);
