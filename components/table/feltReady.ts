@@ -1,4 +1,4 @@
-import { createContext, useCallback, useLayoutEffect, useState, useSyncExternalStore, type ComponentRef, type RefObject } from "react";
+import { createContext, useCallback, useLayoutEffect, useState, useSyncExternalStore, type ComponentRef } from "react";
 import { Platform, type View } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
@@ -36,16 +36,17 @@ export interface HandShadeProps {
 export type CardCast = "felt" | "table";
 export const CardCastContext = createContext<CardCast | null>(null);
 
-/** Sets the cast on `root` itself, so a new offset restyles one view and re-renders no card. */
-export function useCardCast(ready: boolean, { x, y }: Point, root: RefObject<ComponentRef<typeof View> | null>): CardCast {
+/** The cast, and the ref for the table's root: the offset is set on that one view, so a new one re-renders no card. */
+export function useCardCast(ready: boolean, { x, y }: Point): [CardCast, (root: ComponentRef<typeof View> | null) => void] {
   const cast = Platform.OS !== "web" || ready ? "felt" : "table";
+  const [root, setRoot] = useState<HTMLElement | null>(null);
+  const attach = useCallback((node: ComponentRef<typeof View> | null) => setRoot(node as unknown as HTMLElement | null), []);
   useLayoutEffect(() => {
-    const style = (root.current as unknown as HTMLElement | null)?.style;
-    if (cast !== "table" || !style) return;
-    style.setProperty(TABLE_CAST.x, `${x}px`);
-    style.setProperty(TABLE_CAST.y, `${y}px`);
+    if (cast !== "table" || !root?.style) return;
+    root.style.setProperty(TABLE_CAST.x, `${x}px`);
+    root.style.setProperty(TABLE_CAST.y, `${y}px`);
   }, [cast, x, y, root]);
-  return cast;
+  return [cast, attach];
 }
 
 let shadowsOn = true;

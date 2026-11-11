@@ -9,7 +9,6 @@ import { countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts 
 import { OFFLINE_SAVE_KEY } from "../../lib/storageKeys";
 
 const HAND = 8;
-const BAKE_MS = 1_500;
 
 async function seatedTable(page: Page, baseURL: string) {
   await resumeSaved(page, baseURL, offlineSave({ seats: 4, hand: HAND, turn: 1 }), { holdTurn: true });
@@ -17,12 +16,48 @@ async function seatedTable(page: Page, baseURL: string) {
   await expect(page.locator('[data-testid="felt-fallback"]')).toHaveCount(1);
 }
 
-/** Plays the seat to act, then the seat the save says acts next. */
-async function act(page: Page, hook: "murlanBotMove" | "murlanPass"): Promise<number> {
+/** Plays the seat on move, and returns once the save has `next` on move. */
+async function act(page: Page, hook: "murlanBotMove" | "murlanPass", next: number) {
   await page.evaluate((hook) => (globalThis as unknown as Record<string, () => void>)[hook](), hook);
-  // fixed wait on purpose: neither the lamp's new aim nor its bake leaves anything on the page to wait for
-  await page.waitForTimeout(BAKE_MS);
-  return page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).gameState.currentTurnIndex, OFFLINE_SAVE_KEY);
+  await expect
+    .poll(() => page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).gameState.currentTurnIndex, OFFLINE_SAVE_KEY))
+    .toBe(next);
+}
+
+interface Layer {
+  x: number;
+  y: number;
+}
+
+/** The cast `game-root` holds, and each hand card's inline and computed shadow, its computed layers parsed. */
+function readTable(page: Page) {
+  return page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>('[data-testid="game-root"]')!;
+    const rootStyle = getComputedStyle(root);
+    const cast = { x: parseFloat(rootStyle.getPropertyValue("--card-cast-x")), y: parseFloat(rootStyle.getPropertyValue("--card-cast-y")) };
+    const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="hand-card-"] [data-testid="card-box"]')].map((box) => {
+      const computed = getComputedStyle(box).boxShadow;
+      const layers = computed === "none" ? [] : computed.split(/,(?![^(]*\))/).map((layer) => {
+        const [x, y] = layer.replace(/rgba?\([^)]*\)/, "").trim().split(/\s+/).map(parseFloat);
+        return { x, y };
+      });
+      return { inline: box.style.boxShadow, computed, layers };
+    });
+    return { cast, cards };
+  });
+}
+
+function expectCastAt(cards: { computed: string; layers: Layer[] }[], cast: Layer) {
+  expect(cards.length).toBeGreaterThanOrEqual(HAND);
+  for (const { computed, layers } of cards) {
+    expect(computed).not.toBe("none");
+    expect(layers).toHaveLength(2);
+    const [contact, fall] = layers;
+    expect(contact.x).toBe(0);
+    expect(contact.y).toBeGreaterThan(0);
+    expect(fall.x).toBeCloseTo(cast.x, 2);
+    expect(fall.y).toBeCloseTo(cast.y, 2);
+  }
 }
 
 test("a lamp aim restyles no card view, and the cast still follows it", async ({ page, baseURL }) => {
@@ -30,38 +65,51 @@ test("a lamp aim restyles no card view, and the cast still follows it", async ({
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ width: 874, height: 402 });
   await seatedTable(page, baseURL!);
-  const shadows = () =>
-    page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>('[data-testid^="hand-card-"] [data-testid="card-box"]')].map((box) => ({
-        inline: box.style.boxShadow,
-        computed: getComputedStyle(box).boxShadow,
-      }))
-    );
-  const before = await shadows();
-  expect(before.length).toBeGreaterThanOrEqual(HAND);
-  expect(await act(page, "murlanBotMove")).toBe(0);
-  const after = await shadows();
-  expect(after.map((s) => s.inline)).toEqual(before.map((s) => s.inline));
-  expect(after.map((s) => s.computed)).not.toEqual(before.map((s) => s.computed));
+  const before = await readTable(page);
+  expect(Number.isFinite(before.cast.x) && Number.isFinite(before.cast.y)).toBe(true);
+  expectCastAt(before.cards, before.cast);
+  await act(page, "murlanBotMove", 0);
+  await expect.poll(async () => (await readTable(page)).cast).not.toEqual(before.cast);
+  const after = await readTable(page);
+  expect(after.cards.map((c) => c.inline)).toEqual(before.cards.map((c) => c.inline));
+  expectCastAt(after.cards, after.cast);
 });
 
 test("a large window's felt bakes once per place the lamp aims", async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2, reducedMotion: "no-preference" });
-  const page = await context.newPage();
-  await countRenders(page);
-  await seatedTable(page, baseURL!);
-  await startRenderCounts(page);
-  const bakes = async () => (await page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS)).draws.offscreen ?? 0;
-  const firstVisits: number[] = [];
-  for (const [hook, next] of [["murlanBotMove", 0], ["murlanPass", 3], ["murlanBotMove", 2]] as const) {
-    expect(await act(page, hook)).toBe(next);
-    firstVisits.push(await bakes());
+  try {
+    const page = await context.newPage();
+    await countRenders(page);
+    await seatedTable(page, baseURL!);
+    await startRenderCounts(page);
+    /** Cloth drawn off the page since the last read, once the felt has drawn its new aim and stopped. */
+    const bakes = async () => {
+      let offscreen = 0;
+      let drawn = false;
+      await expect
+        .poll(async () => {
+          const { draws } = await page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
+          const felt = draws["felt-fallback 2d"] ?? 0;
+          offscreen += draws.offscreen ?? 0;
+          const quiet = drawn && felt === 0 && !draws.offscreen;
+          drawn ||= felt > 0;
+          return quiet;
+        }, { intervals: [250] })
+        .toBe(true);
+      return offscreen;
+    };
+    const firstVisits: number[] = [];
+    for (const [hook, next] of [["murlanBotMove", 0], ["murlanPass", 3], ["murlanBotMove", 2]] as const) {
+      await act(page, hook, next);
+      firstVisits.push(await bakes());
+    }
+    await act(page, "murlanBotMove", 1);
+    const back = await bakes();
+    console.log(`cloth draws: seats 0, 3, 2 ${firstVisits.join(", ")}; back at seat 1 ${back}`);
+    expect(firstVisits.every((n) => n > 0)).toBe(true);
+    expect(back).toBe(0);
+  } finally {
+    await context.close();
   }
-  expect(await act(page, "murlanBotMove")).toBe(1);
-  const back = await bakes();
-  console.log(`cloth draws: seats 0, 3, 2 ${firstVisits.join(", ")}; back at seat 1 ${back}`);
-  expect(firstVisits.every((n) => n > 0)).toBe(true);
-  expect(back).toBe(0);
-  await context.close();
 });

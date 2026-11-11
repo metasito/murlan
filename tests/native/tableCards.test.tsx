@@ -3,14 +3,16 @@
 // frames at rest, mid-throw, mid-deal and mid-exchange (#1259 plan 4, tasks 11 and 12).
 import { describe, it, expect, jest, beforeAll, beforeEach, afterEach, afterAll } from '@jest/globals';
 import React from 'react';
-import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
+import { Platform, StyleSheet, type StyleProp, type View, type ViewStyle } from 'react-native';
+import { act, render, renderHook, screen } from '@testing-library/react-native';
 import type { TestInstance } from 'test-renderer';
 import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { CardView } from '@/components/CardView';
 import { CARD_SCOPES, type CardRects } from '@/components/table/cardRects';
-import { CardCastContext } from '@/components/table/feltReady';
+import { restingCast } from '@/components/table/cardShadows';
+import { CardCastContext, useCardCast } from '@/components/table/feltReady';
+import type { Pool } from '@/components/table/lampRig';
 import { dealCards } from '@/lib/game/gameEngine';
 import { CardShadow, cardShadow, Colors, Shadow, TABLE_CAST, withAlpha } from '@/lib/theme';
 import { card } from '../support/game.ts';
@@ -156,8 +158,36 @@ describe('a card view off the felt', () => {
       </CardCastContext.Provider>
     );
     expect(StyleSheet.flatten(screen.getByTestId('card-box').props.style).boxShadow).toBe(cardShadow('face', 'table').boxShadow);
-    expect(cardShadow('face', 'table').boxShadow).toContain(`var(${TABLE_CAST.x}) var(${TABLE_CAST.y})`);
+    expect(cardShadow('face', 'table').boxShadow).toContain(`var(${TABLE_CAST.x}, 0px) var(${TABLE_CAST.y}, ${CardShadow.fall.drop}px)`);
     await baking.unmount();
+  });
+
+  it("sets restingCast's offset, in px, on the table's root while the web felt is still baking", async () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    try {
+      const felt = { sx: 1.2, sy: 0.9, s: 1.1 };
+      const pile = { x: 437, y: 180 };
+      const set = new Map<string, string>();
+      const root = { style: { setProperty: (name: string, value: string) => void set.set(name, value) } };
+      const view = await renderHook(({ ready, pool }: { ready: boolean; pool: Pool }) => useCardCast(ready, restingCast(pile, pool, felt)), {
+        initialProps: { ready: false, pool: [437, 120, 1] as Pool },
+      });
+      expect(view.result.current[0]).toBe('table');
+      await act(async () => view.result.current[1](root as unknown as React.ComponentRef<typeof View>));
+      const at = (pool: Pool) => {
+        const { x, y } = restingCast(pile, pool, felt);
+        return new Map([[TABLE_CAST.x, `${x}px`], [TABLE_CAST.y, `${y}px`]]);
+      };
+      expect(set).toEqual(at([437, 120, 1]));
+      await act(async () => view.rerender({ ready: false, pool: [120, 300, 1] }));
+      expect(set).toEqual(at([120, 300, 1]));
+      await act(async () => view.rerender({ ready: true, pool: [700, 300, 1] }));
+      expect(view.result.current[0]).toBe('felt');
+      expect(set).toEqual(at([120, 300, 1]));
+      await view.unmount();
+    } finally {
+      os.restore();
+    }
   });
 
   it("gives a card on the web fallback the contact and the tight cast, a lifted one a larger fall (#1966)", async () => {
@@ -174,7 +204,7 @@ describe('a card view off the felt', () => {
     };
     const rest = await shadowOf(false, `hand:${face.id}`);
     expect(rest).toBe(await shadowOf(false, `deal:${face.id}`));
-    expect(rest).toContain(`var(${TABLE_CAST.x}) var(${TABLE_CAST.y}) ${CardShadow.cast.blur}px ${withAlpha(Colors.shadow, CardShadow.cast.alpha)}`);
+    expect(rest).toContain(`var(${TABLE_CAST.x}, 0px) var(${TABLE_CAST.y}, ${CardShadow.fall.drop}px) ${CardShadow.cast.blur}px ${withAlpha(Colors.shadow, CardShadow.cast.alpha)}`);
     expect(rest).toContain(`0px ${CardShadow.contact.y}px ${CardShadow.contact.blur}px`);
     const lifted = await shadowOf(true, `hand:${face.id}`);
     expect(lifted).toContain(`0px ${CardShadow.lifted.y}px ${CardShadow.lifted.blur}px`);

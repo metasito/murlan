@@ -103,8 +103,10 @@ function grainLayer(width: number, height: number, ax: number, ay: number): HTML
 }
 
 const MAX_DPR = 2;
-/** 16 MB a copy, so five cached felts stay in memory; a larger table bakes at this many pixels and its canvas scales up. */
+/** A larger table bakes at this many pixels and its canvas scales up. */
 const MAX_BAKED_PIXELS = 4_000_000;
+/** About 68 MB of cached felts: every lamp target of a phone's table, and a large table's four seats, whose bakes round to a little over the cap. */
+const CACHED_PIXELS = 17_000_000;
 /** One bake per place the lamp aims; `satisfies` makes a new `LampTarget` a compile error here. */
 const LAMP_TARGETS = Object.keys({ top: 0, bottom: 0, left: 0, right: 0, centre: 0 } satisfies Record<LampTarget, 0>).length;
 
@@ -187,7 +189,14 @@ function bakeCached(out: HTMLCanvasElement, cache: Baked, stops: FeltStops, pool
   copy.width = out.width;
   copy.height = out.height;
   copy.getContext("2d")?.drawImage(out, 0, 0);
-  if (cache.size >= LAMP_TARGETS) cache.delete(cache.keys().next().value!);
+  const pixels = (cv: HTMLCanvasElement) => cv.width * cv.height;
+  let held = pixels(copy);
+  for (const cv of cache.values()) held += pixels(cv);
+  for (const [oldest, cv] of cache) {
+    if (cache.size < LAMP_TARGETS && held <= CACHED_PIXELS) break;
+    cache.delete(oldest);
+    held -= pixels(cv);
+  }
   cache.set(key, copy);
 }
 

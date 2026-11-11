@@ -764,8 +764,7 @@ export function GameTable({
     rig.tracks
   );
   const [feltReady, onFeltReady] = useFeltReady();
-  const tableRoot = useRef<React.ComponentRef<typeof View>>(null);
-  const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt), tableRoot);
+  const [cardCast, tableRoot] = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
   const { grey, greyStyle, edgeGreyStyle, darkenStyle, greyed: linkGreyed, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
 
