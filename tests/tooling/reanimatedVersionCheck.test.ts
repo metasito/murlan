@@ -15,8 +15,8 @@ const at = (filePath: string, dev: boolean) =>
 
 test("a release bundle gets the passing check, from any copy of Reanimated", () => {
   assert.deepEqual(at(CHECK, false), { type: "sourceFile", filePath: PASSES });
-  const nested = path.join(repoRoot, "node_modules", "some-lib", "node_modules", "react-native-reanimated", "scripts", "validate-worklets-version.js");
-  assert.deepEqual(at(nested, false), { type: "sourceFile", filePath: PASSES });
+  const another = path.join(repoRoot, "vendor", "react-native-reanimated", "scripts", "validate-worklets-version.js");
+  assert.deepEqual(at(another, false), { type: "sourceFile", filePath: PASSES });
 });
 
 test("a dev bundle keeps the real check, and nothing else is swapped", () => {
