@@ -11,15 +11,16 @@
 // `npm run test:e2e` costs nothing and gains no noise from it. Run it with
 // `npm run perf:web`, and see docs/WEB-PERF.md for what the numbers mean and
 // what to compare them against.
-import type { CDPSession, Locator, Page } from "@playwright/test";
+import { loadavg } from "node:os";
+import type { CDPSession, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { cards, offlineSave, openSeededGame, resumeSaved } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";
-import { driveGameToCompletion, legalGioca } from "./helpers/bot";
-import { cardLabel, handCounts, YOUR_TURN_PREFIX } from "./helpers/labels";
+import { driveGameToCompletion, labelSelector, legalGioca, tapAt, toggle } from "./helpers/bot";
+import { cardLabel, YOUR_TURN_PREFIX } from "./helpers/labels";
 import { HAND_CARDS, TABLE_STATE } from "./helpers/selectors";
-import { PAST_HOLD_MS, tapPoint } from "./helpers/press";
+import { PAST_HOLD_MS } from "./helpers/press";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import { COUNTED, countRenders, startRenderCounts, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import type { TraceFrame } from "../../lib/e2eTrace";
@@ -27,8 +28,6 @@ import { actingSeat, applyMove, dealCards, type GameState } from "../../lib/game
 import { offlineBotMove } from "../../lib/game/autoMove.ts";
 import { mulberry32, rng } from "../../lib/game/simulate.ts";
 import { FELT_K_CAP } from "../../components/table/feltShader.ts";
-import { DESIGN } from "../../components/table/lampRig.ts";
-
 const TABLE = '[data-testid="game-table"]';
 
 /** The Skia felt on this software rasteriser, which only an e2e build honours (`drawsOnGpu`, feltSkia.web.tsx). */
@@ -46,6 +45,8 @@ interface RenderReport {
   frameCallbacks: number;
   /** Which felt the trace saw draw through the window. */
   felts: TraceFrame["felt"][];
+  /** The k the Skia felt drew at through the window, as it reported it. */
+  feltKs: TraceFrame["feltK"][];
 }
 
 interface FrameReport extends Partial<RenderReport> {
@@ -172,10 +173,10 @@ async function startRecording(page: Page): Promise<{ stop(): Promise<FrameReport
 
 async function renderReport(page: Page, perS: (n: number | undefined) => number): Promise<RenderReport> {
   const counts = await page.evaluate<RenderCounts>(TAKE_RENDER_COUNTS);
-  const felts = await page.evaluate(() => {
+  const { felts, feltKs } = await page.evaluate(() => {
     const trace = (window as unknown as { murlanTrace: { frames: TraceFrame[]; stop(): void } }).murlanTrace;
     trace.stop();
-    return [...new Set(trace.frames.map((f) => f.felt))];
+    return { felts: [...new Set(trace.frames.map((f) => f.felt))], feltKs: [...new Set(trace.frames.map((f) => f.feltK))] };
   });
   return {
     feltFps: perS(counts.drewIn[COUNTED.felt]),
@@ -185,6 +186,7 @@ async function renderReport(page: Page, perS: (n: number | undefined) => number)
     loopsPerS: Object.fromEntries(Object.entries(counts.loops).map(([caller, n]) => [caller, perS(n)])),
     frameCallbacks: counts.frameCallbacks,
     felts,
+    feltKs,
   };
 }
 
@@ -215,12 +217,26 @@ function expectSkia(report: FrameReport, what: string): void {
 
 /**
  * One deal and one lead whose bot replies no draw of the bots' changes, so every run of the turn
- * case records the same game, dealt in as a new round is. Seeding `Math.random` cannot do it: on a
- * production build the particles draw from it every frame, so a bot's draw depends on the frame
- * rate being measured.
+ * cases records the same game. The save has no opening (no 3♠ gate, no start reason): the viewer
+ * leads at once, on a table that deals the hands in because nobody has played into it. Seeding
+ * `Math.random` cannot do it: on a production build the particles draw from it every frame, so a
+ * bot's draw depends on the frame rate being measured.
  */
 const TURN_SAVE = offlineSave({ seats: 4, fresh: true, holding: dealCards(4, 0, rng(12).source).hands.map((h) => h.map((c) => c.id)) });
 const TURN_LEAD = ["J_clubs", "J_diamonds"];
+
+/** The bots' replies to the seeded lead, failing unless eleven draws of theirs agree on them. */
+function seededReplies(): { moves: string[]; after: GameState } {
+  const led = applyMove(TURN_SAVE.gameState, 0, { kind: "play", cardIds: TURN_LEAD });
+  if (!led.ok) throw new Error(`the seeded lead is refused: ${led.code}`);
+  const draws = [() => 0, () => 0.99999, () => 0.5, ...Array.from({ length: 8 }, (_, i) => mulberry32(i + 1))];
+  const replies = draws.map((random) => botReplies(led.state, random));
+  expect(new Set(replies.map((r) => r.moves.join(" "))), "the bots' replies depend on their draws").toHaveProperty("size", 1);
+  const seeded = replies[0]!;
+  expect(seeded.moves.filter((m) => !m.endsWith(":pass")), `the bots only pass, so the turn throws nothing back: ${seeded.moves.join(" ")}`).not.toHaveLength(0);
+  expect(actingSeat(seeded.after), "the replies do not come back round to the viewer").toBe(0);
+  return seeded;
+}
 
 function botReplies(state: GameState, random: () => number): { moves: string[]; after: GameState } {
   const moves: string[] = [];
@@ -237,25 +253,38 @@ function botReplies(state: GameState, random: () => number): { moves: string[]; 
 /**
  * Pressed at a point rather than through `tap`: `tap` waits for two identical frames, and with motion
  * on, a selection keeps the hand and GIOCA moving for longer than its wait on SwiftShader's Skia. A
- * card is pressed near its left edge, the strip the fan leaves uncovered.
+ * card is pressed near its left edge, the strip the fan leaves uncovered. Returns once the played
+ * cards have left the hand.
  */
 async function playCards(page: Page, ids: string[]): Promise<void> {
-  const pressAt = async (target: Locator, fx: number, fy: number) => {
-    await target.waitFor({ state: "visible", timeout: 10_000 });
-    const box = (await target.boundingBox())!;
-    await tapPoint(page, box.x + box.width * fx, box.y + box.height * fy);
-  };
-  for (const card of cards(ids)) {
-    const pressed = page.locator(`${HAND_CARDS}[aria-label="${cardLabel(card)}"]`);
-    await pressAt(pressed, 0.1, 0.3);
-    await expect(pressed, `${cardLabel(card)} was not selected`).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+  const inHand = cards(ids).map((card) => page.locator(`${HAND_CARDS}${labelSelector(cardLabel(card))}`));
+  for (const [i, card] of inHand.entries()) {
+    expect(await toggle(page, card, { fx: 0.1, fy: 0.3 }), `${ids[i]} was not selected`).toBe(true);
   }
-  await pressAt(legalGioca(page), 0.5, 0.5);
+  await tapAt(page, legalGioca(page), { fx: 0.5, fy: 0.5 });
+  for (const [i, card] of inHand.entries()) await expect(card, `GIOCA did not play ${ids[i]}`).toHaveCount(0, { timeout: 10_000 });
 }
 
-async function tableHandCounts(page: Page): Promise<number[]> {
+/** Each seat's hand size as the table's state sentence names it, in seat order. */
+async function seatHandCounts(page: Page): Promise<(number | null)[]> {
   const desc = (await page.locator(TABLE).getAttribute(TABLE_STATE)) ?? "";
-  return handCounts(desc).sort((a, b) => a - b);
+  return TURN_SAVE.gameState.players.map((p, seat) => {
+    const count = desc.match(seat === 0 ? /Hai (\d+) cart/ : new RegExp(`${p.name} ha (\\d+) cart`))?.[1];
+    return count === undefined ? null : Number(count);
+  });
+}
+
+/** After the seeded turn: the viewer's turn again, every seat holding what the engine says it does. */
+async function expectSeededGame(page: Page, { moves, after }: { moves: string[]; after: GameState }): Promise<void> {
+  await waitForViewerTurn(page);
+  expect(await seatHandCounts(page), `the table played another game than ${moves.join(" ")}`).toEqual(
+    after.players.map((p) => p.hand.length)
+  );
+}
+
+/** One printed line of figures, with the load average it was taken at (rule 51). */
+function perfLine(name: string, figures: object): void {
+  console.log(`[web-perf] ${name} ${JSON.stringify({ ...figures, load: +loadavg()[0]!.toFixed(2) })}`);
 }
 
 test.describe("web frame performance", () => {
@@ -284,8 +313,8 @@ test.describe("web frame performance", () => {
     await skiaFelt(page);
     const idle = await record(page, 2_000);
 
-    console.log(`[web-perf] deal ${JSON.stringify(deal)}`);
-    console.log(`[web-perf] idle ${JSON.stringify(idle)}`);
+    perfLine("deal", deal);
+    perfLine("idle", idle);
     expectSkia(idle, "the settled table");
 
     // The only assertions are anti-vacuity ones. A threshold here would be the
@@ -360,7 +389,7 @@ test.describe("web frame performance", () => {
     await page.mouse.up();
     await page.waitForTimeout(500);
 
-    console.log(`[web-perf] drag ${JSON.stringify(drag)}`);
+    perfLine("drag", drag);
 
     // A number labelled `drag` that no drag produced is worse than no number:
     // every threshold below is satisfied by a table nobody touched.
@@ -375,79 +404,74 @@ test.describe("web frame performance", () => {
     expect(drag.domNodes, "the table never rendered").toBeGreaterThan(100);
   });
 
-  // The phone's CPU is the budget a desktop run hides: the same table that holds 60fps at 1x
-  // is a fraction of that at 4x, and the owner plays it on the phone.
-  test("records a settled table and a turn at phone speed", async ({ page, baseURL }) => {
-    test.setTimeout(3 * 60_000);
+  test.describe("on the seeded game", () => {
+    let seeded: { moves: string[]; after: GameState };
+    test.beforeAll(() => {
+      seeded = seededReplies();
+    });
 
-    const led = applyMove(TURN_SAVE.gameState, 0, { kind: "play", cardIds: TURN_LEAD });
-    if (!led.ok) throw new Error(`the seeded lead is refused: ${led.code}`);
-    const draws = [() => 0, () => 0.99999, () => 0.5, ...Array.from({ length: 8 }, (_, i) => mulberry32(i + 1))];
-    const replies = draws.map((random) => botReplies(led.state, random));
-    expect(new Set(replies.map((r) => r.moves.join(" "))), "the bots' replies depend on their draws").toHaveProperty("size", 1);
-    const { moves, after } = replies[0]!;
-    expect(moves.filter((m) => !m.endsWith(":pass")), `the bots only pass, so the turn throws nothing back: ${moves.join(" ")}`).not.toHaveLength(0);
-    expect(actingSeat(after), "the replies do not come back round to the viewer").toBe(0);
-
-    await page.setViewportSize(PHONE_VIEWPORT);
-    await throttleCpu(page, PHONE_CPU_RATE);
-    await resumeSaved(page, baseURL!, TURN_SAVE);
-    await waitForViewerTurn(page);
-    await skiaFelt(page);
-    const settled4x = await record(page, 4_000);
-
-    console.log(`[web-perf] idle-4x ${JSON.stringify(settled4x)}`);
-    expect(settled4x.frames, "no frames were observed on the throttled table").toBeGreaterThan(5);
-    expect(settled4x.domNodes, "the table never rendered").toBeGreaterThan(100);
-    expectSkia(settled4x, "the settled table");
-
-    // The viewer's lead: the throw and its landing, the lamp's glide and the bots' replies behind
-    // it. Selected at full speed: GIOCA's legal label is waited for, and a slow table outruns the wait.
-    await throttleCpu(page, 1);
-    await playCards(page, TURN_LEAD);
-    await throttleCpu(page, PHONE_CPU_RATE);
-    const turn4x = await record(page, 2_500);
-    console.log(`[web-perf] turn-4x ${JSON.stringify(turn4x)}`);
-    expect(turn4x.frames, "no frames were observed through the turn").toBeGreaterThan(5);
-    expectSkia(turn4x, "the turn");
-
-    await waitForViewerTurn(page);
-    expect(await tableHandCounts(page), `the table played another game than ${moves.join(" ")}`).toEqual(
-      after.players.map((p) => p.hand.length).sort((a, b) => a - b)
-    );
-  });
-
-  // The owner's 3x, where the felt's k = dpr · min(sx, sy) passes FELT_K_CAP and the weave's
-  // visibility is capped. SwiftShader rasterises it on the CPU: its figures compare runs of this
-  // case with each other, never with a phone's GPU.
-  test.describe("at the owner's pixel ratio", () => {
-    test.use({ deviceScaleFactor: 3 });
-
-    test("records the Skia felt past its cap", async ({ page, baseURL }) => {
-      test.skip(!SKIA, "the Skia felt draws only under PERF_SKIA; without it every case already runs at 3x");
+    // The phone's CPU is the budget a desktop run hides: the same table that holds 60fps at 1x
+    // is a fraction of that at 4x, and the owner plays it on the phone.
+    test("records a settled table and a turn at phone speed", async ({ page, baseURL }) => {
       test.setTimeout(3 * 60_000);
 
       await page.setViewportSize(PHONE_VIEWPORT);
+      await throttleCpu(page, PHONE_CPU_RATE);
       await resumeSaved(page, baseURL!, TURN_SAVE);
       await waitForViewerTurn(page);
       await skiaFelt(page);
-      const k = await page.getByTestId("table-felt").evaluate(
-        (felt, design) => window.devicePixelRatio * Math.min(felt.clientWidth / design.width, felt.clientHeight / design.height),
-        DESIGN
-      );
-      expect(k, "the felt's k does not reach its cap, so the cap is not what this records").toBeGreaterThan(FELT_K_CAP);
+      const settled4x = await record(page, 4_000);
 
-      const idle = await record(page, 4_000);
-      console.log(`[web-perf] idle-dpr3 ${JSON.stringify({ k: +k.toFixed(2), ...idle })}`);
-      expectSkia(idle, "the settled table at 3x");
-      expect(idle.frames, "no frames were observed on the table at 3x").toBeGreaterThan(5);
-      expect(idle.domNodes, "the table never rendered").toBeGreaterThan(100);
+      perfLine("idle-4x", settled4x);
+      expect(settled4x.frames, "no frames were observed on the throttled table").toBeGreaterThan(5);
+      expect(settled4x.domNodes, "the table never rendered").toBeGreaterThan(100);
+      expectSkia(settled4x, "the settled table");
 
+      // The viewer's lead: the throw and its landing, the lamp's glide and the bots' replies behind
+      // it. Selected at full speed: GIOCA's legal label is waited for, and a slow table outruns the wait.
+      await throttleCpu(page, 1);
       await playCards(page, TURN_LEAD);
-      const turn = await record(page, 2_500);
-      console.log(`[web-perf] turn-dpr3 ${JSON.stringify(turn)}`);
-      expectSkia(turn, "the turn at 3x");
-      expect(turn.feltFps, "the felt never drew through the turn, so nothing past its cap was measured").toBeGreaterThan(0);
+      await throttleCpu(page, PHONE_CPU_RATE);
+      const turn4x = await record(page, 2_500);
+      perfLine("turn-4x", turn4x);
+      expect(turn4x.frames, "no frames were observed through the turn").toBeGreaterThan(5);
+      expectSkia(turn4x, "the turn");
+
+      await expectSeededGame(page, seeded);
+    });
+
+    // The owner's 3x, where the felt's own k passes FELT_K_CAP and the weave's
+    // visibility is capped. SwiftShader rasterises it on the CPU: its figures compare runs of this
+    // case with each other, never with a phone's GPU.
+    test.describe("at the owner's pixel ratio", () => {
+      test.use({ deviceScaleFactor: 3 });
+
+      test("records the Skia felt past its cap", async ({ page, baseURL }) => {
+        test.skip(!SKIA, "the Skia felt draws only under PERF_SKIA; without it every case already runs at 3x");
+        test.setTimeout(3 * 60_000);
+
+        await page.setViewportSize(PHONE_VIEWPORT);
+        await resumeSaved(page, baseURL!, TURN_SAVE);
+        await waitForViewerTurn(page);
+        await skiaFelt(page);
+
+        const idle = await record(page, 4_000);
+        perfLine("idle-dpr3", idle);
+        const ks = idle.feltKs ?? [];
+        expect(ks.length, `the felt reported no single k through the window: ${ks.join(", ")}`).toBe(1);
+        expect(ks[0], "the felt's own k does not pass its cap, so the cap is not what this records").toBeGreaterThan(FELT_K_CAP);
+        expectSkia(idle, "the settled table at 3x");
+        expect(idle.frames, "no frames were observed on the table at 3x").toBeGreaterThan(5);
+        expect(idle.domNodes, "the table never rendered").toBeGreaterThan(100);
+
+        await playCards(page, TURN_LEAD);
+        const turn = await record(page, 2_500);
+        perfLine("turn-dpr3", turn);
+        expectSkia(turn, "the turn at 3x");
+        expect(turn.feltFps, "the felt never drew through the turn, so nothing past its cap was measured").toBeGreaterThan(0);
+
+        await expectSeededGame(page, seeded);
+      });
     });
   });
 
@@ -469,7 +493,7 @@ test.describe("web frame performance", () => {
     });
     const round = await recording.stop();
 
-    console.log(`[web-perf] round-4x ${JSON.stringify(round)}`);
+    perfLine("round-4x", round);
     expect(round.frames, "no frames were observed through the round").toBeGreaterThan(100);
   });
 
@@ -491,7 +515,7 @@ test.describe("web frame performance", () => {
       await table.page.waitForTimeout(2_000);
       await skiaFelt(table.page);
       const onlineIdle = await record(table.page, 2_000);
-      console.log(`[web-perf] online-idle ${JSON.stringify(onlineIdle)}`);
+      perfLine("online-idle", onlineIdle);
       expectSkia(onlineIdle, "the settled online table");
       expect(onlineIdle.frames, "no frames were observed on the online table").toBeGreaterThan(20);
       expect(onlineIdle.domNodes, "the table never rendered").toBeGreaterThan(100);
@@ -528,7 +552,7 @@ test.describe("web frame performance", () => {
       Object.entries(counts.loops).filter(([caller]) => caller.includes("plantedLoop")).reduce((n, [, count]) => n + count, 0);
 
     const atRest = await planted();
-    console.log(`[web-perf] loops-at-rest ${JSON.stringify({ loops: atRest.loops, frameCallbacks: atRest.frameCallbacks })}`);
+    perfLine("loops-at-rest", { loops: atRest.loops, frameCallbacks: atRest.frameCallbacks });
     expect(plantedLoops(atRest), "the loop is not planted yet").toBe(0);
 
     await page.evaluate(() => {
@@ -608,7 +632,7 @@ test.describe("web frame performance", () => {
       const fcp = performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? 0;
       return { fcp: +fcp.toFixed(0), lcp: +seen.lcp.toFixed(0), tbt: +seen.blocking.toFixed(0) };
     });
-    console.log(`[web-perf] throttled-load ${JSON.stringify(load)}`);
+    perfLine("throttled-load", load);
 
     expect(load.lcp, "no largest-contentful-paint was observed").toBeGreaterThan(0);
   });

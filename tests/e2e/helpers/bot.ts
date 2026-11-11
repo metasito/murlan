@@ -31,7 +31,7 @@ import {
 } from "./labels.ts";
 import { dismissStartAnnouncement } from "./navigation.ts";
 
-import { tap } from "./press.ts";
+import { tap, tapPoint } from "./press.ts";
 import { HAND_CARDS, HAND_SELECTED, TABLE, TABLE_STATE } from "./selectors.ts";
 
 const GIOCA_BTN = '[data-testid="btn-gioca"]';
@@ -65,11 +65,15 @@ function stateLeaves(page: Page, was: string, timeoutMs: number): Promise<boolea
     );
 }
 
-/** Taps `card` and waits for its selection to flip; false when it never did. */
-async function toggle(page: Page, card: Locator): Promise<boolean> {
+/**
+ * Taps `card` and waits for its selection to flip; false when it never did. With `at`, presses that
+ * fraction of its box instead of waiting for it to hold still, which `tap` does.
+ */
+export async function toggle(page: Page, card: Locator, at?: { fx: number; fy: number }): Promise<boolean> {
   try {
     const was = await card.getAttribute("aria-pressed", { timeout: CARD_CLICK_TIMEOUT_MS });
-    await tap(page, card);
+    if (at) await tapAt(page, card, at);
+    else await tap(page, card);
     const now = () => card.getAttribute("aria-pressed", { timeout: 1_000 }).catch(() => was);
     await expect.poll(now, { timeout: CARD_CLICK_TIMEOUT_MS }).not.toBe(was);
     return true;
@@ -176,7 +180,15 @@ function groupByRank(labels: string[]): Map<string, string[]> {
 }
 
 /** CSS attribute-escapes a card's accessibilityLabel for use in a selector. */
-function labelSelector(label: string): string {
+/** Presses `target` at a fraction of its box, once it is visible. */
+export async function tapAt(page: Page, target: Locator, { fx, fy }: { fx: number; fy: number }): Promise<void> {
+  await target.waitFor({ state: "visible", timeout: CARD_CLICK_TIMEOUT_MS });
+  const box = await target.boundingBox();
+  if (!box) throw new Error("the target has no box to press");
+  await tapPoint(page, box.x + box.width * fx, box.y + box.height * fy);
+}
+
+export function labelSelector(label: string): string {
   return `[aria-label="${label.replace(/"/g, '\\"')}"]`;
 }
 

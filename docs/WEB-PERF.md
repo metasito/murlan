@@ -50,16 +50,17 @@ records a settled table as the control — the difference between the two is the
 cost of the animation rather than the cost of the page.
 
 `idle-4x` is a settled table on the viewer's own turn, at 4x CPU: nothing runs but ambient motion.
-It and `turn-4x` play one seeded game: `dealCards(4, 0, rng(12).source)`, dealt in from a fresh save, and
-the viewer leading J♣ J♦, to which the bots answer Q Q, K K, A A and hand the lead back. The spec
+It and `turn-4x` play one seeded game: `dealCards(4, 0, rng(12).source)`, saved `fresh` with no
+opening (no 3♠ gate and no start reason, so it is not dealt the way a new round is: the viewer leads
+at once), and the viewer leading J♣ J♦, to which the bots answer Q Q, K K and A A, and the turn comes
+back to the viewer facing A♠ A♥. The spec
 replays those replies through `offlineBotMove` under eleven different random sources before it opens
 the page and fails unless all agree, and after the window it compares the table's hand counts with
 the engine's. Seeding `Math.random` would not do it: on a production build the particles draw from
-it every frame, so a bot's draw would depend on the frame rate being measured. Before the seed the
-case dealt a fresh game a run, and one build read 8fps on one run and 22 on the next. The save is
-`fresh` because a round already in progress is another table: resumed past the opening, the Skia
-felt drew under one frame a second and `idle-4x` read 23 to 58fps, where the dealt-in table's felt
-draws about three and `idle-4x` read 3.4, 12.9 and 13.6fps in three runs at load 4.7 to 9.7.
+it every frame, so a bot's draw would depend on the frame rate being measured. The seed removes
+the game's variance and nothing else: three seeded runs of one build read `idle-4x` at 3.4, 12.9 and
+13.6fps at load 4.7 to 9.7, so the machine's load still moves the figure, and every line carries
+`load` to be read beside it.
 `round-4x` records one whole four-player round at 4x, from the click to the result screen — the
 deal, every throw, the bots' replies and the pauses between — so its `frames` are in the thousands
 and its `transformed` and `domNodes` are sampled on the result screen.
@@ -87,6 +88,8 @@ refuses to publish a number unless the hand's order actually changed.
 | `feltFps`, `particlesFps`, `handShadeFps` | `PERF_SKIA` only: frames a second the Skia felt's, the motes' and the hand shade's canvas drew in (`tests/e2e/helpers/renderCounters.ts`) |
 | `cardStylesPerS` | `PERF_SKIA` only: style writes a second inside cards' own views |
 | `felts` | `PERF_SKIA` only: which felt the trace saw draw through the window |
+| `feltKs` | `PERF_SKIA` only: the k the Skia felt reported drawing at through the window (`feltK` in `lib/e2eTrace.ts`) |
+| `load` | the one-minute load average when the line was printed (rule 51) |
 
 `turn-4x` is the 2.5 s after the viewer's seeded lead on the `idle-4x` table: the throw, its
 landing, the lamp's glide to the next seat and the bots behind it.
@@ -179,10 +182,11 @@ every second.
 ### The Skia felt at 3x
 
 `records the Skia felt past its cap` runs under `PERF_SKIA=1` alone, at device pixel ratio 3 and
-874x402, unthrottled, on the seeded table of `idle-4x`. There the felt's
-`k = dpr · min(sx, sy)` is 3, past `FELT_K_CAP` (2.5, `components/table/feltShader.ts`), and the
-case fails if it is not. It prints `idle-dpr3`, the dealt-in table at rest, and `turn-dpr3`, the
-2.5 s after the seeded lead. **SwiftShader rasterises on the CPU: these figures compare runs of
+874x402, unthrottled, on the seeded table of `idle-4x`. The case reads the k the Skia felt itself
+draws at (`dpr · min(sx, sy)` in `components/table/feltCanvas.tsx`, reported to the trace as
+`feltK`) and fails unless it passes `FELT_K_CAP` (2.5, `components/table/feltShader.ts`); it
+confirms the lead left the hand before the turn window and checks the hand counts after. It prints
+`idle-dpr3`, the seeded table at rest, and `turn-dpr3`, the 2.5 s after the seeded lead. **SwiftShader rasterises on the CPU: these figures compare runs of
 this case with each other, never with a phone's GPU.** Three runs of `6f60f0fc` plus this case,
 2026-11-11, load average 9.3 to 11.7 on four cores:
 
@@ -190,6 +194,10 @@ this case with each other, never with a phone's GPU.** Three runs of `6f60f0fc` 
 |---|---|---|---|---|---|---|
 | **idle-dpr3** | 1.4 / 1.8 / 1.5 | 15 / 15 / 16 | 1400 / 1033 / 1567 | 10182 / 7914 / 9976 | 2.4 / 2.2 / 1.7 | ~997 |
 | **turn-dpr3** | 1.7 / 0.9 / 0.8 | 13 / 11 / 10 | 1933 / 2600 / 2367 | 7252 / 11776 / 12671 | 1.5 / 1.4 / 1.3 | ~1000 |
+
+One later run, with the felt reporting `feltKs: [3]`, at load 2.9 to 4.5: `idle-dpr3` 2.8fps,
+`feltFps` 3.4; `turn-dpr3` 36.7fps, `feltFps` 1.4. The table above ran at more than twice that load.
+At device pixel ratio 2 the felt reports k 2 and the case fails.
 
 ### The drag floor on SwiftShader
 
