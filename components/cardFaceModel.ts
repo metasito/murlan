@@ -23,6 +23,15 @@ export function cardScale(shortEdge: number): number {
   return Math.min(shortEdge, MAX_SHORT_EDGE) / BASE_SHORT_EDGE;
 }
 
+/**
+ * The window's own short edge, never that minus the safe-area insets: the rail absorbs the cutout
+ * and the hand zone carries the home indicator, and taking the insets off here instead shrinks the
+ * cards on a device only, away from the web table at the same size.
+ */
+export function tableScale(window: { width: number; height: number }): number {
+  return cardScale(Math.min(window.width, window.height));
+}
+
 /** The short edge a table at `scale` is drawn for: past the cap, less than the window's own. */
 export function drawnShortEdge(scale: number): number {
   return BASE_SHORT_EDGE * scale;

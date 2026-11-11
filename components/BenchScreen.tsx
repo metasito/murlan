@@ -28,7 +28,7 @@ async function feltSample(): Promise<Record<LampSide, number>> {
   const pixels = await benchHandles.feltSnapshot?.();
   if (!table || !pixels) throw new Error(`no ${table ? "felt snapshot" : "table anchors"} to sample`);
   const perPt = pixels.width / table.width;
-  const felt = feltOnly(pixels, perPt);
+  const felt = feltOnly(pixels, table);
   const ring = legibilityRing(table);
   return Object.fromEntries(LAMP_SIDES.map((side) => [side, annulusLuminance(felt, table.anchors[side], perPt, ring)])) as Record<LampSide, number>;
 }

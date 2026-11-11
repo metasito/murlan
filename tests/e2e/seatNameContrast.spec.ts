@@ -127,7 +127,7 @@ async function names(page: Page): Promise<{ box: Rect; ink: string; shadow: stri
 /** The felt's cloth within `clip`, 1 per pixel, the rail and the room 0 (`feltOnly`'s geometry). */
 function clothIn(clip: Rect, felt: Rect, perPt: number): number[] {
   const [fw, fh] = [Math.round(felt.w * perPt), Math.round(felt.h * perPt)];
-  const cloth = feltOnly({ width: fw, height: fh, data: new Uint8ClampedArray(fw * fh * 4).fill(255) }, perPt).data;
+  const cloth = feltOnly({ width: fw, height: fh, data: new Uint8ClampedArray(fw * fh * 4).fill(255) }, { width: felt.w, height: felt.h }).data;
   const [cw, ch] = [Math.round(clip.w * perPt), Math.round(clip.h * perPt)];
   const out: number[] = [];
   for (let y = 0; y < ch; y++) {
@@ -162,6 +162,7 @@ async function measure(page: Page, baseURL: string, phone: (typeof PHONES)[numbe
     const y = Math.max(0, Math.min(...all.map((b) => b.y)) - PAD);
     const clip = { x, y, w: Math.min(phone.width, Math.ceil(Math.max(...all.map((b) => b.x + b.w)) + PAD)) - x, h: Math.min(phone.height, Math.ceil(Math.max(...all.map((b) => b.y + b.h)) + PAD)) - y };
     const feltBox = (await page.getByTestId("table-felt").boundingBox())!;
+    expect(feltBox, `${state.id}: the felt fills the viewport, the window feltOnly is laid out in`).toEqual({ x: 0, y: 0, width: phone.width, height: phone.height });
 
     await paint(page, "color: transparent !important; text-shadow: none !important;");
     await grab(page, "clear", clip);

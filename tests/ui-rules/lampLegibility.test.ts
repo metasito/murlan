@@ -15,7 +15,7 @@ import { SEAT_DISC } from "../../components/seatLayout.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { designScale } from "../../components/table/lampRig.ts";
 import { ANNULUS_OUTER, feltOnly, legibilityRing } from "../../components/table/legibilityRing.ts";
-import { tableScale } from "../../components/tableLayout.ts";
+import { tableLayout } from "../../components/tableLayout.ts";
 import { RAIL_BAND, ringRect } from "../../components/table/rail.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 import { phoneTable } from "../helpers/phoneTable.ts";
@@ -33,11 +33,11 @@ const OUTER = 45;
 
 const PHONE = PHONES.find((p) => p.name === "iPhone SE")!;
 const SCALE = designScale(PHONE.width, PHONE.height);
-const CARD = tableScale(PHONE);
 const RING = legibilityRing(PHONE);
 const DISC = RING.inner;
 const PER_PT = 2;
-const anchors = phoneTable(PHONE.width, PHONE.height, { top: 8, bottom: 8, left: 40, right: 40 }).anchors;
+const INSETS = { top: 8, bottom: 8, left: 40, right: 40 };
+const anchors = phoneTable(PHONE.width, PHONE.height, INSETS).anchors;
 const SEATS = (["bottom", "right", "top", "left"] as FlyDirection[]).map((dir) => ({ dir, at: anchors[dir] }));
 const RIGHT = anchors.right;
 
@@ -119,7 +119,7 @@ describe("annulusLuminance", () => {
   });
 
   test("the ring starts at the drawn disc's edge, which scales with the card and not the table", () => {
-    assert.equal(SEAT_DISC * CARD / 2, DISC);
+    assert.equal(SEAT_DISC * tableLayout({ ...PHONE, insets: INSETS }).scale / 2, DISC);
     near(DISC, 13.5, 0.1);
     const discWhite = (w: Where) => (w.pt < DISC ? WHITE : GREY);
     for (const { at } of SEATS) near(read(paint(at, discWhite), at), GREY_LINEAR, 0.001);
@@ -186,8 +186,8 @@ describe("annulusLuminance", () => {
     const rim = { x: feltLeft + 7, y: win.height / 2 };
     const r = legibilityRing(win);
     assert.ok(read(whole, rim, 1, r) > GREY_LINEAR + 0.1, "the fixture's rail does not reach the ring");
-    near(read(feltOnly(whole, 1), rim, 1, r), GREY_LINEAR, 0.001);
-    assert.throws(() => read(feltOnly(whole, 1), { x: feltLeft - 20, y: win.height / 2 }, 1, r), /is felt/);
+    near(read(feltOnly(whole, win), rim, 1, r), GREY_LINEAR, 0.001);
+    assert.throws(() => read(feltOnly(whole, win), { x: feltLeft - 20, y: win.height / 2 }, 1, r), /is felt/);
   });
 });
 

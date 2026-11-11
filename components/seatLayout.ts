@@ -3,7 +3,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import { Spacing } from "../lib/tokens.ts";
-import { tableFontSize } from "./cardFaceModel.ts";
+import { tableFontSize, tableScale } from "./cardFaceModel.ts";
 import type { Align } from "./flexAlign.ts";
 import type { NoticeRun } from "./table/noticeModel.ts";
 
@@ -227,6 +227,10 @@ export function arrangeOpponents<T>(
 
 /** The seat disc's diameter at scale 1 (components/table/seats.tsx `SeatRing`). */
 export const SEAT_DISC = 33;
+/** The seat disc's diameter on the table laid out in `window`. */
+export function drawnDisc(window: { width: number; height: number }): number {
+  return SEAT_DISC * tableScale(window);
+}
 /**
  * Ring to fan, the same on every seat (components/table/seats.tsx `SeatWho`).
  * A share of the table, like the ring and the fan it separates — a flat gap is

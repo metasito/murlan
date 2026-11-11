@@ -5,14 +5,13 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { Player } from "@/lib/game/gameEngine";
-import { CARD_H, cardScale, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "./cardFaceModel.ts";
+import { CARD_H, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget, tableScale } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
-import { actionBtnSize, CHIP_H, HAND_ZONE_ALIGN, HAND_ZONE_H, SEAT_DISC, seatGap, seatLabelH } from "./seatLayout.ts";
+import { actionBtnSize, CHIP_H, drawnDisc, HAND_ZONE_ALIGN, HAND_ZONE_H, seatGap, seatLabelH } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
 import { drawnFanBounds } from "./fanGeometry.ts";
-import { designScale } from "./table/lampRig.ts";
-import { RAIL_BAND, ringRect } from "./table/rail.ts";
+import { sideNameInset } from "./table/legibilityRing.ts";
 import { pillAnchorFor, scorePillBox, voteTop, type PillAnchor } from "./table/scorePillModel.ts";
 import { floatAboveFoot, noticeBox, pileNoteBelowPile } from "./table/noticeModel.ts";
 import { computeTableFrame, SIDE_SEAT_GAP, sideSlotHeight, topBandHeight, type EdgeInsets, type TableFrame } from "./tableFrame.ts";
@@ -72,28 +71,7 @@ export interface TableLayout {
   pill: PillAnchor;
 }
 
-/**
- * The window's own short edge, never that minus the safe-area insets: the rail absorbs the cutout
- * and the hand zone carries the home indicator, and taking the insets off here instead shrinks the
- * cards on a device only, away from the web table at the same size.
- */
-export function tableScale(window: { width: number; height: number }): number {
-  return cardScale(Math.min(window.width, window.height));
-}
-
-/** Clear air between a side seat's name and the rail's lit line, in points. */
-const NAME_CLEAR = 3;
-
-/**
- * How far a side seat's name slides inboard of its disc's outer edge so the whole name stands on the
- * felt: the felt is stretched to the window while the frame is not, so on a wide window the rail's
- * lit line crosses the name (seatNameContrast).
- */
-function sideNameInset(side: "left" | "right", discCentreX: number, disc: number, windowWidth: number): number {
-  const { x, w } = ringRect(RAIL_BAND);
-  const { sx } = designScale(windowWidth, 1);
-  return Math.max(0, side === "left" ? x * sx + NAME_CLEAR - (discCentreX - disc / 2) : discCentreX + disc / 2 - ((x + w) * sx - NAME_CLEAR));
-}
+export { tableScale };
 
 /**
  * The bands are the drawn cap's (`topBandHeight`, `sideSlotHeight`), never a count's, so no seat
@@ -105,7 +83,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const frame = computeTableFrame({ ...i, scale });
   const handCardH = CARD_H(scale * HAND_SCALE);
   const handZoneH = HAND_ZONE_H(handCardH, frame.bottomPad);
-  const ring = SEAT_DISC * scale;
+  const ring = drawnDisc(i);
   const midTop = frame.tableTop + topBandHeight(scale);
   const tableFloor = height - frame.surplus;
   const midH = tableFloor - midTop - handZoneH;

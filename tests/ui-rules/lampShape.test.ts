@@ -73,7 +73,7 @@ function seatMeans(width: number, height: number, anchors: Record<FlyDirection, 
   paint.delete();
   shader.delete();
   surface.delete();
-  const pixels = feltOnly({ width: info.width, height: info.height, data }, PER_PT);
+  const pixels = feltOnly({ width: info.width, height: info.height, data }, { width, height });
   const ring = legibilityRing({ width, height });
   return Object.fromEntries(SEATS.map((s) => [s, annulusLuminance(pixels, anchors[s], PER_PT, ring)])) as Record<FlyDirection, number>;
 }
