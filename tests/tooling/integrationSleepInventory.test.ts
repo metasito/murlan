@@ -106,8 +106,8 @@ const WINDOWS: Record<string, { n: number; why: string }> = {
     why: "an ack that did not cross instances shows as a re-send after the ack timeout, so the absence is watched for four of them",
   },
   "tests/integration/drainPresence.test.ts": {
-    n: 1,
-    why: "the drained instance's offline notice follows a real 400 ms debounce in another process, so the absence is watched well past it",
+    n: 2,
+    why: "the drained instance's offline notice follows a real 400 ms debounce in another process, and a peer's sweep a real heartbeat, so each absence is watched past them",
   },
 };
 

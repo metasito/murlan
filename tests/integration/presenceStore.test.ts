@@ -140,17 +140,26 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     const [peer, leaving] = [c.open(), c.open()];
     await redisReady();
     await Promise.all([peer.beat(), leaving.beat()]);
+    leaving.record("early", "s-early");
+    const recordedAt = Date.now();
     leaving.record("gone", "s-gone");
     leaving.record("back", "s-back");
-    await eventually(async () => (await peer.locate(["gone", "back"])).size === 2, "the entries");
+    await eventually(async () => (await peer.locate(["early", "gone", "back"])).size === 3, "the entries");
     const reported: string[] = [];
-    peer.onLost((ids) => reported.push(...ids));
+    let connectedAt: ReadonlyMap<string, Date> = new Map();
+    peer.onLost((ids, at) => {
+      reported.push(...ids);
+      connectedAt = at;
+    });
 
+    assert.equal(leaving.forget("early", "s-early"), false, "a departure before leave() is its own instance's to report");
+    await eventually(async () => !(await peer.locate(["early"])).has("early"), "the early departure's clear");
     leaving.leave();
-    assert.equal(leaving.leaving(), true);
     await eventually(async () => (await probe.exists(c.key(`instance:${leaving.id}`))) === 0, "the liveness to go");
-    leaving.forget("gone", "s-gone");
-    leaving.forget("back", "s-back");
+    assert.equal(leaving.forget("gone", "s-gone"), true, "a departure after leave() was not left to the sweep");
+    assert.equal(leaving.forget("back", "s-back"), true);
+    assert.equal((await peer.locate(["gone"])).get("gone")?.instance, leaving.id, "inside the window, its account reads as offline");
+    assert.deepEqual(await peer.liveInstances(), [], "a leaving instance reads as a peer to hand work to");
     peer.record("back", "s-back-2");
     await eventually(async () => (await peer.locate(["back"])).get("back")?.instance === peer.id, "the reconnect's entry");
     await peer.beat();
@@ -161,6 +170,7 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     await probe.del(c.key(`instance-leaving:${leaving.id}`));
     await peer.beat();
     assert.deepEqual(reported, ["gone"]);
+    assert.ok(Math.abs(connectedAt.get("gone")!.getTime() - recordedAt) < 2_000, "the sweep did not say when the account connected");
     assert.equal((await peer.locate(["back"])).get("back")?.instance, peer.id, "the reconnect's entry was swept");
   });
 

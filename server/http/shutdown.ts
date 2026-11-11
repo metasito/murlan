@@ -7,7 +7,7 @@ import { beginShutdown, isShuttingDown } from "../game/gameRoom.ts";
 import { closeRedis } from "../store/redis.ts";
 import { stopInbox } from "../store/instanceInbox.ts";
 import { closeTableOwners } from "../store/tableOwners.ts";
-import { closePresence } from "../store/presence.ts";
+import { closePresence, leavePresence } from "../store/presence.ts";
 import { cancelRevocationRetries } from "../socket/socketRegistry.ts";
 import { closeOwnership, forgetOwnerRecords } from "../game/gameOwnership.ts";
 import type { TableRuntime } from "../game/tableRuntime.ts";
@@ -118,6 +118,9 @@ export async function shutdown(
   try {
     await within(SHUTDOWN_BUDGET.handOff, tables.handOffTables(SHUTDOWN_BUDGET.handOff));
     await within(SHUTDOWN_BUDGET.drainNotice, drainNotice(io, SHUTDOWN_BUDGET.drainNotice));
+    // Before `io.close()`, which closes every socket before the adapter that would leave otherwise:
+    // each departure from here on is a peer's sweep to report, after the reconnect spread.
+    leavePresence();
     // Closes the adapter too, which ends its read loop before Redis goes below.
     await within(
       SHUTDOWN_BUDGET.ioClose,

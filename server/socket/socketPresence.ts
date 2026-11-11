@@ -31,7 +31,7 @@ import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
 import { isUserOnline, onlineAmong } from "./socketRegistry.ts";
-import { onPresenceLost, onPresenceRestored, presenceLeaving, socialVersion } from "../store/presence.ts";
+import { forgetPresence, onPresenceLost, onPresenceRestored, socialVersion } from "../store/presence.ts";
 import type { OnlineList } from "../../shared/protocol.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse } from "../shared/refusal.ts";
@@ -129,15 +129,21 @@ async function onlineList(userId: string, friends: FriendRows): Promise<OnlineLi
 
 /** The friends of accounts found on a dead instance are told once, by the instance whose sweep cleared them. */
 export function registerLostPresence(): void {
-  onPresenceLost((userIds) => {
-    const lastSeen = new Date(now()).toISOString();
+  onPresenceLost((userIds, connectedAt) => {
     for (const userId of userIds) {
+      const since = connectedAt.get(userId) ?? new Date(now());
       void track(
         userStore
-          .updateLastSeen(userId)
-          .catch((err: unknown) => logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account"))
-          .then(() => friendStore.getFriends(userId))
-          .then((friends) => friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen }))
+          .lastSeenSince(userId, since)
+          .catch((err: unknown) => {
+            logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account");
+            return null;
+          })
+          .then(async (stored) => {
+            const lastSeen = (stored ?? new Date(now())).toISOString();
+            const friends = await friendStore.getFriends(userId);
+            friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen });
+          })
           .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline"))
       );
     }
@@ -161,6 +167,7 @@ export function registerRestoredPresence(): void {
 export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
 
     socket.on("disconnect", (reason: DisconnectReason) => {
+      const swept = forgetPresence(userId, socket.id);
       trackEvent("socket.closed", userId, { reason });
       void track((async () => {
         let offlineNotice: Promise<void> | undefined;
@@ -182,7 +189,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
             );
 
           const lastSeen = new Date(now()).toISOString();
-          if (!presenceLeaving()) offlineNotice = emitFriendStatusOffline(userId, lastSeen);
+          if (!swept) offlineNotice = emitFriendStatusOffline(userId, lastSeen);
 
           const currentRoomId = unseatSocket(socket.id);
           // Three paths reach a return without announcing the drop, and from

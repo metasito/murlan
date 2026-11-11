@@ -198,6 +198,19 @@ export const userStore = {
     await db().update(users).set({ lastSeen: new Date(now()) }).where(eq(users.id, userId));
   },
 
+  /**
+   * Now, unless a time since `connectedAt` is already stored, which a disconnect wrote first-hand;
+   * resolves with the time stored, or null for no such account.
+   */
+  async lastSeenSince(userId: string, connectedAt: Date): Promise<Date | null> {
+    const [row] = await db()
+      .update(users)
+      .set({ lastSeen: sql`CASE WHEN ${users.lastSeen} >= ${sql.param(connectedAt, users.lastSeen)} THEN ${users.lastSeen} ELSE ${sql.param(new Date(now()), users.lastSeen)} END` })
+      .where(eq(users.id, userId))
+      .returning({ lastSeen: users.lastSeen });
+    return row?.lastSeen ?? null;
+  },
+
   /** First time only: the answer is "has it ever been offered", so the first date is the true one. */
   async markTutorialSeen(userId: string): Promise<void> {
     await db()

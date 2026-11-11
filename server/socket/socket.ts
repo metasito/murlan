@@ -44,7 +44,7 @@ import { registerStopSpectating } from "./seating.ts";
 import { storePresence } from "./socketOutbox.ts";
 import { deliveryOutbox } from "./delivery.ts";
 import { instancePeers } from "./peers.ts";
-import { forgetPresence, openPresence, recordPresence } from "../store/presence.ts";
+import { openPresence, recordPresence } from "../store/presence.ts";
 
 /**
  * Handshakes one account may complete per minute. Socket.io answers
@@ -221,7 +221,6 @@ export function setupSocket(httpServer: HttpServer, sessionMiddleware: RequestHa
     registerGameplayHandlers(ctx);
     registerFriendHandlers(ctx);
     registerDisconnect(ctx);
-    socket.on("disconnect", () => forgetPresence(userId, socket.id));
     recordPresence(userId, socket.id);
 
     await track(announcePresence(ctx));

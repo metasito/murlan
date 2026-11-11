@@ -181,7 +181,7 @@ peer claims, moves the epoch, restores and arms the turn, and answers; every int
 and every later one, goes to it. Nobody claiming within the 2 s budget is `TABLE_UNREACHABLE`,
 never `NO_LIVE_GAME`. With no live peer the tables are kept to the end, as the next process restores
 them. Only then does each socket get `server:draining` with a reconnect delay uniform over 0–10 s,
-which the client's first reconnect waits out, and `io.close()` runs. A socket that close drops keeps its presence entry: the instance has left (`leave()` in `server/store/presence.ts`), and a peer's sweep tells its friends it went offline only once the reconnect spread has passed (`LEAVING_MS`) and no reconnect elsewhere has replaced the entry, so a user coming back within the spread is never shown offline.
+which the client's first reconnect waits out, and `io.close()` runs. Just before it the instance leaves presence (`leave()` in `server/store/presence.ts`), so a socket that close drops keeps its presence entry and still reads as online, and a peer's sweep tells its friends it went offline only once the reconnect spread has passed (`LEAVING_MS`) and no reconnect elsewhere has replaced the entry, so a user coming back within the spread is never shown offline.
 
 The forwarding instance does **not** re-broadcast. Broadcasts happen inside the owner's own
 handler (`publishState`, `rt.out.room(roomId).emit(…)`) and reach every socket at that table
