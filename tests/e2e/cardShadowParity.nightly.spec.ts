@@ -106,7 +106,9 @@ test("the felt's shadow round the pile is the mockup's, and no card view casts m
     return { shadow: to.shadow - from.shadow, glow: to.glow - from.glow };
   };
   const still = { shadow: 0, glow: 0 };
-  expect(await builds(), "every shadow path built for the seeded table").toBeGreaterThanOrEqual(SHADOW_PATHS.length);
+  const builtPaths = await page.evaluate(() => [...new Set(Object.keys((globalThis as { murlanShadowClusterBuilds?: Record<string, number> }).murlanShadowClusterBuilds ?? {}).map((cluster) => cluster.split("|")[0]))].sort());
+  expect(builtPaths, "the felt built the cast and the seat fans' contact for the seeded table").toEqual(expect.arrayContaining(["cast", "fan"]));
+  expect(builtPaths.filter((path) => !(SHADOW_PATHS as readonly string[]).includes(path)), "a shadow path the felt does not have").toEqual([]);
   expect(await rebuiltOverASecond(), "shadow paths and glow rebuilt over a second at rest").toEqual(still);
   const resting = await builds();
   const held = page.locator('[data-testid^="hand-card-"]').filter({ visible: true }).last();
