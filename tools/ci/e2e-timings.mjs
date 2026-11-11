@@ -92,7 +92,8 @@ export function coverageGap(timings, files) {
 
 /**
  * The recorded timings with every spec the suite no longer holds dropped: the one change to the
- * file that needs no run, so it is the one a PR deleting or renaming a spec can make locally.
+ * file that needs no run, so `npm run regen` (scripts/regen.ts) makes it for a PR that deletes or
+ * renames a spec.
  *
  * @param {Record<string, number>} timings
  * @param {string[]} files
@@ -103,15 +104,9 @@ export function withoutGone(timings, files) {
   return Object.fromEntries(Object.entries(timings).filter(([file]) => suite.has(file)));
 }
 
-function prune() {
-  const kept = withoutGone(readTimings(), specFilesIn());
-  writeFileSync(TIMINGS, `${JSON.stringify(kept, null, 2)}\n`);
-  process.stdout.write(`${Object.keys(kept).length} specs kept -> tests/e2e/timings.json\n`);
-}
-
 /** @param {string | undefined} report */
 function rewrite(report) {
-  if (!report) throw new Error("usage: node tools/ci/e2e-timings.mjs <merged-report.json> | --prune");
+  if (!report) throw new Error("usage: node tools/ci/e2e-timings.mjs <merged-report.json>");
 
   const { seconds, unpriced } = timingsFromReport(JSON.parse(readFileSync(report, "utf8")));
   const files = specFilesIn();
@@ -135,6 +130,5 @@ function rewrite(report) {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  if (process.argv[2] === "--prune") prune();
-  else rewrite(process.argv[2]);
+  rewrite(process.argv[2]);
 }

@@ -23,53 +23,35 @@ import { openOnlineTable } from "./helpers/onlineTable";
 import { assertFresh } from "./helpers/freshTable";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
-
-/** The audit's own four, named as `content.txt` and `table.txt` name them. */
-const VIEWPORTS = [
-  { name: "phone-se", width: 568, height: 320 },
-  { name: "phone-12", width: 844, height: 390 },
-  { name: "phone-max", width: 956, height: 440 },
-  { name: "tablet", width: 1112, height: 834 },
-] as const;
+import { audited, keyOf, MEASURED_ROWS, mergedRecord, ONLINE_TABLE, recordOf, VIEWPORTS } from "./helpers/onlineTableRecord";
 
 /** Four seats fills the top seat and both side columns — the arrangement with the most to measure. */
 const SEATS = 4;
 
 const AUDIT_DIR = path.resolve(__dirname, "57-polish-audit");
-const RECORD = path.join(AUDIT_DIR, "online-table.txt");
+const RECORD = path.resolve(__dirname, "..", "..", ONLINE_TABLE);
 /** Set to rewrite the record instead of being held to it. */
 const UPDATING = process.env.AUDIT_UPDATE === "1";
 const regenerate = (grep?: string) =>
   `\`AUDIT_UPDATE=1 npx playwright test -c tests/e2e/playwright.config.ts onlineTableSurvey${grep ? ` -g "${grep}"` : ""}\``;
-
-/**
- * `MODE\tviewport\tcards=N`. Every seat here is a real account now (#800),
- * so a fresh 4-player deal's leader is whichever of the four `dealFirstSeat`
- * (server/game/tableLifecycle.ts) happens to give the 3♠ — two of the four seats
- * get 14 cards, two get 13 (`dealCards`, lib/game/gameEngine.ts), so the hand this
- * measures is genuinely, legitimately, either. Leaving `cards` out of the key
- * would hold a 13-card table to a 14-card table's own recorded row — the
- * exact byte-for-byte fields a fresh shuffle changed on purpose — and reds a
- * table that never drifted, on the very lottery this file exists to remove.
- */
-const keyOf = (row: string) => {
-  const parts = row.split("\t");
-  return [parts[0], parts[1], parts[6]].join("\t");
-};
+const fromRun = "or, from the CI run that measured it, `npm run regen -- --from-run <run id>`";
 
 /**
  * The record by `MODE\tviewport\tcards`, so a shard is held to the rows it
  * measured. CI does write a whole one — the split is by spec file, so one
- * shard runs all four — but onto a runner nothing commits from, so the
- * checked-in copy only ever moves when someone runs the survey locally.
+ * shard runs all four — but onto a runner nothing commits from: the checked-in
+ * copy moves when someone runs the survey locally, or applies the rows a red CI
+ * run left as `MEASURED_ROWS`.
  */
-function recorded(): Map<string, string> {
+function recordText(): string {
   try {
-    const lines = readFileSync(RECORD, "utf8").split("\n").filter(Boolean);
-    return new Map(lines.map((l) => [keyOf(l), l]));
+    return readFileSync(RECORD, "utf8");
   } catch {
-    return new Map();
+    return "";
   }
+}
+function recorded(): Map<string, string> {
+  return recordOf(recordText());
 }
 /** Past `FLARE_BRIEF_MS` (components/table/moments.tsx), the longest moment a bot's play raises; the match flare's 3 s needs a finished match. */
 const MOMENT_CEILING_MS = 1_600;
@@ -348,8 +330,6 @@ async function stillMeasure(page: Page, kind: "ONLINE" | "OFFLINE"): Promise<Mea
 
 const rows: string[] = [];
 
-const audited = (key: string) => VIEWPORTS.some((vp) => vp.name === key.split("\t")[1]);
-
 test("the record holds rows for the audited viewports only", () => {
   const orphans = [...recorded().keys()].filter((key) => !audited(key));
   expect(
@@ -454,19 +434,20 @@ test.describe("the online table, at the audit's viewports", () => {
         }
 
         if (!UPDATING) {
+          writeFileSync(test.info().outputPath(MEASURED_ROWS), measured.join("\n") + "\n");
           const record = recorded();
           for (const row of measured) {
             const was = record.get(keyOf(row));
             expect(
               was,
               `tests/e2e/57-polish-audit/ records no row for ${keyOf(row).replaceAll("\t", " ")}, so ` +
-                `nothing holds this table to anything. Regenerate the record with ${regenerate(vp.name)}.`
+                `nothing holds this table to anything. Regenerate the record with ${regenerate(vp.name)}, ${fromRun}.`
             ).toBeDefined();
             expect(
               row,
               `the table no longer lays out the way tests/e2e/57-polish-audit/ records it ` +
                 `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
-                `it and regenerate this viewport's rows with ${regenerate(vp.name)}, ` +
+                `it and regenerate this viewport's rows with ${regenerate(vp.name)}, ${fromRun}, ` +
                 `correcting the numbers README.md quotes.`
             ).toBe(was);
           }
@@ -480,14 +461,6 @@ test.describe("the online table, at the audit's viewports", () => {
   test.afterAll(() => {
     if (!UPDATING || rows.length === 0) return;
     mkdirSync(AUDIT_DIR, { recursive: true });
-    // Merged into the existing file by key, never replacing it outright: this
-    // run's rows hold whichever `cards` count each viewport's real deal
-    // happened to land on, and the *other* count's own row — a real, already
-    // -verified table this run had no occasion to redeal — would be lost by
-    // a plain overwrite rather than left standing.
-    const merged = recorded();
-    for (const key of [...merged.keys()]) if (!audited(key)) merged.delete(key);
-    for (const row of rows) merged.set(keyOf(row), row);
-    writeFileSync(RECORD, [...merged.values()].join("\n") + "\n", "utf8");
+    writeFileSync(RECORD, mergedRecord(recordText(), rows), "utf8");
   });
 });
