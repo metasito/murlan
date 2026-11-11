@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { FeltStops } from "@/lib/cosmetics";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, type LampTarget, type Pool } from "./lampRig";
-import { CLOTH_GLSL, clothUniforms } from "./feltShader";
+import { clothUniforms, LIT_GLSL, WEAVE_GLSL, WEAVE_PLANES, weaveUniforms } from "./feltShader";
 import { paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 
 const POOL_RADIUS = 420;
@@ -32,7 +32,12 @@ function ringPainter(c: CanvasRenderingContext2D): RingPainter {
 interface ClothRenderer {
   cv: HTMLCanvasElement;
   gl: WebGLRenderingContext;
-  p: WebGLProgram;
+  weave: WebGLProgram;
+  lit: WebGLProgram;
+  planes: WebGLTexture[];
+  fbo: WebGLFramebuffer;
+  /** The size and scale the planes were baked at. */
+  baked?: string;
 }
 
 let renderer: ClothRenderer | null | undefined;
@@ -50,35 +55,75 @@ function clothRenderer(): ClothRenderer | null {
     gl.compileShader(s);
     return s;
   };
-  const p = gl.createProgram()!;
-  gl.attachShader(p, shader(gl.VERTEX_SHADER, VERTEX));
-  gl.attachShader(p, shader(gl.FRAGMENT_SHADER, CLOTH_GLSL));
-  gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return (renderer = null);
-  gl.useProgram(p);
+  const program = (fragment: string) => {
+    const p = gl.createProgram()!;
+    gl.attachShader(p, shader(gl.VERTEX_SHADER, VERTEX));
+    gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fragment));
+    gl.bindAttribLocation(p, 0, "a");
+    gl.linkProgram(p);
+    return gl.getProgramParameter(p, gl.LINK_STATUS) ? p : null;
+  };
+  const weave = program(WEAVE_GLSL);
+  const lit = program(LIT_GLSL);
+  if (!weave || !lit) return (renderer = null);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(QUAD), gl.STATIC_DRAW);
-  const a = gl.getAttribLocation(p, "a");
-  gl.enableVertexAttribArray(a);
-  gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
-  return (renderer = { cv, gl, p });
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const planes = Array.from({ length: WEAVE_PLANES }, () => {
+    const t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    for (const f of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, f, gl.NEAREST);
+    for (const w of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, w, gl.CLAMP_TO_EDGE);
+    return t;
+  });
+  return (renderer = { cv, gl, weave, lit, planes, fbo: gl.createFramebuffer()! });
+}
+
+function setUniforms(gl: WebGLRenderingContext, p: WebGLProgram, uniforms: Record<string, number | number[]>) {
+  for (const [name, v] of Object.entries(uniforms)) {
+    const at = gl.getUniformLocation(p, name);
+    if (typeof v === "number") gl.uniform1f(at, v);
+    else if (v.length === 2) gl.uniform2fv(at, v);
+    else gl.uniform3fv(at, v);
+  }
+}
+
+/** The weave's planes at this size, baked once: no lamp moves them, so every aim after the first only lights them. */
+function bakePlanes(r: ClothRenderer, width: number, height: number, px: [number, number]) {
+  const { gl, weave, planes, fbo } = r;
+  const key = `${width}x${height}@${px}`;
+  if (r.baked === key) return;
+  gl.useProgram(weave);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  planes.forEach((t, plane) => {
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    setUniforms(gl, weave, { ...weaveUniforms(Math.min(...px), plane), uRes: [width, height], uPx: px });
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  });
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  r.baked = key;
 }
 
 /** The cloth, `null` on a page with no WebGL (a felt without cloth, for good), `undefined` when the context was lost mid-draw. */
 function drawCloth(width: number, height: number, uniforms: Record<string, number | number[]>, px: [number, number]): HTMLCanvasElement | null | undefined {
   const r = clothRenderer();
   if (!r) return null;
-  const { cv, gl, p } = r;
+  const { cv, gl, lit, planes } = r;
   cv.width = width;
   cv.height = height;
-  const all = { ...uniforms, uRes: [width, height], uPx: px };
-  for (const [name, v] of Object.entries(all)) {
-    const at = gl.getUniformLocation(p, name);
-    if (typeof v === "number") gl.uniform1f(at, v);
-    else if (v.length === 2) gl.uniform2fv(at, v);
-    else gl.uniform3fv(at, v);
-  }
-  gl.viewport(0, 0, cv.width, cv.height);
+  gl.viewport(0, 0, width, height);
+  bakePlanes(r, width, height, px);
+  gl.useProgram(lit);
+  setUniforms(gl, lit, { ...uniforms, uRes: [width, height], uPx: px });
+  planes.forEach((t, i) => {
+    gl.activeTexture(gl.TEXTURE0 + i);
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.uniform1i(gl.getUniformLocation(lit, `uG${i}`), i);
+  });
+  gl.activeTexture(gl.TEXTURE0);
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
