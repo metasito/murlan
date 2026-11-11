@@ -8,7 +8,7 @@ import { installVirtualClock, stepFrames, stepUntil } from "./helpers/virtualClo
 import { STEP_MS, type TraceFrame } from "./helpers/traceDiff";
 import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayRuns, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { HAND_CARD_BOXES, TABLE_STATE } from "./helpers/selectors";
-import { cardViewShadows, feltBuilt, SHADE_CANVAS } from "./helpers/cardContact";
+import { cardViewShadows, feltHolds, SHADE_CANVAS } from "./helpers/cardContact";
 
 const VIEWPORT = { width: 874, height: 402 };
 const SEED = 1255;
@@ -22,7 +22,9 @@ const SETTLE = 120;
 /** Past a throw's flight, landing, dust and the lamp's glide to the next seat. */
 const AFTER_MOVE = 300;
 const PLAY_CONTROL = SETTLE * 2;
-const AFTER_CONTROL = AFTER_MOVE - PLAY_CONTROL;
+/** Each leg of the resize that reads what the felt holds: its layout and one rebuild. */
+const RESIZED = 12;
+const AFTER_CONTROL = AFTER_MOVE - PLAY_CONTROL - 2 * RESIZED;
 /** The lamp's glide to the next seat moves its light more than half a point a frame for about this long. */
 const GLIDE = 80;
 
@@ -136,12 +138,12 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   const glide = played.slice(moved, moved + GLIDE);
   const shadeCanvas = (await page.locator(SHADE_CANVAS).count()) > 0;
   const pile = await cardViewShadows(page, '[id^="card-pile:"]');
-  const faceBuilt = (await feltBuilt(page)).face ?? [];
+  const held = await feltHolds(page, () => run(page, RESIZED));
   const control = {
     felt: drew(glide, FELT),
     handShade: drew(played, HAND_SHADE),
     pileContacts: pile.cards.map((c) => c.contacts),
-    pileOnFelt: pile.cards.map((c) => faceBuilt.includes(c.key)),
+    pileOnFelt: pile.cards.map((c) => held[c.path]?.includes(c.key) ?? false),
     particles: drew(played, PARTICLES),
     styles: total(played, (f) => f.styles.cards ?? 0),
   };
@@ -156,6 +158,7 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
     expect(control.pileOnFelt, "each pile card in the felt's contact path").toEqual(pile.cards.map(() => true));
   } else {
     expect(control.pileContacts, "each pile card's contacts").toEqual(pile.cards.map(() => 1));
+    expect(control.pileOnFelt, "pile cards the felt's contact path also holds, a second contact").toEqual(pile.cards.map(() => false));
   }
   expect(control.particles, "the motes never drew").toBeGreaterThanOrEqual(1);
   expect(control.styles, "no card's view was styled through a play").toBeGreaterThan(0);

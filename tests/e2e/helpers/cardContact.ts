@@ -2,6 +2,8 @@
 // may cast once the Skia felt draws: a contact, one layer at CardShadow.contact scaled by the table, never a cast.
 import type { Page } from "@playwright/test";
 import { CardShadow } from "../../../lib/tokens";
+import { shadowKind, type ShadowKind, type ShadowPath } from "../../../components/table/cardShadows";
+import type { CardRect } from "../../../components/table/cardRects";
 
 /** Computed `box-shadow` lengths round; a contact at the table's scale is tenths of a point. */
 const LENGTH_SLACK = 0.05;
@@ -40,7 +42,10 @@ export function isContact(css: string, s: number, kind: CardKind): boolean {
   );
 }
 
-export type ViewCard = { key: string; kind: CardKind; fan: boolean; contacts: number };
+export type ViewCard = { key: string; kind: CardKind; path: ShadowKind; contacts: number };
+
+/** Glows a table card's own views draw on purpose, by test id: the lit pile card's ring. */
+const NAMED_GLOWS = new Set(["pile-card-lit"]);
 
 /**
  * Every view under `scope`, its roots included, read once: each card box with the contacts its own siblings
@@ -61,29 +66,44 @@ export async function cardViewShadows(page: Page, scope: string): Promise<{ s: n
       cards: boxes.map((box) => ({
         key: box.closest('[id^="card-"]')?.id.slice("card-".length) ?? box.closest('[data-testid^="hand-card-"]')?.getAttribute("data-testid")?.replace("hand-card-", "hand:") ?? "",
         kind: box.getAttribute("data-testid") === "card-box-back" ? ("back" as const) : ("face" as const),
-        fan: box.closest('[id^="card-fan:"]') !== null,
       })),
-      shadows: views.map((v) => ({ css: getComputedStyle(v).boxShadow, card: cardOf.get(v) ?? -1 })).filter((v) => v.css !== "none"),
+      shadows: views
+        .map((v) => ({ css: getComputedStyle(v).boxShadow, card: cardOf.get(v) ?? -1, id: v.getAttribute("data-testid") ?? "" }))
+        .filter((v) => v.css !== "none"),
     };
   }, scope);
-  const contacts = read.cards.map(() => 0);
+  const cards = read.cards.map((c) => ({ ...c, path: shadowKind(c.key, { back: c.kind === "back" } as CardRect), contacts: 0 }));
   const others: string[] = [];
-  for (const { css, card } of read.shadows) {
-    if (card >= 0 && isContact(css, read.s, read.cards[card].kind)) contacts[card] += 1;
-    else others.push(css);
+  for (const { css, card, id } of read.shadows) {
+    if (card >= 0 && isContact(css, read.s, cards[card].kind)) cards[card].contacts += 1;
+    else if (!NAMED_GLOWS.has(id)) others.push(id ? `${id}: ${css}` : css);
   }
-  return { s: read.s, cards: read.cards.map((c, i) => ({ ...c, contacts: contacts[i] })), others };
+  return { s: read.s, cards, others };
 }
 
-/** The paths the felt has built, and each path's member cards, from its per-cluster build counter. */
-export async function feltBuilt(page: Page): Promise<Record<string, string[]>> {
+/** How far the felt is nudged, in px, to make it rebuild what it holds. */
+const RESIZE_NUDGE = 8;
+
+/**
+ * The paths the felt holds now, and each path's member cards. Its per-cluster build counter only grows, so it
+ * is emptied across a resize there and back: a change of felt scale rebuilds every cluster the felt keeps
+ * (`tests/native/shadowClusterBuilds.test.tsx`), and what it builds back at this size is what it holds.
+ */
+export async function feltHolds(page: Page, settle: () => Promise<unknown>): Promise<Partial<Record<ShadowPath, string[]>>> {
+  const size = page.viewportSize()!;
+  await page.setViewportSize({ width: size.width + RESIZE_NUDGE, height: size.height });
+  await settle();
+  await page.evaluate(() => void ((globalThis as { murlanShadowClusterBuilds?: Record<string, number> }).murlanShadowClusterBuilds = {}));
+  await page.setViewportSize(size);
+  await settle();
   const clusters = await page.evaluate(() => Object.keys((globalThis as { murlanShadowClusterBuilds?: Record<string, number> }).murlanShadowClusterBuilds ?? {}));
-  const built: Record<string, string[]> = {};
+  const held: Partial<Record<ShadowPath, string[]>> = {};
   for (const cluster of clusters) {
-    const [path, members] = cluster.split("|");
-    built[path] = [...(built[path] ?? []), ...members.split(",").filter(Boolean)];
+    const [path, members] = cluster.split("|") as [ShadowPath, string];
+    held[path] = [...(held[path] ?? []), ...members.split(",").filter(Boolean)];
   }
-  return built;
+  if (!held.cast?.length) throw new Error(`the felt rebuilt no cast across a resize, so what it holds is unread (built: ${JSON.stringify(held)})`);
+  return held;
 }
 
 /** Whether the hand-shade canvas, rather than each card's own view, draws the cards' contact. */

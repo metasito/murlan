@@ -8,7 +8,7 @@ import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
 import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { cardViewShadows, feltBuilt, SHADE_CANVAS, type ViewCard } from "./helpers/cardContact";
+import { cardViewShadows, feltHolds, SHADE_CANVAS, type ViewCard } from "./helpers/cardContact";
 import { feltPixels, rgbaOf, skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -115,20 +115,19 @@ test("the felt's shadow round the pile is the mockup's, and no card view casts m
   await expect.poll(rebuiltOverASecond, { message: "shadow paths and glow rebuilt over a second once the cards rest again" }).toEqual(still);
 
   const table = await cardViewShadows(page, '[id^="card-"], [data-testid^="hand-card-"]');
-  const kindOf = (c: ViewCard) => (c.fan ? "fan" : c.kind);
   expect(table.cards.filter((c) => c.key.startsWith("pile:")).length, "cards on the pile").toBeGreaterThan(0);
   expect(table.others, `platform shadows and glows among the views of the table's ${table.cards.length} cards`).toEqual([]);
   const shadeCanvas = (await page.locator(SHADE_CANVAS).count()) > 0;
-  const viewContacts = (c: ViewCard) => (shadeCanvas || c.fan ? 0 : 1);
+  const viewContacts = (c: ViewCard) => (shadeCanvas || c.path === "fan" ? 0 : 1);
   expect(
-    Object.fromEntries(table.cards.map((c) => [`${kindOf(c)} ${c.key}`, c.contacts])),
+    table.cards.map((c) => [`${c.path} ${c.key}`, c.contacts]),
     shadeCanvas ? "card views' own contacts while the hand-shade canvas draws them" : "each card's own contact, a seat fan's drawn by the felt"
-  ).toEqual(Object.fromEntries(table.cards.map((c) => [`${kindOf(c)} ${c.key}`, viewContacts(c)])));
-  const feltDraws = new Set(["cast", ...table.cards.filter((c) => viewContacts(c) === 0).map(kindOf)]);
-  const built = await feltBuilt(page);
-  expect(Object.keys(built).sort(), "the shadow paths the felt built for the seeded table").toEqual(SHADOW_PATHS.filter((path) => feltDraws.has(path)).sort());
+  ).toEqual(table.cards.map((c) => [`${c.path} ${c.key}`, viewContacts(c)]));
+  const feltDraws = new Set<string>(["cast", ...table.cards.filter((c) => viewContacts(c) === 0).map((c) => c.path)]);
+  const holds = await feltHolds(page, () => expect.poll(rebuiltOverASecond).toEqual(still));
+  expect(Object.keys(holds).sort(), "the shadow paths the felt holds for the seeded table").toEqual(SHADOW_PATHS.filter((path) => feltDraws.has(path)).sort());
   expect(
-    table.cards.filter((c) => viewContacts(c) === 0 && !built[kindOf(c)]?.includes(c.key)).map((c) => `${kindOf(c)} ${c.key}`),
+    table.cards.filter((c) => viewContacts(c) === 0 && !holds[c.path]?.includes(c.key)).map((c) => `${c.path} ${c.key}`),
     "cards whose contact neither their view nor the felt's path of their kind draws"
   ).toEqual([]);
 
