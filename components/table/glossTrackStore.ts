@@ -7,11 +7,13 @@ import { nextFanLight, type GlossLight } from "./cardGloss.ts";
 import { isRested, restLight } from "./restEnds.ts";
 import type { Lamp, LampNow } from "./lampRig.ts";
 
+export type LightReader = Readonly<Pick<SharedValue<GlossLight>, "value" | "get">>;
+
 export interface GlossTracks {
   /** The light where the lamp rests, written at each settle: a back whose gloss the fan draws reads its foil glint there. */
   rest: SharedValue<GlossLight>;
   /** The light a back drawn live reads while the lamp moves, posed from the rig's lamp by `pose`. */
-  light: SharedValue<GlossLight>;
+  light: LightReader;
   /** The felt's `EndsProps.side`: while it shows an end of a rested lamp, the rig may stop stepping it (`endsCarry`). */
   ends: SharedValue<number>;
   /** The rig's lamp as it is now (`LampRig.now`), which the tracks are baked and steered from. */
@@ -28,7 +30,7 @@ export interface GlossTracks {
   pose(lamp: GlossLight): void;
 }
 
-export function createGlossTracks(rig: LampNow, rest: SharedValue<GlossLight>, light: SharedValue<GlossLight>, ends: SharedValue<number>, resting: Lamp): GlossTracks {
+export function createGlossTracks(rig: LampNow, { rest, light, ends }: { rest: SharedValue<GlossLight>; light: SharedValue<GlossLight>; ends: SharedValue<number> }, resting: Lamp): GlossTracks {
   let taken = resting;
   let live = !isRested(resting);
   const listeners = new Set<() => void>();

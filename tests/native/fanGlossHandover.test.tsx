@@ -11,7 +11,7 @@ import { CardView } from '@/components/CardView';
 import { LampGloss } from '@/components/table/LampGloss';
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';
 import type { GlossLight } from '@/components/table/cardGloss';
-import { createGlossTracks } from '@/components/table/glossTrackStore';
+import { createGlossTracks, type GlossTracks } from '@/components/table/glossTrackStore';
 import { restingLamp, steppedLamp } from '@/components/table/lampRig';
 import { CardTableProvider, useCardTableValue, type OwnedRects } from '@/components/table/useCardRects';
 import { bootFeedback } from './helpers/feedback';
@@ -33,11 +33,11 @@ const card = { id: '3_spades', rank: '3', suit: 'spades', isJoker: false } as co
 
 const sway = makeMutable(light(457));
 const still = makeMutable(light(300));
-const posed = makeMutable(light(457));
+let made: GlossTracks | undefined;
 
 function Table({ tracks, live, children }: { tracks: boolean; live?: boolean; children: React.ReactNode }) {
   const [store] = React.useState(() => {
-    const made = tracks ? createGlossTracks(steppedLamp(makeMutable(restingLamp([437, 180, 1]))), makeMutable(light(437)), posed, makeMutable(0), restingLamp([437, 180, 1])) : undefined;
+    made = tracks ? createGlossTracks(steppedLamp(makeMutable(restingLamp([437, 180, 1]))), { rest: makeMutable(light(437)), light: makeMutable(light(457)), ends: makeMutable(0) }, restingLamp([437, 180, 1])) : undefined;
     made?.update(!live);
     return made;
   });
@@ -81,7 +81,7 @@ describe('an opponent\'s back on a table with tracks', () => {
     });
     expect(streak()).toBe(gliding);
     await act(async () => {
-      posed.value = light(500);
+      made!.pose({ ...light(500), t: 1 });
       jest.advanceTimersByTime(16);
     });
     expect(streak()).not.toBe(gliding);

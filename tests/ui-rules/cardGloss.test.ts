@@ -4,7 +4,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { lampControls, restingLamp, stepLamp } from "../../components/table/lampRig.ts";
 import { levelShade } from "../../components/table/rail.ts";
-import { cardGloss, nextGlossLight, nextShadeLevel, nextStillLight } from "../../components/table/cardGloss.ts";
+import { cardGloss, nextFanLight, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "../../components/table/cardGloss.ts";
 import { CardGloss } from "../../lib/tokens.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
@@ -129,4 +129,36 @@ describe("the light a gloss reads", () => {
       }
     }
   });
+});
+
+describe("the light an opponent's back drawn live reads", () => {
+  function* jittered(lo: number, hi: number) {
+    let seed = 7;
+    for (;;) {
+      seed = (seed * 48271) % 2147483647;
+      yield (lo + ((hi - lo) * seed) / 2147483647) / 1000;
+    }
+  }
+  for (const [hz, lo, hi, every] of [
+    [60, 16.5, 16.9, 4],
+    [120, 8.2, 8.5, 8],
+  ] as const) {
+    test(`re-poses evenly, every ${every}th frame, 15 times a second, on a jittered ${hz} Hz display`, () => {
+      const frames = jittered(lo, hi);
+      let shown: GlossLight = { lx: 0, ly: 180, level: 1, r: 1, t: 0 };
+      let t = 0;
+      const posedAt: number[] = [];
+      for (let n = 1; n <= hz * 10; n++) {
+        t += frames.next().value!;
+        const next = nextFanLight(shown, { ...shown, lx: n * 3, t });
+        if (next) {
+          shown = next;
+          posedAt.push(n);
+        }
+      }
+      const gaps = new Set(posedAt.slice(1).map((n, i) => n - posedAt[i]!));
+      assert.deepEqual([...gaps], [every]);
+      assert.equal(posedAt.length, 150);
+    });
+  }
 });

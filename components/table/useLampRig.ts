@@ -99,7 +99,7 @@ export function useLampRig({
   const ends = useSharedValue(0);
   const [hold] = useState(() => (Platform.OS === "web" ? createLampHold(lamp, reduced) : undefined));
   const [reader] = useState(() => hold ?? steppedLamp(lamp));
-  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(reader, rest, fanLight, ends, resting) : undefined));
+  const [tracks] = useState(() => (Platform.OS === "web" ? createGlossTracks(reader, { rest, light: fanLight, ends }, resting) : undefined));
 
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.
