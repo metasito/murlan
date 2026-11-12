@@ -153,7 +153,10 @@ describe("a CI run judged over scratch histories", () => {
     commit("main moves");
     shas.offBase = mergeOnto("main", "head", "off-base");
     sh(origin, "checkout", "-q", "release");
-    if (moved) (write(later, ""), commit("release gains a test CI never ran"));
+    if (moved) {
+      write(later, "");
+      commit("release gains a test CI never ran");
+    }
     const base = sh(origin, "rev-parse", "release");
     sh(origin, "checkout", "-q", "main");
     return { head, base, shas, origin: `file://${origin}` };
