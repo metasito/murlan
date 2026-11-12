@@ -695,26 +695,9 @@ jobs:
     if: ${{ !cancelled() && (github.event.schedule == '17 4 * * 1' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
     timeout-minutes: 45
-    env:
-      CCACHE_DIR: /Users/runner/Library/Caches/ccache
-      CCACHE_MAXSIZE: 3G
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/install
-      - name: Install ccache
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install ccache
-      # Keyed per run because a cache is never rewritten once its key exists: a key that named only
-      # the dependencies kept the first run's contents for good, an empty cache included.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: /Users/runner/Library/Caches/ccache
-          key: ${{ runner.os }}-${{ runner.arch }}-ccache-${{ hashFiles('package-lock.json', 'patches/**') }}-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-ccache-${{ hashFiles('package-lock.json', 'patches/**') }}-
-            ${{ runner.os }}-${{ runner.arch }}-ccache-
       - name: Each Skia Metal layer follows its own opaque
         run: |
           lib=node_modules/@shopify/react-native-skia/apple
@@ -729,23 +712,16 @@ jobs:
           grep -qF "_impl->getLayer().opaque = opaque;" "$lib/SkiaUIView.mm" ||
             { echo "::error::The Skia patch's setOpaque: edit is missing: the prop never reaches the live layer."; exit 1; }
           node --test tests/tooling/skiaOpaquePatch.test.ts
-      # --no-install skips CocoaPods as well as npm, so the pods are installed
-      # explicitly rather than left out.
-      - run: npx expo prebuild --platform ios --no-install
+      # Always compiled, through the warm ccache: a cached app would answer from an earlier run.
+      - name: Compile
+        id: native
+        uses: ./.github/actions/ios-app
+        with:
+          mode: compile
       - name: The audio library's downloads are off
         run: |
           grep -qF "ENV['DISABLE_AUDIOAPI_FFMPEG'] = '1'" ios/Podfile
           grep -qF "ENV['DISABLE_AUDIOAPI_STATIC_EXTERNAL_LIBS'] = '1'" ios/Podfile
-      # Keyed on package-lock.json, not Podfile.lock: the latter is only written
-      # by `pod install` below, so hashing it here would always see a cache miss
-      # (first run) or, worse, a stale hit that never invalidates.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ios/Pods
-          key: ${{ runner.os }}-pods-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-pods-
-      - run: pod install --project-directory=ios
       - name: Both libraries resolved at their pins
         run: |
           grep -qF "RNAudioAPI (0.13.6)" ios/Podfile.lock
@@ -757,48 +733,10 @@ jobs:
           grep -q "MurlanDiagnosticsModule" "$provider"
           grep -q "MurlanAudioSessionModule" "$provider"
           if grep -qE "ExpoAudio|ExpoHaptics" ios/Podfile.lock "$provider"; then echo "::error::expo-audio or expo-haptics is still linked."; exit 1; fi
-      # The workspace and scheme are named from app.json rather than fixed here,
-      # so renaming the app does not silently stop compiling anything.
-      - name: Compile
-        run: |
-          workspace=$(ls -d ios/*.xcworkspace | head -1)
-          scheme=$(basename "$workspace" .xcworkspace)
-          echo "Building scheme $scheme"
-          # React Native's USE_CCACHE wrappers find ccache through $CCACHE_BINARY, which never reaches
-          # Xcode's compile tasks, so they ran plain clang; these name every path outright.
-          wrap="$RUNNER_TEMP/ccache-bin"
-          mkdir -p "$wrap"
-          for tool in clang clang++; do
-            printf '#!/bin/sh\nexport CCACHE_DIR=%s CCACHE_MAXSIZE=%s CCACHE_CONFIGPATH=%s\nexec %s %s "$@"\n' \
-              "$CCACHE_DIR" "$CCACHE_MAXSIZE" "$PWD/node_modules/react-native/scripts/xcode/ccache.conf" \
-              "$(command -v ccache)" "$(xcrun -f "$tool")" > "$wrap/$tool"
-            chmod +x "$wrap/$tool"
-          done
-          ccache --zero-stats
-          # `-sdk iphonesimulator` alone resolves to "Any iOS Simulator Device", which builds arm64
-          # and x86_64 whatever ONLY_ACTIVE_ARCH says.
-          xcodebuild \
-            -workspace "$workspace" \
-            -scheme "$scheme" \
-            -configuration Release \
-            -sdk iphonesimulator \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            ONLY_ACTIVE_ARCH=YES \
-            ARCHS=arm64 \
-            CC="$wrap/clang" \
-            CXX="$wrap/clang++" \
-            LD="$wrap/clang" \
-            LDPLUSPLUS="$wrap/clang++" \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-          ccache --show-stats
-          ccache --print-stats | grep -qE '^(direct|preprocessed)_cache_(hit|miss)\s+[1-9]' ||
-            echo "::warning::ccache saw no compile: the next run starts cold again."
       - name: The release declares no background audio, and nothing was downloaded
+        env:
+          app: ${{ steps.native.outputs.app }}
         run: |
-          app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
-          [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist"
           if /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes' "$app/Info.plist" 2>/dev/null | grep -qw audio; then
             echo "::error::UIBackgroundModes carries audio."; exit 1
@@ -806,8 +744,6 @@ jobs:
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' "$app/Info.plist")" = true ] ||
             { echo "::error::Info.plist lacks CADisableMinimumFrameDurationOnPhone: iOS caps the app at 60 Hz."; exit 1; }
           [ -f "$app/main.jsbundle" ] || { echo "::error::The Release .app embeds no main.jsbundle."; exit 1; }
-          node scripts/e2eBuildMark.mjs --absent "$app" --mark diagnostics
-          node scripts/e2eBuildMark.mjs --absent "$app"
           if /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Info.plist" >/dev/null 2>&1; then
             echo "::error::A production build asks for the microphone."; exit 1
           fi

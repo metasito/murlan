@@ -3,7 +3,7 @@
  * `npm ci`: only `node:` imports here. The native projects are generated from app config (CNG).
  */
 
-export const CONFIG = /^(app\.json|app\.config\.(js|ts)|eas\.json|modules\/.+|plugins\/.+)$/;
+export const CONFIG = /^(app\.json|app\.config\.(js|ts)|eas\.json|modules\/.+|plugins\/.+|\.github\/actions\/ios-app\/.+)$/;
 
 const deps = (text) => {
   try {

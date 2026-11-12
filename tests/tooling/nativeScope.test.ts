@@ -107,6 +107,7 @@ const NATIVE_SAMPLES = [
   "modules/murlan-diagnostics/ios/MurlanDiagnosticsModule.swift",
   "plugins/withReactNativeFromSource.js",
   "patches/react-native-audio-api+0.13.6.patch",
+  ".github/actions/ios-app/action.yml",
   "package.json",
 ];
 

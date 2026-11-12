@@ -28,5 +28,6 @@ jobs:
       - name: Build and save the app, unless the cache has it
         uses: ./.github/actions/ios-app
         with:
-          lookup-only: "true"
+          mode: fill
+          flavour: e2e
 

@@ -21,23 +21,20 @@ runs:
         udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
         echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
         xcrun simctl boot "$udid"
-    - name: Build a diagnostics release for the simulator
+    - name: Build a diagnostics release for the simulator, or restore it
+      id: native
+      uses: ./.github/actions/ios-app
+      with:
+        flavour: diagnostics
+    - name: Name the app
       shell: bash -e {0}
       env:
+        APP: ${{ steps.native.outputs.app }}
         OUT_DIR: ${{ inputs.out-dir }}
       run: |
-        npx expo prebuild --platform ios --no-install
-        pod install --project-directory=ios
-        workspace=$(ls -d ios/*.xcworkspace | head -1)
-        scheme=$(basename "$workspace" .xcworkspace)
-        xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
-          -derivedDataPath "$RUNNER_TEMP/DerivedData" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
-        app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
-        [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
-        node scripts/e2eBuildMark.mjs --present "$app" --mark diagnostics
-        echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
-        echo "APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
-        echo "APP_EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" >> "$GITHUB_ENV"
+        echo "APP_BUNDLE=$APP" >> "$GITHUB_ENV"
+        echo "APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" >> "$GITHUB_ENV"
+        echo "APP_EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")" >> "$GITHUB_ENV"
         mkdir -p "$OUT_DIR"
     - name: Install the app and start the collector
       shell: bash -e {0}

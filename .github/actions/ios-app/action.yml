@@ -1,134 +1,341 @@
 name: Build the iOS app, or restore it
 description: >
-  The native build's cache key, lookup, build and save, in one place: `ios.yml` restores through
-  it and `ios-app-cache.yml` saves main's through it, so the two cannot key or build differently.
+  The one iOS native compile (tests/tooling/iosNativeCompile.test.ts): prebuild, pods, ccache,
+  xcodebuild, and the whole .app cached by fingerprint and flavour with its JS rebundled, so a
+  change to JS alone never compiles native code. Every workflow building iOS calls it.
 
 inputs:
-  lookup-only:
-    description: "true: only look the key up, and build and save on a miss. false: restore, and fail on a miss."
+  mode:
+    description: >
+      build: restore the app on a hit, build and save it on a miss. restore: restore, and fail on a
+      miss. fill: only look the key up, and build and save on a miss. compile: always compile,
+      through the warm ccache, and cache no app.
     required: false
-    default: "false"
+    default: build
+  sdk:
+    description: "simulator or device. A device build allows plain http to the LAN (Metro, the bench collector)."
+    required: false
+    default: simulator
+  configuration:
+    description: Release (the JS bundled in) or Debug (the JS from Metro).
+    required: false
+    default: Release
+  flavour:
+    description: "player, e2e (EXPO_PUBLIC_E2E_FAST) or diagnostics (EXPO_PUBLIC_DIAGNOSTICS)."
+    required: false
+    default: player
 
 outputs:
+  app:
+    description: The .app, its JS this commit's.
+    value: ${{ steps.app.outputs.app }}
   cache-hit:
     value: ${{ steps.cached.outputs.cache-hit }}
   key:
     value: ${{ steps.native.outputs.key }}
+  fingerprint:
+    description: Expo's fingerprint of the native build.
+    value: ${{ steps.native.outputs.hash }}
 
 runs:
   using: composite
   steps:
+    # Every EXPO_PUBLIC_* a build reads is set here from the flavour, never inherited from the
+    # caller's env, because the flavour is in the key and the env is not.
+    - name: Name the build
+      id: build
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        SDK: ${{ inputs.sdk }}
+        CONFIGURATION: ${{ inputs.configuration }}
+        FLAVOUR: ${{ inputs.flavour }}
+      run: |
+        case "$MODE" in build|restore|fill|compile) ;; *) echo "::error::mode $MODE is not build, restore, fill or compile."; exit 1;; esac
+        case "$CONFIGURATION" in Release|Debug) ;; *) echo "::error::configuration $CONFIGURATION is not Release or Debug."; exit 1;; esac
+        EXPO_PUBLIC_E2E_FAST=""
+        EXPO_PUBLIC_DIAGNOSTICS=""
+        case "$FLAVOUR" in
+          player) ;;
+          e2e) EXPO_PUBLIC_E2E_FAST="1" ;;
+          diagnostics) EXPO_PUBLIC_DIAGNOSTICS="1" ;;
+          *) echo "::error::flavour $FLAVOUR is not player, e2e or diagnostics."; exit 1;;
+        esac
+        # `-sdk iphonesimulator` alone resolves to "Any iOS Simulator Device", which builds arm64
+        # and x86_64 whatever ONLY_ACTIVE_ARCH says: ARCHS names the one slice this runner runs.
+        case "$SDK" in
+          simulator) platform=iphonesimulator; destination=""; archs=$(uname -m) ;;
+          device) platform=iphoneos; destination="generic/platform=iOS"; archs=arm64 ;;
+          *) echo "::error::sdk $SDK is not simulator or device."; exit 1;;
+        esac
+        {
+          echo "platform=$platform"
+          echo "destination=$destination"
+          echo "archs=$archs"
+          echo "products=$RUNNER_TEMP/DerivedData/Build/Products/$CONFIGURATION-$platform"
+          echo "e2e=$EXPO_PUBLIC_E2E_FAST"
+          echo "diagnostics=$EXPO_PUBLIC_DIAGNOSTICS"
+          echo "app-cache=$([ "$MODE" = compile ] && echo false || echo true)"
+          echo "rebundle=$([ "$MODE" != compile ] && [ "$CONFIGURATION" = Release ] && echo true || echo false)"
+        } >> "$GITHUB_OUTPUT"
+
+    # In the background, beside the fingerprint and restore: a hit takes this bundle, and a miss
+    # compares it with the one Xcode builds. The .app it writes into is a stand-in: hermesc embeds
+    # only its input's directory, which stays Xcode's.
+    - name: Start bundling the JS
+      if: steps.build.outputs.rebundle == 'true'
+      shell: bash
+      env:
+        EXPO_PUBLIC_E2E_FAST: ${{ steps.build.outputs.e2e }}
+        EXPO_PUBLIC_DIAGNOSTICS: ${{ steps.build.outputs.diagnostics }}
+        PRODUCTS: ${{ steps.build.outputs.products }}
+        PLATFORM: ${{ steps.build.outputs.platform }}
+      run: |
+        mkdir -p "$PRODUCTS/js.app"
+        (
+          status=0
+          tools/ci/rebundle-ios-app.sh "$PRODUCTS/js.app" "$PLATFORM" > "$RUNNER_TEMP/bundle.log" 2>&1 || status=$?
+          echo "$status" > "$RUNNER_TEMP/bundle.status"
+        ) > /dev/null 2>&1 &
+
     # The fingerprint expo itself depends on is the version that reads its SDK's config.
     # This file stands for every build input the fingerprint cannot see; the workflows calling it are not one.
     - name: Fingerprint the native build
       id: native
+      if: steps.build.outputs.app-cache == 'true'
       shell: bash
+      env:
+        FLAVOUR: ${{ inputs.sdk }}-${{ inputs.configuration }}-${{ inputs.flavour }}
       run: |
         hash=$(npx --no-install fingerprint fingerprint:generate --platform ios \
           | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).hash")
         xcode=$(xcodebuild -version | shasum | cut -c1-12)
         build=$(shasum < "$GITHUB_ACTION_PATH/action.yml" | cut -c1-12)
-        echo "key=ios-app-$RUNNER_ARCH-$xcode-$build-$hash" >> "$GITHUB_OUTPUT"
+        echo "hash=$hash" >> "$GITHUB_OUTPUT"
+        echo "key=ios-app-$RUNNER_ARCH-$xcode-$build-$FLAVOUR-$hash" >> "$GITHUB_OUTPUT"
 
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: cached
+      if: steps.build.outputs.app-cache == 'true'
       with:
         path: ${{ runner.temp }}/ios-app
         key: ${{ steps.native.outputs.key }}
-        lookup-only: ${{ inputs.lookup-only }}
-        fail-on-cache-miss: ${{ inputs.lookup-only != 'true' }}
+        lookup-only: ${{ inputs.mode == 'fill' }}
+        fail-on-cache-miss: ${{ inputs.mode == 'restore' }}
 
-    # Why a build of this app and no host client: the header of
-    # tests/tooling/realAppNotExpoGo.test.ts (#627).
-    #
-    # Release, not Debug: it bundles the JS into the app, so there is no
-    # Metro to start, no packager URL to reach, no deep link and no
-    # dev menu to be on top in the first place.
-    - name: Build the app
+    - name: Install ccache
       if: steps.cached.outputs.cache-hit != 'true'
       shell: bash
       env:
-        # Read at module scope by every screen that names it (`app/game.tsx`,
-        # `app/(online)/game.tsx`, `context/GameContext.tsx`), so it zeroes
-        # every bot delay any of them has across all
-        # four flows this job drives, not only exchange-phase.yaml's. What
-        # that ticket needed from it is the offline exchange overlay holding
-        # open until exchange-phase.yaml taps it (#915, #1560), instead of
-        # closing on its real ~5.2s clock — but every flow
-        # here now runs at this pace. Never read outside a build this
-        # harness itself produced (`scripts/assertNotE2EFast.js`).
-        EXPO_PUBLIC_E2E_FAST: "1"
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      run: command -v ccache >/dev/null || brew install ccache
+
+    # Keyed per run because a cache is never rewritten once its key exists: a key that named only
+    # the dependencies kept the first run's contents for good, an empty cache included. Shared by
+    # every flavour: ccache keys each object by its own inputs, and a flavour changes only JS.
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: ccache
+      if: steps.cached.outputs.cache-hit != 'true'
+      with:
+        path: ${{ runner.temp }}/ccache
+        key: ios-ccache-${{ runner.arch }}-${{ inputs.sdk }}-${{ inputs.configuration }}-${{ hashFiles('package-lock.json', 'patches/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          ios-ccache-${{ runner.arch }}-${{ inputs.sdk }}-${{ inputs.configuration }}-${{ hashFiles('package-lock.json', 'patches/**') }}-
+          ios-ccache-${{ runner.arch }}-${{ inputs.sdk }}-${{ inputs.configuration }}-
+
+    - name: Generate the native project
+      if: steps.cached.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        EXPO_PUBLIC_E2E_FAST: ${{ steps.build.outputs.e2e }}
+        EXPO_PUBLIC_DIAGNOSTICS: ${{ steps.build.outputs.diagnostics }}
+        SDK: ${{ inputs.sdk }}
       run: |
+        # --no-install skips CocoaPods as well as npm, so the pods are installed below.
         npx expo prebuild --platform ios --no-install
-        pod install --project-directory=ios
-        # Named from app.json rather than fixed here, so renaming the app
-        # does not silently start driving a stale build.
-        #
-        # Matched by the shell rather than by `ls`: this step runs under
-        # `bash -eo pipefail`, where a failed `ls` in a bare assignment kills
-        # the step on the spot and the message below never prints — the
-        # cause is then a raw "No such file or directory" instead of the one
-        # sentence saying what was expected.
+        # Named from app.json rather than fixed here, so renaming the app does not silently start
+        # building a stale one. Matched by the shell rather than by `ls`: under `bash -eo pipefail`
+        # a failed `ls` in an assignment kills the step before the message below prints.
         workspace=""
         for candidate in ios/*.xcworkspace; do
           [ -d "$candidate" ] && { workspace="$candidate"; break; }
         done
         [ -n "$workspace" ] || { echo "::error::expo prebuild produced no ios/*.xcworkspace."; exit 1; }
         scheme=$(basename "$workspace" .xcworkspace)
-        echo "Building scheme $scheme"
-        # One slice, for the machine this actually runs on. Release defaults
-        # ONLY_ACTIVE_ARCH to NO and so compiles every valid architecture:
-        # on an Apple-silicon runner half the build is an x86_64 slice
-        # nothing here can execute, and this step is 45% of the job. Asking
-        # for the active architecture says that in the setting that controls
-        # it, and stays right on a runner of either kind — where naming an
-        # architecture would hand the other one a binary its simulator
-        # cannot load. Measured: 794s to 533s.
-        xcodebuild \
-          -workspace "$workspace" \
-          -scheme "$scheme" \
-          -configuration Release \
-          -sdk iphonesimulator \
-          -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-          ONLY_ACTIVE_ARCH=YES \
-          COMPILER_INDEX_STORE_ENABLE=NO \
-          CODE_SIGNING_ALLOWED=NO \
-          build
-        app=""
-        for candidate in "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app; do
-          [ -d "$candidate" ] && { app="$candidate"; break; }
-        done
-        [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
-        cp "$app/main.jsbundle" "$RUNNER_TEMP/xcode.jsbundle"
-        mkdir -p "$RUNNER_TEMP/ios-app"
-        cp -R "$app" "$RUNNER_TEMP/ios-app/"
+        # Plain http to the PC's LAN address: Metro on 8081, the game server on 5000, the bench collector on 5099.
+        if [ "$SDK" = device ]; then
+          plutil -replace NSAppTransportSecurity.NSAllowsLocalNetworking -bool YES "ios/$scheme/Info.plist"
+        fi
+        echo "IOS_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+        echo "IOS_SCHEME=$scheme" >> "$GITHUB_ENV"
 
-    # Before the save: ios.yml rebundles every restored app into this same stand-in .app, so a
-    # build whose bundle it cannot reproduce byte for byte must never enter the cache.
-    - name: The rebundled JS is the bundle Xcode built
+    # Keyed on the lockfile, not Podfile.lock: that is only written by the `pod install` below.
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: pods
+      if: steps.cached.outputs.cache-hit != 'true'
+      with:
+        path: ios/Pods
+        key: ios-pods-${{ runner.arch }}-${{ hashFiles('package-lock.json', 'patches/**') }}
+        restore-keys: |
+          ios-pods-${{ runner.arch }}-
+
+    - name: Install the pods
+      if: steps.cached.outputs.cache-hit != 'true'
+      shell: bash
+      run: pod install --project-directory=ios
+
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: steps.cached.outputs.cache-hit != 'true' && steps.pods.outputs.cache-hit != 'true'
+      with:
+        path: ios/Pods
+        key: ios-pods-${{ runner.arch }}-${{ hashFiles('package-lock.json', 'patches/**') }}
+
+    # Before the compile: the bundle and Xcode's own bundle phase both write main.jsbundle into the products directory.
+    - name: Wait for the JS bundle
+      if: steps.build.outputs.rebundle == 'true' && (inputs.mode != 'fill' || steps.cached.outputs.cache-hit != 'true')
+      shell: bash
+      run: |
+        for _ in $(seq 1 300); do
+          [ -s "$RUNNER_TEMP/bundle.status" ] && break
+          sleep 2
+        done
+        cat "$RUNNER_TEMP/bundle.log"
+        [ "$(cat "$RUNNER_TEMP/bundle.status" 2>/dev/null)" = 0 ] || { echo "::error::Bundling the JS failed or never finished."; exit 1; }
+
+    # Release, not Debug, for every simulator build: it bundles the JS into the app, so there is no
+    # Metro to start, no packager URL to reach and no dev menu (tests/tooling/realAppNotExpoGo.test.ts).
+    - name: Compile
+      id: compile
       if: steps.cached.outputs.cache-hit != 'true'
       shell: bash
       env:
-        EXPO_PUBLIC_E2E_FAST: "1"
+        EXPO_PUBLIC_E2E_FAST: ${{ steps.build.outputs.e2e }}
+        EXPO_PUBLIC_DIAGNOSTICS: ${{ steps.build.outputs.diagnostics }}
+        CCACHE_DIR: ${{ runner.temp }}/ccache
+        CCACHE_MAXSIZE: 3G
+        CONFIGURATION: ${{ inputs.configuration }}
+        PLATFORM: ${{ steps.build.outputs.platform }}
+        DESTINATION: ${{ steps.build.outputs.destination }}
+        ARCHS: ${{ steps.build.outputs.archs }}
+        PRODUCTS: ${{ steps.build.outputs.products }}
       run: |
-        products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
-        mkdir -p "$products/js.app"
-        tools/ci/rebundle-ios-app.sh "$products/js.app"
-        cmp "$RUNNER_TEMP/xcode.jsbundle" "$products/js.app/main.jsbundle"
-        node scripts/e2eBuildMark.mjs --present "$products/js.app"
+        echo "Building scheme $IOS_SCHEME, $CONFIGURATION for $PLATFORM ($ARCHS)"
+        # React Native's USE_CCACHE wrappers find ccache through $CCACHE_BINARY, which never reaches
+        # Xcode's compile tasks, so they ran plain clang; these name every path outright.
+        wrap="$RUNNER_TEMP/ccache-bin"
+        mkdir -p "$wrap" "$CCACHE_DIR"
+        for tool in clang clang++; do
+          printf '#!/bin/sh\nexport CCACHE_DIR=%s CCACHE_MAXSIZE=%s CCACHE_CONFIGPATH=%s\nexec %s %s "$@"\n' \
+            "$CCACHE_DIR" "$CCACHE_MAXSIZE" "$PWD/node_modules/react-native/scripts/xcode/ccache.conf" \
+            "$(command -v ccache)" "$(xcrun -f "$tool")" > "$wrap/$tool"
+          chmod +x "$wrap/$tool"
+        done
+        ccache --zero-stats
+        destination=()
+        [ -z "$DESTINATION" ] || destination=(-destination "$DESTINATION")
+        # ONLY_ACTIVE_ARCH: Release defaults it to NO and compiles every valid architecture
+        # (measured 794s to 533s). COMPILER_INDEX_STORE_ENABLE: no IDE reads the index here.
+        xcodebuild \
+          -workspace "$IOS_WORKSPACE" \
+          -scheme "$IOS_SCHEME" \
+          -configuration "$CONFIGURATION" \
+          -sdk "$PLATFORM" \
+          "${destination[@]}" \
+          -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+          ONLY_ACTIVE_ARCH=YES \
+          ARCHS="$ARCHS" \
+          CC="$wrap/clang" \
+          CXX="$wrap/clang++" \
+          LD="$wrap/clang" \
+          LDPLUSPLUS="$wrap/clang++" \
+          COMPILER_INDEX_STORE_ENABLE=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          build
+        ccache --show-stats
+        ccache --print-stats | grep -qE '^(direct|preprocessed)_cache_(hit|miss)\s+[1-9]' ||
+          echo "::warning::ccache saw no compile: the next run starts cold again."
+        app=""
+        for candidate in "$PRODUCTS/"*.app; do
+          [ "$(basename "$candidate")" != js.app ] && [ -d "$candidate" ] && { app="$candidate"; break; }
+        done
+        [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+        echo "app=$app" >> "$GITHUB_OUTPUT"
+
+    # Saved even when the compile failed: the objects it did make are the next run's head start.
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: always() && (steps.compile.outcome == 'success' || steps.compile.outcome == 'failure')
+      with:
+        path: ${{ runner.temp }}/ccache
+        key: ios-ccache-${{ runner.arch }}-${{ inputs.sdk }}-${{ inputs.configuration }}-${{ hashFiles('package-lock.json', 'patches/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+    # Before the save: a hit takes the rebundled JS into this same stand-in .app, so a build whose
+    # bundle it cannot reproduce byte for byte must never enter the cache.
+    - name: The rebundled JS is the bundle Xcode built
+      if: steps.build.outputs.rebundle == 'true' && steps.cached.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        APP: ${{ steps.compile.outputs.app }}
+        PRODUCTS: ${{ steps.build.outputs.products }}
+      run: cmp "$APP/main.jsbundle" "$PRODUCTS/js.app/main.jsbundle"
+
+    - name: Stage the app for the cache
+      if: steps.build.outputs.app-cache == 'true' && steps.cached.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        APP: ${{ steps.compile.outputs.app }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/ios-app"
+        cp -R "$APP" "$RUNNER_TEMP/ios-app/"
 
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: steps.cached.outputs.cache-hit != 'true'
+      if: steps.build.outputs.app-cache == 'true' && steps.cached.outputs.cache-hit != 'true'
       with:
         path: ${{ runner.temp }}/ios-app
         key: ${{ steps.native.outputs.key }}
 
     # A save that could not reserve the key only warns, which would leave a green run and no entry.
     - name: The build is in the cache
-      if: inputs.lookup-only == 'true' && steps.cached.outputs.cache-hit != 'true'
+      if: inputs.mode == 'fill' && steps.cached.outputs.cache-hit != 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/ios-app
         key: ${{ steps.native.outputs.key }}
         lookup-only: true
         fail-on-cache-miss: true
+
+    - name: Bundle the JS into the app
+      id: app
+      if: inputs.mode != 'fill'
+      shell: bash
+      env:
+        COMPILED: ${{ steps.compile.outputs.app }}
+        PRODUCTS: ${{ steps.build.outputs.products }}
+        REBUNDLE: ${{ steps.build.outputs.rebundle }}
+      run: |
+        if [ -n "$COMPILED" ]; then
+          echo "app=$COMPILED" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        cached=""
+        for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
+          [ -d "$candidate" ] && { cached="$candidate"; break; }
+        done
+        [ -n "$cached" ] || { echo "::error::No .app was restored."; exit 1; }
+        app="$PRODUCTS/$(basename "$cached")"
+        mkdir -p "$PRODUCTS"
+        rm -rf "$app"
+        cp -R "$cached" "$app"
+        if [ "$REBUNDLE" = true ]; then cp -R "$PRODUCTS/js.app/." "$app/"; fi
+        echo "app=$app" >> "$GITHUB_OUTPUT"
+
+    - name: The app carries its flavour's marks, and no other's
+      if: inputs.mode != 'fill' && inputs.configuration == 'Release'
+      shell: bash
+      env:
+        APP: ${{ steps.app.outputs.app }}
+        E2E: ${{ steps.build.outputs.e2e }}
+        DIAGNOSTICS: ${{ steps.build.outputs.diagnostics }}
+      run: |
+        node scripts/e2eBuildMark.mjs "$([ -n "$E2E" ] && echo --present || echo --absent)" "$APP"
+        node scripts/e2eBuildMark.mjs "$([ -n "$DIAGNOSTICS" ] && echo --present || echo --absent)" "$APP" --mark diagnostics
