@@ -38,7 +38,7 @@ function harness(over: { online?: string[]; store?: Partial<FriendshipDeps["frie
       getRoomPlayers: async () => [{ userId: "alice" }] as never,
     },
     emitToUser: ((to: string, event: string, data: unknown) => sent.push([to, event, data])) as FriendshipDeps["emitToUser"],
-    isUserOnline: async (id) => online.has(id),
+    isShownOnline: async (id) => online.has(id),
     announceRoomChanged: async (roomId) => void announced.push(roomId),
     notifyUser: (async (id: string, push: unknown) => void pushed.push([id, push])) as FriendshipDeps["notifyUser"],
     bumpSocial: (ids) => void bumped.push([...ids].sort()),

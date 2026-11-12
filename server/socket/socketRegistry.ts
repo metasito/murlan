@@ -15,7 +15,7 @@ import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { payload } from "../shared/payload.ts";
 import { track } from "../shared/inFlight.ts";
-import { departingAmong } from "../store/presence.ts";
+import { shownOnline } from "../store/presence.ts";
 
 let _rt: TableRuntime | null = null;
 
@@ -32,34 +32,23 @@ export function emitToUser<E extends Exclude<keyof ServerToClientEvents, "game:s
   _rt?.out.user(userId).emit(event, ...data);
 }
 
-/** Whether this account has a socket anywhere in the cluster. Never throws. */
-export async function isUserOnline(userId: string): Promise<boolean> {
-  return _rt ? _rt.presence.isOnline(userId) : userSocketMap.has(userId);
-}
-
 /**
- * Of `userIds`, every account with a socket anywhere in the cluster, in one round trip. Only this
- * instance's own when presence did not answer: a friend elsewhere shown offline is the smaller
- * wrong.
- */
-export async function onlineAmong(userIds: readonly string[]): Promise<Set<string>> {
-  const online = await _rt?.presence.onlineAmong(userIds);
-  return online ?? new Set(userIds.filter((id) => userSocketMap.has(id)));
-}
-
-/**
- * Of `userIds`, those a friend sees online: `onlineAmong`, and those whose instance is leaving,
- * whose offline notice a sweep sends once they had the reconnect spread to come back.
+ * Of `userIds`, those their friends are shown as online: what every friend-facing answer reads,
+ * lists, notices and whether an invite is shown or pushed. Only this instance's own when presence
+ * does not answer: a friend elsewhere shown offline is the smaller wrong. Never rejects.
  */
 export async function shownOnlineAmong(userIds: readonly string[]): Promise<Set<string>> {
-  const [online, departing] = await Promise.all([
-    onlineAmong(userIds),
-    departingAmong(userIds).catch((err: unknown) => {
-      logger.warn({ err }, "Could not read who is departing; shown offline");
-      return new Set<string>();
-    }),
-  ]);
-  return new Set([...online, ...departing]);
+  const here = userIds.filter((id) => userSocketMap.has(id));
+  try {
+    return new Set([...here, ...(await shownOnline(userIds))]);
+  } catch (err) {
+    logger.warn({ err }, "Presence did not answer; only this instance's accounts are shown online");
+    return new Set(here);
+  }
+}
+
+export async function isShownOnline(userId: string): Promise<boolean> {
+  return (await shownOnlineAmong([userId])).has(userId);
 }
 
 /**

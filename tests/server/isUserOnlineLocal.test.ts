@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { storePresence } from "../../server/socket/socketOutbox.ts";
 import { socketRoomMap, userSocketMap } from "../../server/game/gameRoom.ts";
+import { isShownOnline, shownOnlineAmong } from "../../server/socket/socketRegistry.ts";
 
 const USER = "online-here";
 
@@ -39,4 +40,11 @@ test("an account connected here is online and at its table here before the store
   const presence = storePresence(async () => new Map());
   assert.deepEqual([...(await presence.onlineAmong([USER, "elsewhere"]))!], [USER]);
   assert.deepEqual(await presence.tablePresence("room-here", [USER]), { online: new Set([USER]), atTable: new Set([USER]) });
+});
+
+test("with presence not open, a friend is shown online only from this instance's sockets, and the read never rejects", async (t) => {
+  userSocketMap.set(USER, "local-socket");
+  t.after(() => userSocketMap.delete(USER));
+  assert.deepEqual([...(await shownOnlineAmong([USER, "elsewhere"]))], [USER]);
+  assert.equal(await isShownOnline("elsewhere"), false);
 });

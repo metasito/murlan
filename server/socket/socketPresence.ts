@@ -30,7 +30,7 @@ import { heldRoundFor } from "../game/gameTurn.ts";
 import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
-import { isUserOnline, shownOnlineAmong } from "./socketRegistry.ts";
+import { isShownOnline, shownOnlineAmong } from "./socketRegistry.ts";
 import { forgetPresence, onPresenceLost, onPresenceRestored, socialVersion } from "../store/presence.ts";
 import type { OnlineList } from "../../shared/protocol.ts";
 import { payload } from "../shared/payload.ts";
@@ -336,7 +336,7 @@ async function announceOnlineToFriends(
   friends: Awaited<ReturnType<typeof friendStore.getFriends>>
 ) {
   // The read the caller did is awaited, so the socket may already be gone.
-  if (!(await isUserOnline(userId))) return;
+  if (!(await isShownOnline(userId))) return;
   friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: true });
 }
 
@@ -344,8 +344,8 @@ async function emitFriendStatusOffline(userId: string, lastSeen: string) {
   // Debounced, and re-checked after every await: a reconnect inside any of
   // these windows must cancel the offline notice rather than race it.
   await new Promise((resolve) => setTimeout(resolve, 400));
-  if (await isUserOnline(userId)) return;
+  if (await isShownOnline(userId)) return;
   const friends = await friendStore.getFriends(userId).catch(() => []);
-  if (await isUserOnline(userId)) return;
+  if (await isShownOnline(userId)) return;
   friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen });
 }

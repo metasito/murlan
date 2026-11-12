@@ -15,7 +15,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, DEADLINE_SCALE, eventually, waitFor, type TestSocket } from "../helpers/client.ts";
-import { isUserOnline } from "../../server/socket/socketRegistry.ts";
+import { isShownOnline } from "../../server/socket/socketRegistry.ts";
 import { translate } from "../../shared/i18n.ts";
 import { createServer, type Server } from "node:http";
 import { whileUserLocked } from "../helpers/userLock.ts";
@@ -79,7 +79,7 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
 
   /** The server itself has seen `userId` go: what the invite asks before it chooses a push. */
   const offline = (userId: string) =>
-    eventually(async () => !(await isUserOnline(userId)), `${userId} to be offline`);
+    eventually(async () => !(await isShownOnline(userId)), `${userId} to be offline`);
 
   const post = (cookie: string, body: unknown) =>
     fetch(`${server.url}/api/push/token`, {
