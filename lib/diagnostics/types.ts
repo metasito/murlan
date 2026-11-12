@@ -41,6 +41,8 @@ export interface DiagRows {
   shown: { kind: string; fixture: number; reduced: boolean };
   orientation: { rn: { w: number; h: number }; native: Record<string, unknown> | null; error?: string };
   gate: { name: "deal" | "exchangeReady" | "exchangeDone" };
+  atRest: { id: string; ms: number; felt: number; end: number };
+  shot: { id: string };
 }
 
 export type DiagRow = { [K in keyof DiagRows]: { k: K; t: number } & DiagRows[K] }[keyof DiagRows];
