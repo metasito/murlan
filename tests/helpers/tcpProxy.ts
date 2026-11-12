@@ -23,8 +23,10 @@ export interface Proxy {
 }
 
 export interface ProxyOptions {
-  /** Every chunk the client sends upstream, as it is forwarded. */
+  /** Every chunk the client sends upstream, as it is received. */
   onClientBytes?: (chunk: Buffer) => void;
+  /** A promise holds this chunk, and every later one on its link, until it settles. */
+  holdClientBytes?: (chunk: Buffer) => Promise<unknown> | undefined;
 }
 
 export async function startProxy(target: { host: string; port: number }, opts: ProxyOptions = {}): Promise<Proxy> {
@@ -41,10 +43,19 @@ export async function startProxy(target: { host: string; port: number }, opts: P
     const link: Link = { id: ++next, client, server: upstream, dead: swallowNew };
     links.push(link);
     if (!swallowNew) upstream.connect(target.port, target.host);
+    let held: Promise<unknown> | null = null;
     client.on("data", (b: Buffer) => {
       if (link.dead) return;
       opts.onClientBytes?.(b);
-      upstream.write(b);
+      const hold = opts.holdClientBytes?.(b);
+      if (!hold && !held) return void upstream.write(b);
+      const release: Promise<unknown> = (held = (held ?? Promise.resolve())
+        .then(() => hold)
+        .catch(() => {})
+        .then(() => {
+          if (!link.dead) upstream.write(b);
+          if (held === release) held = null;
+        }));
     });
     upstream.on("data", (b) => { if (!link.dead) client.write(b); });
     client.on("error", () => {});

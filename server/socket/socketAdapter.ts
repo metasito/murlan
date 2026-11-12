@@ -63,7 +63,7 @@ export async function stillSubscribed(instance: string): Promise<boolean> {
 
 interface AdapterLinks {
   client: RedisClient;
-  /** Every connection is up, the subscriber has subscribed and the read loop has issued its first read, so a peer's reply can reach us. */
+  /** Every connection is up, the subscriber has subscribed and the read loop has started reading, so a peer's reply can reach us. */
   ready(): boolean;
 }
 
@@ -93,6 +93,8 @@ function adapterLinks(): AdapterLinks {
       const copy = openRedis("adapter", { connect: false });
       copies.push(copy);
       const { connect, subscribe, xRead } = { connect: copy.connect.bind(copy), subscribe: copy.subscribe.bind(copy), xRead: copy.xRead.bind(copy) };
+      // `$` moves to the tail on every empty read, so each `$` is pinned to the tail the first read found.
+      let tail: Promise<string> | undefined;
       return Object.assign(copy, {
         connect: () => connect().catch(() => copy),
         disconnect: () => Promise.resolve(),
@@ -103,10 +105,20 @@ function adapterLinks(): AdapterLinks {
             },
             () => {}
           ),
-        xRead: (...args: Parameters<typeof xRead>) => {
+        xRead: (...[streams, ...rest]: Parameters<typeof xRead>) => {
           if (!copy.isOpen) return new Promise<never>(() => {});
           reading = true;
-          return xRead(...args);
+          const list = Array.isArray(streams) ? streams : [streams];
+          const anchored = list.find((s) => s.id === "$");
+          if (!anchored) return xRead(streams, ...rest);
+          tail ??= copy.xRevRange(anchored.key, "+", "-", { COUNT: 1 }).then(
+            (last) => last?.[0]?.id ?? "0-0",
+            (err: unknown) => {
+              tail = undefined;
+              throw err;
+            }
+          );
+          return tail.then((id) => xRead(list.map((s) => (s.id === "$" ? { ...s, id } : s)), ...rest));
         },
       });
     },
