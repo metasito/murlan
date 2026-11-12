@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { animationPhase, installVirtualClock, step, stepThen, takeOver } from "./helpers/virtualClock.ts";
+import { EPOCH, animationPhase, installVirtualClock, step, stepThen, takeOver } from "./helpers/virtualClock.ts";
 import { STEP_MS } from "./helpers/traceDiff.ts";
 
 const PAGE = `<!doctype html><style>
@@ -92,4 +92,18 @@ test("an animation that a step carries to its end still finishes", async ({ page
   // The event is queued for the next real frame, which no step waits on.
   await expect.poll(() => page.evaluate(() => (window as unknown as { ended: number }).ended)).toBe(1);
   expect(await page.evaluate(() => document.getAnimations().map((a) => a.playState))).toEqual(["finished"]);
+});
+
+test("the virtual clock holds at its epoch however long the page waits between install and pause", async ({ page }) => {
+  // A loaded runner lets real time reach the blank page's clock before the pause; reading it on every task forces that.
+  await page.evaluate(() => {
+    const later = setTimeout;
+    const read = () => {
+      Date.now();
+      later(read, 1);
+    };
+    read();
+  });
+  await installVirtualClock(page, 1);
+  expect(await page.evaluate(() => Date.now())).toBe(EPOCH.getTime());
 });

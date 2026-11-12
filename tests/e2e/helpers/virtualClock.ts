@@ -17,7 +17,8 @@ async function orderedStep(ms: number, animations: (ms: number) => unknown, time
   await timers(ms);
 }
 
-const EPOCH = new Date("2026-09-24T12:00:00Z");
+export const EPOCH = new Date("2026-09-24T12:00:00Z");
+const INSTALL_LEAD_MS = 60 * 60_000;
 
 /**
  * Must run before the first navigation: a clock installed after load lets time flow first, and
@@ -62,7 +63,8 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
     };
   };
   await page.addInitScript({ content: `(${String(install)})(${String(mulberry32)}, ${seed}, ${String(orderedStep)});` });
-  await page.clock.install({ time: EPOCH });
+  // The blank page's clock runs in real time until the pause, and `pauseAt` throws once it has passed the time it is given.
+  await page.clock.install({ time: EPOCH.getTime() - INSTALL_LEAD_MS });
   await page.clock.pauseAt(EPOCH);
 }
 
