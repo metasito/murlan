@@ -192,6 +192,12 @@ describe("a merge spelled through an escape, eval or a variable is still a merge
     "a=gh; $a pr merge 1; a=ls",
     "$GH pr merge 1",
     "$(echo gh) pr merge 1",
+    "`echo gh` pr merge 1",
+    "\"`echo gh`\" pr merge 1",
+    "`which gh` pr merge 1",
+    "gh pr `echo merge` 1",
+    "`echo env` gh pr merge 1",
+    "eval '`echo gh` pr merge 1'",
     "for a in gh; do $a pr merge 1; done",
     "w=env; $w gh pr merge 1",
     "$WRAP gh pr merge 1",
@@ -224,6 +230,10 @@ describe("a merge spelled through an escape, eval or a variable is still a merge
     "C:\\tools\\gh.exe pr view 1",
     "git -C C:\\repo\\murlan merge origin/main",
     "$PSVersionTable.PSVersion.Major",
+    "echo `date` done",
+    "`echo gh` pr view 1",
+    "`npm bin`/jest a.test.ts",
+    "Write-Host a`nb",
   ]) {
     test(`allows: ${JSON.stringify(cmd)}`, () => {
       assert.equal(guard(cmd), null);

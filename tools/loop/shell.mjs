@@ -47,7 +47,8 @@ function closing(text, open) {
 /**
  * The words of each simple command, quote-aware: a separator inside quotes is data, and a
  * `$( … )` anywhere, quoted or not, is a command of its own. Backslash is literal (PowerShell and
- * Windows paths) except before a quote or a newline; `posix` reads it as bash does, an escape.
+ * Windows paths) except before a quote or a newline, and a backtick separates (PowerShell's escape);
+ * `posix` reads both as bash does: an escape, and a `` `…` `` substitution like `$( … )`.
  */
 function segments(text, depth, posix = false) {
   const out = [];
@@ -90,6 +91,14 @@ function segments(text, depth, posix = false) {
     if (posix && ch === "\\" && i + 1 < text.length && (quote === null || /[$`\\]/.test(text[i + 1]))) {
       word = (word ?? "") + text[i + 1];
       i += 1;
+      continue;
+    }
+    if (posix && ch === "`" && text[i + 1] !== "\n") {
+      let end = i + 1;
+      while (end < text.length && (text[end] !== "`" || text[end - 1] === "\\")) end += 1;
+      if (depth < MAX_DEPTH) out.push(...segments(text.slice(i + 1, end), depth + 1, posix));
+      word = (word ?? "") + text.slice(i, end + 1);
+      i = end;
       continue;
     }
     if (quote === '"') {
@@ -244,8 +253,8 @@ export function withoutGhGlobals(args) {
 }
 
 /**
- * Every simple command `text` runs, under both readings of a backslash: literal, as PowerShell and
- * a Windows path take it, and an escape, as bash takes it. The guard is not told which shell runs
+ * Every simple command `text` runs, under both readings of a backslash and a backtick: as PowerShell
+ * and a Windows path take them, and as bash does (an escape, a command substitution). The guard is not told which shell runs
  * the line, so a rule sees each reading.
  */
 export function commands(text, depth = 0, vars = settledAssignments(text)) {
@@ -253,7 +262,7 @@ export function commands(text, depth = 0, vars = settledAssignments(text)) {
   const spelled = depth === 0 ? text.replace(/\{(owner|repo|branch)\}/g, "$1") : text;
   const read = (posix) => segments(spelled, depth, posix).flatMap((words) => normalize(words, depth, vars));
   const literalReading = read(false);
-  if (!spelled.includes("\\")) return literalReading;
+  if (!/[\\`]/.test(spelled)) return literalReading;
   const seen = new Set(literalReading.map((c) => JSON.stringify(c)));
   return [...literalReading, ...read(true).filter((c) => !seen.has(JSON.stringify(c)))];
 }
