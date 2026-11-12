@@ -45,7 +45,8 @@ export interface DiagRows {
   atRest: { id: string; ms: number; felt: number; end: number; frames: number; rested: number };
   /** The same over a window of bots playing, `plays` cards thrown. */
   inPlay: { ms: number; plays: number; felt: number; end: number; frames: number; rested: number };
-  shot: { id: string };
+  /** A screenshot the runner takes while the state stays on screen for `holdMs`. */
+  shot: { id: string; holdMs: number };
 }
 
 export type DiagRow = { [K in keyof DiagRows]: { k: K; t: number } & DiagRows[K] }[keyof DiagRows];
