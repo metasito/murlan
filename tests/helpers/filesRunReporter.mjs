@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, writeSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeSync } from "node:fs";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { tableTimeoutMs } from "../../scripts/lib/proc.mjs";
@@ -117,14 +117,16 @@ export default async function* filesRun(source) {
   for (const [dir, count] of [...perDir].sort()) yield `test files run in ${dir}: ${count}\n`;
 
   // In `node --test`, everything after the executable is a file argument; the flags are execArgv.
-  const missing = unloaded([...loaded], process.cwd(), process.argv.slice(1));
-  if (loaded.size === 0) missing.push("(no test file loaded at all)");
+  const missing = loaded.size === 0 ? ["(no test file loaded at all)"] : unloaded([...loaded], process.cwd(), process.argv.slice(1));
   for (const file of missing) yield `test file never loaded: ${file}\n`;
   if (missing.length > 0) process.exitCode = 1;
 }
 
+const isWild = (/** @type {string} */ s) => /[*?[\]{}]/.test(s);
+
 /** A path to one test file; a glob or a directory names whatever its root holds. */
-const namesOneFile = (/** @type {string} */ arg) => arg.endsWith(".test.ts") && !/[*?[\]{}]/.test(arg);
+const namesOneFile = (/** @type {string} */ arg, /** @type {string} */ cwd) =>
+  !isWild(arg) && !statSync(path.resolve(cwd, arg), { throwIfNoEntry: false })?.isDirectory();
 
 const posix = (/** @type {string} */ f) => f.split(path.sep).join("/");
 const within = (/** @type {string} */ f, /** @type {string} */ dir) => dir === "" || f === dir || f.startsWith(`${dir}/`);
@@ -135,7 +137,7 @@ const within = (/** @type {string} */ f, /** @type {string} */ dir) => dir === "
  */
 const rootOf = (/** @type {string} */ arg, /** @type {string} */ cwd) => {
   const segments = posix(path.relative(cwd, path.resolve(cwd, arg))).split("/");
-  const wild = segments.findIndex((s) => /[*?[\]{}]/.test(s));
+  const wild = segments.findIndex(isWild);
   return segments.slice(0, wild === -1 ? segments.length : wild).filter(Boolean).join("/");
 };
 
@@ -145,14 +147,13 @@ const rootOf = (/** @type {string} */ arg, /** @type {string} */ cwd) => {
  */
 export function unloaded(loaded, cwd = process.cwd(), args = []) {
   const rel = loaded.map((f) => posix(path.relative(cwd, f)));
-  const files = args.filter(namesOneFile).map((a) => posix(path.relative(cwd, path.resolve(cwd, a))));
+  const files = args.filter((a) => namesOneFile(a, cwd)).map((a) => posix(path.relative(cwd, path.resolve(cwd, a))));
   const touched = ROOTS.filter((root) => rel.some((f) => within(f, root)));
-  // A glob at or above a suite root answers for that root; one inside a root, for its own directory.
   const dirs =
     args.length === 0
       ? touched
       : args
-          .filter((a) => !namesOneFile(a))
+          .filter((a) => !namesOneFile(a, cwd))
           .map((a) => rootOf(a, cwd))
           .flatMap((g) => [...touched.filter((root) => within(root, g)), ...(ROOTS.some((root) => within(g, root)) ? [g] : [])]);
   const held = dirs.flatMap((dir) =>

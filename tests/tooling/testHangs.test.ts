@@ -244,6 +244,9 @@ describe("a run handed a list of files answers for each, and a run handed a glob
       assert.deepEqual(unloaded(loaded, dir, ["tests/**/*.test.ts"]), [other]);
       assert.deepEqual(unloaded(loaded, dir, ["**/*.test.ts"]), [other]);
       assert.deepEqual(unloaded(loaded, dir, ["tests/gone/**/*.test.ts"]), ["tests/gone/ (no such directory)"]);
+      assert.deepEqual(unloaded(loaded, dir, [`${t}x`]), [`${t}x`]);
+      writeFileSync(path.join(dir, `${t}x`), "");
+      assert.deepEqual(unloaded([...loaded, path.join(dir, `${t}x`)], dir, [`${t}x`]), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
