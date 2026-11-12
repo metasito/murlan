@@ -43,6 +43,7 @@ export const SHUTDOWN_BUDGET = {
   /** Every table at once (`tableHandOff.ts`). */
   handOff: 2_000,
   drainNotice: 250,
+  leavePresence: 50,
   ioClose: 500,
   settleInFlight: SETTLE_IN_FLIGHT_MS,
   stopTables: 250,
@@ -122,7 +123,7 @@ export async function shutdown(
     } finally {
       // Before `io.close()`, which closes every socket before the adapter that would leave otherwise:
       // each departure from here on is a peer's sweep to report, after the reconnect spread.
-      leavePresence();
+      await within(SHUTDOWN_BUDGET.leavePresence, leavePresence());
     }
     // Closes the adapter too, which ends its read loop before Redis goes below.
     await within(

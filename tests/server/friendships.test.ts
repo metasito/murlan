@@ -10,12 +10,13 @@ const alice = { id: "alice", username: "Alice" };
 const bob = { id: "bob", username: "Bob" };
 const users = new Map([alice, bob].map((u) => [u.id, u]));
 
-function harness(over: { online?: string[]; store?: Partial<FriendshipDeps["friendStore"]> } = {}) {
+function harness(over: { online?: string[]; shown?: string[]; store?: Partial<FriendshipDeps["friendStore"]> } = {}) {
   const sent: Sent[] = [];
   const announced: string[] = [];
   const pushed: [string, unknown][] = [];
   const bumped: string[][] = [];
   const online = new Set(over.online ?? []);
+  const shown = new Set([...online, ...(over.shown ?? [])]);
   const deps: FriendshipDeps = {
     friendStore: {
       addFriend: async () => ({ ok: true, request: { id: "req1", userId: "alice", friendUserId: "bob", status: "pending", createdAt: new Date(0) } as never }),
@@ -38,7 +39,8 @@ function harness(over: { online?: string[]; store?: Partial<FriendshipDeps["frie
       getRoomPlayers: async () => [{ userId: "alice" }] as never,
     },
     emitToUser: ((to: string, event: string, data: unknown) => sent.push([to, event, data])) as FriendshipDeps["emitToUser"],
-    isShownOnline: async (id) => online.has(id),
+    isShownOnline: async (id) => shown.has(id),
+    isOnline: async (id) => online.has(id),
     announceRoomChanged: async (roomId) => void announced.push(roomId),
     notifyUser: (async (id: string, push: unknown) => void pushed.push([id, push])) as FriendshipDeps["notifyUser"],
     bumpSocial: (ids) => void bumped.push([...ids].sort()),
@@ -136,6 +138,13 @@ test("invite to an offline friend is written down and pushed", async () => {
   assert.deepEqual(sent, []);
   assert.equal(pushed.length, 1);
   assert.equal(pushed[0]![0], "bob");
+});
+
+test("invite to a friend still shown online while their instance leaves is pushed, not shown", async () => {
+  const { friendships, sent, pushed } = harness({ shown: ["bob"] });
+  assert.deepEqual(await friendships.invite("alice", "bob", "ABCDEF"), { ok: true, code: "INVITE_WAITING" });
+  assert.deepEqual(sent, []);
+  assert.equal(pushed.length, 1);
 });
 
 test("invite refuses a stranger, a closed room, and a room the sender is not in — before writing anything", async () => {

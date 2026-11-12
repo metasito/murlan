@@ -8,7 +8,7 @@ import { friendRequestRow, friendRow } from "../store/friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../../shared/http.ts";
 import { logger } from "../shared/logger.ts";
 import { notifyUser } from "./push.ts";
-import { announceRoom, emitToUser, isShownOnline } from "./socketRegistry.ts";
+import { announceRoom, emitToUser, isOnline, isShownOnline } from "./socketRegistry.ts";
 import { bumpSocial } from "../store/presence.ts";
 import { track } from "../shared/inFlight.ts";
 
@@ -29,6 +29,8 @@ export interface FriendshipDeps {
   roomStore: Pick<typeof roomStore, "getRoomByCode" | "getRoomPlayers">;
   emitToUser: typeof emitToUser;
   isShownOnline: (userId: string) => Promise<boolean>;
+  /** Strict: an account shown online while its instance leaves has no socket to show an invite on. */
+  isOnline: (userId: string) => Promise<boolean>;
   announceRoomChanged: (roomId: string) => Promise<void>;
   notifyUser: typeof notifyUser;
   /** Marks each account's friend and invite lists as changed (`server/store/presence.ts`). */
@@ -202,7 +204,7 @@ export function createFriendships(deps: FriendshipDeps) {
       // Read now, not at the handshake: a rename in between would send the
       // name a stranger may have registered since.
       const username = (await deps.userStore.getUser(fromId))?.username ?? "";
-      const friendIsHere = await deps.isShownOnline(friendUserId);
+      const friendIsHere = await deps.isOnline(friendUserId);
       if (friendIsHere) {
         deps.emitToUser(friendUserId, "friend:invite", { from: username, roomCode });
       } else {
@@ -228,6 +230,7 @@ export const friendships = createFriendships({
   roomStore,
   emitToUser,
   isShownOnline,
+  isOnline,
   announceRoomChanged: announceRoom,
   notifyUser,
   bumpSocial,

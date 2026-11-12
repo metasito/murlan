@@ -31,7 +31,7 @@ import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
 import { isShownOnline, shownOnlineAmong } from "./socketRegistry.ts";
-import { forgetPresence, onPresenceLost, onPresenceRestored, socialVersion } from "../store/presence.ts";
+import { forgetPresence, onPresenceLost, onPresenceRestored, socialVersion, type LostHandler } from "../store/presence.ts";
 import type { OnlineList } from "../../shared/protocol.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse } from "../shared/refusal.ts";
@@ -127,24 +127,44 @@ async function onlineList(userId: string, friends: FriendRows): Promise<OnlineLi
   return { onlineIds: ids.filter((id) => online.has(id)), lastSeen, ...(social !== null && { social }) };
 }
 
-/** The friends of accounts a sweep cleared, from a crashed instance or a left one, are told once, by the instance whose sweep it was. */
-export function registerLostPresence(): void {
-  onPresenceLost((userIds, leftAt) => {
+interface LostDeps {
+  userStore: Pick<typeof userStore, "updateLastSeen" | "settleLastSeen">;
+  friendStore: Pick<typeof friendStore, "getFriends">;
+  tellStatus: typeof friendships.tellStatus;
+  isShownOnline: (userId: string) => Promise<boolean>;
+}
+
+/** What a sweep's report of lost accounts does: their last_seen, then their friends' notice. */
+export function lostPresenceHandler(deps: LostDeps): LostHandler {
+  return (userIds, leftAt, connectedAt) => {
     for (const userId of userIds) {
       const at = leftAt ?? new Date(now());
+      const since = connectedAt.get(userId);
+      const written: Promise<Date | null> =
+        leftAt === null && since !== undefined
+          ? deps.userStore.settleLastSeen(userId, since, at)
+          : deps.userStore.updateLastSeen(userId, at).then(() => at);
       void track(
-        userStore
-          .updateLastSeen(userId, at)
-          .catch((err: unknown) => logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account"))
-          .then(async () => {
-            const lastSeen = at.toISOString();
-            const friends = await friendStore.getFriends(userId);
-            friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen });
+        written
+          .catch((err: unknown) => {
+            logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account");
+            return at;
+          })
+          .then(async (seen) => {
+            const friends = await deps.friendStore.getFriends(userId);
+            // A reconnect elsewhere while those were read was told to them as online.
+            if (await deps.isShownOnline(userId)) return;
+            deps.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen: (seen ?? at).toISOString() });
           })
           .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline"))
       );
     }
-  });
+  };
+}
+
+/** The friends of accounts a sweep cleared, from a crashed instance or a left one, are told once, by the instance whose sweep it was. */
+export function registerLostPresence(): void {
+  onPresenceLost(lostPresenceHandler({ userStore, friendStore, tellStatus: friendships.tellStatus, isShownOnline }));
 }
 
 /** A peer that swept this instance during a lapse told these accounts' friends they went offline. */

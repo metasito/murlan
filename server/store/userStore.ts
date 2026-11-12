@@ -198,6 +198,21 @@ export const userStore = {
     await db().update(users).set({ lastSeen: at ?? new Date(now()) }).where(eq(users.id, userId));
   },
 
+  /**
+   * A departure whose time is not known: `at` only over a last_seen from before `since`, the
+   * account's connect, so one its own disconnect wrote stays. Returns what last_seen now holds.
+   */
+  async settleLastSeen(userId: string, since: Date, at: Date): Promise<Date | null> {
+    const [row] = await db()
+      .update(users)
+      .set({
+        lastSeen: sql`CASE WHEN ${users.lastSeen} IS NULL OR ${users.lastSeen} < ${since.toISOString()}::timestamp THEN ${at.toISOString()}::timestamp ELSE ${users.lastSeen} END`,
+      })
+      .where(eq(users.id, userId))
+      .returning({ lastSeen: users.lastSeen });
+    return row?.lastSeen ?? null;
+  },
+
   /** First time only: the answer is "has it ever been offered", so the first date is the true one. */
   async markTutorialSeen(userId: string): Promise<void> {
     await db()

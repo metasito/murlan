@@ -15,7 +15,7 @@ import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { payload } from "../shared/payload.ts";
 import { track } from "../shared/inFlight.ts";
-import { shownOnline } from "../store/presence.ts";
+import { storePresence } from "./socketOutbox.ts";
 
 let _rt: TableRuntime | null = null;
 
@@ -32,23 +32,22 @@ export function emitToUser<E extends Exclude<keyof ServerToClientEvents, "game:s
   _rt?.out.user(userId).emit(event, ...data);
 }
 
-/**
- * Of `userIds`, those their friends are shown as online: what every friend-facing answer reads,
- * lists, notices and whether an invite is shown or pushed. Only this instance's own when presence
- * does not answer: a friend elsewhere shown offline is the smaller wrong. Never rejects.
- */
-export async function shownOnlineAmong(userIds: readonly string[]): Promise<Set<string>> {
-  const here = userIds.filter((id) => userSocketMap.has(id));
-  try {
-    return new Set([...here, ...(await shownOnline(userIds))]);
-  } catch (err) {
-    logger.warn({ err }, "Presence did not answer; only this instance's accounts are shown online");
-    return new Set(here);
-  }
+/** The runtime's, once bound; until then the same port over the store, for the HTTP layer. */
+const unbound = storePresence();
+const presence = () => _rt?.presence ?? unbound;
+
+/** Friend-facing: lists, notices and the status a new friendship shows. Never rejects. */
+export function shownOnlineAmong(userIds: readonly string[]): Promise<Set<string>> {
+  return presence().shownAmong(userIds);
 }
 
 export async function isShownOnline(userId: string): Promise<boolean> {
-  return (await shownOnlineAmong([userId])).has(userId);
+  return (await presence().shownAmong([userId])).has(userId);
+}
+
+/** Connected now, so a live socket will see what is emitted to it. Never rejects. */
+export function isOnline(userId: string): Promise<boolean> {
+  return presence().isOnline(userId);
 }
 
 /**

@@ -164,6 +164,7 @@ export function recordingRuntime(options: RecordingOptions = {}) {
             atTable: new Set(userIds.filter((u) => cluster.atTable.get(u)?.has(roomId))),
           },
     onlineAmong: async (userIds) => (cluster.down ? null : new Set(userIds.filter((u) => cluster.online.has(u)))),
+    shownAmong: async (userIds) => new Set(cluster.down ? [] : userIds.filter((u) => cluster.online.has(u))),
     ...options.presence,
   };
 

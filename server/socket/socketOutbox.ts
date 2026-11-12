@@ -3,12 +3,13 @@
 import type { Presence } from "../game/tableRuntime.ts";
 import { logger } from "../shared/logger.ts";
 import { socketRoomMap, userSocketMap } from "../game/gameRoom.ts";
-import { locate as locateInStore, type Located } from "../store/presence.ts";
+import { locate as locateInStore, shownOnline as shownInStore, type Located } from "../store/presence.ts";
 
 type Locate = (userIds: readonly string[], opts?: { tables?: boolean }) => Promise<Map<string, Located>>;
+type Shown = (userIds: readonly string[]) => Promise<Set<string>>;
 
 /** Answers from this instance's own sockets first: a store that cannot answer must not unseat them. */
-export function storePresence(locate: Locate = locateInStore): Presence {
+export function storePresence(locate: Locate = locateInStore, shown: Shown = shownInStore): Presence {
   return {
     async isOnline(userId) {
       if (userSocketMap.has(userId)) return true;
@@ -55,6 +56,17 @@ export function storePresence(locate: Locate = locateInStore): Presence {
       } catch (err) {
         logger.warn({ err }, "Presence unreachable");
         return null;
+      }
+    },
+
+    async shownAmong(userIds) {
+      const here = userIds.filter((id) => userSocketMap.has(id));
+      try {
+        return new Set([...here, ...(await shown(userIds))]);
+      } catch (err) {
+        // A friend elsewhere shown offline is the smaller wrong.
+        logger.warn({ err }, "Presence did not answer; only this instance's accounts are shown online");
+        return new Set(here);
       }
     },
   };
