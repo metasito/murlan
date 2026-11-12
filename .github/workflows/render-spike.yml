@@ -102,7 +102,9 @@ jobs:
           grep -q "\"name\":\"$SCENARIO\",\"phase\":\"end\"" "$RUNNER_TEMP/spike/ios.ndjson" || { echo "::error::Scenario $SCENARIO never ran."; exit 1; }
       - name: Collect crash reports
         if: always()
-        run: cp "$HOME/Library/Logs/DiagnosticReports/"*"$APP_EXE"* "$RUNNER_TEMP/spike/" 2>/dev/null || true
+        run: |
+          cp "$HOME/Library/Logs/DiagnosticReports/"*"$APP_EXE"* "$RUNNER_TEMP/spike/" 2>/dev/null || true
+          xcrun simctl spawn "$SIMULATOR_UDID" log show --last 20m --style compact --predicate "process == \"$APP_EXE\" OR eventMessage CONTAINS \"$APP_ID\"" > "$RUNNER_TEMP/spike/sim-app.log" 2>&1 || true
       - name: Upload the spike record
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

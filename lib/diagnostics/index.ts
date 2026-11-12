@@ -10,7 +10,9 @@ export type { DiagRow, DiagRows } from "./types";
 export const DIAGNOSTICS = process.env.EXPO_PUBLIC_DIAGNOSTICS === "1";
 
 /** How many times each felt canvas was handed a new light to draw, read by the bench across a window at rest (rule 51); null outside diagnostics. */
-export const FeltDraws = DIAGNOSTICS ? { felt: makeMutable(0), end: makeMutable(0) } : null;
+export const FeltDraws = DIAGNOSTICS
+  ? { felt: makeMutable(0), end: makeMutable(0), frames: makeMutable(0), rested: makeMutable(0), probe: makeMutable<Record<string, number>>({}) }
+  : null;
 
 const recorder: { push(row: DiagRow): void; hold?(on: boolean): void } | null =
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- a static import would ship the recorder

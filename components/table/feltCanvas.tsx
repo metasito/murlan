@@ -44,7 +44,7 @@ import { CardGlow, Colors, motionMs, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { afterFrames } from "@/lib/motion";
 import { DESIGN, LIGHT_ABOVE, lightUniforms, SWAY, type Lamp, type LampNow, type Pool } from "./lampRig";
-import { NOT_SHOWN, nextShown, type Shown } from "./restEnds";
+import { isRested, NOT_SHOWN, nextShown, type Shown } from "./restEnds";
 import type { GlossTracks } from "./glossTrackStore";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms, flareShare, HAND_CLOTH_SKSL, HAND_LIT_SKSL, LIT_SKSL, opaquePlane, REST_SKSL, settledDraws, WEAVE_PLANES, WEAVE_SKSL, weaveUniforms, type ClothUniforms } from "./feltShader";
@@ -707,6 +707,12 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   // `lamp.value` subscribes the view to the rig's writes; a held rig writes none, and an end that leaves draws the lamp carried on, not where it was held.
   const view = useDerivedValue(() => {
     const next = nextShown(held.value, lamp.value && now(), side.value);
+    if (FeltDraws) {
+      const s = now();
+      FeltDraws.frames.value += 1;
+      if (isRested(s)) FeltDraws.rested.value += 1;
+      FeltDraws.probe.value = { dx: s.x - s.tx, dy: s.y - s.ty, dr: s.r - s.tr, flare: s.flare, kick: s.kick, dlvl: s.lvlT - s.lvl, freeze: s.freeze, side: side.value, settle: settle.value, t: s.t };
+    }
     if (next !== held.value) {
       held.value = next;
       if (FeltDraws) FeltDraws.felt.value += 1;

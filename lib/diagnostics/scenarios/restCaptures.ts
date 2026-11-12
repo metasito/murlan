@@ -17,9 +17,11 @@ registerBenchScenario("restCaptures", async (ctx) => {
     await ctx.sleep(SETTLE_MS);
     const felt = FeltDraws.felt.get();
     const end = FeltDraws.end.get();
+    const frames = FeltDraws.frames.get();
+    const rested = FeltDraws.rested.get();
     const t0 = performance.now();
     await ctx.sleep(WINDOW_MS);
-    diag({ k: "atRest", t: performance.now(), id: state.id, ms: performance.now() - t0, felt: FeltDraws.felt.get() - felt, end: FeltDraws.end.get() - end });
+    diag({ k: "atRest", t: performance.now(), id: state.id, ms: performance.now() - t0, felt: FeltDraws.felt.get() - felt, end: FeltDraws.end.get() - end, frames: FeltDraws.frames.get() - frames, rested: FeltDraws.rested.get() - rested, lamp: FeltDraws.probe.get() });
     for (let i = 0; i < SHOTS; i++) {
       diag({ k: "shot", t: performance.now(), id: `${state.id}-${i}` });
       await ctx.sleep(SHOT_MS);

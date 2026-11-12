@@ -41,7 +41,7 @@ export interface DiagRows {
   shown: { kind: string; fixture: number; reduced: boolean };
   orientation: { rn: { w: number; h: number }; native: Record<string, unknown> | null; error?: string };
   gate: { name: "deal" | "exchangeReady" | "exchangeDone" };
-  atRest: { id: string; ms: number; felt: number; end: number };
+  atRest: { id: string; ms: number; felt: number; end: number; frames: number; rested: number; lamp: Record<string, number> };
   shot: { id: string };
 }
 
