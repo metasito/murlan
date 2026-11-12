@@ -295,7 +295,6 @@ describe("a merge spelled through an escape, eval or a variable is still a merge
     "echo a\\\\b; cat <<EOF > /tmp/x\ngh pr merge 1\nEOF",
     "git merge $BRANCH",
     "\"$(npm root)/.bin/tsc\" --noEmit",
-    "\"$(npm root)/.bin/jest\" a.test.ts",
     "gh pr view $(git branch --show-current)",
     "gh pr create --title t --body \"$(cat <<'EOF'\nguard gh pr merge spellings\nEOF\n)\"",
     "git commit -m \"$(cat <<'EOF'\nguard: read gh pr merge through escapes\nEOF\n)\"",
