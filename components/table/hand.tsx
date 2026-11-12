@@ -705,14 +705,8 @@ export const StraightHand = React.memo(function StraightHand({
   const pan = useSharedValue(0);
   const panFrom = useSharedValue(0);
   const panLimit = row.panLimit;
-  const panReach = useSharedValue(panLimit);
-  useLayoutEffect(() => {
-    panReach.set(panLimit);
-  }, [panReach, panLimit]);
   const rowShiftStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: -panShown(pan.value, panReach.value) },
-    ],
+    transform: [{ translateX: -panShown(pan.value, panLimit) }],
   }));
   const panToFocused = (e: { target: unknown; currentTarget: unknown }) => {
     const target = e.target as HTMLElement;
@@ -856,10 +850,9 @@ export const StraightHand = React.memo(function StraightHand({
   const rowLeft = row.left;
   const handRow = useMemo(() => {
     if (!cardTable) return undefined;
-    const { felt, hand, motion } = cardTable;
-    const clipHalf = scrollable ? availW / 2 : 0;
-    return { table: cardTable, place: { felt, x: hand.x + rowLeft, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, motion } };
-  }, [cardTable, rowLeft, rowBase, scrollable, availW, pan, panLimit]);
+    const { felt, hand, handWindow, motion } = cardTable;
+    return { table: cardTable, place: { felt, x: hand.x + rowLeft, y: hand.y + rowBase, clip: scrollable ? handWindow : null, pan, panLimit, motion } };
+  }, [cardTable, rowLeft, rowBase, scrollable, pan, panLimit]);
   useEffect(() => {
     cardTable?.handOrder.set(handPaintOrder(rest.map((c) => c.id), (id) => giveableSet?.has(id), heldCard?.id ?? null));
   }, [cardTable, rest, giveableSet, heldCard]);
@@ -1191,7 +1184,7 @@ export const StraightHand = React.memo(function StraightHand({
   );
 
   return (
-    <View style={[handStyles.handWindow, { width: availW, height: visibleH + arcRise }]}>
+    <View style={[handStyles.handFrame, { height: visibleH + arcRise }]}>
       {/*
         The hand compresses inside its share, so the window clips only when
         even the finger floor cannot fit the row in availW — a full hand on
@@ -1211,26 +1204,32 @@ export const StraightHand = React.memo(function StraightHand({
         unclipped one sits. Stated rather than left to cancel
         out: the parent centres it top to bottom, so a box that is taller than
         what it stands in for moves the hand by half the difference.
+
+        The row's rest place is a plain transform on a box as wide as the row:
+        a transform is not rounded to the pixel grid, so the views land where
+        the card registry says, and moving the box moves its bounds with it,
+        so every card stays inside its parent, which is all UIKit hit-tests.
       */}
       <View
-        style={
-          scrollable
-            ? [
-                {
-                  width: availW,
-                  marginTop: -topClearance,
-                  marginBottom: -(crop + tiltOverhang),
-                  height: topClearance + visibleH + crop + tiltOverhang,
-                  paddingTop: topClearance,
-                  overflow: "hidden",
-                },
-                clipOverflow,
-              ]
-            : undefined
-        }
+        testID="hand-window"
+        style={[
+          { width: availW },
+          scrollable && [
+            {
+              marginTop: -topClearance,
+              marginBottom: -(crop + tiltOverhang),
+              height: topClearance + visibleH + crop + tiltOverhang,
+              paddingTop: topClearance,
+              overflow: "hidden",
+            },
+            clipOverflow,
+          ],
+        ]}
         onFocus={scrollable && Platform.OS === "web" ? panToFocused : undefined}
       >
-        <Animated.View testID="hand-pan" style={[{ width: totalW, left: availW / 2 + row.left }, rowShiftStyle]}>{rowView}</Animated.View>
+        <View testID="hand-rest" style={{ width: totalW, transform: [{ translateX: availW / 2 + row.left }] }}>
+          <Animated.View testID="hand-pan" style={[{ width: totalW }, rowShiftStyle]}>{rowView}</Animated.View>
+        </View>
       </View>
     </View>
   );
@@ -1245,7 +1244,7 @@ const handStyles = StyleSheet.create({
     flexDirection: "row",
     gap: Spacing.slim,
   },
-  handWindow: { flexDirection: "row", alignItems: "center" },
+  handFrame: { flexDirection: "row", alignItems: "center" },
   // The three layers of a card, in the order they paint. Stated on all of them,
   // because the iOS renderer does not promise the order they are written in
   // (#209) and two of these resolve opposite ways around the card.

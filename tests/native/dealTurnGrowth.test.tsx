@@ -32,10 +32,11 @@ describe('the landed cards grow into the turn size', () => {
     await setWindow({ width, height, scale: 2, fontScale: 1 });
     const view = await render(table(freshDeal(), { width, height }));
     const registry = () => (globalThis as { murlanCardRects?: () => CardRects }).murlanCardRects?.() ?? {};
-    const pan = () => screen.queryByTestId('hand-pan');
-    const rowPan = () =>
-      ((pan() && (StyleSheet.flatten(pan()!.props.style) as { left?: number }).left) ?? 0) +
-      (((pan() && getAnimatedStyle(pan()!)) as { transform?: Record<string, number>[] } | null)?.transform?.[0]?.translateX ?? 0);
+    const shiftOf = (style: unknown) => (style as { transform?: Record<string, number>[] } | null)?.transform?.[0]?.translateX ?? 0;
+    const rowPan = () => {
+      const [rest, pan] = [screen.queryByTestId('hand-rest'), screen.queryByTestId('hand-pan')];
+      return (rest ? shiftOf(StyleSheet.flatten(rest.props.style)) : 0) + (pan ? shiftOf(getAnimatedStyle(pan)) : 0);
+    };
     let [before, last]: CardRects[] = [{}, {}];
     for (let ms = 0; dealing() && ms < 3000; ms += 160) {
       [before, last] = [last, registry()];

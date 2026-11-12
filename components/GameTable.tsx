@@ -29,6 +29,7 @@ import { isOneWay, type ExchangeAnnounceData, type ExchangeHold } from "@/lib/ga
 import {
   handRaised,
   handVisibleH,
+  HAND_ZONE_ALIGN,
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
@@ -747,6 +748,7 @@ export function GameTable({
     {
       pile: anchors.pile,
       hand: anchors.bottom,
+      handWindow: { x: layout.handWindow.x, w: layout.handWindow.w },
       seats: { top: anchors.top, left: anchors.left, right: anchors.right },
       felt: {
         sx: rig.sx,
@@ -1150,7 +1152,7 @@ export function GameTable({
             </View>
 
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
-            <View style={[sharedTableStyles.midSection, { top: layout.midBand.top - layout.tableBox.top, bottom: H - layout.tableBox.bottom - layout.midBand.top - layout.midBand.h }, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
+            <View style={[sharedTableStyles.midSection, layout.placed.midBand, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
                 {opponentSeat("left")}
               </View>
@@ -1225,15 +1227,8 @@ export function GameTable({
               testID="hand-zone"
               style={[
                 sharedTableStyles.handSection,
-                // By its edges, not `top` and `width`: those round to a layout unit apart from the table's own edges and move every glyph in the row by it.
-                {
-                  position: "absolute",
-                  left: handZone.x - layout.tableBox.left,
-                  right: W - layout.tableBox.right - handZone.x - handZone.w,
-                  bottom: H - layout.tableBox.bottom - handZone.y - handZone.h,
-                  height: handZone.h,
-                  paddingBottom: handZone.padBottom,
-                },
+                layout.placed.handZone,
+                { paddingBottom: handZone.padBottom },
                 // Play on the left mirrors the row rather than moving the rail,
                 // which stays put at the physical cutout: only GIOCA changes
                 // which thumb it falls under.
@@ -1252,9 +1247,9 @@ export function GameTable({
                 />
               )}
 
-              <View style={[styles.handWindow, { left: layout.handWindow.x - handZone.x, width: layout.handWindow.w, bottom: handZone.padBottom }]}>
+              <View style={[styles.handSlot, layout.placed.handWindow]}>
               {wentOut ? (
-                <View style={[styles.finishedRow, { width: layout.handWindow.w, height: handVisibleH(handCardH) }]}>
+                <View style={[styles.finishedRow, { height: handVisibleH(handCardH) }]}>
                   <WaitingLine scale={scale} />
                 </View>
               ) : (
@@ -1328,7 +1323,7 @@ const styles = StyleSheet.create({
   greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   matchDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSectionReversed: { flexDirection: "row-reverse" },
-  handWindow: { position: "absolute" },
+  handSlot: { position: "absolute", justifyContent: HAND_ZONE_ALIGN },
 
 
   finishedRow: { alignItems: "center", justifyContent: "center" },

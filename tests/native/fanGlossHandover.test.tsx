@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 const at = { x: 0, y: 0 };
-const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, seats: { top: at, left: at, right: at } };
+const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, handWindow: { x: 0, w: 0 }, seats: { top: at, left: at, right: at } };
 const light = (lx: number): GlossLight => ({ lx, ly: 140, level: 1, r: 1, t: 0 });
 const rect: CardRect = { x: 437, y: 40, w: 40, h: 58, rot: 0, back: true, lift: 0, glow: 0, seen: 1 };
 const fan = () => makeMutable<CardRects>({ 'fan:top:0': rect }) as unknown as OwnedRects;

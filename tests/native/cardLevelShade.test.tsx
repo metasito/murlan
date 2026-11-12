@@ -31,7 +31,7 @@ jest.mock('@/components/table/rail', () => {
 });
 
 const at = { x: 0, y: 0 };
-const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, seats: { top: at, left: at, right: at } };
+const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, handWindow: { x: 0, w: 0 }, seats: { top: at, left: at, right: at } };
 const card = (id: string): Card => ({ id, rank: id.split('_')[0] as Card['rank'], suit: id.split('_')[1] as Card['suit'], isJoker: false });
 const rect: CardRect = { x: 437, y: 300, w: 58, h: 84, rot: 0, back: false, lift: 0, glow: 0, seen: 1 };
 const owned = (id: string) => makeMutable<CardRects>({ [id]: rect }) as unknown as OwnedRects;

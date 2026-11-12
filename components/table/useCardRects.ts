@@ -18,6 +18,8 @@ export interface CardTable {
   pile: Point;
   /** The hand zone's centre. */
   hand: Point;
+  /** The span a scrolled hand row shows through, in window points. */
+  handWindow: { x: number; w: number };
   seats: Record<OpponentSide, Point>;
   glossLight: SharedValue<GlossLight>;
   /** The lamp's pose without its sway, which an opponent's back reads where there are no `tracks` (`glossLightFor`). */
@@ -52,7 +54,7 @@ export function useGlossLight(table: CardTable, rectKey: string): LightReader {
   return live && table.tracks ? table.tracks.light : table.stillLight;
 }
 
-type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
+type Places = Pick<CardTable, "pile" | "hand" | "handWindow" | "seats" | "felt">;
 
 export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, tracks?: GlossTracks): CardTable {
   const rects = useSharedValue<CardRects>({});

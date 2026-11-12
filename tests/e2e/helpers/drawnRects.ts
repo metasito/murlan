@@ -98,7 +98,7 @@ export async function drawn(page: Page, rects: Partial<Record<RectName, { sel: s
         }
       boxes[name].text = { words: els.map((e) => e.textContent ?? "").join(""), em: Math.max(...sizes), drawn: drawnW, linear: linearW };
     }
-    const window = document.querySelector('[data-testid="hand-pan"]')?.parentElement;
+    const window = document.querySelector('[data-testid="hand-window"]');
     const c = window && getComputedStyle(window).overflowX !== "visible" ? window.getBoundingClientRect() : null;
     return {
       boxes,
