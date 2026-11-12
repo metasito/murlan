@@ -1,6 +1,6 @@
 # 0020. The table at rest plays precomputed tracks, and nothing redraws per frame
 
-**Status:** Accepted
+**Status:** Accepted; decision 4 amended 2026-11-12
 **Date:** 2026-11-10
 
 ## Context
@@ -30,6 +30,10 @@ the mockup wins.
    at its end. The one-off bakes an event needs are done at glide time.
 4. **Native keeps today's rest path** until a profile on device shows the compositor shape
    working there; a per-platform seam is added only when native needs one (rule 50).
+   - **Amended 2026-11-12** (owner decision, #1989 PR D3): an iOS simulator or Android emulator
+     profile is accepted in place of a profile on device. What only a device can show (real-GPU
+     frame cost, an on-screen read the Android emulator's software GL cannot give) is named in
+     the pull request body as unverified.
 
 ## Consequences
 

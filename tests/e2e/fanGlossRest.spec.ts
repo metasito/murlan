@@ -95,10 +95,13 @@ test("an idle turn writes no card style once the lamp's glide is under a gloss's
     const cy = fs.at(-1)!.y;
     const off = (f: Frame) => Math.abs(centre(f) - cx) >= VISIBLE_STEP_PT || Math.abs(f.y - cy) >= VISIBLE_STEP_PT;
     const last = fs.findLastIndex(off);
-    if (!OTHERS_PLAY.test(state) || last < 0 || last + HAND_OFF_FRAMES >= fs.length) {
+    // The frames since the last restart can span turns the viewer was auto-passed through: only this turn's are idle.
+    const arrived = fs.findLastIndex((f) => f.state !== state) + 1;
+    const current = fs.at(-1)!.state === state;
+    if (!OTHERS_PLAY.test(state) || !current || last < arrived || last + HAND_OFF_FRAMES >= fs.length) {
       await restart(page);
-      if ((await playAnyLegal(page)) === null) await tap(page, page.locator('[data-testid="btn-passa"]'));
-      test.info().annotations.push({ type: "skipped", description: `turn ${turn}: ${OTHERS_PLAY.test(state) ? "" : "no bot's play, "}last off ${last} of ${fs.length}` });
+      if (current && (await playAnyLegal(page)) === null) await tap(page, page.locator('[data-testid="btn-passa"]'));
+      test.info().annotations.push({ type: "skipped", description: `turn ${turn}: ${OTHERS_PLAY.test(state) ? "" : "no bot's play, "}${current ? "" : "moved on, "}arrived ${arrived}, last off ${last} of ${fs.length}` });
       await page.waitForFunction(({ table, attr, was }) => document.querySelector(table)?.getAttribute(attr) !== was, { table: TABLE, attr: TABLE_STATE, was: state }, { timeout: 10_000 });
       continue;
     }
