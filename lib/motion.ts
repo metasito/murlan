@@ -193,12 +193,14 @@ export const inBackground = () => AppState.currentState === "background";
 /** When a change happened, on the clock `startOf` reads, taken on the JS thread; `Infinity` while no frames are drawn, so the first frame back starts the motion rather than finding it half over. */
 export const stampChange = () => (inBackground() ? Infinity : performance.now());
 
+const ON_WEB = Platform.OS === "web";
+
 /**
  * When a motion that began at `at` (`stampChange`) starts, given its first frame's timestamp. Web hands a woken frame
  * callback its first frame two frames late, so it runs on the change's clock; native starts on the first drawn frame, so a
- * mount hitch is not taken out of the motion. `web` is `Platform.OS === "web"` and is a parameter for the tests.
+ * mount hitch is not taken out of the motion. `web` defaults to `Platform.OS === "web"` and is a parameter for the tests.
  */
-export function startOf(frameTimestamp: number, at: number, web = Platform.OS === "web"): number {
+export function startOf(frameTimestamp: number, at: number, web?: boolean): number {
   "worklet";
-  return web ? Math.min(frameTimestamp, at) : frameTimestamp;
+  return (web ?? ON_WEB) ? Math.min(frameTimestamp, at) : frameTimestamp;
 }

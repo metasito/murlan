@@ -185,7 +185,7 @@ export function shakeAmplitudeFor(tier: ImpactTier): ShakeAmplitude {
  * instead of building up to it. `scale` is the table's own — `kick`
  * (components/useTableFeedback.ts) multiplies its jolts by the same value, so
  * a shake is a fraction of the table rather than a fixed pixel count that
- * reads huge on a phone and vanishes on a tablet. `amplitude` defaults to the
+ * reads huge on a phone and vanishes on a tablet. `peak` defaults to the
  * shared peak above; the caller passes `shakeAmplitudeFor(tier)` to let one
  * tier read a different one.
  */
@@ -194,9 +194,10 @@ export function shakeOffset(
   elapsedMs: number,
   decayMs: number,
   scale: number,
-  amplitude: ShakeAmplitude = { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y, rotate: 0 }
+  peak?: ShakeAmplitude
 ): { x: number; y: number; rotate: number } {
   "worklet";
+  const amplitude = peak ?? { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y, rotate: 0 };
   const magnitude = shakeMagnitude(trauma, elapsedMs, decayMs);
   const phase = decayMs <= 0 ? 0 : (elapsedMs / decayMs) * Math.PI * 2 * SHAKE_CYCLES;
   const wiggle = decayMs <= 0 ? 0 : Math.cos(phase);
