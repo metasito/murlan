@@ -210,8 +210,9 @@ function fitOf(files, prices) {
 
 /**
  * Whether the suite at `judged` fits the target, and splits evenly: the split is rebuilt at those
- * prices, so it is the split main's next run makes. A problem `baseline` already has is main's,
- * which main's own runs and the weekly gate report, so it is left out.
+ * prices, so it is the split main's next run makes. Given `baseline` (main's prices, for a pull
+ * request), a problem reds only where `judged` is worse than `baseline`: main's own runs, which
+ * pass none, report what main already has.
  * @param {string[]} files
  * @param {Record<string, number>} judged
  * @param {Record<string, number>} [baseline]
@@ -222,14 +223,14 @@ export function fitProblems(files, judged, baseline) {
   const mine = fitOf(files, judged);
   const main = baseline && fitOf(files, baseline);
   const problems = [];
-  if (mine.needed > MAX_SHARDS && !(main && main.needed > MAX_SHARDS))
+  if (mine.needed > Math.max(MAX_SHARDS, main?.needed ?? 0))
     problems.push(`${mine.needed} shards to meet rule 46's ${TARGET_RUN_SECONDS} s, over the ${MAX_SHARDS} allowed`);
   // Fewer specs than shards leaves a shard empty, which no split can help.
   if (files.length >= MAX_SHARDS) {
-    const over = mine.over.filter((f) => !main?.over.includes(f));
+    const over = mine.over.filter((f) => !main || mine.seconds(f) > main.seconds(f));
     if (over.length)
       problems.push(`over the ${mine.fair.toFixed(0)}s each of ${MAX_SHARDS} shards gets; split them: ${over.map((f) => `${f} ${mine.seconds(f)}s`).join(", ")}`);
-    if (mine.uneven && !main?.uneven)
+    if (mine.uneven && (!main || mine.heaviest - mine.lightest > main.heaviest - main.lightest))
       problems.push(`shards range ${mine.lightest}s to ${mine.heaviest}s, more than a third again of the lightest`);
   }
   return problems;
@@ -242,14 +243,15 @@ const report = (problems) => {
 };
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "check") {
-  if (process.argv.length !== 7) throw new Error("check takes the plan's split-problems, main's prices, this run's, and the specs changed");
-  const [planned, stable, measured, changed] = process.argv.slice(3);
+  if (process.argv.length !== 8)
+    throw new Error("check takes the plan's split-problems, main's prices, this run's, the pull request's base (empty off one), and the specs changed");
+  const [planned, stable, measured, base, changed] = process.argv.slice(3);
   const problems = JSON.parse(planned);
   if (!Array.isArray(problems)) throw new Error(`check takes the plan's split-problems, a JSON list, got ${planned}`);
   if (changed === "?") problems.push("the pull request's base could not be read, so the specs it changed could not be priced from this run");
   const mine = changed.split(",").flatMap((f) => (f.startsWith("tests/e2e/") ? [f.slice("tests/e2e/".length)] : []));
   const main = readTimings(stable);
-  report([...problems, ...fitProblems(specFilesIn(), judgedPrices(main, readTimings(measured), mine), main)]);
+  report([...problems, ...fitProblems(specFilesIn(), judgedPrices(main, readTimings(measured), mine), base ? main : undefined)]);
 } else if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "judge") {
   if (!process.argv[3]) throw new Error("judge takes the timings file a commit would land");
   const timings = readTimings(process.argv[3]);

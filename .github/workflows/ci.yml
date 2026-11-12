@@ -1121,7 +1121,7 @@ jobs:
               changed='?'
             fi
           fi
-          node tools/ci/e2e-shard.mjs check "$PROBLEMS" "$RUNNER_TEMP/stable.json" tests/e2e/timings.json "$changed"
+          node tools/ci/e2e-shard.mjs check "$PROBLEMS" "$RUNNER_TEMP/stable.json" tests/e2e/timings.json "$BASE" "$changed"
 
       # The commit's gate, e2eShardSplit.test.ts, imports `yaml` and lists the suite with the
       # lockfile's Playwright: the one step here that needs node_modules.

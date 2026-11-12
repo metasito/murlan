@@ -170,7 +170,7 @@ describe("the split is stable and even", () => {
     const run = check?.run ?? "";
 
     assert.ok(check, "browser-report no longer fails a run whose split was guessed, uneven or over the target");
-    assert.match(run, /node tools\/ci\/e2e-shard\.mjs check "\$PROBLEMS" "\$RUNNER_TEMP\/stable\.json" tests\/e2e\/timings\.json "\$changed"\n?$/);
+    assert.match(run, /node tools\/ci\/e2e-shard\.mjs check "\$PROBLEMS" "\$RUNNER_TEMP\/stable\.json" tests\/e2e\/timings\.json "\$BASE" "\$changed"\n?$/);
     assert.match(run, /^printf '%s' "\$STABLE" > "\$RUNNER_TEMP\/stable\.json"\n/);
     assert.match(run, /git fetch -q --no-tags --depth=1 origin "\$BASE" && git cat-file -e "\$BASE\^\{commit\}" \\\n\s+&& names=\$\(git diff --name-only "\$BASE" HEAD -- tests\/e2e\); then\n\s+changed=\$\(paste -sd, - <<< "\$names"\)\n\s+else\n\s+changed='\?'\n/);
     assert.deepEqual(check.env, {
@@ -393,6 +393,14 @@ describe("the plan prices each spec by its latest green run", () => {
     assert.match(fitProblems(SUITE, { ...at(10), "s0.spec.ts": 60 }, at(10)).join("\n"), /shards range \d+s to \d+s/);
   });
 
+  test("a pull request that makes a main already over the target worse reds; one that leaves it so does not", () => {
+    const needing = (n: number) => at(Array.from({ length: 2000 }, (_, s) => s).find((s) => shardsNeeded(SUITE, at(s)) === n) ?? NaN);
+
+    assert.match(fitProblems(SUITE, needing(22), needing(18)).join("\n"), /^22 shards to meet/m);
+    assert.deepEqual(fitProblems(SUITE, needing(18), needing(18)), []);
+    assert.match(fitProblems(SUITE, { ...at(10), "s0.spec.ts": 90 }, { ...at(10), "s0.spec.ts": 60 }).join("\n"), /shards range \d+s to \d+s/);
+  });
+
   test("a fork's guessed split is not told to re-run, which reads no more of its timings", () => {
     const mine = Array.from({ length: 8 }, (_, i) => `mine${i}.spec.ts`);
     const fork = guessProblems([...SUITE, ...mine], at(10), true).join("\n");
@@ -425,15 +433,22 @@ describe("the plan prices each spec by its latest green run", () => {
       const prices = path.join(dir, "t.json");
       writeFileSync(prices, JSON.stringify({ ...at(1, specFilesIn(E2E_DIR)), ...readTimings() }));
       const check = (...args: string[]) => shardCli("check", ...args);
-      assert.equal(check('["the split was guessed"]', prices, prices, "").status, 1);
-      assert.equal(check("[]", prices, prices, "").status, 0);
-      assert.equal(check("[]", prices, prices, `tests/e2e/${specFilesIn(E2E_DIR)[0]},app/x.ts`).status, 0);
-      const unread = check("[]", prices, prices, "?");
+      assert.equal(check('["the split was guessed"]', prices, prices, "", "").status, 1);
+      assert.equal(check("[]", prices, prices, "", "").status, 0);
+      assert.equal(check("[]", prices, prices, "base", `tests/e2e/${specFilesIn(E2E_DIR)[0]},app/x.ts`).status, 0);
+      const unread = check("[]", prices, prices, "base", "?");
       assert.equal(unread.status, 1);
       assert.match(unread.out, /^::error::the pull request's base could not be read/m);
       assert.notEqual(check().status, 0);
-      assert.notEqual(check("[]", prices, prices).status, 0);
-      assert.notEqual(check("{}", prices, prices, "").status, 0);
+      assert.notEqual(check("[]", prices, prices, "").status, 0);
+      assert.notEqual(check("{}", prices, prices, "", "").status, 0);
+
+      const over = path.join(dir, "over.json");
+      writeFileSync(over, JSON.stringify(at(400, specFilesIn(E2E_DIR))));
+      const onMain = check("[]", over, over, "", "");
+      assert.equal(onMain.status, 1, "main's own runs never judge main's split");
+      assert.match(onMain.out, /^::error::\d+ shards to meet/m);
+      assert.equal(check("[]", over, over, "base", "").status, 0, "a pull request is held to a main it did not break");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
