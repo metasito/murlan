@@ -17,6 +17,7 @@
   "exchangeRowSettles.spec.ts": 40.9,
   "exchangeTeleport.spec.ts": 15.4,
   "fallbackFeltCards.spec.ts": 10.9,
+  "fanGlossRest.spec.ts": 52,
   "feltFallbackPlanes.spec.ts": 5.9,
   "feltIdle.spec.ts": 19,
   "feltNap.spec.ts": 16.4,
