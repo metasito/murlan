@@ -30,9 +30,9 @@ the mockup wins.
    at its end. The one-off bakes an event needs are done at glide time.
 4. **Native keeps today's rest path** until a profile on device shows the compositor shape
    working there; a per-platform seam is added only when native needs one (rule 50).
-   - **Amended 2026-11-12** (the owner's decision for #1989 PR D3): an iOS simulator or Android
-     emulator profile is accepted in place of a profile on device. What only a device can show
-     (real-GPU frame cost, an on-screen read the emulator's software GL cannot give) is named in
+   - **Amended 2026-11-12** (owner decision, #1989 PR D3): an iOS simulator or Android emulator
+     profile is accepted in place of a profile on device. What only a device can show (real-GPU
+     frame cost, an on-screen read the Android emulator's software GL cannot give) is named in
      the pull request body as unverified.
 
 ## Consequences
