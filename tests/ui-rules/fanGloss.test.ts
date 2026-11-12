@@ -197,6 +197,29 @@ describe("the gloss is the felt's while the lamp rests", () => {
     assert.equal(tracks.live(), true, "a kick is drawn by the backs");
   });
 
+  test("a rested lamp sent under a step away is taken anew there, once", () => {
+    const s = restingLamp([200, 300, 1]);
+    const value = <T,>(v: T) => ({ value: v, get: () => v }) as never;
+    const rest = value(restLight(s)) as { value: GlossLight };
+    const tracks = createGlossTracks({ now: () => s, clock: () => s.t }, { rest: rest as never, light: value(restLight(s)), ends: value(0) }, s);
+    let taken = 0;
+    tracks.subscribe(() => void (taken += 1));
+    lampControls.setTarget(s, [201.5, 300, 1], false);
+    tracks.follow(s);
+    assert.equal(tracks.live(), false, "a glide under a step is still drawn by the fans");
+    assert.equal(tracks.get().tx, 201.5, "the fans bake at the new target");
+    assert.deepEqual(rest.value, restLight(s), "the foil reads the new rest");
+    for (let n = 0; n < 60 * 10; n++) {
+      stepLamp(s, FRAME, false);
+      tracks.follow(s);
+    }
+    assert.equal(taken, 1, "taken once for the move, not every frame of it");
+  });
+
+  test("the step the gloss holds still for is no more than the 2 pt the fan glide spec checks", () => {
+    assert.ok(GLOSS_POINT_STEP <= 2);
+  });
+
   test("where the lamp comes to rest, the ends are the sway's two extremes", () => {
     const s = restingLamp([437, 180, 1]);
     assert.equal(endLamp(s, SWAY).lx - endLamp(s, -SWAY).lx, 2 * SWAY);

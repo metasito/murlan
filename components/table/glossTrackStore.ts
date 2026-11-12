@@ -12,7 +12,7 @@ export type LightReader = Readonly<Pick<SharedValue<GlossLight>, "value" | "get"
 export interface GlossTracks {
   /** The light where the lamp rests, written at each settle: a back whose gloss the fan draws reads its foil glint there. */
   rest: SharedValue<GlossLight>;
-  /** The light a back drawn live reads while the lamp moves, posed from the rig's lamp by `pose`. */
+  /** The light a back drawn live reads while the lamp moves, posed from the rig's lamp by `follow`. */
   light: LightReader;
   /** The felt's `EndsProps.side`: while it shows an end of a rested lamp, the rig may stop stepping it (`endsCarry`). */
   ends: SharedValue<number>;
@@ -23,18 +23,19 @@ export interface GlossTracks {
   subscribe(listener: () => void): () => void;
   /** True while the lamp glides, flares, is kicked or dims: the backs are then drawn live, as the mockup's `gloss()`, and the fans' gloss rests. */
   live(): boolean;
-  /** The lamp is rested or is not (`glossRested`), told when that changes. */
-  update(rested: boolean): void;
   rebake(): void;
-  /** Re-poses `light` from `lamp` while live, at the fans' cadence (`nextFanLight`). */
-  pose(lamp: GlossLight): void;
-  /** Each frame the rig steps: `update` when the lamp comes to rest or leaves it, then `pose`. */
+  /** Called with every frame the rig steps: the only writer of `live`, `rest` and `light`. */
   follow(lamp: Lamp): void;
 }
+
+type Aim = Pick<Lamp, "tx" | "ty" | "tr" | "lvlT">;
+const aimOf = ({ tx, ty, tr, lvlT }: Lamp): Aim => ({ tx, ty, tr, lvlT });
+const sameAim = (a: Aim, b: Aim) => a.tx === b.tx && a.ty === b.ty && a.tr === b.tr && a.lvlT === b.lvlT;
 
 export function createGlossTracks(rig: LampNow, { rest, light, ends }: { rest: SharedValue<GlossLight>; light: SharedValue<GlossLight>; ends: SharedValue<number> }, resting: Lamp): GlossTracks {
   let taken = resting;
   let live = !glossRested(resting);
+  let aim = aimOf(resting);
   const listeners = new Set<() => void>();
   const tell = () => {
     taken = structuredClone(rig.now());
@@ -61,12 +62,13 @@ export function createGlossTracks(rig: LampNow, { rest, light, ends }: { rest: S
       return () => void listeners.delete(listener);
     },
     live: () => live,
-    update,
     rebake: tell,
-    pose,
     follow: (lamp) => {
       const rested = glossRested(lamp);
-      if (rested === live) update(rested);
+      if (rested === live || (rested && !sameAim(aim, lamp))) {
+        aim = aimOf(lamp);
+        update(rested);
+      }
       pose(lamp);
     },
   };

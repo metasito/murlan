@@ -1,43 +1,54 @@
 // tests/e2e/fanGlossRest.spec.ts — an idle turn writes no card style (rule 51): once the lamp's glide to the viewer has come
-// within the step no gloss shows (`GLOSS_POINT_STEP`), the fans' gloss is drawn at rest, and no card view is written while the
-// sway alone moves the light. Unseeded and on the wall clock, as a player's table runs.
+// within 2 pt, the fans' gloss is drawn at rest, and no card view is written while the sway alone moves the light.
+// On the wall clock, as a player's table runs.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openApp, startOfflineGame } from "./helpers/navigation";
+import { openSeededGame } from "./helpers/offlineSeed";
 import { playAnyLegal } from "./helpers/bot";
+import { tap } from "./helpers/press";
 import { OTHERS_PLAY, YOUR_TURN_PREFIX } from "./helpers/labels";
 import { TABLE, TABLE_STATE } from "./helpers/selectors";
-import { countRenders, SWAY_PT, startRenderCounts } from "./helpers/renderCounters";
-import { GLOSS_POINT_STEP } from "../../components/table/cardGloss";
+import { countRenders, startRenderCounts } from "./helpers/renderCounters";
+import { SWAY, SWAY_KICKED } from "../../components/table/lampRig";
 
 const VIEWPORT = { width: 874, height: 402 };
-/** The viewport is the design's, so the trace's points are design points. */
-const STEP = GLOSS_POINT_STEP;
+/** Design points, as the viewport is the design's: the most a gloss may hold still for; `GLOSS_POINT_STEP` is pinned under it in `tests/ui-rules/fanGloss.test.ts`. */
+const VISIBLE_STEP_PT = 2;
 /** Frames from the glide's last frame outside the step to the backs handing their gloss to the fans: a commit and a layout effect. */
 const HAND_OFF_FRAMES = 6;
 /** How long the lamp must have rested before the turn is read: a whole second of sway with nothing but the sway moving. */
 const RESTED_MS = 1500;
 const TURNS = 6;
+const BACK_GLOSS = ["card-gloss-spot", "card-gloss-streak", "card-foil-ink", "card-foil-band", "card-foil-glint"]
+  .map((id) => `[data-testid="seat-back"] [data-testid="${id}"]`)
+  .join(", ");
 
 interface Frame {
   t: number;
   x: number;
   y: number;
   ph: number;
+  kick: number;
   rested: boolean;
   cards: number;
+  backGloss: number;
   state: string;
 }
 
-const SAMPLE = (attr: string) => {
-  const w = window as unknown as { murlanTrace: { frames: { lamp?: { x: number; y: number; ph: number; rested: boolean } }[] }; murlanRenderCounts: { take(): { styles: Record<string, number> } }; __fanRest: { frames: Frame[]; on: boolean } };
+const SAMPLE = ({ attr, gloss }: { attr: string; gloss: string }) => {
+  const w = window as unknown as { murlanTrace: { frames: { lamp?: { x: number; y: number; ph: number; kick: number; rested: boolean } }[] }; murlanRenderCounts: { take(): { styles: Record<string, number> } }; __fanRest: { frames: Frame[]; on: boolean } };
   w.__fanRest = { frames: [], on: true };
+  let backGloss = 0;
+  new MutationObserver((records) => {
+    for (const r of records) if ((r.target as Element).closest(gloss)) backGloss++;
+  }).observe(document.querySelector('[data-testid="game-root"]')!, { subtree: true, attributes: true, attributeFilter: ["style"] });
   const tick = () => {
     if (!w.__fanRest.on) return;
     const lamp = w.murlanTrace.frames.at(-1)?.lamp;
     const cards = w.murlanRenderCounts.take().styles.cards ?? 0;
     const state = document.querySelector('[data-testid="game-table"]')?.getAttribute(attr) ?? "";
-    if (lamp) w.__fanRest.frames.push({ t: performance.now(), x: lamp.x, y: lamp.y, ph: lamp.ph, rested: lamp.rested, cards, state });
+    if (lamp) w.__fanRest.frames.push({ t: performance.now(), x: lamp.x, y: lamp.y, ph: lamp.ph, kick: lamp.kick, rested: lamp.rested, cards, backGloss, state });
+    backGloss = 0;
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
@@ -52,47 +63,51 @@ const restedRun = (fs: Frame[]) => {
   while (i > 0 && fs[i - 1]!.rested) i--;
   return fs.slice(i);
 };
-const heldFor = (run: Frame[]) => (run.length ? run.at(-1)!.t - run[0]!.t : 0);
+
+/** In the page: whether the lamp has rested `ms` at the end of the frames sampled so far. */
+const RESTED_FOR = (ms: number) => {
+  const fs = (window as unknown as { __fanRest: { frames: { t: number; rested: boolean }[] } }).__fanRest.frames;
+  let i = fs.length;
+  while (i > 0 && fs[i - 1]!.rested) i--;
+  return i < fs.length && fs.at(-1)!.t - fs[i]!.t >= ms;
+};
 
 test.use({ reducedMotion: "no-preference", deviceScaleFactor: 1, viewport: VIEWPORT });
 
 test("an idle turn writes no card style once the lamp's glide is under a gloss's step", async ({ page, baseURL }) => {
   test.setTimeout(150_000);
   await countRenders(page);
-  await openApp(page, baseURL!);
-  await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
+  await openSeededGame(page, baseURL!, 4);
   await page.locator(TABLE).waitFor();
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
   await startRenderCounts(page);
-  await page.evaluate(SAMPLE, TABLE_STATE);
+  await page.evaluate(SAMPLE, { attr: TABLE_STATE, gloss: BACK_GLOSS });
 
   const yours = page.locator(`${TABLE}[${TABLE_STATE}^="${YOUR_TURN_PREFIX}"]`);
   for (let turn = 0; turn < TURNS; turn++) {
     await yours.waitFor({ timeout: 60_000 });
     const state = (await page.locator(TABLE).getAttribute(TABLE_STATE)) ?? "";
-    let fs = await frames(page);
-    while (heldFor(restedRun(fs)) < RESTED_MS && fs.length < 60 * 30) {
-      await page.waitForTimeout(250);
-      fs = await frames(page);
-    }
+    await page.waitForFunction(RESTED_FOR, RESTED_MS, { timeout: 30_000 });
+    const fs = await frames(page);
     const rest = restedRun(fs);
-    expect(heldFor(rest), "the lamp rests on the viewer's turn").toBeGreaterThanOrEqual(RESTED_MS);
-    const cx = rest.reduce((a, f) => a + f.x - SWAY_PT * Math.sin(f.ph), 0) / rest.length;
+    const centre = (f: Frame) => f.x - (SWAY + SWAY_KICKED * f.kick) * Math.sin(f.ph);
+    const cx = rest.reduce((a, f) => a + centre(f), 0) / rest.length;
     const cy = fs.at(-1)!.y;
-    const off = (f: Frame) => Math.abs(f.x - SWAY_PT * Math.sin(f.ph) - cx) >= STEP || Math.abs(f.y - cy) >= STEP;
+    const off = (f: Frame) => Math.abs(centre(f) - cx) >= VISIBLE_STEP_PT || Math.abs(f.y - cy) >= VISIBLE_STEP_PT;
     const last = fs.findLastIndex(off);
     if (!OTHERS_PLAY.test(state) || last < 0 || last + HAND_OFF_FRAMES >= fs.length) {
-      if ((await playAnyLegal(page)) === null) await page.locator('[data-testid="btn-passa"]').click();
-      await yours.waitFor({ state: "detached", timeout: 10_000 }).catch(() => {});
       await restart(page);
+      if ((await playAnyLegal(page)) === null) await tap(page, page.locator('[data-testid="btn-passa"]'));
+      test.info().annotations.push({ type: "skipped", description: `turn ${turn}: ${OTHERS_PLAY.test(state) ? "" : "no bot's play, "}last off ${last} of ${fs.length}` });
+      await page.waitForFunction(({ table, attr, was }) => document.querySelector(table)?.getAttribute(attr) !== was, { table: TABLE, attr: TABLE_STATE, was: state }, { timeout: 10_000 });
       continue;
     }
-    const before = fs.slice(0, last + 1).reduce((a, f) => a + f.cards, 0);
+    const glossed = fs.slice(0, last + 1).reduce((a, f) => a + f.backGloss, 0);
     const idle = fs.slice(last + 1 + HAND_OFF_FRAMES);
     const written = idle.reduce((a, f) => a + f.cards, 0);
     const seconds = (idle.at(-1)!.t - idle[0]!.t) / 1000;
-    test.info().annotations.push({ type: "idle", description: `turn ${turn}: ${before} card writes over the glide, ${written} over ${seconds.toFixed(2)} s idle` });
-    expect(before, "the counter sees the backs' gloss written while the lamp glides").toBeGreaterThan(0);
+    test.info().annotations.push({ type: "idle", description: `turn ${turn}: ${glossed} writes to the backs' gloss over the glide, ${written} card writes over ${seconds.toFixed(2)} s idle` });
+    expect(glossed, "the counter sees the backs' gloss written while the lamp glides").toBeGreaterThan(0);
     expect(seconds, "an idle stretch long enough to read").toBeGreaterThan(1);
     expect(written / seconds, "card style writes a second on an idle turn").toBe(0);
     return;
