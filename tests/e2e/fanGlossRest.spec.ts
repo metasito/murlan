@@ -9,6 +9,7 @@ import { tap } from "./helpers/press";
 import { OTHERS_PLAY, YOUR_TURN_PREFIX } from "./helpers/labels";
 import { TABLE, TABLE_STATE } from "./helpers/selectors";
 import { countRenders, startRenderCounts } from "./helpers/renderCounters";
+import { seedRandomness } from "./helpers/seededRandomness";
 import { SWAY, SWAY_KICKED } from "../../components/table/lampRig";
 
 const VIEWPORT = { width: 874, height: 402 };
@@ -19,6 +20,7 @@ const HAND_OFF_FRAMES = 6;
 /** How long the lamp must have rested before the turn is read: a whole second of sway with nothing but the sway moving. */
 const RESTED_MS = 1500;
 const TURNS = 6;
+const SEED = 1;
 const BACK_GLOSS = ["card-gloss-spot", "card-gloss-streak", "card-foil-ink", "card-foil-band", "card-foil-glint"]
   .map((id) => `[data-testid="seat-back"] [data-testid="${id}"]`)
   .join(", ");
@@ -76,6 +78,7 @@ test.use({ reducedMotion: "no-preference", deviceScaleFactor: 1, viewport: VIEWP
 
 test("an idle turn writes no card style once the lamp's glide is under a gloss's step", async ({ page, baseURL }) => {
   test.setTimeout(150_000);
+  await seedRandomness(page, SEED);
   await countRenders(page);
   await openSeededGame(page, baseURL!, 4);
   await page.locator(TABLE).waitFor();
@@ -100,7 +103,8 @@ test("an idle turn writes no card style once the lamp's glide is under a gloss's
     const current = fs.at(-1)!.state === state;
     if (!OTHERS_PLAY.test(state) || !current || last < arrived || last + HAND_OFF_FRAMES >= fs.length) {
       await restart(page);
-      if (current && (await playAnyLegal(page)) === null) await tap(page, page.locator('[data-testid="btn-passa"]'));
+      // A throw of the viewer's still in flight when the bots answer keeps the lamp from gliding away and back, so answer a play by passing.
+      if (current && (OTHERS_PLAY.test(state) || (await playAnyLegal(page)) === null)) await tap(page, page.locator('[data-testid="btn-passa"]'));
       test.info().annotations.push({ type: "skipped", description: `turn ${turn}: ${OTHERS_PLAY.test(state) ? "" : "no bot's play, "}${current ? "" : "moved on, "}arrived ${arrived}, last off ${last} of ${fs.length}` });
       await page.waitForFunction(({ table, attr, was }) => document.querySelector(table)?.getAttribute(attr) !== was, { table: TABLE, attr: TABLE_STATE, was: state }, { timeout: 10_000 });
       continue;
