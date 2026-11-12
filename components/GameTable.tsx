@@ -56,7 +56,6 @@ import {
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnPresentation, type TurnTimerConfig } from "@/components/turnTimerUi";
-import { sideSlotHeight, topBandHeight } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
 import { ScorePill } from "@/components/table/scorePill";
 import type { MatchBoardActions, MatchRating } from "@/components/table/matchBoard";
@@ -315,12 +314,13 @@ export function GameTable({
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useOrientedWindow();
   const portrait = usePortraitInterface();
+  const [playOnLeft, setPlayOnLeft] = useState(false);
   const layout = React.useMemo(
-    () => tableLayout({ width: W, height: H, insets: { top: insets.top, bottom: insets.bottom, left: insets.left, right: insets.right } }),
-    [W, H, insets.top, insets.bottom, insets.left, insets.right]
+    () => tableLayout({ width: W, height: H, insets: { top: insets.top, bottom: insets.bottom, left: insets.left, right: insets.right }, playOnLeft }),
+    [W, H, insets.top, insets.bottom, insets.left, insets.right, playOnLeft]
   );
   const { scale } = layout;
-  const { chips, rail, handZone, buttons } = layout;
+  const { chips, rail, buttons } = layout;
   const [chipWidths, setChipWidths] = useState<ChipWidths>({ combo: 0, turn: 0 });
   const hud = layout.chipRow(chipWidths);
   // What the player sees of a hand card, and how tall PASSA and GIOCA are —
@@ -367,7 +367,6 @@ export function GameTable({
   const behindCoverOnly = a11yVeiled(veil.coverOnly);
   const clockVeil = a11yVeiled(veil.clock);
   const [focusMode, setFocusMode] = useState(false);
-  const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
 
   const focusFadeStyle = useFocusFade(focusMode);
@@ -1043,7 +1042,7 @@ export function GameTable({
         <FloatSlot
           float={float}
           at={{ x: anchors.pile.x, y: layout.floatTop }}
-          beside={{ ...layout.floatBeside, mirrored: playOnLeft }}
+          beside={layout.floatBeside}
           scale={scale}
           veiled={tableWithdrawn}
         />
@@ -1142,17 +1141,17 @@ export function GameTable({
         >
           <A11yVeil veil={behindVeil}>
           <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
-            <View testID="table-top-section" style={[sharedTableStyles.topSection, { height: topBandHeight(scale) }]}>
-              {opponentSeat("top") ?? <View />}
+            <View testID="table-top-section" style={[sharedTableStyles.topSection, layout.placed.topBand]}>
+              {opponentSeat("top")}
             </View>
 
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
             <View style={[sharedTableStyles.midSection, layout.placed.midBand, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
-              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
+              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, layout.placed.seatLeft]}>
                 {opponentSeat("left")}
               </View>
 
-              <View style={sharedTableStyles.centerSection}>
+              <View style={[sharedTableStyles.centerSection, layout.placed.pile]}>
                 <PileLayer
                   trick={trick}
                   flights={flights}
@@ -1213,33 +1212,24 @@ export function GameTable({
                 )}
               </View>
 
-              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight, { height: sideSlotHeight(scale) }]}>
+              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight, layout.placed.seatRight]}>
                 {opponentSeat("right")}
               </View>
             </View>
 
-            <View
-              testID="hand-zone"
-              style={[
-                sharedTableStyles.handSection,
-                layout.placed.handZone,
-                { paddingBottom: handZone.padBottom },
-                // Play on the left mirrors the row rather than moving the rail,
-                // which stays put at the physical cutout: only GIOCA changes
-                // which thumb it falls under.
-                playOnLeft && styles.handSectionReversed,
-              ]}
-            >
+            <View testID="hand-zone" style={[sharedTableStyles.handSection, layout.placed.handZone]}>
               {!spectating && (
-                <PassaButton
-                  canPass={canPass}
-                  onlyMove={passIsOnlyMove}
-                  flashStyle={passaFlashStyle}
-                  onPress={handlePass}
-                  a11yLabel={t("gameTable.passA11yLabel")}
-                  size={actionBtn}
-                  scale={scale}
-                />
+                <View style={[styles.handButton, layout.placed.passa]}>
+                  <PassaButton
+                    canPass={canPass}
+                    onlyMove={passIsOnlyMove}
+                    flashStyle={passaFlashStyle}
+                    onPress={handlePass}
+                    a11yLabel={t("gameTable.passA11yLabel")}
+                    size={actionBtn}
+                    scale={scale}
+                  />
+                </View>
               )}
 
               <View style={[styles.handSlot, layout.placed.handWindow]}>
@@ -1268,19 +1258,21 @@ export function GameTable({
               </View>
 
               {!spectating && (
-                <GiocaControl
-                  store={shownSelection}
-                  facts={giocaFacts}
-                  giveTo={exchangeIsMine ? exchangeLoserName : null}
-                  lit={handUp}
-                  rejectX={giocaRejectX}
-                  rejectPlay={rejectPlay}
-                  onRefuse={showRefusal}
-                  onPlay={onPlay}
-                  onGive={onExchangeGive}
-                  size={actionBtn}
-                  scale={scale}
-                />
+                <View style={[styles.handButton, layout.placed.gioca]}>
+                  <GiocaControl
+                    store={shownSelection}
+                    facts={giocaFacts}
+                    giveTo={exchangeIsMine ? exchangeLoserName : null}
+                    lit={handUp}
+                    rejectX={giocaRejectX}
+                    rejectPlay={rejectPlay}
+                    onRefuse={showRefusal}
+                    onPlay={onPlay}
+                    onGive={onExchangeGive}
+                    size={actionBtn}
+                    scale={scale}
+                  />
+                </View>
               )}
             </View>
           </Animated.View>
@@ -1317,8 +1309,8 @@ const styles = StyleSheet.create({
   pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
   greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   matchDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
-  handSectionReversed: { flexDirection: "row-reverse" },
   handSlot: { position: "absolute", justifyContent: HAND_ZONE_ALIGN },
+  handButton: { position: "absolute" },
 
 
   finishedRow: { alignItems: "center", justifyContent: "center" },

@@ -29,7 +29,7 @@ import { flinchFor, landingTier, LAND_WOBBLE_MS, landWobble } from "@/components
 import { comboKey } from "@/components/passes";
 import { moveSince } from "@/lib/game/moves";
 import { readThrownPlay } from "@/components/table/throws";
-import type { Seating, TableLayout } from "@/components/tableLayout";
+import { PILE_MIN_H, type Seating, type TableLayout } from "@/components/tableLayout";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { TrickWinnerMark } from "./notices/pileNotices";
@@ -831,7 +831,7 @@ const pileStyles = StyleSheet.create({
   pileArea: {
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 80,
+    minHeight: PILE_MIN_H,
   },
   // Behind a catching card, never on it: the iOS renderer paints siblings in
   // its own order (#209), and "behind" is the whole of this effect.

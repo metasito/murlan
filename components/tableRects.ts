@@ -113,9 +113,10 @@ export function tableRects(input: {
   insets: EdgeInsets;
   locale: NoticeLocale;
   state: TableState;
+  playOnLeft?: boolean;
 }): TableRects {
-  const { width, height, insets, locale, state } = input;
-  const layout = tableLayout({ width, height, insets });
+  const { width, height, insets, locale, state, playOnLeft } = input;
+  const layout = tableLayout({ width, height, insets, playOnLeft });
   const { scale, frame, anchors, chips, rail, handZone, buttons } = layout;
 
   const comboRoom = layout.chipRow({ combo: 0, turn: 0 }).combo.room;

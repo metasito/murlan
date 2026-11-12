@@ -204,7 +204,7 @@ describe("a planted run starts from nothing of its parent's environment", () => 
   });
 });
 
-describe("a run handed a list of files answers for each, and a run handed a glob for its whole root", () => {
+describe("a run handed a list of files answers for each, and a run handed a glob for the directory it holds", () => {
   test("a listed file that never loaded is named; an unlisted one is another shard's", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "files-run-"));
     // Joined, so repoLayout.test.ts does not read these fixtures as paths that must exist.
@@ -219,6 +219,34 @@ describe("a run handed a list of files answers for each, and a run handed a glob
       assert.deepEqual(unloaded(loaded, dir, [a, b]), [b]);
       assert.deepEqual(unloaded(loaded, dir, ["tests/**/*.test.ts"]), [b]);
       assert.deepEqual(unloaded(loaded, dir, [a, "tests/engine"]), [b]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a glob naming one directory answers for that directory, and a narrowed one still for its root", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "files-run-"));
+    const [t, nested, other] = [
+      ["tests", "tooling", "t.test.ts"],
+      ["tests", "tooling", "deep", "n.test.ts"],
+      ["tests", "engine", "b.test.ts"],
+    ].map((f) => f.join("/"));
+    try {
+      for (const f of [t, nested, other]) {
+        mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+        writeFileSync(path.join(dir, f), "");
+      }
+      const loaded = [t, nested].map((f) => path.join(dir, f));
+      assert.deepEqual(unloaded(loaded, dir, ["tests/tooling/**/*.test.ts"]), []);
+      assert.deepEqual(unloaded([path.join(dir, t)], dir, ["tests/tooling/**/*.test.ts"]), [nested]);
+      assert.deepEqual(unloaded([path.join(dir, t)], dir, ["tests/tooling/*.test.ts"]), [nested]);
+      assert.deepEqual(unloaded(loaded, dir, ["tests/{tooling,ui}/**/*.test.ts"]), [other]);
+      assert.deepEqual(unloaded(loaded, dir, ["tests/**/*.test.ts"]), [other]);
+      assert.deepEqual(unloaded(loaded, dir, ["**/*.test.ts"]), [other]);
+      assert.deepEqual(unloaded(loaded, dir, ["tests/gone/**/*.test.ts"]), ["tests/gone/ (no such directory)"]);
+      assert.deepEqual(unloaded(loaded, dir, [`${t}x`]), [`${t}x`]);
+      writeFileSync(path.join(dir, `${t}x`), "");
+      assert.deepEqual(unloaded([...loaded, path.join(dir, `${t}x`)], dir, [`${t}x`]), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

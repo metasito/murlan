@@ -1,49 +1,27 @@
 // tests/e2e/tableRects.spec.ts — the table is drawn where `tableRects` says, on the viewports, safe
 // areas and languages the pure property test walks. The pure test cannot see flexbox; this is what
 // ties the solver to it.
-import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { DEAL_SIZE, exchangeSave, offlineSave, resumeOnVirtualClock, seedSave } from "./helpers/offlineSeed";
+import { DEAL_SIZE, exchangeSave, offlineSave, resumeOnVirtualClock } from "./helpers/offlineSeed";
 import { installVirtualClock, stepUntil } from "./helpers/virtualClock";
-import { openApp } from "./helpers/navigation";
 import { openOnlineTable } from "./helpers/onlineTable";
 import { PHONES } from "./helpers/phones";
-import { setSafeArea } from "./helpers/safeArea";
 import { INSETS } from "../helpers/phoneTable";
-import { DRAWN, misfits, RAIL, settled } from "./helpers/drawnRects";
+import { misfits, RAIL, settled } from "./helpers/drawnRects";
+import { check, open } from "./helpers/tableRectsCheck";
+import { tableRects } from "../../components/tableRects";
 import { captureGameState, captureStateById, type CaptureState } from "../../lib/captureStates";
-import { createDeck, type Card } from "../../lib/game/gameEngine";
-import type { OfflineSave } from "../../lib/offlineSave";
+import { createDeck } from "../../lib/game/gameEngine";
 import { LOCALE_KEY } from "../../lib/storageKeys";
-import { catalogs, type Locale } from "../../shared/i18n";
+import type { Locale } from "../../shared/i18n";
 import { USERNAME_MAX } from "../../shared/username";
-import type { EdgeInsets } from "../../components/tableFrame";
-import { brokenRules, tableRects } from "../../components/tableRects";
-import { drawnChips, gameTable, TABLETS, type DrawnTable } from "../helpers/tableScenes";
+import { gameTable, TABLETS, type DrawnTable } from "../helpers/tableScenes";
 import { readHandArrival } from "../../components/table/exchangeModel";
 
 const VIEWPORTS = [...PHONES, ...TABLETS];
 const PHONE_INSETS = Object.entries(INSETS);
 const LOCALES: readonly Locale[] = ["it", "en", "sq"];
 const STATES: readonly CaptureState[] = ["held", "pile-right", "bomb-landed"].map((id) => captureStateById(id)!);
-
-async function open(page: Page, baseURL: string, save: OfflineSave, locale: Locale, insets: EdgeInsets) {
-  await seedSave(page, save, { holdTurn: true });
-  await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [LOCALE_KEY, locale]);
-  await openApp(page, baseURL);
-  await page.getByRole("button", { name: catalogs[locale]["home.resumeGame"] }).click({ timeout: 60_000 });
-  await expect(page.getByTestId("hand-zone")).toBeVisible({ timeout: 30_000 });
-  await setSafeArea(page, insets.left, insets.bottom, insets.right, insets.top);
-}
-
-async function check(page: Page, where: string, vp: { width: number; height: number }, insets: EdgeInsets, locale: Locale, table: DrawnTable, exchangeName?: string, keepsRules = false, exchangeCards?: { received: Card; given?: Card }, rects = DRAWN) {
-  const got = await settled(page, rects);
-  const chips = drawnChips(table, locale, got.texts, exchangeName, exchangeCards);
-  expect(chips, `${where}: the pills read words a scene says (${got.texts.combo} | ${got.texts.turn} | ${got.texts.note})`).toEqual({ combo: expect.anything(), turn: expect.anything(), note: got.texts.note === "" ? null : expect.anything() });
-  const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn!, note: chips.note ?? undefined } } });
-  expect(misfits(got, solved, rects), where).toEqual([]);
-  if (keepsRules) expect(brokenRules(solved), `${where}: the solved table breaks its rules`).toEqual([]);
-}
 
 for (const [v, vp] of VIEWPORTS.entries())
   test(`the table is drawn in the solver's rects: ${vp.name}`, async ({ page, baseURL }) => {

@@ -12,6 +12,7 @@ import { FAN_CARD_SCALE } from "../../components/impact.ts";
 import {
   arrangeOpponents,
   CHIP_H,
+  drawnDisc,
   FAN_DRAWN_CARDS,
   HAND_ZONE_GAP,
   HAND_ZONE_H,
@@ -24,7 +25,7 @@ import {
 import { readExchangeLegs } from "../../components/table/exchangeModel.ts";
 import { readThrownPlay } from "../../components/table/throws.ts";
 import { sideSlotHeight, topBandHeight } from "../../components/tableFrame.ts";
-import { ownSlotFrom, tableLayout, type Delta, type TableLayout } from "../../components/tableLayout.ts";
+import { ownSlotFrom, PILE_MIN_H, tableLayout, type Delta, type TableLayout } from "../../components/tableLayout.ts";
 import type { Card, Combination, Player } from "../../lib/game/gameEngine.ts";
 import { clientSources, scanSources } from "../helpers/sourceScan.ts";
 import { INSETS, phoneTable } from "../helpers/phoneTable.ts";
@@ -262,7 +263,26 @@ describe("the middle band, the hand zone and the hand window", () => {
       near(w.x - (buttons.passa.x + buttons.passa.w), HAND_ZONE_GAP * l.scale, `${what} passa`);
       near(buttons.gioca.x - (w.x + w.w), HAND_ZONE_GAP * l.scale, `${what} gioca`);
       near(w.y, l.handZone.y, `${what} top`);
-      near(w.h, l.handZone.h - l.handZone.padBottom, `${what} height`);
+      near(w.h, l.handZone.h - l.frame.bottomPad, `${what} height`);
+    }
+  });
+
+  test("play on the left swaps PASSA and GIOCA, and the refused play's float with GIOCA, and nothing else", () => {
+    for (const p of PHONES) {
+      for (const [inset, insets] of Object.entries(INSETS)) {
+        const what = `${p.name} ${inset}`;
+        const right = tableLayout({ width: p.width, height: p.height, insets });
+        const left = tableLayout({ width: p.width, height: p.height, insets, playOnLeft: true });
+        assert.deepEqual(left.buttons, { passa: right.buttons.gioca, gioca: right.buttons.passa }, `${what} buttons`);
+        assert.deepEqual([left.placed.passa, left.placed.gioca], [right.placed.gioca, right.placed.passa], `${what} placed`);
+        assert.ok(left.buttons.gioca.x < left.handWindow.x && left.buttons.passa.x > left.handWindow.x + left.handWindow.w, `${what}: GIOCA on the left of the row`);
+        assert.deepEqual([right.floatBeside.mirrored, left.floatBeside.mirrored], [false, true], `${what} float`);
+        const rest = (l: TableLayout) => {
+          const { buttons: _b, placed: { passa: _p, gioca: _g, ...placed }, floatBeside: { mirrored: _m, ...beside }, seatPoint: _s, chipRow: _c, ...more } = l;
+          return { placed, beside, more };
+        };
+        assert.deepEqual(rest(left), rest(right), `${what}: the rest of the table stays put`);
+      }
     }
   });
 
@@ -274,17 +294,83 @@ describe("the middle band, the hand zone and the hand window", () => {
     }
   });
 
-  test("each placed box's edges land it on its rect inside its parent", () => {
+  test("the top band runs from the table's top to the middle band, and its seat's ring centres in it", () => {
     for (const { what, l } of tables) {
+      near(l.topBand.y, l.frame.tableTop, `${what} top`);
+      near(l.topBand.y + l.topBand.h, l.midBand.y, `${what} foot`);
+      assert.deepEqual([l.topBand.x, l.topBand.w], [l.midBand.x, l.midBand.w], what);
+      near(l.anchors.top.x, l.topBand.x + l.topBand.w / 2, `${what} ring`);
+    }
+  });
+
+  test("each side seat's ring stands against its slot's outer side, centred down it; the pile centres between the slots", () => {
+    for (const { what, l } of tables) {
+      const ring = drawnDisc(l.scale) / 2;
+      const { left, right } = l.seatSlots;
+      near(left.y, l.midBand.y, `${what} left top`);
+      near(right.y, l.midBand.y, `${what} right top`);
+      near(l.anchors.left.y, left.y + left.h / 2, `${what} left centred`);
+      near(l.anchors.right.y, right.y + right.h / 2, `${what} right centred`);
+      near(l.anchors.left.x - left.x, ring, `${what} left against its side`);
+      near(right.x + right.w - l.anchors.right.x, ring, `${what} right against its side`);
+      near(left.x - l.midBand.x, l.midBand.x + l.midBand.w - (right.x + right.w), `${what} gaps mirror`);
+      assert.ok(left.x > l.midBand.x && left.x + left.w < l.pileBand.x, `${what}: the left slot sits inside its column`);
+      assert.ok(right.x > l.pileBand.x + l.pileBand.w && right.x + right.w < l.midBand.x + l.midBand.w, `${what}: the right slot sits inside its column`);
+      near(l.pileBand.x + l.pileBand.w / 2, l.anchors.pile.x, `${what} pile x`);
+      near(l.pileBand.y + l.pileBand.h / 2, l.anchors.pile.y, `${what} pile y`);
+      near(l.pileBand.h, l.midBand.h, `${what} pile band height`);
+      assert.deepEqual([l.pile.x, l.pile.w, l.pile.h], [l.pileBand.x, l.pileBand.w, PILE_MIN_H], `${what}: the pile is the band's width at its least height`);
+      near(l.pile.y + l.pile.h / 2, l.anchors.pile.y, `${what} pile centred`);
+      assert.ok(l.pile.y + l.pile.h < l.handZone.y, `${what}: the pile's box stops short of the hand zone`);
+    }
+  });
+
+  test("each placed box lands on its rect, spanning its parent or at its own size against one edge", () => {
+    const sided = PHONES.flatMap((p) => Object.entries(INSETS).flatMap(([inset, insets]) => [false, true].map((playOnLeft) => ({
+      what: `${p.name} ${inset}${playOnLeft ? " play on the left" : ""}`,
+      l: tableLayout({ width: p.width, height: p.height, insets, playOnLeft }),
+    }))));
+    for (const { what, l } of sided) {
       const table = { x: l.tableBox.left, y: l.tableBox.top, w: l.window.width - l.tableBox.left - l.tableBox.right, h: l.window.height - l.tableBox.top - l.tableBox.bottom };
-      const cases = [["midBand", table, l.midBand], ["handZone", table, l.handZone], ["handWindow", l.handZone, l.handWindow]] as const;
+      const cases = [
+        ["topBand", table, l.topBand],
+        ["midBand", table, l.midBand],
+        ["seatLeft", l.midBand, l.seatSlots.left],
+        ["seatRight", l.midBand, l.seatSlots.right],
+        ["pile", l.midBand, l.pile],
+        ["handZone", table, l.handZone],
+        ["handWindow", l.handZone, l.handWindow],
+        ["passa", l.handZone, l.buttons.passa],
+        ["gioca", l.handZone, l.buttons.gioca],
+      ] as const;
+      assert.deepEqual(cases.map(([key]) => key).sort(), Object.keys(l.placed).sort(), `${what}: every placed box is checked`);
       for (const [key, outer, inner] of cases) {
-        const e = l.placed[key];
-        near(outer.x + e.left, inner.x, `${what} ${key} left`);
-        near(outer.y + e.top, inner.y, `${what} ${key} top`);
-        near(outer.x + outer.w - e.right, inner.x + inner.w, `${what} ${key} right`);
-        near(outer.y + outer.h - e.bottom, inner.y + inner.h, `${what} ${key} bottom`);
+        const p: Partial<Record<"left" | "right" | "width" | "top" | "bottom" | "height", number>> = l.placed[key];
+        assert.equal(Object.keys(p).length, 4, `${what} ${key}: two lengths per axis`);
+        const x = p.left ?? outer.w - p.right! - p.width!;
+        const y = p.top ?? outer.h - p.bottom! - p.height!;
+        near(outer.x + x, inner.x, `${what} ${key} left`);
+        near(outer.y + y, inner.y, `${what} ${key} top`);
+        near(p.width ?? outer.w - x - p.right!, inner.w, `${what} ${key} width`);
+        near(p.height ?? outer.h - y - p.bottom!, inner.h, `${what} ${key} height`);
       }
+      const pins = Object.fromEntries(Object.entries(l.placed).map(([key, p]) => [key, Object.keys(p).sort().join(" ")]));
+      const [passaSide, giocaSide] = l.floatBeside.mirrored ? ["right", "left"] : ["left", "right"];
+      assert.ok(l.floatBeside.mirrored === l.buttons.gioca.x < l.buttons.passa.x, `${what}: GIOCA on the side it is placed against`);
+      const pile: Partial<Record<"top" | "height", number>> = l.placed.pile;
+      near(pile.top!, l.anchors.pile.y - PILE_MIN_H / 2 - l.midBand.y, `${what}: the pile's top, from the middle band's, centres it on the anchor`);
+      near(pile.height!, PILE_MIN_H, `${what}: the pile's height`);
+      assert.deepEqual(pins, {
+        topBand: "height left right top",
+        midBand: "bottom left right top",
+        seatLeft: "height left top width",
+        seatRight: "height right top width",
+        pile: "height left right top",
+        handZone: "bottom left right top",
+        handWindow: "bottom left right top",
+        passa: `bottom height ${passaSide} width`,
+        gioca: `bottom height ${giocaSide} width`,
+      }, `${what}: a box of its own size stands against the edge it is drawn at`);
     }
   });
 
@@ -292,7 +378,7 @@ describe("the middle band, the hand zone and the hand window", () => {
     let scrolled = 0;
     for (const { what, l } of tables) {
       for (const n of [5, 27]) {
-        const row = layoutHandRow({ ids: Array.from({ length: n }, (_, i) => `c${i}`), size: handCardSize(l.scale, false, false), roomW: l.frame.handRoomW, availW: l.handWindow.w, bottomPad: l.handZone.padBottom });
+        const row = layoutHandRow({ ids: Array.from({ length: n }, (_, i) => `c${i}`), size: handCardSize(l.scale, false, false), roomW: l.frame.handRoomW, availW: l.handWindow.w, bottomPad: l.frame.bottomPad });
         const rest = l.handWindow.w / 2 + row.left;
         if (row.scrollable) {
           scrolled++;

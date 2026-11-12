@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, rmSync, writeSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeSync } from "node:fs";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { tableTimeoutMs } from "../../scripts/lib/proc.mjs";
@@ -61,8 +61,8 @@ const isFile = (data) => data?.nesting === 0 && path.resolve(data.name ?? "") ==
  * A file counts only when a test in it really ran — not skipped, not todo, and not the stand-in
  * node reports for a file that declared no test at all.
  *
- * It also fails the run when a `*.test.ts` under a root the run touched never loaded: a narrowed
- * glob drops whole directories and still exits 0. A run handed only `*.test.ts` paths, one CI shard
+ * It also fails the run when a `*.test.ts` under a directory the run's globs hold never loaded: a
+ * narrowed glob drops whole directories and still exits 0. A run handed only `*.test.ts` paths, one CI shard
  * of the suite, answers for those; CI gate's verdict holds every shard together to the whole listing.
  */
 export default async function* filesRun(source) {
@@ -117,26 +117,51 @@ export default async function* filesRun(source) {
   for (const [dir, count] of [...perDir].sort()) yield `test files run in ${dir}: ${count}\n`;
 
   // In `node --test`, everything after the executable is a file argument; the flags are execArgv.
-  const missing = unloaded([...loaded], process.cwd(), process.argv.slice(1));
-  if (loaded.size === 0) missing.push("(no test file loaded at all)");
+  const missing = loaded.size === 0 ? ["(no test file loaded at all)"] : unloaded([...loaded], process.cwd(), process.argv.slice(1));
   for (const file of missing) yield `test file never loaded: ${file}\n`;
   if (missing.length > 0) process.exitCode = 1;
 }
 
+const isWild = (/** @type {string} */ s) => /[*?[\]{}]/.test(s);
+
 /** A path to one test file; a glob or a directory names whatever its root holds. */
-const namesOneFile = (/** @type {string} */ arg) => arg.endsWith(".test.ts") && !/[*?[\]{}]/.test(arg);
+const namesOneFile = (/** @type {string} */ arg, /** @type {string} */ cwd) =>
+  !isWild(arg) && !statSync(path.resolve(cwd, arg), { throwIfNoEntry: false })?.isDirectory();
+
+const posix = (/** @type {string} */ f) => f.split(path.sep).join("/");
+const within = (/** @type {string} */ f, /** @type {string} */ dir) => dir === "" || f === dir || f.startsWith(`${dir}/`);
+
+/**
+ * The directory a glob or directory argument holds: its segments before the first wildcard, so
+ * `tests/tooling/**` answers for tests/tooling, and `tests/{a,b}/**` still for the whole of tests.
+ */
+const rootOf = (/** @type {string} */ arg, /** @type {string} */ cwd) => {
+  const segments = posix(path.relative(cwd, path.resolve(cwd, arg))).split("/");
+  const wild = segments.findIndex(isWild);
+  return segments.slice(0, wild === -1 ? segments.length : wild).filter(Boolean).join("/");
+};
 
 /**
  * @param {string[]} loaded absolute paths
  * @param {string[]} args the runner's file arguments
  */
 export function unloaded(loaded, cwd = process.cwd(), args = []) {
-  const rel = loaded.map((f) => path.relative(cwd, f).split(path.sep).join("/"));
-  if (args.length > 0 && args.every(namesOneFile))
-    return args.map((a) => path.relative(cwd, path.resolve(cwd, a)).split(path.sep).join("/")).filter((f) => !rel.includes(f));
-  return ROOTS.filter((root) => rel.some((f) => f.startsWith(`${root}/`))).flatMap((root) =>
-    readdirSync(path.join(cwd, root), { recursive: true, encoding: "utf8" })
-      .map((f) => `${root}/${f.split(path.sep).join("/")}`)
-      .filter((f) => f.endsWith(".test.ts") && !rel.includes(f))
+  const rel = loaded.map((f) => posix(path.relative(cwd, f)));
+  const files = args.filter((a) => namesOneFile(a, cwd)).map((a) => posix(path.relative(cwd, path.resolve(cwd, a))));
+  const touched = ROOTS.filter((root) => rel.some((f) => within(f, root)));
+  const dirs =
+    args.length === 0
+      ? touched
+      : args
+          .filter((a) => !namesOneFile(a, cwd))
+          .map((a) => rootOf(a, cwd))
+          .flatMap((g) => [...touched.filter((root) => within(root, g)), ...(ROOTS.some((root) => within(g, root)) ? [g] : [])]);
+  const held = dirs.flatMap((dir) =>
+    existsSync(path.join(cwd, dir))
+      ? readdirSync(path.join(cwd, dir), { recursive: true, encoding: "utf8" })
+          .map((f) => `${dir}/${posix(f)}`)
+          .filter((f) => f.endsWith(".test.ts"))
+      : [`${dir}/ (no such directory)`]
   );
+  return [...new Set([...files, ...held])].filter((f) => !rel.includes(f));
 }

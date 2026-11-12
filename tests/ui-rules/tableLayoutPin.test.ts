@@ -67,7 +67,7 @@ function derived(c: { viewport: string; insets: string }) {
     },
     expected: {
       votes: { right: at.width - pill.right, top: { rest: voteTop(pill, false, at.scale), open: voteTop(pill, true, at.scale) } },
-      floatBeside: { giocaTopFromBottom: at.height - buttons.gioca.y, left: frame.tableLeft, right: frame.tableRight },
+      floatBeside: { giocaTopFromBottom: at.height - buttons.gioca.y, left: frame.tableLeft, right: frame.tableRight, mirrored: false },
       bannerBand: { left: frame.tableLeft + frame.pad, right: frame.tableRight + frame.pad },
       tableCentre: { x: (frame.tableLeft + at.width - frame.tableRight) / 2, y: (frame.tableTop + at.height - frame.surplus) / 2 },
     },

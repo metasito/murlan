@@ -1,27 +1,15 @@
-// tests/e2e/tableProportions.spec.ts — the table's element sizes, measured on
-// a laid-out phone rather than asserted against the constants that produced
-// them.
-//
-// Every number here is `<authored> * cardScale(shortEdge)`, and the model's own
-// unit tests pin the authored values. What they cannot see is whether the
-// element that reaches the screen is that size, and where it ends up: seat
-// placement is flexbox in a row whose cross axis is up-and-down, which
-// react-test-renderer never runs (CLAUDE.md, *Known pitfalls*). #340.
+// tests/e2e/tableProportions.spec.ts — the table on each phone, at each seat count, is drawn where
+// `tableRects` solved it and the solved table keeps its rules; beside that, what the solver's rects
+// do not name, measured on the page: the seat count badges and the HUD stack off the cards, a side
+// seat above the pile's middle, the turn chip centred over the pile, and no seat name ellipsised.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openSeededGame } from "./helpers/offlineSeed";
-import { HAND_ZONE, TABLE_SCREEN } from "./helpers/selectors";
-import { atRest } from "./helpers/settle";
-import { CHIP_H, SEAT_DISC, actionBtnSize } from "../../components/seatLayout";
-import { tableScale } from "../../components/cardFaceModel";
-
-// tests/e2e/handParity.spec.ts's own handsets.
-const PHONES = [
-  { name: "iPhone SE", width: 568, height: 320 },
-  { name: "iPhone 12", width: 844, height: 390 },
-  { name: "iPhone 16 Pro", width: 874, height: 402 },
-  { name: "iPhone 17 Pro Max", width: 956, height: 440 },
-];
+import { DEAL_SIZE, offlineSave } from "./helpers/offlineSeed";
+import { HAND_ZONE } from "./helpers/selectors";
+import { PHONES } from "./helpers/phones";
+import { check, open } from "./helpers/tableRectsCheck";
+import { INSETS } from "../helpers/phoneTable";
+import { gameTable } from "../helpers/tableScenes";
 
 /** `toBeCloseTo` precision: 0 admits half a point, which is sub-pixel rounding. */
 const SUB_PIXEL = 0;
@@ -43,15 +31,11 @@ async function boxes(page: Page) {
         .map((b) => ({ x: b.left, y: b.top, w: b.width, h: b.height }));
 
     return {
-      gioca: one('[data-testid="btn-gioca"]'),
-      passa: one('[data-testid="btn-passa"]'),
-      topBar: one('[data-testid="game-top-bar"]'),
       scorePill: one('[data-testid="score-pill"]'),
       turnChip: (() => {
         const b = document.querySelector('[data-testid="turn-chip-dot"]')?.parentElement?.getBoundingClientRect();
         return b ? { x: b.left, y: b.top, w: b.width, h: b.height } : null;
       })(),
-      rings: many('[data-testid="seat-ring"]'),
       pile: one('[data-testid="pile-area"]'),
       hand: one(handZone),
       sideSeats: [
@@ -68,105 +52,45 @@ async function boxes(page: Page) {
         ...many('[data-testid="btn-gioca"]').map((r) => ({ what: "GIOCA", r })),
         ...many('[data-testid="btn-passa"]').map((r) => ({ what: "PASSA", r })),
       ],
+      clippedNames: Array.from(document.querySelectorAll('[data-testid="seat-name"]'))
+        .filter((el) => el.scrollWidth > el.clientWidth + 1)
+        .map((el) => el.textContent ?? ""),
     };
   }, HAND_ZONE);
 }
 
-for (const phone of PHONES) {
-  test(`the table's elements are sized from the short edge — ${phone.name}`, async ({
-    page,
-    baseURL,
-  }) => {
-    test.setTimeout(120_000);
-    await page.setViewportSize({ width: phone.width, height: phone.height });
-    await openSeededGame(page, baseURL!, 4);
-    await atRest(page, TABLE_SCREEN);
+for (const phone of PHONES)
+  for (const seats of [4, 3, 2] as const)
+    test(`the table is drawn in the solver's rects and keeps clear of the cards — ${phone.name}, ${seats} players`, async ({ page, baseURL }) => {
+      test.setTimeout(120_000);
+      const insets = INSETS["0/0"];
+      await page.setViewportSize({ width: phone.width, height: phone.height });
+      const save = offlineSave({ seats, hand: DEAL_SIZE[seats] });
+      await open(page, baseURL!, save, "it", insets);
+      await check(page, `${phone.name}, ${seats} players`, phone, insets, "it", gameTable(save.gameState), undefined, true);
 
-    const s = tableScale(phone);
-    const b = await boxes(page);
-    if (!b.gioca || !b.passa || !b.topBar) throw new Error("the table never rendered");
-    if (!b.scorePill) throw new Error("a match's table drew no score pill");
-    expect(b.scorePill.x, "the score pill stands right of centre").toBeGreaterThan(phone.width / 2);
-    expect(b.scorePill.x + b.scorePill.w, "the score pill stays on screen").toBeLessThanOrEqual(phone.width);
-    if (!b.turnChip || !b.pile) throw new Error("the table drew no turn chip or no pile");
-    expect(b.turnChip.x + b.turnChip.w / 2, "the turn chip is centred over the pile").toBeCloseTo(
-      b.pile.x + b.pile.w / 2,
-      SUB_PIXEL
-    );
-    expect(b.turnChip.y + b.turnChip.h, "the turn chip sits above the pile").toBeLessThan(b.pile.y);
+      const b = await boxes(page);
+      if (!b.pile || !b.hand) throw new Error("the table never rendered");
+      expect(b.sideSeats.length, "the wrong number of side seats rendered").toBe(seats === 4 ? 2 : seats === 3 ? 1 : 0);
+      expect(b.clippedNames, `these seat names are ellipsised at their own plate's width: ${b.clippedNames.join(", ")}`).toEqual([]);
 
-    // The floor: an element that laid out as an empty box would satisfy no
-    // equality below, but say so clearly if it happens.
-    expect(b.rings.length, "no seat ring rendered at all").toBeGreaterThan(0);
+      if (seats === 4) {
+        if (!b.scorePill) throw new Error("a match's table drew no score pill");
+        expect(b.scorePill.x, "the score pill stands right of centre").toBeGreaterThan(phone.width / 2);
+        if (!b.turnChip) throw new Error("the table drew no turn chip");
+        expect(b.turnChip.x + b.turnChip.w / 2, "the turn chip is centred over the pile").toBeCloseTo(b.pile.x + b.pile.w / 2, SUB_PIXEL);
+        expect(b.turnChip.y + b.turnChip.h, "the turn chip sits above the pile").toBeLessThan(b.pile.y);
+      }
 
-    for (const [what, box] of [["GIOCA", b.gioca], ["PASSA", b.passa]] as const) {
-      expect(box.w, `${what} is ${box.w.toFixed(1)} wide, not ${actionBtnSize(s).toFixed(1)}`)
-        .toBeCloseTo(actionBtnSize(s), SUB_PIXEL);
-      expect(box.h, `${what} is ${box.h.toFixed(1)} tall, not square`).toBeCloseTo(box.w, SUB_PIXEL);
-    }
+      // A side seat that spans the pile's own centre line is a ring drawn beside the played cards.
+      const pileMiddle = b.pile.y + b.pile.h / 2;
+      for (const seat of b.sideSeats)
+        expect(Math.round(seat.y + seat.h), `a side seat runs to ${Math.round(seat.y + seat.h)}, past the middle of the pile (${Math.round(pileMiddle)})`).toBeLessThanOrEqual(Math.round(pileMiddle));
 
-    expect(
-      b.topBar.h,
-      `the HUD chip is ${b.topBar.h.toFixed(1)} tall, not ${CHIP_H(s).toFixed(1)}`
-    ).toBeCloseTo(CHIP_H(s), SUB_PIXEL);
-
-    const clipped = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('[data-testid="seat-name"]'))
-        .filter((el) => el.scrollWidth > el.clientWidth + 1)
-        .map((el) => el.textContent ?? "")
-    );
-    expect(
-      clipped,
-      `these seat names are ellipsised at their own plate's width: ${clipped.join(", ")}`
-    ).toEqual([]);
-
-    for (const ring of b.rings) {
-      expect(
-        ring.w,
-        `a seat ring is ${ring.w.toFixed(1)} across, not ${(SEAT_DISC * s).toFixed(1)}`
-      ).toBeCloseTo(SEAT_DISC * s, SUB_PIXEL);
-    }
-  });
-
-  for (const seats of [4, 3, 2] as const) {
-  test(`the seats keep clear of the cards — ${phone.name}, ${seats} players`, async ({ page, baseURL }) => {
-    test.setTimeout(120_000);
-    await page.setViewportSize({ width: phone.width, height: phone.height });
-    await openSeededGame(page, baseURL!, seats);
-    await atRest(page, TABLE_SCREEN);
-
-    const b = await boxes(page);
-    if (!b.pile || !b.hand) throw new Error("the table never rendered");
-    // Four seats fill both side columns; two fill neither. Between them every
-    // side slot is exercised — tests/e2e/tableFit.spec.ts's own reasoning.
-    expect(b.sideSeats.length, "the wrong number of side seats rendered").toBe(
-      seats === 4 ? 2 : seats === 3 ? 1 : 0
-    );
-
-    // High in the mid band, not level with the cards: a side seat that spans
-    // the pile's own centre line is a ring drawn beside the played cards.
-    const pileMiddle = b.pile.y + b.pile.h / 2;
-    for (const seat of b.sideSeats) {
-      expect(
-        Math.round(seat.y + seat.h),
-        `a side seat runs to ${Math.round(seat.y + seat.h)}, past the middle of the pile ` +
-          `(${Math.round(pileMiddle)}) — it stands beside the cards instead of above them`
-      ).toBeLessThanOrEqual(Math.round(pileMiddle));
-    }
-
-    const hits = (target: Box) =>
-      b.chrome
-        .filter(
-          (c) =>
-            c.r.x < target.x + target.w &&
-            target.x < c.r.x + c.r.w &&
-            c.r.y < target.y + target.h &&
-            target.y < c.r.y + c.r.h
-        )
-        .map((c) => c.what);
-
-    expect(hits(b.pile), `these are drawn over the played cards: ${hits(b.pile).join(", ")}`).toEqual([]);
-    expect(hits(b.hand), `these are drawn over the viewer's hand: ${hits(b.hand).join(", ")}`).toEqual([]);
-  });
-  }
-}
+      const hits = (target: Box) =>
+        b.chrome
+          .filter((c) => c.r.x < target.x + target.w && target.x < c.r.x + c.r.w && c.r.y < target.y + target.h && target.y < c.r.y + c.r.h)
+          .map((c) => c.what);
+      expect(hits(b.pile), `these are drawn over the played cards: ${hits(b.pile).join(", ")}`).toEqual([]);
+      expect(hits(b.hand), `these are drawn over the viewer's hand: ${hits(b.hand).join(", ")}`).toEqual([]);
+    });

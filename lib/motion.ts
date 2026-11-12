@@ -117,6 +117,8 @@ export function repeatTimes(cycle: number, times: number, reverse = false): numb
   return times >= 1 ? withRepeat(cycle, times, reverse) : null;
 }
 
+const WEB = Platform.OS === "web";
+
 /**
  * A frame callback that runs only while it has something to move: `step` returns whether it does, and the callback is
  * released the frame it says no. The returned `wake` registers it again and may be called from either thread, after
@@ -142,7 +144,10 @@ export function useDuring(step: (frame: FrameInfo) => boolean, awake = false): (
     const gap = frame.timeSincePreviousFrame;
     if (gap !== null) span.value = gap;
     else if (span.value !== null) frame = { ...frame, timeSincePreviousFrame: span.value };
-    if (step(frame)) return;
+    const more = step(frame);
+    // Web runs mappers on a frame request of their own, which a callback woken after it follows: without this, what it wrote is drawn a frame late.
+    if (WEB) (globalThis as { __mapperRun?: () => void }).__mapperRun?.();
+    if (more) return;
     dirty.value = false;
     if (releasing.value) return;
     releasing.value = true;
