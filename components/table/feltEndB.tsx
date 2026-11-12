@@ -28,7 +28,7 @@ function copyOf(host: unknown, into: HTMLCanvasElement): boolean {
 /** Frames a mounted track may take to start before the layer is given up: past it the table draws live instead. */
 const START_WAIT_FRAMES = 30;
 
-export function EndB({ lamp, tracks, settle, content, side, host, canvas: skia }: EndsProps) {
+export function EndB({ lamp, now: rigNow, settle, content, side, host, canvas: skia }: EndsProps) {
   const reduceMotion = usePrefersReducedMotion();
   const [steady, setSteady] = useState(false);
   const [quiet, setQuiet] = useState(false);
@@ -81,10 +81,10 @@ export function EndB({ lamp, tracks, settle, content, side, host, canvas: skia }
     const steer = (to?: { paused: boolean }) => {
       const element = canvas.parentElement;
       if (!element || !baked) return;
-      steerAmbient(element, to ?? { place: placeOf(baked, tracks.rig.clock()) });
+      steerAmbient(element, to ?? { place: placeOf(baked, rigNow().t) });
     };
     const bake = () => {
-      const s = tracks.rig.now();
+      const s = rigNow();
       baked = endTrack(s.ph, s.t);
       setPlaying(baked);
       // The animation starts when the commit does, not when the track was read: it is moved to where the rig is, the frame it exists.
@@ -124,7 +124,7 @@ export function EndB({ lamp, tracks, settle, content, side, host, canvas: skia }
     check = setInterval(() => {
       const element = canvas.parentElement;
       if (!element || !baked) return;
-      const next = steering(baked, ambientPlace(element), tracks.rig.clock());
+      const next = steering(baked, ambientPlace(element), rigNow().t);
       if (next.kind === "rebake") bake();
       else if (next.kind === "steer") steerAmbient(element, { place: next.place });
     }, DRIFT_CHECK_MS);
@@ -145,7 +145,7 @@ export function EndB({ lamp, tracks, settle, content, side, host, canvas: skia }
       hide();
       setPlaying(null);
     };
-  }, [engaged, lamp, tracks, side, host, hide, skia]);
+  }, [engaged, lamp, rigNow, side, host, hide, skia]);
 
   const style = useAmbient(playing);
   return (

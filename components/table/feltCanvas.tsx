@@ -1,7 +1,7 @@
 // The felt, the rail and the lamp on them (#1252 § The felt, § The rail): one Skia canvas for the
 // whole table. On web it is only ever reached through `feltSkia.web.tsx`'s lazy boundary, once
 // CanvasKit has loaded — `Skia` is bound to it when this module is evaluated.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type ComponentType, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type ComponentType, type ReactElement, type RefObject } from "react";
 import { PixelRatio, Platform, StyleSheet, View } from "react-native";
 import {
   AlphaType,
@@ -31,6 +31,7 @@ import {
   type SkShader,
   type SkSurface,
   TileMode,
+  type Transforms3d,
 } from "@shopify/react-native-skia";
 import { ReduceMotion, useAnimatedReaction, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
@@ -68,15 +69,15 @@ export interface FeltCanvasProps {
   cards: CardTable;
   /** `useLinkHold`'s grey: drawn here on iOS only, where the view filter is not. */
   grey?: SharedValue<number>;
-  /** The rig's tracks, whose `ends` `Ends` writes as its `side`: web only, and `Ends` is drawn only with them. */
+  /** The rig's tracks, whose `ends` `Ends` writes as its `side`, so the rig may hold: web only. */
   tracks?: GlossTracks;
-  /** The settled felt's second end, laid over this canvas (web only: `feltEndB.tsx`, reached only through `skiaCanvases.ts`, so no native import names it). */
+  /** The settled felt's second end, laid over this canvas: `feltEndB.tsx` on web, reached only through `skiaCanvases.ts`, and `feltEndBNative.tsx` on native, as `feltSkia.tsx` decides. */
   Ends?: ComponentType<EndsProps>;
 }
 
 export interface EndsProps {
   lamp: SharedValue<Lamp>;
-  tracks: GlossTracks;
+  now: LampNow["now"];
   /** 1 while the canvas still crosses its two ends itself, 0 once it has. */
   settle: SharedValue<number>;
   /** Moves when anything an end draws changes besides the sway. */
@@ -86,6 +87,8 @@ export interface EndsProps {
   /** The element holding this canvas. */
   host: RefObject<unknown>;
   canvas: RefObject<CanvasRef | null>;
+  /** A second canvas drawing the felt's light as `view` has it, crossed as `settle` is. */
+  draw(view: SharedValue<Shown>, settle: SharedValue<number>): ReactElement;
 }
 
 const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
@@ -504,88 +507,36 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tracks, Ends: given }: FeltCanvasProps) {
-  const withEnds = useMemo(() => (tracks && given ? { Ends: given, tracks } : null), [tracks, given]);
-  const greyLayer = useGreyLayer(grey);
-  const canvas = useCanvasRef();
-  const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
-  useBenchHandle("feltSnapshot", snapshot);
-  const [opaque, setOpaque] = useState(IOS);
-  const flipOpaque = useCallback((on: boolean) => setOpaque(IOS && on), []);
-  useBenchHandle("feltOpaque", flipOpaque);
-  const dpr = PixelRatio.get();
-  const k = dpr * Math.min(sx, sy);
-  useTraceSource("feltK", useCallback(() => k, [k]));
-  const gx = dpr * sx;
-  const gy = dpr * sy;
-  const rail = useMemo(() => bakeRail(k), [k]);
-  useEffect(() => () => void (rail && free(rail)), [rail]);
-  const makeWeave = useCallback((): Weave => ({ planes: bakeWeave(k, gx, gy), cloths: new ClothCache() }), [k, gx, gy]);
-  const owned = useOwned(makeWeave, freeWeave);
-  const weave = owned.current ? owned.held : null;
-  const planes = weave?.planes ?? null;
-  const texel = useMemo(() => [{ scaleX: 1 / gx }, { scaleY: 1 / gy }], [gx, gy]);
-  const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
+/** What the felt draws besides the lamp's light, baked once for every canvas that draws it. */
+interface FeltScene {
+  sx: number;
+  sy: number;
+  layer: ReturnType<typeof useGreyLayer>;
+  rail: SkImage | null;
+  rest: { left: SkImage; right: SkImage } | null;
+  planes: SkImage[] | null;
+  texel: Transforms3d;
+  base: ClothUniforms;
+  glows: boolean;
+  shadows: boolean;
+  cast: SharedValue<SkPicture>;
+  contacts: SharedValue<SkPicture>;
+  glow: SharedValue<SkPicture>;
+  pile: { x: number; y: number };
+  felt: CardTable["felt"];
+}
 
-  const [aim, setAim] = useState("");
-  // 1 is the lit cloth, 0 a settled lamp's cross; the reaction lights the felt the frame the lamp moves on, before React drops the cross.
-  const settle = useSharedValue(1);
-  useAnimatedReaction(
-    () => settledAim(lamp.value),
-    (now, before) => {
-      if (now === before) return;
-      settle.set(1);
-      scheduleOnRN(setAim, now);
-    }
-  );
-  const [target, setTarget] = useState("");
-  const ends = !!withEnds;
-  useAnimatedReaction(
-    () => (ends ? `${lamp.value.tx},${lamp.value.ty},${lamp.value.tr}` : ""),
-    (now, before) => {
-      if (now !== before) scheduleOnRN(setTarget, now);
-    }
-  );
-  const rest = useMemo(() => {
-    if (!aim || !weave) return null;
-    const [left, right] = CLOTH_ENDS.map((lean) => endCloth(weave, aim, stops, base, gx, gy, lean));
-    return left && right ? { aim, left, right } : null;
-  }, [weave, aim, gx, gy, stops, base]);
-  // The ends of the lamp's next target, one a frame while it glides there, so settling bakes nothing.
-  useEffect(() => {
-    if (!withEnds || !weave || !target) return;
-    const cancels = CLOTH_ENDS.map((lean, i) => afterFrames(i + 1, () => endCloth(weave, target, stops, base, gx, gy, lean)));
-    return () => cancels.forEach((cancel) => cancel());
-  }, [withEnds, weave, target, gx, gy, stops, base]);
-  const reduceMotion = usePrefersReducedMotion();
-  useEffect(() => {
-    if (!rest) return void settle.set(1);
-    const settled = rest.aim;
-    const ms = motionMs("shift", reduceMotion);
-    scheduleOnUI(() => {
-      "worklet";
-      if (settledAim(lamp.value) === settled) settle.set(ms ? withTiming(0, { duration: ms, reduceMotion: ReduceMotion.Never }) : 0);
-    });
-  }, [rest, lamp, settle, reduceMotion]);
+interface FeltDrawingProps {
+  canvasRef?: RefObject<CanvasRef | null>;
+  opaque: boolean;
+  testID: string;
+  view: SharedValue<Shown>;
+  settle: SharedValue<number>;
+  scene: FeltScene;
+}
 
-  const content = useSharedValue(0);
-  const host = useRef<ComponentRef<typeof View>>(null);
-  const ownSide = useSharedValue(0);
-  const side = tracks?.ends ?? ownSide;
-  useLayoutEffect(() => {
-    side.set(0);
-    return () => side.set(0);
-  }, [side]);
-  const held = useSharedValue<Shown>(NOT_SHOWN);
-  // `lamp.value` subscribes the view to the rig's writes; a held rig writes none, and an end that leaves draws the lamp carried on, not where it was held.
-  const view = useDerivedValue(() => {
-    const next = nextShown(held.value, lamp.value && now(), side.value);
-    if (next !== held.value) {
-      held.value = next;
-      FeltDraws.felt.value += 1;
-    }
-    return next;
-  });
+function FeltDrawing({ canvasRef, opaque, testID, view, settle, scene }: FeltDrawingProps) {
+  const { sx, sy, layer, rail, rest, planes, texel, base, glows, shadows, cast, contacts, glow, pile, felt } = scene;
   const uniforms = useDerivedValue(() => ({
     ...base,
     uLamp: [view.value.lx, view.value.ly],
@@ -602,51 +553,13 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(view.value.f));
   const coat = useDerivedValue(() => RAIL_LIGHT.coat(view.value.f));
   const shade = useDerivedValue(() => levelShade(view.value.level));
-
-  const { rects, felt } = cards;
-  const contactPaths = useMemo(() => cardContacts().felt, []);
-  const shapes = useShadowShapes(contactPaths, rects);
-  const cast = useShadowPicture(CAST, shapes.cast, rects, felt, cards.hand.x);
-  const contacts = useShadowPicture(contactPaths, shapes.contact, rects, felt, cards.hand.x);
-  const glow = useGlow(rects, felt, cards.hand.x);
-  const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };
   const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: view.value.lx, y: view.value.ly }), felt));
   const contact = shadowTransform(shadowFall("fan", pile, pile), felt);
   const flat = shadowTransform({ x: 0, y: 0 }, felt);
-  // State, not a group's opacity: a picture is drawn without the group's paint.
-  const shadows = useCardShadowsOn();
-  const [glows, setGlows] = useState(true);
-  useEffect(() => {
-    if (!E2E_FAST) return;
-    const e2e = globalThis as { murlanCardGlow?: (on: boolean) => void };
-    e2e.murlanCardGlow = setGlows;
-    return () => {
-      delete e2e.murlanCardGlow;
-    };
-  }, []);
-
-  useAnimatedReaction(
-    () => [cast.value, contacts.value, glow.value],
-    () => {
-      content.value += 1;
-    }
-  );
-  useEffect(() => {
-    content.set(content.get() + 1);
-  }, [content, rail, rest, shadows, glows, stops, sx, sy, pile.x, pile.y]);
-
-  useEffect(() => {
-    if (!onReady) return;
-    let id = requestAnimationFrame(() => {
-      id = requestAnimationFrame(onReady);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [onReady]);
-
   const { width, height } = DESIGN;
-  const drawn = (
-    <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
-      <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={greyLayer}>
+  return (
+    <Canvas ref={canvasRef} opaque={opaque} style={StyleSheet.absoluteFill} testID={testID} pointerEvents="none">
+      <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={layer}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
         {rail && <Image image={rail} fit="fill" x={0} y={0} width={width} height={height} />}
         <Group clip={OUTER}>
@@ -718,14 +631,138 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
       </Group>
     </Canvas>
   );
-  if (!withEnds) return drawn;
-  const { Ends } = withEnds;
+}
+
+export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tracks, Ends: given }: FeltCanvasProps) {
+  const greyLayer = useGreyLayer(grey);
+  const canvasRef = useCanvasRef();
+  const snapshot = useCallback(() => snapshotPixels(canvasRef.current), [canvasRef]);
+  useBenchHandle("feltSnapshot", snapshot);
+  const [opaque, setOpaque] = useState(IOS);
+  const flipOpaque = useCallback((on: boolean) => setOpaque(IOS && on), []);
+  useBenchHandle("feltOpaque", flipOpaque);
+  const dpr = PixelRatio.get();
+  const k = dpr * Math.min(sx, sy);
+  useTraceSource("feltK", useCallback(() => k, [k]));
+  const gx = dpr * sx;
+  const gy = dpr * sy;
+  const rail = useMemo(() => bakeRail(k), [k]);
+  useEffect(() => () => void (rail && free(rail)), [rail]);
+  const makeWeave = useCallback((): Weave => ({ planes: bakeWeave(k, gx, gy), cloths: new ClothCache() }), [k, gx, gy]);
+  const owned = useOwned(makeWeave, freeWeave);
+  const weave = owned.current ? owned.held : null;
+  const planes = weave?.planes ?? null;
+  const texel = useMemo(() => [{ scaleX: 1 / gx }, { scaleY: 1 / gy }], [gx, gy]);
+  const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
+
+  const [aim, setAim] = useState("");
+  // 1 is the lit cloth, 0 a settled lamp's cross; the reaction lights the felt the frame the lamp moves on, before React drops the cross.
+  const settle = useSharedValue(1);
+  useAnimatedReaction(
+    () => settledAim(lamp.value),
+    (now, before) => {
+      if (now === before) return;
+      settle.set(1);
+      scheduleOnRN(setAim, now);
+    }
+  );
+  const [target, setTarget] = useState("");
+  const ends = !!given;
+  useAnimatedReaction(
+    () => (ends ? `${lamp.value.tx},${lamp.value.ty},${lamp.value.tr}` : ""),
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setTarget, now);
+    }
+  );
+  const rest = useMemo(() => {
+    if (!aim || !weave) return null;
+    const [left, right] = CLOTH_ENDS.map((lean) => endCloth(weave, aim, stops, base, gx, gy, lean));
+    return left && right ? { aim, left, right } : null;
+  }, [weave, aim, gx, gy, stops, base]);
+  // The ends of the lamp's next target, one a frame while it glides there, so settling bakes nothing.
+  useEffect(() => {
+    if (!ends || !weave || !target) return;
+    const cancels = CLOTH_ENDS.map((lean, i) => afterFrames(i + 1, () => endCloth(weave, target, stops, base, gx, gy, lean)));
+    return () => cancels.forEach((cancel) => cancel());
+  }, [ends, weave, target, gx, gy, stops, base]);
+  const reduceMotion = usePrefersReducedMotion();
+  useEffect(() => {
+    if (!rest) return void settle.set(1);
+    const settled = rest.aim;
+    const ms = motionMs("shift", reduceMotion);
+    scheduleOnUI(() => {
+      "worklet";
+      if (settledAim(lamp.value) === settled) settle.set(ms ? withTiming(0, { duration: ms, reduceMotion: ReduceMotion.Never }) : 0);
+    });
+  }, [rest, lamp, settle, reduceMotion]);
+
+  const content = useSharedValue(0);
+  const host = useRef<ComponentRef<typeof View>>(null);
+  const ownSide = useSharedValue(0);
+  const side = tracks?.ends ?? ownSide;
+  useLayoutEffect(() => {
+    side.set(0);
+    return () => side.set(0);
+  }, [side]);
+  const held = useSharedValue<Shown>(NOT_SHOWN);
+  // `lamp.value` subscribes the view to the rig's writes; a held rig writes none, and an end that leaves draws the lamp carried on, not where it was held.
+  const view = useDerivedValue(() => {
+    const next = nextShown(held.value, lamp.value && now(), side.value);
+    if (next !== held.value) {
+      held.value = next;
+      FeltDraws.felt.value += 1;
+    }
+    return next;
+  });
+
+  const { rects, felt } = cards;
+  const contactPaths = useMemo(() => cardContacts().felt, []);
+  const shapes = useShadowShapes(contactPaths, rects);
+  const cast = useShadowPicture(CAST, shapes.cast, rects, felt, cards.hand.x);
+  const contacts = useShadowPicture(contactPaths, shapes.contact, rects, felt, cards.hand.x);
+  const glow = useGlow(rects, felt, cards.hand.x);
+  const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };
+  // State, not a group's opacity: a picture is drawn without the group's paint.
+  const shadows = useCardShadowsOn();
+  const [glows, setGlows] = useState(true);
+  useEffect(() => {
+    if (!E2E_FAST) return;
+    const e2e = globalThis as { murlanCardGlow?: (on: boolean) => void };
+    e2e.murlanCardGlow = setGlows;
+    return () => {
+      delete e2e.murlanCardGlow;
+    };
+  }, []);
+
+  useAnimatedReaction(
+    () => [cast.value, contacts.value, glow.value],
+    () => {
+      content.value += 1;
+    }
+  );
+  useEffect(() => {
+    content.set(content.get() + 1);
+  }, [content, rail, rest, shadows, glows, stops, sx, sy, pile.x, pile.y]);
+
+  useEffect(() => {
+    if (!onReady) return;
+    let id = requestAnimationFrame(() => {
+      id = requestAnimationFrame(onReady);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [onReady]);
+
+  const scene: FeltScene = { sx, sy, layer: greyLayer, rail, rest, planes, texel, base, glows, shadows, cast, contacts, glow, pile, felt };
+  const drawn = <FeltDrawing canvasRef={canvasRef} opaque={opaque} testID="felt-skia" view={view} settle={settle} scene={scene} />;
+  if (!given) return drawn;
+  const Ends = given;
+  const draw = (end: SharedValue<Shown>, endSettle: SharedValue<number>) => <FeltDrawing opaque={opaque} testID="felt-end-b" view={end} settle={endSettle} scene={scene} />;
   return (
     <>
       <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">
         {drawn}
       </View>
-      <Ends lamp={lamp} tracks={withEnds.tracks} settle={settle} content={content} side={side} host={host} canvas={canvas} />
+      <Ends lamp={lamp} now={now} settle={settle} content={content} side={side} host={host} canvas={canvasRef} draw={draw} />
     </>
   );
 }
