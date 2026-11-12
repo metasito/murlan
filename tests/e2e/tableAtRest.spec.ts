@@ -8,7 +8,7 @@ import { installVirtualClock, stepFrames, stepUntil } from "./helpers/virtualClo
 import { STEP_MS, type TraceFrame } from "./helpers/traceDiff";
 import { COUNTED, countRenders, END_B_LEAN, END_B_SAMPLE, type EndBLean, type EndBSample, startRenderCounts, swayRuns, swayShows, TAKE_RENDER_COUNTS, type RenderCounts } from "./helpers/renderCounters";
 import { HAND_CARD_BOXES, TABLE_STATE } from "./helpers/selectors";
-import { cardViewShadows, feltHolds, SHADE_CANVAS } from "./helpers/cardContact";
+import { cardViewShadows, contactOnFelt, FELT_CONTACTS, feltContactHolds, feltHolds, viewContacts } from "./helpers/cardContact";
 
 const VIEWPORT = { width: 874, height: 402 };
 const SEED = 1255;
@@ -28,7 +28,7 @@ const AFTER_CONTROL = AFTER_MOVE - PLAY_CONTROL;
 /** The lamp's glide to the next seat moves its light more than half a point a frame for about this long. */
 const GLIDE = 80;
 
-const { felt: FELT, handShade: HAND_SHADE, particles: PARTICLES } = COUNTED;
+const { felt: FELT, particles: PARTICLES } = COUNTED;
 
 type Frame = RenderCounts & { lamp: TraceFrame["lamp"] };
 
@@ -136,11 +136,9 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   const moved = played.findIndex((f, i) => i > 0 && Math.abs(f.lamp!.x - played[i - 1].lamp!.x) > 5);
   expect(moved, "the lamp glided to the next seat").toBeGreaterThan(0);
   const glide = played.slice(moved, moved + GLIDE);
-  const shadeCanvas = (await page.locator(SHADE_CANVAS).count()) > 0;
   const pile = await cardViewShadows(page, '[id^="card-pile:"]');
   const control = {
     felt: drew(glide, FELT),
-    handShade: drew(played, HAND_SHADE),
     pileContacts: pile.cards.map((c) => c.contacts),
     particles: drew(played, PARTICLES),
     styles: total(played, (f) => f.styles.cards ?? 0),
@@ -150,22 +148,18 @@ test("a settled table draws nothing in five states, and draws a play", async ({ 
   expect(control.felt, "frames the felt drew while its light glided").toBeGreaterThanOrEqual(GLIDE * 0.8);
   expect(pile.cards.length, "cards on the pile").toBeGreaterThan(0);
   expect(pile.others, "pile cards' shadows and glows beyond their contact").toEqual([]);
-  if (shadeCanvas) {
-    expect(control.handShade, "the hand shade never drew the played hand").toBeGreaterThanOrEqual(1);
-    expect(control.pileContacts, "pile cards' own contacts while the felt and the hand shade draw them").toEqual(pile.cards.map(() => 0));
-  } else {
-    expect(control.pileContacts, "each pile card's contacts").toEqual(pile.cards.map(() => 1));
-  }
+  expect(control.pileContacts, "each pile card's contacts").toEqual(pile.cards.map(viewContacts));
   expect(control.particles, "the motes never drew").toBeGreaterThanOrEqual(1);
   expect(control.styles, "no card's view was styled through a play").toBeGreaterThan(0);
   await run(page, AFTER_CONTROL);
   await expectAtRest(page, info, "3. a bot on move over the viewer's card, motion on", true, SETTLED);
 
-  const held = await feltHolds(page, () => run(page, RESIZED), shadeCanvas ? ["face", "fan"] : ["fan"]);
-  const pileOnFelt = pile.cards.map((c) => held[c.path]?.includes(c.key) ?? false);
-  console.log(`pile cards the felt holds at rest: ${JSON.stringify(pileOnFelt)}`);
-  if (shadeCanvas) expect(pileOnFelt, "each pile card in the felt's contact path").toEqual(pile.cards.map(() => true));
-  else expect(pileOnFelt, "pile cards the felt's contact path also holds, a second contact").toEqual(pile.cards.map(() => false));
+  const held = await feltHolds(page, () => run(page, RESIZED), FELT_CONTACTS);
+  expect(Object.keys(held).sort(), "the shadow paths the felt holds at rest").toEqual(["cast", ...FELT_CONTACTS].sort());
+  expect(
+    pile.cards.map((c) => feltContactHolds(held, c.key)),
+    "pile cards a contact path of the felt holds"
+  ).toEqual(pile.cards.map((c) => contactOnFelt(c.path)));
 
   const beforeBot = await table(page);
   await botMove(page);
