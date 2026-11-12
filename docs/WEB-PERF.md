@@ -99,7 +99,7 @@ WebGL on SwiftShader, where the table keeps its fallback felt (`drawsOnGpu`,
 `components/table/drawsOnGpu.ts`), and only an e2e build lets a spec ask for Skia anyway, so this
 mode runs against the e2e build, never `PERF_URL`, and fails a window whose trace saw any felt but
 Skia's. It records at device pixel ratio 1: at 3 SwiftShader draws the Skia table at about four
-frames a second, under every window's floor, and `drag` misses its floor of 20 frames even at 1
+frames a second, under every window's floor, and `drag` holds a floor of its own at 1
 (§ The drag floor on SwiftShader). The one case at 3x is § The Skia felt at 3x. SwiftShader draws
 on the CPU: its frame times say how two builds compare on this machine,
 never what a phone's GPU pays. Only this mode installs the render counters and runs the trace,
@@ -201,11 +201,21 @@ At device pixel ratio 2 the felt reports k 2 and the case fails.
 
 ### The drag floor on SwiftShader
 
-`drag` holds `frames > 20` over a window of about 1.44 s, some 14fps. Under `PERF_SKIA=1` at
-DPR 1 it failed in all four runs on 2026-11-11: 9, 12, 11 and 18 frames (2.1 to 4.3fps), load
-average 6.5 to 11.2, the main thread busy about 1000 ms of every second. The fallback felt at DPR 3
-on the same e2e build passed in all three: 90, 88 and 68 frames, load 7.7 to 9.5. The floor is not
-moved here; whether Skia on SwiftShader gets a floor of its own is the owner's call.
+`drag` holds a floor per renderer over its window of about 1.44 s: `frames > 20` on the fallback
+felt at DPR 3, and `frames > 12` on the Skia felt under `PERF_SKIA=1` at DPR 1. The owner delegated
+the choice on 2026-11-12 and a per-renderer floor was chosen (#1988 items 15, 46 and 101). Skia's
+floor sits just under the lowest of twelve runs on main (`e9918b418`) in one 4-core container,
+2026-11-12, at load average 7.4 to 20.3:
+
+| Renderer | DPR | Runs | `frames` | Load |
+|---|---|---|---|---|
+| Skia | 1 | 12, 3 failed the old 20 | 31, 34, 25, 39, 26, 24, 14, 26, 25, 18, 15, 23 | 7.4 to 20.3 |
+| fallback | 3 | 5, all passed | 79, 78, 64, 76, 76 | 11.6 to 16.9 |
+
+The three under 20 (14, 15 and 18) ran at load 14.3 to 20.3; at load under 13 Skia's lowest was
+24. On 2026-11-11, before the hand-shade canvas was deleted (#2076), Skia read 9, 12, 11 and 18
+at load 6.5 to 11.2, and the fallback 90, 88 and 68. A Skia drag at 12 frames or fewer is the
+regression this floor catches; it moves only with a new calibration recorded here.
 
 ### What counts as a regression
 

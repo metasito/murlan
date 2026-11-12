@@ -33,6 +33,9 @@ const TABLE = '[data-testid="game-table"]';
 /** The Skia felt on this software rasteriser, which only an e2e build honours (`drawsOnGpu`, drawsOnGpu.ts). */
 const SKIA = process.env.PERF_SKIA === "1";
 
+/** Calibrated per renderer in docs/WEB-PERF.md § The drag floor on SwiftShader. */
+const DRAG_FRAMES_FLOOR = SKIA ? 12 : 20;
+
 /** Recorded under PERF_SKIA alone: its counters and trace cost the page they measure. */
 interface RenderReport {
   /** Frames per second each canvas drew in, and style writes a second inside cards' views. */
@@ -397,7 +400,7 @@ test.describe("web frame performance", () => {
       after,
       `the pointer went down and up without moving a card, so the recording above is of an idle table: ${after.join(", ")}`
     ).not.toEqual(before);
-    expect(drag.frames, "no frames were observed during the drag").toBeGreaterThan(20);
+    expect(drag.frames, `the drag drew no more frames than ${SKIA ? "Skia's" : "the fallback's"} floor`).toBeGreaterThan(DRAG_FRAMES_FLOOR);
     expectSkia(drag, "the drag");
     expect(drag.domNodes, "the table never rendered").toBeGreaterThan(100);
   });
