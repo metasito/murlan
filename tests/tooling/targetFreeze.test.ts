@@ -74,9 +74,7 @@ const PLUMBING: Record<string, string> = {
   "tests/e2e/helpers/labels.ts": "the Italian copy a spec looks a control up by; a changed label fails the lookup",
   "tests/support/game.ts": "builds game states for the engine; no time, size or count is read through it",
 };
-const SPEC_ONLY_APP: Record<string, string> = {
-  "lib/game/simulate.ts": "the headless match player behind the state builders in tests/support/game.ts; no spec reads a measurement from it",
-};
+const SPEC_ONLY_APP: Record<string, string> = {};
 const inScratch = (p: string) => `tests/e2e/${p}`;
 const workflowText = fs.readFileSync(path.join(root, WORKFLOW), "utf8");
 const workflow = parse(workflowText);
