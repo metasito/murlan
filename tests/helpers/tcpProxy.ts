@@ -23,7 +23,7 @@ export interface Proxy {
 }
 
 export interface ProxyOptions {
-  /** Every chunk the client sends upstream, as it is forwarded. */
+  /** Every chunk the client sends upstream, as it is received. */
   onClientBytes?: (chunk: Buffer) => void;
   /** A promise holds this chunk, and every later one on its link, until it settles. */
   holdClientBytes?: (chunk: Buffer) => Promise<unknown> | undefined;

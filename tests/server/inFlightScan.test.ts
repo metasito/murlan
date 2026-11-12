@@ -53,6 +53,7 @@ const DETACHED: Record<string, { n: number; why: string }> = {
   "server/socket/seating.ts: socket.leave(roomId)": { n: 1, why: "the adapter's room bookkeeping for a socket the server owns; io.close() ends the sockets" },
   "server/socket/socket.ts: callback async (socket: Socket) => { const userId = socke": { n: 1, why: "the connection handler: its presence work is tracked inside and its listeners are registered before the first await" },
   "server/socket/socket.ts: void socket.join(userRoom(userId))": { n: 1, why: "the adapter's room bookkeeping for a socket the server owns; io.close() ends the sockets" },
+  "server/socket/socketAdapter.ts: tail ??= copy.xRevRange(anchored.key, \"+\", \"-\", ": { n: 1, why: "the reader's one tail lookup, awaited by each read from `$`; a closed reader never reads again" },
   "server/socket/socketAdapter.ts: void serverSideEmit([LEAVING, instanceId])": { n: 1, why: "adapter traffic on links io.close() ends; a lost heartbeat is retried by the next" },
   "server/socket/socketAdapter.ts: void serverSideEmit(heartbeatPacket())": { n: 1, why: "adapter traffic on links io.close() ends; a lost heartbeat is retried by the next" },
   "server/socket/socketRegistry.ts: socket.leave(roomId)": { n: 1, why: "the adapter's room bookkeeping for a socket the server owns; io.close() ends the sockets" },
