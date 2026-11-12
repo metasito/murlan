@@ -314,9 +314,10 @@ export function GameTable({
   const insets = useSafeAreaInsets();
   const { width: W, height: H } = useOrientedWindow();
   const portrait = usePortraitInterface();
+  const [playOnLeft, setPlayOnLeft] = useState(false);
   const layout = React.useMemo(
-    () => tableLayout({ width: W, height: H, insets: { top: insets.top, bottom: insets.bottom, left: insets.left, right: insets.right } }),
-    [W, H, insets.top, insets.bottom, insets.left, insets.right]
+    () => tableLayout({ width: W, height: H, insets: { top: insets.top, bottom: insets.bottom, left: insets.left, right: insets.right }, playOnLeft }),
+    [W, H, insets.top, insets.bottom, insets.left, insets.right, playOnLeft]
   );
   const { scale } = layout;
   const { chips, rail, buttons } = layout;
@@ -366,7 +367,6 @@ export function GameTable({
   const behindCoverOnly = a11yVeiled(veil.coverOnly);
   const clockVeil = a11yVeiled(veil.clock);
   const [focusMode, setFocusMode] = useState(false);
-  const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
 
   const focusFadeStyle = useFocusFade(focusMode);
@@ -1042,7 +1042,7 @@ export function GameTable({
         <FloatSlot
           float={float}
           at={{ x: anchors.pile.x, y: layout.floatTop }}
-          beside={{ ...layout.floatBeside, mirrored: playOnLeft }}
+          beside={layout.floatBeside}
           scale={scale}
           veiled={tableWithdrawn}
         />
@@ -1218,11 +1218,8 @@ export function GameTable({
             </View>
 
             <View testID="hand-zone" style={[sharedTableStyles.handSection, layout.placed.handZone]}>
-              {/* Play on the left mirrors the row rather than moving the rail,
-                  which stays put at the physical cutout: only GIOCA changes
-                  which thumb it falls under. */}
               {!spectating && (
-                <View style={[sharedTableStyles.handButton, playOnLeft ? layout.placed.gioca : layout.placed.passa]}>
+                <View style={[styles.handButton, layout.placed.passa]}>
                   <PassaButton
                     canPass={canPass}
                     onlyMove={passIsOnlyMove}
@@ -1261,7 +1258,7 @@ export function GameTable({
               </View>
 
               {!spectating && (
-                <View style={[sharedTableStyles.handButton, playOnLeft ? layout.placed.passa : layout.placed.gioca]}>
+                <View style={[styles.handButton, layout.placed.gioca]}>
                   <GiocaControl
                     store={shownSelection}
                     facts={giocaFacts}
@@ -1313,6 +1310,7 @@ const styles = StyleSheet.create({
   greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   matchDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSlot: { position: "absolute", justifyContent: HAND_ZONE_ALIGN },
+  handButton: { position: "absolute" },
 
 
   finishedRow: { alignItems: "center", justifyContent: "center" },

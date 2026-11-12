@@ -12,6 +12,7 @@ import { FAN_CARD_SCALE } from "../../components/impact.ts";
 import {
   arrangeOpponents,
   CHIP_H,
+  drawnDisc,
   FAN_DRAWN_CARDS,
   HAND_ZONE_GAP,
   HAND_ZONE_H,
@@ -262,7 +263,26 @@ describe("the middle band, the hand zone and the hand window", () => {
       near(w.x - (buttons.passa.x + buttons.passa.w), HAND_ZONE_GAP * l.scale, `${what} passa`);
       near(buttons.gioca.x - (w.x + w.w), HAND_ZONE_GAP * l.scale, `${what} gioca`);
       near(w.y, l.handZone.y, `${what} top`);
-      near(w.h, l.handZone.h - l.handZone.padBottom, `${what} height`);
+      near(w.h, l.handZone.h - l.frame.bottomPad, `${what} height`);
+    }
+  });
+
+  test("play on the left swaps PASSA and GIOCA, and the refused play's float with GIOCA, and nothing else", () => {
+    for (const p of PHONES) {
+      for (const [inset, insets] of Object.entries(INSETS)) {
+        const what = `${p.name} ${inset}`;
+        const right = tableLayout({ width: p.width, height: p.height, insets });
+        const left = tableLayout({ width: p.width, height: p.height, insets, playOnLeft: true });
+        assert.deepEqual(left.buttons, { passa: right.buttons.gioca, gioca: right.buttons.passa }, `${what} buttons`);
+        assert.deepEqual([left.placed.passa, left.placed.gioca], [right.placed.gioca, right.placed.passa], `${what} placed`);
+        assert.ok(left.buttons.gioca.x < left.handWindow.x && left.buttons.passa.x > left.handWindow.x + left.handWindow.w, `${what}: GIOCA on the left of the row`);
+        assert.deepEqual([right.floatBeside.mirrored, left.floatBeside.mirrored], [false, true], `${what} float`);
+        const rest = (l: TableLayout) => {
+          const { buttons: _b, placed: { passa: _p, gioca: _g, ...placed }, floatBeside: { mirrored: _m, ...beside }, seatPoint: _s, chipRow: _c, ...more } = l;
+          return { placed, beside, more };
+        };
+        assert.deepEqual(rest(left), rest(right), `${what}: the rest of the table stays put`);
+      }
     }
   });
 
@@ -285,14 +305,14 @@ describe("the middle band, the hand zone and the hand window", () => {
 
   test("each side seat's ring stands against its slot's outer side, centred down it; the pile centres between the slots", () => {
     for (const { what, l } of tables) {
-      const ring = l.anchors.left.y - l.seatSlots.left.y;
-      const disc = 2 * (l.anchors.left.x - l.seatSlots.left.x);
+      const ring = drawnDisc(l.scale) / 2;
       const { left, right } = l.seatSlots;
       near(left.y, l.midBand.y, `${what} left top`);
       near(right.y, l.midBand.y, `${what} right top`);
-      near(ring, left.h / 2, `${what} left centred`);
+      near(l.anchors.left.y, left.y + left.h / 2, `${what} left centred`);
       near(l.anchors.right.y, right.y + right.h / 2, `${what} right centred`);
-      near(right.x + right.w - l.anchors.right.x, disc / 2, `${what} right against its side`);
+      near(l.anchors.left.x - left.x, ring, `${what} left against its side`);
+      near(right.x + right.w - l.anchors.right.x, ring, `${what} right against its side`);
       near(left.x - l.midBand.x, l.midBand.x + l.midBand.w - (right.x + right.w), `${what} gaps mirror`);
       assert.ok(left.x > l.midBand.x && left.x + left.w < l.pileBand.x, `${what}: the left slot sits inside its column`);
       assert.ok(right.x > l.pileBand.x + l.pileBand.w && right.x + right.w < l.midBand.x + l.midBand.w, `${what}: the right slot sits inside its column`);
@@ -331,7 +351,7 @@ describe("the middle band, the hand zone and the hand window", () => {
     let scrolled = 0;
     for (const { what, l } of tables) {
       for (const n of [5, 27]) {
-        const row = layoutHandRow({ ids: Array.from({ length: n }, (_, i) => `c${i}`), size: handCardSize(l.scale, false, false), roomW: l.frame.handRoomW, availW: l.handWindow.w, bottomPad: l.handZone.padBottom });
+        const row = layoutHandRow({ ids: Array.from({ length: n }, (_, i) => `c${i}`), size: handCardSize(l.scale, false, false), roomW: l.frame.handRoomW, availW: l.handWindow.w, bottomPad: l.frame.bottomPad });
         const rest = l.handWindow.w / 2 + row.left;
         if (row.scrollable) {
           scrolled++;

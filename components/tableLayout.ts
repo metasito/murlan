@@ -47,7 +47,7 @@ export interface TableLayout {
   /** The float slot's top edge: `.floatchip`, above the hand row's floor. */
   floatTop: number;
   /** The band a refused play's float stands in beside GIOCA: GIOCA's top as a distance from the window's bottom, and the table's side margins. */
-  floatBeside: { giocaTopFromBottom: number; left: number; right: number };
+  floatBeside: { giocaTopFromBottom: number; left: number; right: number; mirrored: boolean };
   /** Bottom edge of the chip row: the banner band's top, and the notification banner's in landscape. */
   chipsBottom: number;
   /** The banner band's sides, a pad inside the table's, as distances from the window's edges; its top is `chipsBottom`. */
@@ -72,8 +72,8 @@ export interface TableLayout {
   seatSlots: Record<"left" | "right", Rect>;
   /** The middle band between the side seats' columns: the pile and every moment drawn over it centre in it. */
   pileBand: Rect;
-  /** The hand zone at its designed place, and the padding its row and buttons stand on. */
-  handZone: Rect & { padBottom: number };
+  /** The hand zone at its designed place; its row and buttons stand on `frame.bottomPad`. */
+  handZone: Rect;
   /** The span the hand row is drawn in between PASSA and GIOCA, centred on the hand zone, over its padding: a row wider than it scrolls under it. */
   handWindow: Rect;
   /**
@@ -83,7 +83,7 @@ export interface TableLayout {
    * parent's own edges and move every glyph inside by it.
    */
   placed: Record<PlacedBox, Edges>;
-  /** PASSA and GIOCA, in the hand zone at its designed place. */
+  /** PASSA and GIOCA, in the hand zone at its designed place: GIOCA on the right, or on the left under `playOnLeft`. */
   buttons: { passa: Rect; gioca: Rect };
   /** How far each seat's name slides inboard of its disc's outer edge. */
   nameInset: Record<OpponentSide, number>;
@@ -103,8 +103,8 @@ export interface TableLayout {
  * The bands are the drawn cap's (`topBandHeight`, `sideSlotHeight`), never a count's, so no seat
  * moves as a hand shrinks. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
  */
-export function tableLayout(i: { width: number; height: number; insets: EdgeInsets }): TableLayout {
-  const { width, height } = i;
+export function tableLayout(i: { width: number; height: number; insets: EdgeInsets; playOnLeft?: boolean }): TableLayout {
+  const { width, height, playOnLeft = false } = i;
   const scale = tableScale(i);
   const frame = computeTableFrame({ ...i, scale });
   const handCardH = CARD_H(scale * HAND_SCALE);
@@ -116,7 +116,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const midH = tableFloor - midTop - handZoneH;
   const tableW = width - frame.tableLeft - frame.tableRight;
   const x = frame.tableLeft + tableW / 2;
-  const handZone = { x: frame.tableLeft, y: tableFloor - handZoneH, w: tableW, h: handZoneH, padBottom: frame.bottomPad };
+  const handZone = { x: frame.tableLeft, y: tableFloor - handZoneH, w: tableW, h: handZoneH };
   const topBand = { x: frame.tableLeft, y: frame.tableTop, w: tableW, h: topH };
   const midBand = { x: frame.tableLeft, y: midTop, w: tableW, h: midH };
   const slotW = SIDE_SECTION_W - 2 * SIDE_SEAT_GAP;
@@ -125,24 +125,25 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     right: { x: width - frame.tableRight - SIDE_SECTION_W + SIDE_SEAT_GAP, y: midTop, w: slotW, h: sideSlotHeight(scale) },
   };
   const pileBand = { x: frame.tableLeft + SIDE_SECTION_W, y: midTop, w: tableW - 2 * SIDE_SECTION_W, h: midH };
-  const handWindow = { x: x - frame.handAvailW / 2, y: handZone.y, w: frame.handAvailW, h: handZone.h - handZone.padBottom };
+  const handWindow = { x: x - frame.handAvailW / 2, y: handZone.y, w: frame.handAvailW, h: handZone.h - frame.bottomPad };
   const tableBox = { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus };
   const table = { x: tableBox.left, y: tableBox.top, w: width - tableBox.left - tableBox.right, h: height - tableBox.top - tableBox.bottom };
   const btn = actionBtnSize(scale);
-  const btnY = aligned(HAND_ZONE_ALIGN, handZone.y, handZone.h - handZone.padBottom, btn);
+  const btnY = aligned(HAND_ZONE_ALIGN, handZone.y, handZone.h - frame.bottomPad, btn);
   const knob = physicalTouchTarget(scale);
   const chips = chipScale(scale, width);
   const pill = pillAnchorFor(frame, width, scale);
   const chipsBottom = frame.tableTop + CHIP_H(scale) + frame.pad;
-  const passa = { x: frame.tableLeft, y: btnY, w: btn, h: btn };
-  const gioca = { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn };
+  const leftBtn = { x: frame.tableLeft, y: btnY, w: btn, h: btn };
+  const rightBtn = { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn };
+  const [passa, gioca] = playOnLeft ? [rightBtn, leftBtn] : [leftBtn, rightBtn];
   const sideY = seatSlots.left.y + seatSlots.left.h / 2;
   const anchors: Record<FlyDirection | "pile", Point> = {
     pile: { x, y: midTop + midH / 2 },
     top: { x, y: frame.tableTop + seatLabelH(scale) + ring / 2 },
     bottom: { x, y: tableFloor - handZoneH / 2 },
     left: { x: seatSlots.left.x + ring / 2, y: sideY },
-    right: { x: width - frame.tableRight - SIDE_SEAT_GAP - ring / 2, y: sideY },
+    right: { x: seatSlots.right.x + seatSlots.right.w - ring / 2, y: sideY },
   };
   const nameInset = {
     top: 0,
@@ -165,7 +166,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     anchors,
     seatPoint: (dir) => ({ dx: anchors[dir].x - anchors.pile.x, dy: anchors[dir].y - anchors.pile.y }),
     floatTop: tableFloor - frame.bottomPad - floatAboveFoot(scale),
-    floatBeside: { giocaTopFromBottom: height - gioca.y, left: frame.tableLeft, right: frame.tableRight },
+    floatBeside: { giocaTopFromBottom: height - gioca.y, left: frame.tableLeft, right: frame.tableRight, mirrored: playOnLeft },
     chipsBottom,
     bannerBand: { left: frame.tableLeft + frame.pad, right: frame.tableRight + frame.pad },
     votes: { right: width - pill.right, top: { rest: voteTop(pill, false, scale), open: voteTop(pill, true, scale) } },

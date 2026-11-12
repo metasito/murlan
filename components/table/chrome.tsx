@@ -191,7 +191,6 @@ export const sharedTableStyles = StyleSheet.create({
   // lands on the pile's centre rather than the screen's.
   centerSection: { position: "absolute", alignItems: "center", justifyContent: "center", zIndex: Layer.table },
   handSection: { position: "absolute" },
-  handButton: { position: "absolute" },
 });
 
 /**
