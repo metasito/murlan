@@ -38,6 +38,9 @@ const besideShards = ciJobs
     return n + (Array.isArray(shard) ? shard.length : 1);
   }, 0);
 const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
+// Four specs a shard: as even as a split gets, so a fixture reds only on what it changes.
+const SUITE = Array.from({ length: MAX_SHARDS * 4 }, (_, i) => `s${i}.spec.ts`);
+const at = (seconds: number, suite = SUITE) => Object.fromEntries(suite.map((f) => [f, seconds]));
 
 /** The spec files Playwright itself lists under `config`, relative to tests/e2e. */
 function playwrightLists(config: string): string[] {
@@ -153,37 +156,25 @@ describe("the split is stable and even", () => {
     assert.deepEqual(once, twice);
   });
 
-  test("no shard carries more than a third again of the lightest", () => {
-    // The defect #441 was filed over was a 2m11s shard and a 5m20s shard in
-    // the same run. Longest-processing-time guarantees far better than this;
-    // the margin is here so a pathological timings.json still fails loudly.
-    const seconds = assignShards(specFilesIn(E2E_DIR), readTimings(), SHARDS).map((s) => s.seconds);
+  test("every run's split is judged, by the plan, and fails the run without stopping its suite", () => {
+    const report = loadWorkflow("ci.yml").jobs["browser-report"];
+    const steps = report.steps ?? [];
+    const at = steps.findIndex((s) => s.run === 'node tools/ci/e2e-shard.mjs check "$PROBLEMS"');
+    const check = steps[at];
 
-    assert.ok(
-      Math.max(...seconds) <= Math.min(...seconds) * (4 / 3),
-      `shards range ${Math.min(...seconds)}s to ${Math.max(...seconds)}s`
-    );
-  });
-
-  test("the evenness above is measured, not assumed, over the numbers the run splits by", () => {
-    const steps = loadWorkflow("ci.yml").jobs["browser-report"].steps ?? [];
-    const check = steps.find((s) => /node tools\/ci\/e2e-shard\.mjs check "\$RUNNER_TEMP\/split-timings\.json"/.test(s.run ?? ""));
-
-    assert.ok(check, "browser-report no longer checks how much of the split was guessed");
-    assert.equal(check.env?.TIMINGS, "${{ needs.scope.outputs.timings }}");
-    assert.match(check.run ?? "", /printf '%s' "\$TIMINGS" > "\$RUNNER_TEMP\/split-timings\.json"\n/);
-    assert.equal(check["continue-on-error"], undefined);
+    assert.ok(check, "browser-report no longer fails a run whose split was guessed, uneven or over the target");
+    assert.equal(check.env?.PROBLEMS, "${{ needs.scope.outputs.split-problems }}");
     assert.equal(check.if, "${{ !cancelled() }}");
-  });
-
-  test("no spec is larger than a shard's fair share", () => {
-    const files = specFilesIn(E2E_DIR);
-    const timings = readTimings();
-    const seconds = (f: string) => timings[f] ?? UNMEASURED_SECONDS;
-    const fair = files.reduce((sum, f) => sum + seconds(f), 0) / SHARDS;
-    const over = files.filter((f) => seconds(f) > fair).map((f) => `${f} ${seconds(f)}s`);
-
-    assert.deepEqual(over, [], `over the ${fair.toFixed(0)}s each of ${SHARDS} shards gets; split them`);
+    assert.equal(check["continue-on-error"], undefined);
+    assert.equal(report.if, "${{ !cancelled() && needs.browser.result != 'skipped' }}");
+    assert.equal((report as Record<string, unknown>)["continue-on-error"], undefined);
+    assert.match(ciYml, /split-problems: \$\{\{ steps\.plan\.outputs\.split-problems \}\}/);
+    assert.match(ciYml, /node tools\/ci\/e2e-shard\.mjs plan "\$\{layers\[0\]\}" "\$\{layers\[1\]\}"\n/);
+    const uploads = steps.flatMap((s, i) => ((s.with as { name?: string } | undefined)?.name === "e2e-timings" ? [i] : []));
+    const commits = steps.flatMap((s, i) => (s.if === "env.COMMIT_TIMINGS == 'true'" ? [i] : []));
+    assert.ok(uploads.length === 2 && commits.length >= 2, "the timings uploads or the weekly commit moved");
+    assert.ok(at > Math.max(...uploads), "a red split would stop this run's timings from reaching the next run");
+    assert.ok(at < Math.min(...commits), "the weekly commit can reset to a newer main before the check reads this run's split");
   });
 
   test("the target is the owner's five minutes, as rule 46 states it", () => {
@@ -196,14 +187,26 @@ describe("the split is stable and even", () => {
   });
 
   test("a suite past the target within the shards a run may have is a problem of the split", () => {
-    const suite = Array.from({ length: 40 }, (_, i) => `s${i}.spec.ts`);
-    const priced = (seconds: number) => Object.fromEntries(suite.map((f) => [f, seconds]));
-    const fits = (seconds: number) => shardsNeeded(suite, priced(seconds)) <= MAX_SHARDS;
+    const fits = (seconds: number) => shardsNeeded(SUITE, at(seconds)) <= MAX_SHARDS;
     const most = Array.from({ length: 400 }, (_, s) => s).filter(fits).at(-1) ?? 0;
 
     assert.ok(most > 0 && !fits(400), "the fixture never crosses the target");
-    assert.deepEqual(splitProblems(suite, priced(most)), []);
-    assert.match(splitProblems(suite, priced(most + 1)).join(), new RegExp(`over the ${MAX_SHARDS} allowed`));
+    assert.deepEqual(splitProblems(SUITE, at(most), at(most)), []);
+    assert.match(splitProblems(SUITE, at(most + 1), at(most + 1)).join(), new RegExp(`over the ${MAX_SHARDS} allowed`));
+  });
+
+  test("a spec over a shard's fair share is a problem, named", () => {
+    const big = { ...at(10), "big.spec.ts": 100 };
+    const problems = splitProblems([...SUITE, "big.spec.ts"], big, big);
+
+    assert.match(problems.join("\n"), /each of \d+ shards gets; split them: big\.spec\.ts 100s$/m);
+  });
+
+  test("shards a third again heavier than the lightest are a problem, with no spec over its share", () => {
+    const suite = SUITE.slice(0, MAX_SHARDS + 1);
+    const problems = splitProblems(suite, at(10), at(10));
+
+    assert.deepEqual(problems, ["shards range 10s to 20s, more than a third again of the lightest"]);
   });
 
   test("the shards and every job started beside them fit the measured concurrency cap", () => {
@@ -235,7 +238,7 @@ describe("the plan prices each spec by its latest green run", () => {
       const paths = Object.entries(layers).map(([name, layer]) =>
         Array.isArray(layer) ? layer.map((timings, i) => write(`${name}${i}`, timings)) : write(name, layer)
       );
-      return plan([...paths, ...missing.map((m) => path.join(dir, m))]);
+      return plan([...paths, ...missing.map((m) => path.join(dir, m))], Math.min(2, paths.length + missing.length));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -284,43 +287,63 @@ describe("the plan prices each spec by its latest green run", () => {
   });
 
   test("specs main has measured are not held against a pull request the committed file is stale for", () => {
-    const suite = [...files, ...Array.from({ length: 11 }, (_, i) => `new${i}.spec.ts`)];
-    const merged = Object.fromEntries(suite.map((f) => [f, 100]));
-    const { timings } = planned({ committed: even, main: [merged] });
+    const fresh = Array.from({ length: 11 }, (_, i) => `new${i}.spec.ts`);
+    const suite = [...SUITE, ...fresh];
+    const { timings, stable } = planned({ committed: at(10), main: [at(10, suite)] });
 
-    assert.equal(splitProblems(suite, even).length, 1);
-    assert.deepEqual(splitProblems(suite, timings), []);
+    assert.match(splitProblems(suite, at(10), at(10, suite)).join(), /11 of 79 specs were priced at the/);
+    assert.deepEqual(splitProblems(suite, timings, stable), []);
   });
 
   test("a pull request bringing more unmeasured specs than the split absorbs is named, spec by spec", () => {
-    const suite = [...files, "mine0.spec.ts", "mine1.spec.ts"];
-    const [problem] = splitProblems(suite, planned({ committed: even, main: [even] }).timings);
+    const mine = Array.from({ length: 8 }, (_, i) => `mine${i}.spec.ts`);
+    const { timings } = planned({ committed: at(10), main: [at(10)] });
+    const [problem] = splitProblems([...SUITE, ...mine], timings, at(10, [...SUITE, ...mine]));
 
-    assert.match(problem ?? "", /2 of 11 specs .*: mine0\.spec\.ts, mine1\.spec\.ts\./);
-    assert.deepEqual(splitProblems([...files, "mine0.spec.ts"], even), []);
+    assert.match(problem ?? "", new RegExp(`8 of 76 specs .*: ${mine.join(", ").replaceAll(".", "\\.")}\\.`));
+    assert.deepEqual(splitProblems([...SUITE, ...mine.slice(1)], timings, at(10, [...SUITE, ...mine])), []);
+  });
+
+  test("a branch run slower than main's does not red the fit or the evenness, only main's numbers do", () => {
+    const fits = (seconds: number) => shardsNeeded(SUITE, at(seconds)) <= MAX_SHARDS;
+    const most = Array.from({ length: 400 }, (_, s) => s).filter(fits).at(-1) ?? 0;
+    const slow = Object.fromEntries(SUITE.map((f, i) => [f, Math.round(most * (i % 2 ? 1.1 : 1.2))]));
+    const { timings, stable } = planned({ committed: at(most), main: [at(most)], branch: slow });
+
+    assert.ok(!fits(most + 1) && shardsNeeded(SUITE, timings) > MAX_SHARDS, "the branch run is not slow enough to miss the target");
+    assert.deepEqual(splitProblems(SUITE, timings, stable), []);
+    assert.match(splitProblems(SUITE, timings, timings).join(), /over the \d+ allowed/);
   });
 
   test("a split of no spec at all is a problem, not a pass", () => {
-    assert.equal(splitProblems([], even).length, 1);
+    assert.equal(splitProblems([], even, even).length, 1);
   });
 
-  test("the check exits red on a guessed split and green on a measured one", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "e2e-check-"));
-    const run = (timings: Record<string, number>) => {
-      writeFileSync(path.join(dir, "t.json"), JSON.stringify(timings));
+  test("the check exits red on a problem and green on none, and refuses to run on nothing", () => {
+    const run = (...args: string[]) => {
       try {
-        execFileSync(process.execPath, [path.join(repoRoot, "tools", "ci", "e2e-shard.mjs"), "check", path.join(dir, "t.json")], { stdio: "pipe" });
+        execFileSync(process.execPath, [path.join(repoRoot, "tools", "ci", "e2e-shard.mjs"), "check", ...args], { stdio: "pipe" });
         return 0;
       } catch (err) {
         return (err as { status: number }).status;
       }
     };
-    try {
-      assert.equal(run({}), 1);
-      assert.equal(run(Object.fromEntries(specFilesIn(E2E_DIR).map((f) => [f, 1]))), 0);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    assert.equal(run('["the split was guessed"]'), 1);
+    assert.equal(run("[]"), 0);
+    assert.notEqual(run(), 0);
+    assert.notEqual(run(""), 0);
+    assert.notEqual(run("{}"), 0);
+  });
+
+  test("the plan reports the problems of the split it hands the shards", () => {
+    const out = execFileSync(process.execPath, [path.join(repoRoot, "tools", "ci", "e2e-shard.mjs"), "plan", "", ""], {
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_OUTPUT: "" },
+    });
+    const problems = /^split-problems=(.*)$/m.exec(out)?.[1];
+    const { timings, stable } = plan([path.join(E2E_DIR, "timings.json"), [], []], 2);
+
+    assert.equal(problems, JSON.stringify(splitProblems(specFilesIn(E2E_DIR), timings, stable)));
   });
 
   test("the fit check grows with the suite", () => {

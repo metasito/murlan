@@ -61,6 +61,7 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
       timings: ${{ steps.plan.outputs.timings }}
+      split-problems: ${{ steps.plan.outputs.split-problems }}
       verify-timings: ${{ steps.verify-plan.outputs.verify-timings }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -121,10 +122,19 @@ jobs:
           BRANCH: ${{ github.head_ref || github.ref_name }}
           RUNS: 5
         run: |
-          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100" || echo '{"artifacts":[]}')
+          # Newest first, across every branch: a burst of pull requests can push main's runs off one page.
+          artifacts='{"artifacts":[]}'
+          for page in 1 2 3 4 5; do
+            got=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100&page=$page" || echo '{"artifacts":[]}')
+            artifacts=$(jq -s '{artifacts: (.[0].artifacts + .[1].artifacts)}' <(echo "$artifacts") <(echo "$got"))
+            [ "$(jq '.artifacts | length' <<< "$got")" -lt 100 ] && break
+            [ "$(jq '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == "main")] | length' <<< "$artifacts")" -ge "$RUNS" ] && break
+          done
           branches=(main)
           [ "$BRANCH" != main ] && branches+=("$BRANCH")
-          for branch in "${branches[@]}"; do
+          layers=("" "")
+          for i in "${!branches[@]}"; do
+            branch=${branches[$i]}
             # Main's price is a median; a branch's is its latest run, so a spec it made heavier costs that on the next run.
             runs=$RUNS; [ "$branch" != main ] && runs=1
             group=()
@@ -140,13 +150,13 @@ jobs:
               [ -s "$RUNNER_TEMP/timings-$id.json" ] && group+=("$RUNNER_TEMP/timings-$id.json")
             done
             if [ ${#group[@]} -gt 0 ]; then
-              layers+=("$(IFS=,; echo "${group[*]}")")
+              layers[$i]=$(IFS=,; echo "${group[*]}")
               echo "Timings for $branch: the median of ${#group[@]} green runs."
             else
               echo "::warning::No green run of $branch has left e2e-timings; its specs keep the older numbers."
             fi
           done
-          node tools/ci/e2e-shard.mjs plan "${layers[@]}"
+          node tools/ci/e2e-shard.mjs plan "${layers[0]}" "${layers[1]}"
 
       # verify's split: each file at its median over main's latest runs, one line of artifact ids a run.
       # A file no run measured is placed as a typical one, so a missing layer costs balance, never a file.
@@ -1077,6 +1087,14 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      # Judged by scope's plan, which alone holds the layers apart (tools/ci/e2e-shard.mjs splitProblems);
+      # failed here rather than there so the suite still runs and reports.
+      - name: The split was measured, even and within the target
+        if: ${{ !cancelled() }}
+        env:
+          PROBLEMS: ${{ needs.scope.outputs.split-problems }}
+        run: node tools/ci/e2e-shard.mjs check "$PROBLEMS"
+
       # The commit's gate, e2eShardSplit.test.ts, imports `yaml` and lists the suite with the
       # lockfile's Playwright: the one step here that needs node_modules.
       - name: Dependencies for the timings commit
@@ -1099,8 +1117,9 @@ jobs:
       # pull request, which cost each one a branch update and a full extra run
       # — and moved the tree out from under `scope`'s skip, so the next main
       # push ran the whole suite and regenerated again. Nine such commits on
-      # 2026-09-11. Specs merged in between are priced from main's own runs
-      # (scope's plan), so the committed file going stale reds nobody.
+      # 2026-09-11. A spec merged in between is priced once a green main run
+      # has measured it; a merge that skips the browser shards measures nothing,
+      # and until main's next one the spec is a guess on every pull request.
       - name: Commit the regenerated timings, if main's copy is stale
         if: env.COMMIT_TIMINGS == 'true'
         run: |
@@ -1129,16 +1148,6 @@ jobs:
           done
           echo "::error::main moved under each of three attempts to commit the regenerated timings."
           exit 1
-
-      # Over the numbers the shards split by, not the committed file: a spec main has measured since
-      # the weekly commit is priced, so only this pull request's own new specs can be unmeasured.
-      - name: The split was priced from measurements
-        if: ${{ !cancelled() }}
-        env:
-          TIMINGS: ${{ needs.scope.outputs.timings }}
-        run: |
-          printf '%s' "$TIMINGS" > "$RUNNER_TEMP/split-timings.json"
-          node tools/ci/e2e-shard.mjs check "$RUNNER_TEMP/split-timings.json"
 
   build:
     name: Build and boot

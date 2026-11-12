@@ -25,10 +25,7 @@ export const TIMINGS = path.join(E2E_DIR, "timings.json");
  */
 export const UNMEASURED_SECONDS = 60;
 
-/**
- * How much of the suite may sit at `UNMEASURED_SECONDS` and the split still be about time: a
- * constant divides evenly, so at 22 of 47 unmeasured six shards read a flat 331 s and ran 119 s to 226 s.
- */
+/** How much of the suite may sit at `UNMEASURED_SECONDS` and the split still be about time: a constant divides evenly. */
 export const UNMEASURED_SHARE = 0.1;
 
 /** A pull request's ci.yml wall clock, first job to last, device compiles aside: the owner's, docs/agents/RULES.md rule 46. */
@@ -143,24 +140,30 @@ export function shardsNeeded(files, timings) {
  * Always `MAX_SHARDS`: wall clock falls with every shard down to the longest spec, and runners are free here.
  * @param {(string | string[])[]} layers JSON timings files, oldest first; a list is one branch's
  *   runs, priced by `medianTimings`; a missing file is skipped
- * @returns {{ shards: number[], timings: Record<string, number> }}
+ * @param {number} [stableLayers] how many of `layers`, from the oldest, price `stable`
+ * @returns {{ shards: number[], timings: Record<string, number>, stable: Record<string, number> }}
  */
-export function plan(layers) {
+export function plan(layers, stableLayers = layers.length) {
   const read = (/** @type {string[]} */ group) => group.filter((f) => existsSync(f)).map((f) => readTimings(f));
-  const timings = resolveTimings(...layers.map((layer) => (Array.isArray(layer) ? medianTimings(read(layer)) : read([layer])[0] ?? null)));
-  return { shards: Array.from({ length: MAX_SHARDS }, (_, i) => i + 1), timings };
+  const priced = layers.map((layer) => (Array.isArray(layer) ? medianTimings(read(layer)) : read([layer])[0] ?? null));
+  return {
+    shards: Array.from({ length: MAX_SHARDS }, (_, i) => i + 1),
+    timings: resolveTimings(...priced),
+    stable: resolveTimings(...priced.slice(0, stableLayers)),
+  };
 }
 
 /**
- * What is wrong with the numbers a run split by. Judged on `plan`'s resolved timings, never the
- * committed file alone: a spec merged since the weekly commit is priced from main's runs, so only
- * the pull request's own new specs can be unmeasured, and one pull request is not failed for the
- * specs every other one merged.
+ * What is wrong with a run's split. How much was guessed is read from `timings`, what the shards
+ * split by, so a spec any layer measured counts as measured. Fit and evenness are read from
+ * `stable`, the committed file under main's medians: a branch's single run is one noisy sample,
+ * and a slow runner must not red a pull request that changed no spec.
  * @param {string[]} files
  * @param {Record<string, number>} timings
+ * @param {Record<string, number>} stable
  * @returns {string[]}
  */
-export function splitProblems(files, timings) {
+export function splitProblems(files, timings, stable) {
   if (!files.length) return ["no spec to split: the listing found none"];
   const problems = [];
   const guessed = files.filter((file) => !(file in timings));
@@ -168,20 +171,34 @@ export function splitProblems(files, timings) {
     problems.push(
       `${guessed.length} of ${files.length} specs were priced at the ${UNMEASURED_SECONDS}s guess, over the ` +
         `${UNMEASURED_SHARE * 100}% the split can absorb and still be even in wall clock: ${guessed.join(", ")}. ` +
-        `Commit their timings (tools/ci/e2e-timings.mjs says how) or land them in smaller pull requests.`
+        `Once this branch has a run whose browser shards all passed, push again or use "Re-run all jobs" ` +
+        `to price them from it; "Re-run failed jobs" keeps this plan.`
     );
-  const needed = shardsNeeded(files, timings);
+  const needed = shardsNeeded(files, stable);
   if (needed > MAX_SHARDS) problems.push(`${needed} shards to meet rule 46's ${TARGET_RUN_SECONDS} s, over the ${MAX_SHARDS} allowed`);
+  const seconds = (/** @type {string} */ f) => stable[f] ?? UNMEASURED_SECONDS;
+  const fair = files.reduce((sum, f) => sum + seconds(f), 0) / MAX_SHARDS;
+  const over = files.filter((f) => seconds(f) > fair);
+  if (over.length) problems.push(`over the ${fair.toFixed(0)}s each of ${MAX_SHARDS} shards gets; split them: ${over.map((f) => `${f} ${seconds(f)}s`).join(", ")}`);
+  const shards = assignShards(files, stable, MAX_SHARDS).map((s) => s.seconds);
+  if (Math.max(...shards) > Math.min(...shards) * (4 / 3))
+    problems.push(`shards range ${Math.min(...shards)}s to ${Math.max(...shards)}s, more than a third again of the lightest`);
   return problems;
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "check") {
-  const problems = splitProblems(specFilesIn(), readTimings(process.argv[3]));
+  const problems = JSON.parse(process.argv[3] ?? "");
+  if (!Array.isArray(problems)) throw new Error(`check takes the plan's split-problems, a JSON list, got ${process.argv[3]}`);
   for (const problem of problems) process.stdout.write(`::error::${problem}\n`);
   process.exitCode = problems.length ? 1 : 0;
 } else if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "plan") {
-  const { shards, timings } = plan([TIMINGS, ...process.argv.slice(3).map((arg) => arg.split(","))]);
-  const out = `shards=${JSON.stringify(shards)}\nshard-count=${shards.length}\ntimings=${JSON.stringify(timings)}\n`;
+  const runs = (/** @type {string | undefined} */ arg) => (arg ?? "").split(",").filter(Boolean);
+  const [main, branch] = process.argv.slice(3);
+  const { shards, timings, stable } = plan([TIMINGS, runs(main), runs(branch)], 2);
+  const problems = splitProblems(specFilesIn(), timings, stable);
+  const out =
+    `shards=${JSON.stringify(shards)}\nshard-count=${shards.length}\ntimings=${JSON.stringify(timings)}\n` +
+    `split-problems=${JSON.stringify(problems)}\n`;
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, out);
   process.stdout.write(out);
 } else if (isInvokedDirectly(process.argv[1], import.meta.url)) {
