@@ -1099,10 +1099,8 @@ jobs:
       # pull request, which cost each one a branch update and a full extra run
       # — and moved the tree out from under `scope`'s skip, so the next main
       # push ran the whole suite and regenerated again. Nine such commits on
-      # 2026-09-11. `tests/tooling/e2eShardSplit.test.ts` tolerates 10% unmeasured
-      # specs, about five new specs at the current count, so a week is well
-      # inside the floor; if it ever trips it says so by name and a
-      # `workflow_dispatch` regenerates.
+      # 2026-09-11. Specs merged in between are priced from main's own runs
+      # (scope's plan), so the committed file going stale reds nobody.
       - name: Commit the regenerated timings, if main's copy is stale
         if: env.COMMIT_TIMINGS == 'true'
         run: |
@@ -1131,6 +1129,16 @@ jobs:
           done
           echo "::error::main moved under each of three attempts to commit the regenerated timings."
           exit 1
+
+      # Over the numbers the shards split by, not the committed file: a spec main has measured since
+      # the weekly commit is priced, so only this pull request's own new specs can be unmeasured.
+      - name: The split was priced from measurements
+        if: ${{ !cancelled() }}
+        env:
+          TIMINGS: ${{ needs.scope.outputs.timings }}
+        run: |
+          printf '%s' "$TIMINGS" > "$RUNNER_TEMP/split-timings.json"
+          node tools/ci/e2e-shard.mjs check "$RUNNER_TEMP/split-timings.json"
 
   build:
     name: Build and boot

@@ -15,6 +15,7 @@ import {
   readTimings,
   shardsNeeded,
   specFilesIn,
+  splitProblems,
   TARGET_RUN_SECONDS,
   UNMEASURED_SECONDS,
 } from "../../tools/ci/e2e-shard.mjs";
@@ -53,14 +54,6 @@ const PR_RUN = playwrightLists("playwright.config.ts");
 const NIGHTLY_RUN = playwrightLists("playwright.parity.config.ts");
 const specFiles = () =>
   (readdirSync(E2E_DIR, { recursive: true }) as string[]).map((f) => f.split(path.sep).join("/")).filter((f) => /\.spec\.ts$/.test(f));
-
-/**
- * How much of the suite may sit at `UNMEASURED_SECONDS` before the evenness
- * assertion below stops being about time. Room for a spec or two written since
- * the last measurement, and nowhere near enough for the constant to carry the
- * split.
- */
-const UNMEASURED_SHARE = 0.1;
 
 describe("every browser spec reaches exactly one shard", () => {
   test("the splitter sees every spec Playwright would run, under a floor", () => {
@@ -172,24 +165,15 @@ describe("the split is stable and even", () => {
     );
   });
 
-  test("the evenness above is measured, not assumed", () => {
-    // What the assertion above compares is `UNMEASURED_SECONDS` per unmeasured
-    // spec, and a constant divides evenly: the less of the suite is measured,
-    // the more even the split looks. At 22 of 47 unmeasured it read a flat 331s
-    // across six shards that really ran 119s to 226s, and #441's defect was
-    // back with its own guard reporting it fixed. Counted rather than weighed,
-    // because weighing needs the very seconds that are missing.
-    const files = specFilesIn(E2E_DIR);
-    const timings = readTimings();
-    const guessed = files.filter((file) => !(file in timings));
+  test("the evenness above is measured, not assumed, over the numbers the run splits by", () => {
+    const steps = loadWorkflow("ci.yml").jobs["browser-report"].steps ?? [];
+    const check = steps.find((s) => /node tools\/ci\/e2e-shard\.mjs check "\$RUNNER_TEMP\/split-timings\.json"/.test(s.run ?? ""));
 
-    assert.ok(
-      guessed.length <= files.length * UNMEASURED_SHARE,
-      `${guessed.length} of ${files.length} specs are priced at the ${UNMEASURED_SECONDS}s ` +
-        `guess, over the ${UNMEASURED_SHARE * 100}% the split can absorb and still be even in ` +
-        `wall clock: ${guessed.join(", ")}. tools/ci/e2e-timings.mjs regenerates the file from a ` +
-        `CI run's own reports, and says at the top where to get one.`
-    );
+    assert.ok(check, "browser-report no longer checks how much of the split was guessed");
+    assert.equal(check.env?.TIMINGS, "${{ needs.scope.outputs.timings }}");
+    assert.match(check.run ?? "", /printf '%s' "\$TIMINGS" > "\$RUNNER_TEMP\/split-timings\.json"\n/);
+    assert.equal(check["continue-on-error"], undefined);
+    assert.equal(check.if, "${{ !cancelled() }}");
   });
 
   test("no spec is larger than a shard's fair share", () => {
@@ -211,10 +195,15 @@ describe("the split is stable and even", () => {
     assert.equal(TARGET_RUN_SECONDS, 300, "TARGET_RUN_SECONDS moved off rule 46's 300 s; only the owner changes it");
   });
 
-  test("the suite fits the target within the shards a run may have", () => {
-    const needed = shardsNeeded(specFilesIn(E2E_DIR), readTimings());
+  test("a suite past the target within the shards a run may have is a problem of the split", () => {
+    const suite = Array.from({ length: 40 }, (_, i) => `s${i}.spec.ts`);
+    const priced = (seconds: number) => Object.fromEntries(suite.map((f) => [f, seconds]));
+    const fits = (seconds: number) => shardsNeeded(suite, priced(seconds)) <= MAX_SHARDS;
+    const most = Array.from({ length: 400 }, (_, s) => s).filter(fits).at(-1) ?? 0;
 
-    assert.ok(needed <= MAX_SHARDS, `${needed} shards to meet the target, over the ${MAX_SHARDS} allowed`);
+    assert.ok(most > 0 && !fits(400), "the fixture never crosses the target");
+    assert.deepEqual(splitProblems(suite, priced(most)), []);
+    assert.match(splitProblems(suite, priced(most + 1)).join(), new RegExp(`over the ${MAX_SHARDS} allowed`));
   });
 
   test("the shards and every job started beside them fit the measured concurrency cap", () => {
@@ -292,6 +281,46 @@ describe("the plan prices each spec by its latest green run", () => {
     const { timings } = planned({ committed: even, main: { ...even, "heavy.spec.ts": 300 } }, ["branch"]);
 
     assert.equal(timings["heavy.spec.ts"], 300);
+  });
+
+  test("specs main has measured are not held against a pull request the committed file is stale for", () => {
+    const suite = [...files, ...Array.from({ length: 11 }, (_, i) => `new${i}.spec.ts`)];
+    const merged = Object.fromEntries(suite.map((f) => [f, 100]));
+    const { timings } = planned({ committed: even, main: [merged] });
+
+    assert.equal(splitProblems(suite, even).length, 1);
+    assert.deepEqual(splitProblems(suite, timings), []);
+  });
+
+  test("a pull request bringing more unmeasured specs than the split absorbs is named, spec by spec", () => {
+    const suite = [...files, "mine0.spec.ts", "mine1.spec.ts"];
+    const [problem] = splitProblems(suite, planned({ committed: even, main: [even] }).timings);
+
+    assert.match(problem ?? "", /2 of 11 specs .*: mine0\.spec\.ts, mine1\.spec\.ts\./);
+    assert.deepEqual(splitProblems([...files, "mine0.spec.ts"], even), []);
+  });
+
+  test("a split of no spec at all is a problem, not a pass", () => {
+    assert.equal(splitProblems([], even).length, 1);
+  });
+
+  test("the check exits red on a guessed split and green on a measured one", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "e2e-check-"));
+    const run = (timings: Record<string, number>) => {
+      writeFileSync(path.join(dir, "t.json"), JSON.stringify(timings));
+      try {
+        execFileSync(process.execPath, [path.join(repoRoot, "tools", "ci", "e2e-shard.mjs"), "check", path.join(dir, "t.json")], { stdio: "pipe" });
+        return 0;
+      } catch (err) {
+        return (err as { status: number }).status;
+      }
+    };
+    try {
+      assert.equal(run({}), 1);
+      assert.equal(run(Object.fromEntries(specFilesIn(E2E_DIR).map((f) => [f, 1]))), 0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("the fit check grows with the suite", () => {

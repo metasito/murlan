@@ -25,6 +25,12 @@ export const TIMINGS = path.join(E2E_DIR, "timings.json");
  */
 export const UNMEASURED_SECONDS = 60;
 
+/**
+ * How much of the suite may sit at `UNMEASURED_SECONDS` and the split still be about time: a
+ * constant divides evenly, so at 22 of 47 unmeasured six shards read a flat 331 s and ran 119 s to 226 s.
+ */
+export const UNMEASURED_SHARE = 0.1;
+
 /** A pull request's ci.yml wall clock, first job to last, device compiles aside: the owner's, docs/agents/RULES.md rule 46. */
 export const TARGET_RUN_SECONDS = 300;
 /** Run 37792764075, 17 shards: the scope job before them and the report after, 10 s and 29 s. */
@@ -145,7 +151,35 @@ export function plan(layers) {
   return { shards: Array.from({ length: MAX_SHARDS }, (_, i) => i + 1), timings };
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "plan") {
+/**
+ * What is wrong with the numbers a run split by. Judged on `plan`'s resolved timings, never the
+ * committed file alone: a spec merged since the weekly commit is priced from main's runs, so only
+ * the pull request's own new specs can be unmeasured, and one pull request is not failed for the
+ * specs every other one merged.
+ * @param {string[]} files
+ * @param {Record<string, number>} timings
+ * @returns {string[]}
+ */
+export function splitProblems(files, timings) {
+  if (!files.length) return ["no spec to split: the listing found none"];
+  const problems = [];
+  const guessed = files.filter((file) => !(file in timings));
+  if (guessed.length > files.length * UNMEASURED_SHARE)
+    problems.push(
+      `${guessed.length} of ${files.length} specs were priced at the ${UNMEASURED_SECONDS}s guess, over the ` +
+        `${UNMEASURED_SHARE * 100}% the split can absorb and still be even in wall clock: ${guessed.join(", ")}. ` +
+        `Commit their timings (tools/ci/e2e-timings.mjs says how) or land them in smaller pull requests.`
+    );
+  const needed = shardsNeeded(files, timings);
+  if (needed > MAX_SHARDS) problems.push(`${needed} shards to meet rule 46's ${TARGET_RUN_SECONDS} s, over the ${MAX_SHARDS} allowed`);
+  return problems;
+}
+
+if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "check") {
+  const problems = splitProblems(specFilesIn(), readTimings(process.argv[3]));
+  for (const problem of problems) process.stdout.write(`::error::${problem}\n`);
+  process.exitCode = problems.length ? 1 : 0;
+} else if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "plan") {
   const { shards, timings } = plan([TIMINGS, ...process.argv.slice(3).map((arg) => arg.split(","))]);
   const out = `shards=${JSON.stringify(shards)}\nshard-count=${shards.length}\ntimings=${JSON.stringify(timings)}\n`;
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, out);
