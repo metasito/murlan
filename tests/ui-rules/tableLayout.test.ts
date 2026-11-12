@@ -326,7 +326,11 @@ describe("the middle band, the hand zone and the hand window", () => {
   });
 
   test("each placed box lands on its rect, spanning its parent or at its own size against one edge", () => {
-    for (const { what, l } of tables) {
+    const sided = PHONES.flatMap((p) => Object.entries(INSETS).flatMap(([inset, insets]) => [false, true].map((playOnLeft) => ({
+      what: `${p.name} ${inset}${playOnLeft ? " play on the left" : ""}`,
+      l: tableLayout({ width: p.width, height: p.height, insets, playOnLeft }),
+    }))));
+    for (const { what, l } of sided) {
       const table = { x: l.tableBox.left, y: l.tableBox.top, w: l.window.width - l.tableBox.left - l.tableBox.right, h: l.window.height - l.tableBox.top - l.tableBox.bottom };
       const cases = [
         ["topBand", table, l.topBand],
@@ -341,23 +345,27 @@ describe("the middle band, the hand zone and the hand window", () => {
       ] as const;
       assert.deepEqual(cases.map(([key]) => key).sort(), Object.keys(l.placed).sort(), `${what}: every placed box is checked`);
       for (const [key, outer, inner] of cases) {
-        const { marginVertical, ...p }: Partial<Record<"left" | "right" | "width" | "top" | "bottom" | "height", number>> & { marginVertical?: "auto" } = l.placed[key];
-        assert.equal(Object.keys(p).length, marginVertical ? 5 : 4, `${what} ${key}: two lengths per axis, or three when centred`);
+        const p: Partial<Record<"left" | "right" | "width" | "top" | "bottom" | "height", number>> = l.placed[key];
+        assert.equal(Object.keys(p).length, 4, `${what} ${key}: two lengths per axis`);
         const x = p.left ?? outer.w - p.right! - p.width!;
-        const y = marginVertical ? (outer.h - p.height!) / 2 : p.top ?? outer.h - p.bottom! - p.height!;
+        const y = p.top ?? outer.h - p.bottom! - p.height!;
         near(outer.x + x, inner.x, `${what} ${key} left`);
         near(outer.y + y, inner.y, `${what} ${key} top`);
         near(p.width ?? outer.w - x - p.right!, inner.w, `${what} ${key} width`);
         near(p.height ?? outer.h - y - p.bottom!, inner.h, `${what} ${key} height`);
       }
       const pins = Object.fromEntries(Object.entries(l.placed).map(([key, p]) => [key, Object.keys(p).sort().join(" ")]));
-      const [passaSide, giocaSide] = l.buttons.gioca.x > l.buttons.passa.x ? ["left", "right"] : ["right", "left"];
+      const [passaSide, giocaSide] = l.floatBeside.mirrored ? ["right", "left"] : ["left", "right"];
+      assert.ok(l.floatBeside.mirrored === l.buttons.gioca.x < l.buttons.passa.x, `${what}: GIOCA on the side it is placed against`);
+      const pile: Partial<Record<"top" | "height", number>> = l.placed.pile;
+      near(pile.top!, l.anchors.pile.y - PILE_MIN_H / 2 - l.midBand.y, `${what}: the pile's top, from the middle band's, centres it on the anchor`);
+      near(pile.height!, PILE_MIN_H, `${what}: the pile's height`);
       assert.deepEqual(pins, {
         topBand: "height left right top",
         midBand: "bottom left right top",
         seatLeft: "height left top width",
         seatRight: "height right top width",
-        pile: "bottom height left marginVertical right top",
+        pile: "height left right top",
         handZone: "bottom left right top",
         handWindow: "bottom left right top",
         passa: `bottom height ${passaSide} width`,

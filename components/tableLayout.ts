@@ -26,29 +26,18 @@ export interface Point { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Delta { dx: number; dy: number }
 type PlacedBox = "topBand" | "midBand" | "seatLeft" | "seatRight" | "pile" | "handZone" | "handWindow" | "passa" | "gioca";
-/**
- * Along one axis a box spans its parent between two edges, stands against its start or end edge
- * at its own size, or (down only) centres in it at its own size.
- */
+/** Along one axis a box spans its parent between two edges, or stands against its start or end edge at its own size. */
 type Span = "stretch" | "start" | "end";
 type Placed = { left: number; right: number } | { left: number; width: number } | { right: number; width: number };
-type PlacedY =
-  | { top: number; bottom: number }
-  | { top: number; height: number }
-  | { bottom: number; height: number }
-  | { top: 0; bottom: 0; height: number; marginVertical: "auto" };
+type PlacedY = { top: number; bottom: number } | { top: number; height: number } | { bottom: number; height: number };
 
-function placeIn(outer: Rect, inner: Rect, x: Span, y: Span | "centre"): Placed & PlacedY {
+function placeIn(outer: Rect, inner: Rect, x: Span, y: Span): Placed & PlacedY {
   const left = inner.x - outer.x;
   const top = inner.y - outer.y;
   const right = outer.x + outer.w - (inner.x + inner.w);
   const bottom = outer.y + outer.h - (inner.y + inner.h);
   const across: Placed = x === "stretch" ? { left, right } : x === "start" ? { left, width: inner.w } : { right, width: inner.w };
-  const down: PlacedY =
-    y === "stretch" ? { top, bottom }
-    : y === "start" ? { top, height: inner.h }
-    : y === "end" ? { bottom, height: inner.h }
-    : { top: 0, bottom: 0, height: inner.h, marginVertical: "auto" };
+  const down: PlacedY = y === "stretch" ? { top, bottom } : y === "start" ? { top, height: inner.h } : { bottom, height: inner.h };
   return { ...across, ...down };
 }
 
@@ -104,9 +93,8 @@ export interface TableLayout {
    * The absolute boxes in their parents: the bands and the hand zone in the table box, the seat
    * slots and the pile in the middle band, the hand window and the buttons in the hand zone.
    * The browser rounds each length to a layout unit, so a box spanning its parent takes both edges
-   * and a box of its own size takes that size and the one edge it stands against, or auto margins
-   * when it centres, so the browser halves the room it has rounded: any other form lands a layout
-   * unit off and moves every glyph inside by it.
+   * and a box of its own size takes that size and the one edge it stands against: any other form
+   * lands a layout unit off and moves every glyph inside by it.
    */
   placed: Record<PlacedBox, Placed & PlacedY>;
   /** PASSA and GIOCA, in the hand zone at its designed place: GIOCA on the right, or on the left under `playOnLeft`. */
@@ -163,6 +151,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const leftBtn = { x: frame.tableLeft, y: btnY, w: btn, h: btn };
   const rightBtn = { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn };
   const [passa, gioca] = playOnLeft ? [rightBtn, leftBtn] : [leftBtn, rightBtn];
+  const [passaSide, giocaSide]: Span[] = playOnLeft ? ["end", "start"] : ["start", "end"];
   const sideY = seatSlots.left.y + seatSlots.left.h / 2;
   const anchors: Record<FlyDirection | "pile", Point> = {
     pile: { x, y: midTop + midH / 2 },
@@ -218,11 +207,11 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
       midBand: placeIn(table, midBand, "stretch", "stretch"),
       seatLeft: placeIn(midBand, seatSlots.left, "start", "start"),
       seatRight: placeIn(midBand, seatSlots.right, "end", "start"),
-      pile: placeIn(midBand, pile, "stretch", "centre"),
+      pile: placeIn(midBand, pile, "stretch", "start"),
       handZone: placeIn(table, handZone, "stretch", "stretch"),
       handWindow: placeIn(handZone, handWindow, "stretch", "stretch"),
-      passa: placeIn(handZone, passa, passa === leftBtn ? "start" : "end", "end"),
-      gioca: placeIn(handZone, gioca, gioca === leftBtn ? "start" : "end", "end"),
+      passa: placeIn(handZone, passa, passaSide, "end"),
+      gioca: placeIn(handZone, gioca, giocaSide, "end"),
     },
     buttons: { passa, gioca },
     nameInset,

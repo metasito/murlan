@@ -174,8 +174,6 @@ export const sharedTableStyles = StyleSheet.create({
     overflow: "visible",
   },
   tableContent: { flex: 1 },
-  // Every box below is placed at its `tableLayout` rect through `layout.placed`; what is left here
-  // is how a seat or the pile, sized by what it holds, stands inside its box.
   topSection: { position: "absolute", alignItems: "center" },
   midSection: { position: "absolute" },
   // A side seat's fan is wider than its slot and is meant to be: it leans in
