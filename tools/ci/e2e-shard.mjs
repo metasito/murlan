@@ -16,7 +16,7 @@ import { prSpec } from "../../tests/e2e/tiers.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const E2E_DIR = path.join(here, "..", "..", "tests", "e2e");
-const TIMINGS = path.join(E2E_DIR, "timings.json");
+export const TIMINGS = path.join(E2E_DIR, "timings.json");
 
 /**
  * What to assume a spec costs when nothing has measured it. Deliberately well
