@@ -170,6 +170,67 @@ describe("the bash guard blocks what has a correct alternative, however it is sp
   });
 });
 
+describe("a merge spelled through an escape, eval or a variable is still a merge", () => {
+  for (const cmd of [
+    "g\\h pr merge 1",
+    "gh pr m\\erge 1",
+    "\\gh pr merge 1",
+    "e\\nv gh pr merge 1",
+    'gh pr "merge" 1 && g\\h pr m\\erge 2',
+    "eval gh pr merge 1",
+    'eval "gh pr merge 1"',
+    "eval -- gh pr merge 1",
+    "eval g\\\\h pr merge 1",
+    "builtin eval 'gh pr merge 1'",
+    "command eval gh pr merge 1",
+    "eval eval gh pr merge 1",
+    'bash -c "eval gh pr merge 1"',
+    "a=gh; $a pr merge 1",
+    "a=gh && ${a} pr merge 1",
+    'a=gh; "$a" -R o/r pr merge 1',
+    "a=g; ${a}h pr merge 1",
+    "a=gh; $a pr merge 1; a=ls",
+    "$GH pr merge 1",
+    "$(echo gh) pr merge 1",
+    "for a in gh; do $a pr merge 1; done",
+    "w=env; $w gh pr merge 1",
+    "$WRAP gh pr merge 1",
+    "$SHELL -c 'gh pr merge 1'",
+    "v=merge; gh pr $v 1",
+    "gh pr $VERB 1",
+    "a=gh; bash -c '$a pr merge 1'",
+    "eval '$a pr merge 1'",
+  ]) {
+    test(`blocks: ${JSON.stringify(cmd)}`, () => {
+      assert.match(String(guard(cmd)), MERGE);
+    });
+  }
+
+  for (const cmd of [
+    "git merge origin/main",
+    "git fetch && git merge origin/main",
+    "cat <<EOF > /tmp/x\nhello gh pr merge world\nEOF",
+    "echo 'gh pr merge 12'",
+    "echo gh pr merge 12",
+    "npm ci && /usr/local/bin/node --test tests/tooling/targetFreeze.test.ts && echo ok",
+    "eval echo hi",
+    "eval \"echo 'gh pr merge 1'\"",
+    "a=gh; $a pr view 1",
+    "$GH pr view 1",
+    "$EDITOR notes.md",
+    '"$(npm root)/.bin/jest" a.test.ts',
+    "$NODE --test a.test.ts",
+    "gh $SUB list",
+    "C:\\tools\\gh.exe pr view 1",
+    "git -C C:\\repo\\murlan merge origin/main",
+    "$PSVersionTable.PSVersion.Major",
+  ]) {
+    test(`allows: ${JSON.stringify(cmd)}`, () => {
+      assert.equal(guard(cmd), null);
+    });
+  }
+});
+
 describe("git add -A inside the ticket's own worktree", () => {
   const top = resolve(tmpdir(), ".worktrees", "agent-7");
   const inTree = (cwd: string, t: string | null = top) => ({ ...repo, top: () => t, cwd: (d?: string) => resolve(cwd, d ?? ".") });

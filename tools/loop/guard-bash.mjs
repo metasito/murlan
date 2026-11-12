@@ -23,7 +23,7 @@ import { locateRun } from "./loop-derive.mjs";
 import { EVIDENCE_SAMPLES, isEvidence } from "./loop-logs.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { codeSetsLoopVariable, fromEnv, isLoopVariable } from "./session-env.mjs";
-import { assignedNames, assignmentsIn, commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
+import { assignedNames, assignmentsIn, commandName, commands, expand, has, literal, literalAssignments, loopBodies, MOVES, operands, settledAssignments, toNative, withoutGhGlobals, withoutQuotedBodies } from "./shell.mjs";
 
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
@@ -380,6 +380,28 @@ const MERGE_CALL = [
   /\benablePullRequestAutoMerge\s*\(/,
 ];
 const spellsMerge = (text) => MERGE_CALL.some((re) => re.test(text));
+
+/** `[gh globals] pr merge`, where a word whose expansion `vars` cannot place may be either. */
+const isPrMerge = (words, vars) => {
+  const [noun, verb] = withoutGhGlobals(words);
+  const may = (word, value) => word !== undefined && (expand(word, vars) ?? value) === value;
+  return may(noun, "pr") && may(verb, "merge");
+};
+
+/** A command whose name no rule can read is refused when the rest of it, or a `-c` body it is handed, reads as a merge. */
+function mergesNow(c, vars) {
+  if (c.cmd === "gh") return isPrMerge(c.args, vars);
+  if (!c.unresolved) return false;
+  const mayBeGh = (word) => {
+    const expanded = expand(word, vars);
+    return expanded === null || commandName(expanded) === "gh";
+  };
+  return (
+    isPrMerge(c.args, vars) ||
+    c.args.some((a, k) => mayBeGh(a) && isPrMerge(c.args.slice(k + 1), vars)) ||
+    c.args.some((a, k) => /^-\w*c$/.test(a) && commands(c.args[k + 1] ?? "").some((inner) => mergesNow(inner, vars)))
+  );
+}
 
 /** `-EncodedCommand` as PowerShell takes it: after `-`, `--` or `/`, `ec` or a prefix of the name. Its body is base64 no rule reads. */
 const isEncodedFlag = (a) => {
@@ -743,8 +765,7 @@ const RULES = [
     // PreToolUse hook sees the whole line and fires inside subagents too; it does not reach the
     // supervisor, which merges from a child process no hook intercepts. The REST endpoint and
     // both GraphQL mutations are matched on the whole text for the same reason.
-    test: (c) =>
-      (c.cmd === "gh" && c.args[0] === "pr" && c.args[1] === "merge") || runsEncodedCommand(c),
+    test: (c, { settled }) => mergesNow(c, settled) || runsEncodedCommand(c),
     line: (parsed, _runnable, { raw, repo }) => runsMergingScript(parsed, raw, repo),
     text: (t) =>
       /\bpulls\/[^\s"'/]+\/merge\b/.test(t) || /\bmergePullRequest\s*\(/.test(t) || /\benablePullRequestAutoMerge\s*\(/.test(t),
@@ -757,6 +778,7 @@ const RULES = [
       "Push, open the pull request, and exit — that is the whole of phase E.\n" +
       "Blocked on a predecessor's change? Say so on the issue and park; do not merge it yourself.\n" +
       "Merging by hand is the owner's: ask them to run it, or run the loop.\n" +
+      "A backslash escape, `eval`, and a command or verb taken from a variable are read through; a variable this line does not set once, literally, is taken to be one, so spell the command out.\n" +
       "The same goes for `pwsh -EncodedCommand` (also -e, -ec), whose body no rule can read, and for a script run by `-File`, bash, sh or node whose text makes one of these calls, comments included, or imports the supervisor's merge module; the files a script is handed as arguments do not count.",
   },
   {
@@ -836,10 +858,11 @@ export function check(
   const runnable = withoutQuotedBodies(command);
   const parsed = commands(runnable);
   const vars = literalAssignments(runnable);
+  const settled = settledAssignments(runnable);
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
   const moved = parsed.some((c) => MOVES.test(c.cmd));
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop, raw: command, vars, repo }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop, raw: command, vars, repo }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, settled: c.scope ? { ...settled, ...literal(c.scope) } : settled, loop, session }))) {
       return typeof rule.message === "function" ? rule.message() : rule.message;
     }
   }
