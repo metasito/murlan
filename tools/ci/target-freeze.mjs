@@ -11,6 +11,7 @@ import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { git } from "../loop/cli.mjs";
 import { matcher } from "./codeowners.mjs";
+import { CHECK as VERDICT } from "./verdict-name.mjs";
 
 export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/fixtures/", what: "the mockups" },
@@ -49,6 +50,10 @@ export const TARGETS = Object.freeze([
   { pattern: ".github/workflows/target-freeze.yml", what: "the workflow that runs this list" },
   { pattern: "tests/tooling/targetFreeze.test.ts", what: "this list's floor and the workflow's shape" },
   { pattern: ".github/CODEOWNERS", what: "who reviews this list" },
+  { pattern: "tools/ci/verdict-check.mjs", what: "the Test verdict check, posted from main over CI's jobs and records" },
+  { pattern: "tools/ci/verdict-name.mjs", what: "its name, which the scan for impostors reads" },
+  { pattern: ".github/workflows/test-verdict.yml", what: "the workflow that posts the Test verdict" },
+  { pattern: "tests/tooling/verdictCheck.test.ts", what: "its job names and the workflow's shape" },
 ]);
 
 /**
@@ -62,9 +67,6 @@ export const JUDGES = Object.freeze([
   { pattern: "tools/ci/gate.mjs", what: "the needs CI gate requires" },
   { pattern: "tools/ci/scope*.mjs", what: "which suites a change runs" },
   { pattern: "tests/tooling/testVerdict.test.ts", what: "the plants the verdict reds on" },
-  { pattern: "tools/ci/verdict-check.mjs", what: "the verdict posted from main, over CI's jobs and artifacts" },
-  { pattern: ".github/workflows/test-verdict.yml", what: "the workflow that posts it" },
-  { pattern: "tests/tooling/verdictCheck.test.ts", what: "its job names and the workflow's shape" },
   { pattern: ".github/workflows/ci.yml", what: "the jobs, their uploads and the gate that reads them" },
   { pattern: "package.json", what: "the node runs' reporters, results among them" },
   { pattern: "scripts/nodeTest.mjs", what: "the launcher the node runs and their reporters go through" },
@@ -189,7 +191,9 @@ export function listAt(head, at, node = process.versions.node) {
 }
 
 /** Each check the ruleset requires by name, and the one workflow that may report it. */
-export const POSTERS = Object.freeze({ [CHECK]: WORKFLOW, "Test verdict": ".github/workflows/test-verdict.yml" });
+export const VERDICT_WORKFLOW = ".github/workflows/test-verdict.yml";
+export const POSTERS = Object.freeze({ [CHECK]: WORKFLOW, [VERDICT]: VERDICT_WORKFLOW });
+const literal = (/** @type {string} */ s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * The workflows that name something a check in POSTERS but are not its poster: a check run of
@@ -197,8 +201,36 @@ export const POSTERS = Object.freeze({ [CHECK]: WORKFLOW, "Test verdict": ".gith
  * @param {{ path: string, text: string }[]} workflows
  */
 export function impostors(workflows) {
-  const named = Object.entries(POSTERS).map(([check, home]) => ({ home, re: new RegExp(`^[ \\t-]*name:[ \\t]*(["']?)${check}\\1[ \\t]*(#.*)?$`, "im") }));
+  const named = Object.entries(POSTERS).map(([check, home]) => ({ home, re: new RegExp(`^[ \\t-]*name:[ \\t]*(["']?)${literal(check)}\\1[ \\t]*(#.*)?$`, "im") }));
   return workflows.filter((w) => named.some((n) => w.path !== n.home && n.re.test(w.text))).map((w) => w.path);
+}
+
+/** The verdict's poster runs main's copy only on `workflow_run`; on any other trigger it runs the head's. */
+const VERDICT_ON = Object.freeze(["  workflow_run:", "    workflows: [CI]", "    types: [completed]"]);
+const TOP_KEY = /^(name|run-name|permissions|concurrency|env|defaults|jobs):( |$)/;
+
+/**
+ * VERDICT_WORKFLOW among `workflows` when it may run on anything but CI's `workflow_run`. It reads
+ * lines: every top-level line must be a plain key, `on:` exactly once and its block exactly
+ * VERDICT_ON, so a form the scan cannot read is refused rather than passed.
+ * @param {{ path: string, text: string }[]} workflows
+ */
+export function retriggered(workflows) {
+  return workflows
+    .filter((w) => w.path === VERDICT_WORKFLOW)
+    .filter((w) => {
+      const lines = w.text
+        .split(/\r?\n/)
+        .map((l) => l.replace(/(^|[ \t]+)#.*$/, "").trimEnd())
+        .filter(Boolean);
+      const at = lines.indexOf("on:");
+      const top = lines.filter((l) => /^\S/.test(l));
+      const next = lines.findIndex((l, i) => i > at && /^\S/.test(l));
+      const block = lines.slice(at + 1, next === -1 ? lines.length : next);
+      const ok = top.filter((l) => l === "on:").length === 1 && top.every((l) => l === "on:" || TOP_KEY.test(l)) && block.join("\n") === VERDICT_ON.join("\n");
+      return !ok;
+    })
+    .map((w) => w.path);
 }
 
 export function codeowners() {
@@ -261,6 +293,11 @@ export function run(base, head, at = git(), log = console.log, node = process.ve
     const spoofs = impostors(workflows);
     if (spoofs.length) {
       log(`::error::${spoofs.join(", ")} ${spoofs.length === 1 ? "names" : "name"} a job or step ${Object.keys(POSTERS).join(" or ")} outside its poster: a job so named reports a check that would stand in for the real one, and a step so named is refused because the scan cannot tell it from a job (RULES.md 52).`);
+      return 1;
+    }
+    const loose = retriggered(workflows);
+    if (loose.length) {
+      log(`::error::${loose.join(", ")} may run on a trigger other than CI's workflow_run, where GitHub runs the head's copy and its ${VERDICT} check would be the head's own (RULES.md 53).`);
       return 1;
     }
   } catch (err) {

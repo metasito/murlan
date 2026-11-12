@@ -8,7 +8,8 @@ import ts from "typescript";
 import { parse } from "yaml";
 import { git } from "../../tools/loop/cli.mjs";
 import { NIGHTLY } from "../e2e/tiers.mjs";
-import { CODE, JUDGES, TARGETS, codeowners, freezeVerdict, impostors, isCode, isTarget, matcher, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { CODE, JUDGES, POSTERS, TARGETS, codeowners, freezeVerdict, impostors, isCode, isTarget, matcher, retriggered, run, unmatched } from "../../tools/ci/target-freeze.mjs";
+import { CHECK as VERDICT } from "../../tools/ci/verdict-check.mjs";
 import { ownedBy } from "../../tools/ci/codeowners.mjs";
 import { wiringOf } from "../../tools/ci/test-verdict.mjs";
 import { ALIASES, localPath, resolveSpecifier } from "../helpers/specifiers.ts";
@@ -274,6 +275,31 @@ describe("the workflow runs base's script on the head's objects, and of the head
     assert.deepEqual(impostors([{ path: ".github/workflows/ci.yml", text: "jobs:\n  x:\n    name: Test verdict\n" }]), [".github/workflows/ci.yml"]);
     assert.deepEqual(impostors([{ path: verdictPoster, text: fs.readFileSync(path.join(root, verdictPoster), "utf8") }]), []);
     assert.deepEqual(impostors([{ path: verdictPoster, text: "jobs:\n  x:\n    name: Target freeze\n" }]), [verdictPoster]);
+    assert.deepEqual(impostors([{ path: ".github/workflows/ci.yml", text: `jobs:\n  x:\n    name: ${VERDICT.replace(" ", ".")}\n` }]), [], "the name is matched literally");
+  });
+
+  test("the Test verdict's poster is a target, frozen with the code, and runs on CI's workflow_run alone", () => {
+    const verdictPoster = ".github/workflows/test-verdict.yml";
+    assert.equal(POSTERS[VERDICT], verdictPoster);
+    for (const f of [verdictPoster, "tools/ci/verdict-check.mjs", "tools/ci/verdict-name.mjs", "tests/tooling/verdictCheck.test.ts"]) {
+      assert.ok(isTarget(f), f);
+      assert.equal(freezeVerdict([f, "lib/game/gameEngine.ts"]).ok, false, f);
+    }
+    const real = fs.readFileSync(path.join(root, verdictPoster), "utf8");
+    assert.deepEqual(retriggered([{ path: verdictPoster, text: real }]), []);
+    const on = "on:\n  workflow_run:\n    workflows: [CI]\n    types: [completed]\n";
+    for (const loose of [
+      real.replace(on, `${on}  pull_request:\n`),
+      real.replace(on, "on:\n  pull_request:\n  workflow_run:\n    workflows: [CI]\n    types: [completed]\n"),
+      real.replace(on, "on: [pull_request, workflow_run]\n"),
+      real.replace(on, '"on":\n  pull_request:\n'),
+      `${real}\non:\n  push:\n`,
+      real.replace(on, `${on}true:\n  pull_request:\n`),
+    ]) {
+      assert.notEqual(loose, real);
+      assert.deepEqual(retriggered([{ path: verdictPoster, text: loose }]), [verdictPoster], loose.slice(0, 400));
+    }
+    assert.deepEqual(retriggered([{ path: ".github/workflows/ci.yml", text: "on: [pull_request]\n" }]), []);
   });
 });
 
@@ -331,7 +357,7 @@ describe("planted diffs", () => {
   const representative = [...TARGETS.map((t) => tracked.find(matcher(t.pattern))!), ...CODE.map((d) => tracked.find((f) => f.startsWith(d))!)];
   const spares = ["tests/e2e/fixtures/lantern-table/index.html", "tests/e2e/fixtures/spare/index.html", inScratch("spare.nightly.spec.ts")];
   const SELF = "tools/ci/target-freeze.mjs";
-  const tools = [SELF, "tools/ci/codeowners.mjs", "scripts/lib/entry.mjs", "tools/loop/cli.mjs", "tools/loop/session-env.mjs"];
+  const tools = [SELF, "tools/ci/codeowners.mjs", "scripts/lib/entry.mjs", "tools/loop/cli.mjs", "tools/loop/session-env.mjs", "tools/ci/verdict-name.mjs", ".github/workflows/test-verdict.yml"];
   const FIXTURE = "tests/e2e/fixtures/lantern-table/index.html";
   const targetAndCode = () => {
     write(FIXTURE, "moved\n");

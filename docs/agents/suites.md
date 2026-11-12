@@ -212,13 +212,19 @@ judge guards only a head that leaves the workflow alone: a change to `ci.yml` ca
 an upload, or the gate step itself, or run a judge of its own, and so can a test that forges or
 deletes its own results file. `JUDGES` routes such a change to the owner, but CODEOWNERS binds
 nothing until the ruleset requires code-owner review (`docs/agents/target-freeze.md`), so today
-review is the only thing in the way. `.github/workflows/test-verdict.yml` answers the dropped
-step: on `workflow_run` it runs main's copy of itself and of the judge once CI completes, rebuilds
-the gate's needs from the run's jobs by main's names (a need CI never ran is red), and posts the
-`Test verdict` check on the pull request's head. It binds once the ruleset requires that check.
-The base's judge reads records the head's wiring wrote. A wiring change beside owner-reviewed files
-only is green on the owner's review alone, and that review is all that stands between a forged
-"passed" and a merge. The derivation reads only the hook keys above and static relative imports:
+review is the only thing in the way. `.github/workflows/test-verdict.yml` guards against
+accidental drift, a dropped reporter, upload or gate step, and not against deliberate forgery: on
+`workflow_run` it runs main's copy of itself and of the judge once CI completes, over the merge
+commit CI tested (the pull request's base from the event, not `main`), rebuilds the gate's needs
+from the run's latest jobs by main's names (a need CI never ran is red), and posts the
+`Test verdict` check on the pull request's head; a cancelled run is skipped only when a newer run
+or head replaced it. It binds once the ruleset requires that check. A head's `ci.yml` that writes
+passing records, or posts a check of any name through the API, still gets through: that stays
+open (#1988 item 36) until the repository has the workflows rule, by the move to an organization,
+or is private. `ci.yml` counts as wiring, so a change to it beside a file CODEOWNERS gives no
+reviewer is red. The base's judge reads records the head's wiring wrote. A wiring change beside
+owner-reviewed files only is green on the owner's review alone, and that review is all that stands
+between a forged "passed" and a merge. The derivation reads only the hook keys above and static relative imports:
 the head's own test files and the helpers they import, a module loaded by a computed path or a
 package name, and the runner packages and their versions can all make a test report a pass, and
 none of them is wiring. The `workflow_run` check above does not close it

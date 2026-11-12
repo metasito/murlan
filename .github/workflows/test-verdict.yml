@@ -1,7 +1,11 @@
-# RULES.md 53. workflow_run runs main's copy of this file and of the judge, so a pull request's
-# ci.yml cannot drop or replace what judges its run. Nothing from the head is checked out or run:
-# its commit is fetched as git objects and read as text, and the token's one write is the check
-# (tests/tooling/verdictCheck.test.ts holds this shape).
+# RULES.md 53. workflow_run runs the default branch's copy of this file and of the judge, so a pull
+# request's ci.yml that drops a reporter, an upload or the gate step is still judged, with CI gate's
+# needs rebuilt from the run's jobs. It guards against that drift, not forgery: the records judged
+# are the ones the head's ci.yml wrote, and a head that writes passing ones, like one that posts a
+# check of any name, is open while the repository has no workflows rule (docs/agents/suites.md,
+# its Limits). Nothing of the head is checked out or run: its commit is fetched
+# as git objects and read as text, and the token's one write is the check. This file is a target
+# (tools/ci/target-freeze.mjs), and it may have no trigger but this one.
 name: Test verdict
 
 on:
@@ -14,6 +18,7 @@ permissions:
   checks: write
   contents: read
   issues: read
+  pull-requests: read
 
 concurrency:
   group: test-verdict-${{ github.event.workflow_run.head_sha }}
@@ -28,8 +33,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.node-version
+            /tools/ci/
+            /scripts/lib/
+            /tests/e2e/tiers.mjs
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           package-manager-cache: false

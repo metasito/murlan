@@ -2,7 +2,8 @@
  * RULES.md 53's verdict, over what the runners themselves reported: the files
  * tools/ci/results-writer.mjs collects in every test job. ci.yml's CI gate runs the base branch's
  * copy of this file, but ci.yml itself is the pull request's: a head that changes the workflow can
- * still skip or replace this step (docs/agents/suites.md § A flake is fixed, Limits).
+ * still skip or replace this step, which tools/ci/verdict-check.mjs answers from the default branch
+ * (docs/agents/suites.md § A flake is fixed, Limits).
  */
 import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
@@ -48,6 +49,8 @@ const NAME = /^test-results-(.+)-(\d+)-(\d+)$/;
  * named on every run, and lands only beside files the base's CODEOWNERS gives its owner to review.
  */
 export const CONFIGS = Object.freeze(["jest.config.js", "tests/e2e/playwright*.config.ts"]);
+/** The workflow that runs the suites and uploads their records: wiring, read for no references. */
+export const WORKFLOWS = Object.freeze([".github/workflows/ci.yml"]);
 const PACKAGE = "package.json";
 const CODEOWNERS = ".github/CODEOWNERS";
 const SELF = "tools/ci/test-verdict.mjs";
@@ -105,6 +108,7 @@ export function wiringOf(listing, textOf, scripts, suites = SUITES) {
       }
   }
   for (const file of found) for (const ref of imports(textOf(file) ?? "")) add(path.posix.dirname(file), ref);
+  for (const file of WORKFLOWS) if (tracked.has(file)) found.add(file);
   return [...found].sort();
 }
 
@@ -331,7 +335,7 @@ export function readArtifacts(dir) {
 
 /** @typedef {(args: string[]) => string} Exec */
 /** @type {Exec} */
-const gh = (args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 1024 * 1024, timeout: 5 * 60_000 });
+export const gh = (args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 1024 * 1024, timeout: 5 * 60_000 });
 /** @type {Exec} */
 const git = (args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
 
