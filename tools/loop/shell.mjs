@@ -130,6 +130,13 @@ function segments(text, depth, posix = false, base = 0) {
     } else if (ch === "{" && word === null && /^\{[A-Za-z_]\w*\}[<>]/.test(text.slice(i))) {
       word = text.slice(i, text.indexOf("}", i) + 1);
       i = text.indexOf("}", i);
+    } else if (ch === "{" && /^\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/.test(text.slice(i))) {
+      const brace = /^\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/.exec(text.slice(i))[0];
+      word = (word ?? "") + brace;
+      i += brace.length - 1;
+    } else if (ch === "{" && text[i + 1] === "}") {
+      word = (word ?? "") + "{}";
+      i += 1;
     } else if (/[;&|\n(){}`]/.test(ch)) {
       const pipe = ch === "|" && text[i - 1] !== "|" && text[i + 1] !== "|";
       if (pipe) words.piped = true;
@@ -188,14 +195,17 @@ function nameOf(word, vars) {
   const tail = word.slice(Math.max(word.lastIndexOf(")"), word.lastIndexOf("}")) + 1);
   if (/[\\/]/.test(tail) && !EXPANSION.test(commandName(tail))) return commandName(tail);
   const expanded = expand(word, vars);
-  return expanded === null || (expanded !== word && /[*?[]/.test(expanded)) ? null : commandName(expanded);
+  if (expanded === null) return null;
+  const bare = word.replace(/\$\{[^}]*\}|\$\w+|\$\([^)]*\)|`[^`]*`/g, "");
+  if (/[*?[\]{}]/.test(bare)) return null;
+  return expanded !== word && /[*?[]/.test(expanded) ? null : commandName(expanded);
 }
 
 const CONTEXT = new WeakMap();
 
 /**
  * What resolved `c`'s words: `vars`, the settled values its expansions were read with, and
- * `assigned`, every name the line (or the shell body it sits in) gives a value; `fed` means a `|` feeds it, `herestring` a `<<<`; `word` is its command word as written.
+ * `assigned`, every name the line (or the shell body it sits in) gives a value; `fed` means a `|` feeds it, `herestring` a `<<<`; `word` is its command word as written, `text` its segment source.
  */
 export const contextOf = (c) => CONTEXT.get(c) ?? { vars: {}, assigned: new Set(), fed: false };
 const withContext = (c, context) => (CONTEXT.set(c, context), c);
@@ -244,7 +254,8 @@ function normalize(words, depth, vars, assigned) {
       const reassigned = boundNames(body);
       const inherited = Object.fromEntries(Object.entries({ ...vars, ...literal(env) }).filter(([k]) => !reassigned.has(k)));
       const inner = commands(body, depth + 1, { ...inherited, ...settledAssignments(body) }, new Set([...assigned, ...reassigned]));
-      return inner.map((c) =>
+      if (inner.length)
+        return inner.map((c) =>
         withContext(
           { ...c, scope: { ...scope, ...c.scope }, wrapped: [...wrapped, { name: cmd, flags: rest, env }, ...c.wrapped], piped: c.piped || words.piped === true },
           contextOf(c),
@@ -270,14 +281,22 @@ function normalize(words, depth, vars, assigned) {
     j += redirect[1] ? 0 : 1;
   }
   let dir = null;
+  let configured = false;
+  const config = [];
   const globals = cmd === "git" ? GIT_TAKES_A_VALUE : cmd === "gh" ? GH_TAKES_A_VALUE : null;
   if (globals) {
     const end = globalsEnd(args, globals);
-    for (let k = 0; k < end; k += globals.test(args[k]) ? 2 : 1) if (cmd === "git" && args[k] === "-C") dir = args[k + 1] ?? dir;
+    for (let k = 0; k < end; k += globals.test(args[k]) ? 2 : 1) {
+      if (cmd === "git" && args[k] === "-C") dir = args[k + 1] ?? dir;
+      if (cmd === "git" && /^(-c|--config-env)$/.test(args[k])) {
+        configured = true;
+        if (args[k + 1]) config.push(args[k + 1]);
+      }
+    }
     args.splice(0, end);
   }
-  const parsed = { cmd, env, dir, args, out, redirected, input, wrapped, piped: words.piped === true };
-  return [withContext(named === null ? { ...parsed, unresolved: true } : parsed, { vars, assigned, fed: words.fed === true, word: words[i], herestring: words.slice(i).includes("<<<") })];
+  const parsed = { cmd, env, dir, args, out, redirected, input, wrapped, configured, config, piped: words.piped === true };
+  return [withContext(named === null ? { ...parsed, unresolved: true } : parsed, { vars, assigned, fed: words.fed === true, word: words[i], herestring: words.slice(i).includes("<<<"), span: words.span })];
 }
 
 function globalsEnd(args, takesValue) {
@@ -307,7 +326,13 @@ function readings(text, depth = 0, vars = settledAssignments(text), assigned = b
   const spelled = depth === 0 ? text.replace(/\{(owner|repo|branch)\}/g, "$1") : text;
   const read = (posix) =>
     segments(spelled, depth, posix)
-      .flatMap((words) => normalize(words, depth, vars, assigned).map((c) => [words.span[1], c]))
+      .flatMap((words) =>
+        normalize(words, depth, vars, assigned).map((c) => {
+          const cx = contextOf(c);
+          if (cx.text === undefined && cx.span) cx.text = spelled.slice(cx.span[0], cx.span[1]);
+          return [words.span[1], c];
+        }),
+      )
       .sort(([a], [b]) => a - b);
   return /[\\`$]/.test(spelled) ? [read(false), read(true)] : [read(false)];
 }

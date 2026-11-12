@@ -211,7 +211,6 @@ describe("a merge spelled through an escape, eval or a variable is still a merge
     "bash -lc 'gh pr merge 1'",
     "echo 'gh pr merge 1' | $SHELL",
     "a=bash; echo 'gh pr merge 1' | $a",
-    "echo 'gh pr merge 1' | bash",
     "$SHELL <<< 'gh pr merge 1'",
     "$PS -Command 'gh pr merge 1'",
     "$COMSPEC /c \"gh pr merge 1\"",
@@ -230,17 +229,34 @@ describe("a merge spelled through an escape, eval or a variable is still a merge
     "$(printf '\\x67h pr \\x6derge 1')",
     "gh $(printf 'pr \\x6derge') 1",
     "x=`echo gh`; $x pr merge 1",
-    "echo 1 | xargs gh pr merge",
     "find . -maxdepth 0 -exec gh pr merge 1 \\;",
     "c=gh,pr,merge,1; IFS=,; $c",
     "c=g?; $c pr merge 1",
-    "echo a\\b; bash <<EOF\ngh pr merge 1\nEOF",
     "gh p\\r merge 1",
-    "echo `date`; bash <<EOF\ngh pr merge 1\nEOF",
     "eval \"echo 'gh pr merge 1'\"",
     "`echo gh` pr view 1",
+    "git rebase -x 'gh pr merge 1' origin/main",
+    "echo 'gh pr merge 1' | xargs -I{} sh -c '{}'",
+    "gh api -X PUT repos/o/r/pulls/$N/merge",
+    "gh api -X PUT repos/o/r/pulls/$N/$X",
+    "{gh,} pr merge 1",
+    "g[h] pr merge 1",
+    "gh pr mer?e 1",
+    "git -c alias.m='!gh pr merge' m",
   ]) {
     test(`blocks: ${JSON.stringify(cmd)}`, () => {
+      assert.match(String(guard(cmd)), MERGE);
+    });
+  }
+
+  for (const cmd of [
+    // origin/main already refuses these; kept as regressions, not as proof of the fail-closed logic.
+    "echo 'gh pr merge 1' | bash",
+    "echo 1 | xargs gh pr merge",
+    "echo a\\b; bash <<EOF\ngh pr merge 1\nEOF",
+    "echo `date`; bash <<EOF\ngh pr merge 1\nEOF",
+  ]) {
+    test(`blocks (regression, already refused on main): ${JSON.stringify(cmd)}`, () => {
       assert.match(String(guard(cmd)), MERGE);
     });
   }
@@ -275,6 +291,15 @@ describe("a merge spelled through an escape, eval or a variable is still a merge
     "for f in a.ts b.ts; do npx eslint $f; done",
     "bash <<EOF\nls\nEOF",
     "gh pr view 1 && git merge origin/main",
+    "node --test $F && gh pr view $N --json mergeable",
+    'npx jest $(git diff --name-only origin/main) && gh pr comment $N --body "tests pass, ready to merge"',
+    'for f in $(git diff --name-only HEAD~1); do node --test "$f"; done; gh pr view 1 --json mergeStateStatus',
+    "npm test -- $FILES && git merge origin/main && gh pr view 1",
+    "npx jest $(git diff --name-only) # check the merge path through",
+    "git -c core.pager=cat log",
+    "gh api repos/o/r/pulls/5/reviews",
+    "gh api -X POST repos/o/r/actions/runs/$RUN/rerun",
+    "gh pr view $N --json mergeStateStatus",
   ]) {
     test(`allows: ${JSON.stringify(cmd)}`, () => {
       assert.equal(guard(cmd), null);

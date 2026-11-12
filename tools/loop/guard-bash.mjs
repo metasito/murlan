@@ -2,6 +2,11 @@
  * PreToolUse guard for Bash. Reads the tool call on stdin, blocks a command only when a correct
  * alternative always exists, and says what to run instead.
  *
+ * The merge rule is a best-effort tripwire against a session's accidental `gh pr merge`, not a
+ * sandbox: a shell-text guard cannot be complete, and a determined wrapper (`script -c`, `flock`,
+ * `su`, `watch`, `ssh`, `python -c`, a gh alias) still gets through. What actually holds the line is
+ * the pull request's branch protection and the loop's own auto-merge; this only catches the slip.
+ *
  * Not here: a push to main. The repository's `main` ruleset refuses it server-side, and no account
  * a session pushes as can bypass it (`current_user_can_bypass: never`).
  *
@@ -385,8 +390,13 @@ const spellsMerge = (text) => MERGE_CALL.some((re) => re.test(text));
  * gh's words could read `[flags] pr [flags] merge`. A word `vars` cannot place, or the words `more`
  * says follow (xargs's stdin), may split into any words, so reaching one before a literal rules the merge out is a merge.
  */
+const GLOB = /[*?[\]{}]/;
+const bareWord = (w) => w.replace(/\$\{[^}]*\}|\$\w+|\$\([^)]*\)|`[^`]*`/g, "");
+/** A word's one expansion, or null when the line cannot place it or a glob or brace could spread it. */
+const settle = (word, vars) => (GLOB.test(bareWord(word)) ? null : expand(word, vars));
+
 function isPrMerge(words, vars, more = false) {
-  const expanded = words.map((w) => expand(w, vars));
+  const expanded = words.map((w) => settle(w, vars));
   const cut = expanded.indexOf(null);
   const unread = cut >= 0 || more;
   const nouns = withoutGhGlobals(cut >= 0 ? expanded.slice(0, cut) : expanded);
@@ -404,7 +414,8 @@ const DATA_ONLY = new Set([
   "get-content", "set-content", "out-file", "test-path", "set-location",
 ]);
 const GIT_DATA = /^(add|am|apply|blame|branch|cat-file|checkout|cherry-pick|clean|clone|commit|describe|diff|fetch|for-each-ref|format-patch|grep|init|log|ls-tree|merge|merge-base|mv|notes|pull|push|remote|reset|restore|rev-list|rev-parse|revert|rm|shortlog|show|show-ref|stash|status|switch|symbolic-ref|tag|worktree)$/;
-const isData = (c) => DATA_ONLY.has(c.cmd) || (c.cmd === "git" && GIT_DATA.test(expand(c.args[0] ?? "", contextOf(c).vars) ?? ""));
+const isData = (c) =>
+  DATA_ONLY.has(c.cmd) || (c.cmd === "git" && !c.configured && GIT_DATA.test(expand(c.args[0] ?? "", contextOf(c).vars) ?? ""));
 const ANY_SHELL = /^(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)$/;
 const EVALS = /^(eval|iex|invoke-expression)$/;
 const BODY_FLAG = /^(-\w*c\w*|-command|\/c|\/k)$/i;
@@ -414,10 +425,23 @@ const BODY_FLAG = /^(-\w*c\w*|-command|\/c|\/k)$/i;
  * is handed gh's. A command whose name no rule can read is taken for a runner that may be gh, and
  * a body after a flag that could be its `-c` is read too.
  */
+const runsBody = (bodies, vars, assigned) => bodies.some((b) => commands(b, 1, vars, assigned).some(mergesNow));
+/** A `gh api` call on a pull request whose path spells `/merge`, or holds an expansion that could. */
+const apiMerges = (words, vars) => {
+  const [verb, ...rest] = withoutGhGlobals(words);
+  return verb === "api" && rest.some((a) => !a.startsWith("-") && /\bpulls\b/.test(a) && (/\/merge\b/.test(a) || expand(a, vars) === null));
+};
+/** A `git` subcommand or config that runs a command of its own: `rebase --exec`/`-x`, and a `-c alias.x=!…`. */
+const gitExecBodies = (c) => [
+  ...c.args.flatMap((a, k) => (/^(-x|--exec)$/.test(a) ? [c.args[k + 1] ?? ""] : /^--exec=/.test(a) ? [a.slice(7)] : [])),
+  ...(c.config ?? []).filter((v) => v.includes("=!")).map((v) => v.slice(v.indexOf("=!") + 2)),
+];
+
 function mergesNow(c) {
   const { vars, assigned } = contextOf(c);
-  if (c.cmd === "gh") return isPrMerge(c.args, vars, c.wrapped.some((w) => w.name === "xargs"));
+  if (c.cmd === "gh") return apiMerges(c.args, vars) || isPrMerge(c.args, vars, c.wrapped.some((w) => w.name === "xargs"));
   if (isData(c)) return false;
+  if (c.cmd === "git" && runsBody(gitExecBodies(c), vars, assigned)) return true;
   const mayBeGh = (word) => {
     const expanded = expand(word, vars);
     return expanded === null ? c.unresolved === true : commandName(expanded) === "gh";
@@ -425,7 +449,7 @@ function mergesNow(c) {
   if (c.args.some((a, k) => mayBeGh(a) && isPrMerge(c.args.slice(k + 1), vars))) return true;
   if (!c.unresolved) return false;
   const bodies = c.args.flatMap((a, k) => (BODY_FLAG.test(a) ? [c.args[c.args[k + 1] === "--" ? k + 2 : k + 1] ?? "", c.args.slice(k + 1).join(" ")] : []));
-  return isPrMerge(c.args, vars) || bodies.some((body) => commands(body, 1, vars, assigned).some(mergesNow));
+  return isPrMerge(c.args, vars) || runsBody(bodies, vars, assigned);
 }
 
 /** A word the line computes: a substitution, or a name the line (or its shell body) binds without settling it. */
@@ -453,18 +477,31 @@ const leavesUnread = (c) =>
   EVALS.test(c.cmd) ||
   (c.cmd !== "gh" && !isData(c) && c.args.some((a) => expand(a, contextOf(c).vars) === null));
 
-/** The line's text names a merge once escapes, quotes and `$'…'` are read through, with or without what its expansions add. */
-function mentionsMerge(raw) {
-  const plain = raw
+/** A line's text with comments dropped and escapes, quotes and `$'…'` read through. */
+const decode = (text) =>
+  text
+    .replace(/(^|\s)#[^\n]*/g, "$1")
     .replace(/\$'((?:\\.|[^'\\])*)'/g, (_, body) => ansiC(body))
-    .replace(/[\\'"]/g, "")
-    .toLowerCase();
+    .replace(/\\(.)/g, "$1");
+
+/** The segment's text names gh (as a command word) or a `/pulls/` endpoint together with merge (as a word). */
+function mentionsMerge(text) {
+  const plain = decode(text).replace(/['"]/g, "").toLowerCase();
   const bare = plain.replace(/\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\$\w+/g, "");
-  return [plain, bare].some((t) => /gh|\/pulls\//.test(t) && /merge/.test(t));
+  return [plain, bare].some((t) => /\bgh\b|\/pulls\//.test(t) && /\bmerge\b/.test(t));
 }
 
-const failsClosed = (parsed, runnable, raw) =>
-  parsed.some(runsUnreadable) || ((parsed.some(leavesUnread) || /\$'/.test(runnable)) && mentionsMerge(raw));
+/** The REST or Octokit shape of a merge, read through quotes and escapes; a `gh … pr merge` CLI is caught per segment. */
+const API_MERGE = [/\bpulls\b[^\s`]{0,120}\/merge\b/i, /\bmergePullRequest\s*\(/, /\benablePullRequestAutoMerge\s*\(/];
+
+function failsClosed(parsed, runnable) {
+  if (parsed.some(runsUnreadable)) return true;
+  if (API_MERGE.some((re) => re.test(decode(runnable).replace(/['"]/g, "")))) return true;
+  return parsed.some((c) => {
+    const text = contextOf(c).text ?? "";
+    return (leavesUnread(c) || /\$'/.test(text)) && mentionsMerge(text);
+  });
+}
 
 /** `-EncodedCommand` as PowerShell takes it: after `-`, `--` or `/`, `ec` or a prefix of the name. Its body is base64 no rule reads. */
 const isEncodedFlag = (a) => {
@@ -829,7 +866,7 @@ const RULES = [
     // supervisor, which merges from a child process no hook intercepts. The REST endpoint and
     // both GraphQL mutations are matched on the whole text for the same reason.
     test: (c) => mergesNow(c) || runsEncodedCommand(c),
-    line: (parsed, runnable, { raw, repo }) => failsClosed(parsed, runnable, raw) || runsMergingScript(parsed, raw, repo),
+    line: (parsed, runnable, { raw, repo }) => failsClosed(parsed, runnable) || runsMergingScript(parsed, raw, repo),
     text: (t) =>
       /\bpulls\/[^\s"'/]+\/merge\b/.test(t) || /\bmergePullRequest\s*\(/.test(t) || /\benablePullRequestAutoMerge\s*\(/.test(t),
     message:
@@ -841,8 +878,9 @@ const RULES = [
       "Push, open the pull request, and exit — that is the whole of phase E.\n" +
       "Blocked on a predecessor's change? Say so on the issue and park; do not merge it yourself.\n" +
       "Merging by hand is the owner's: ask them to run it, or run the loop.\n" +
-      "A line the guard cannot read statically fails closed. Refused outright: a command word the line computes (a substitution, or a variable it binds other than once, literally), a shell or an unread command taking its code from a pipe, redirect or here-string, and gh — or a command handed gh — whose words could still come to `pr merge` once an expansion splits. Refused when its text, escapes and `$'…'` read through, names gh or /pulls/ and merge: any other command word or runner argument left to an expansion, `eval`, `$'…'`. Spell the command out.\n" +
-      "The same goes for `pwsh -EncodedCommand` (also -e, -ec), whose body no rule can read, and for a script run by `-File`, bash, sh or node whose text makes one of these calls, comments included, or imports the supervisor's merge module; the files a script is handed as arguments do not count.",
+      "This is a best-effort tripwire against an accidental merge, not a sandbox: the real gate is the pull request's branch protection and the loop's auto-merge. The guard reads the line statically and fails closed. Refused outright: a command word the line computes (a substitution, or a variable it binds other than once, literally), a shell or an unread command taking its code from a pipe, redirect or here-string, and gh — or a command handed gh — whose words could still come to `pr merge` once an expansion splits. Refused when its text, escapes and `$'…'` read through, names gh (as a command word) or a /pulls/ endpoint together with merge (as a word): any other command word or runner argument left to an expansion, `eval`, `$'…'`. Spell the command out.\n" +
+      "The same goes for `pwsh -EncodedCommand` (also -e, -ec), whose body no rule can read, and for a script run by `-File`, bash, sh or node whose text makes one of these calls, comments included, or imports the supervisor's merge module; the files a script is handed as arguments do not count.\n" +
+      "A determined wrapper still gets through — `script -c`, `flock`, `su -c`, `watch`, `ssh`, `python -c`, a gh alias — which is why the server-side gate, not this guard, is what actually holds.",
   },
   {
     test: (c) => c.piped && runsPlaywright(c),
