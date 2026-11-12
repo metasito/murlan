@@ -20,12 +20,11 @@ const PLAY_MS = 10000;
 const PLAY_STEP_MS = 900;
 const SEED = 2093;
 
-function drawsSince(): () => { felt: number; end: number; frames: number; rested: number } {
+function drawsSince(): () => { felt: number; frames: number; rested: number } {
   const counts = FeltDraws!;
-  const from = { felt: counts.felt.get(), end: counts.end.get(), frames: counts.frames.get(), rested: counts.rested.get() };
+  const from = { felt: counts.felt.get(), frames: counts.frames.get(), rested: counts.rested.get() };
   return () => ({
     felt: counts.felt.get() - from.felt,
-    end: counts.end.get() - from.end,
     frames: counts.frames.get() - from.frames,
     rested: counts.rested.get() - from.rested,
   });

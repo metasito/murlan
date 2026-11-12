@@ -9,15 +9,13 @@ export type { DiagRow, DiagRows } from "./types";
 
 export const DIAGNOSTICS = process.env.EXPO_PUBLIC_DIAGNOSTICS === "1";
 
-/** How many times each felt canvas drew, and how many frames the rig stepped, of them at rest, read by the bench (rule 51); null outside diagnostics. */
+/** How many times the felt canvas drew, and how many frames the rig stepped, of them at rest, read by the bench (rule 51); null outside diagnostics. */
 export const FeltDraws = DIAGNOSTICS
-  ? { felt: makeMutable(0), end: makeMutable(0), frames: makeMutable(0), rested: makeMutable(0) }
+  ? { felt: makeMutable(0), frames: makeMutable(0), rested: makeMutable(0) }
   : null;
 
-export type FeltCanvasName = "felt" | "end";
-
-function useCountedDraws(canvas: FeltCanvasName, inputs: readonly Pick<SharedValue<unknown>, "value">[]): void {
-  const count = FeltDraws![canvas];
+function useCountedDraws(inputs: readonly Pick<SharedValue<unknown>, "value">[]): void {
+  const count = FeltDraws!.felt;
   // Skia redraws a canvas once in each frame any shared value it was given changes, from a mapper over them as this one is, and again on each commit that re-records it.
   useAnimatedReaction(
     () => inputs.map((input) => {
@@ -33,8 +31,8 @@ function useCountedDraws(canvas: FeltCanvasName, inputs: readonly Pick<SharedVal
   });
 }
 
-/** Counts every draw of the felt canvas `canvas`, whose animated props are `inputs`, into `FeltDraws`; nothing outside diagnostics. */
-export const useCanvasDraws: (canvas: FeltCanvasName, inputs: readonly Pick<SharedValue<unknown>, "value">[]) => void = DIAGNOSTICS ? useCountedDraws : () => {};
+/** Counts every draw of the felt canvas, whose animated props are `inputs`, into `FeltDraws`; nothing outside diagnostics. */
+export const useCanvasDraws: (inputs: readonly Pick<SharedValue<unknown>, "value">[]) => void = DIAGNOSTICS ? useCountedDraws : () => {};
 
 const recorder: { push(row: DiagRow): void; hold?(on: boolean): void } | null =
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- a static import would ship the recorder

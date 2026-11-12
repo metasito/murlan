@@ -644,7 +644,7 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
     return () => cancelAnimationFrame(id);
   }, [onReady]);
 
-  useCanvasDraws("felt", [uniforms, lean, cross, hand, handing, light, soft, coat, shade, fall, glow, cast, contacts]);
+  useCanvasDraws([uniforms, lean, cross, hand, handing, light, soft, coat, shade, fall, glow, cast, contacts]);
   const { width, height } = DESIGN;
   const drawn = (
     <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
