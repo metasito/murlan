@@ -181,7 +181,7 @@ export const sharedTableStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
   },
-  midSection: { flex: 1, flexDirection: "row", alignItems: "center" },
+  midSection: { position: "absolute", flexDirection: "row", alignItems: "center" },
   // A side seat's fan is wider than SIDE_SECTION_W and is meant to be: it
   // leans in over the felt, the way a real player's hand does. Anchoring each
   // section to the table's outer edge is what keeps that overflow pointing
@@ -203,9 +203,10 @@ export const sharedTableStyles = StyleSheet.create({
   // lands on the pile's centre rather than the screen's.
   centerSection: { flex: 1, alignItems: "center", justifyContent: "center", zIndex: Layer.table },
   handSection: {
+    position: "absolute",
     flexDirection: "row",
     alignItems: HAND_ZONE_ALIGN,
-    justifyContent: "center",
+    justifyContent: "space-between",
   },
 });
 

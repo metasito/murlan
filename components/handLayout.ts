@@ -129,6 +129,8 @@ export interface HandRow {
   scrollable: boolean;
   /** The row's own box: the whole row when it scrolls, or as much as `availW` allows. */
   width: number;
+  /** The row's left edge at rest, off the hand zone's centre: centred on it, or overhanging both ends of its window when it scrolls. */
+  left: number;
   /** How far the pan reaches either way. */
   panLimit: number;
   crop: number;
@@ -221,6 +223,7 @@ export function layoutHandRow(input: {
     totalW,
     scrollable,
     width,
+    left: -mid,
     panLimit: Math.max(0, totalW - availW) / 2,
     crop,
     visibleH,

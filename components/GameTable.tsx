@@ -29,7 +29,7 @@ import { isOneWay, type ExchangeAnnounceData, type ExchangeHold } from "@/lib/ga
 import {
   handRaised,
   handVisibleH,
-  HAND_ZONE_GAP,
+  HAND_ZONE_ALIGN,
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
@@ -746,6 +746,7 @@ export function GameTable({
     {
       pile: anchors.pile,
       hand: anchors.bottom,
+      handWindow: { x: layout.handWindow.x, w: layout.handWindow.w },
       seats: { top: anchors.top, left: anchors.left, right: anchors.right },
       felt: {
         sx: rig.sx,
@@ -1145,11 +1146,8 @@ export function GameTable({
               {opponentSeat("top") ?? <View />}
             </View>
 
-            {/* The band left over between the top band and the hand. The seats
-                and the field centre in what is actually there rather than at a
-                guessed percentage. */}
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
-            <View style={[sharedTableStyles.midSection, { marginBottom: handZone.h }, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
+            <View style={[sharedTableStyles.midSection, layout.placed.midBand, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
                 {opponentSeat("left")}
               </View>
@@ -1224,16 +1222,8 @@ export function GameTable({
               testID="hand-zone"
               style={[
                 sharedTableStyles.handSection,
-                // By its edges, not `top` and `width`: those round to a layout unit apart from the table's own edges and move every glyph in the row by it.
-                {
-                  position: "absolute",
-                  left: handZone.x - layout.tableBox.left,
-                  right: W - layout.tableBox.right - handZone.x - handZone.w,
-                  bottom: H - layout.tableBox.bottom - handZone.y - handZone.h,
-                  height: handZone.h,
-                  paddingBottom: handZone.padBottom,
-                  gap: HAND_ZONE_GAP * scale,
-                },
+                layout.placed.handZone,
+                { paddingBottom: handZone.padBottom },
                 // Play on the left mirrors the row rather than moving the rail,
                 // which stays put at the physical cutout: only GIOCA changes
                 // which thumb it falls under.
@@ -1252,8 +1242,9 @@ export function GameTable({
                 />
               )}
 
+              <View style={[styles.handSlot, layout.placed.handWindow]}>
               {wentOut ? (
-                <View style={[styles.finishedRow, { width: frame.handAvailW, height: handVisibleH(handCardH) }]}>
+                <View style={[styles.finishedRow, { height: handVisibleH(handCardH) }]}>
                   <WaitingLine scale={scale} />
                 </View>
               ) : (
@@ -1265,7 +1256,7 @@ export function GameTable({
                   exchange={{ shown: shownExchange, stages, giveableIds, lifted }}
                   deal={{ key: deal.key, hand: deal.hand && { ...deal.hand, onDealt } }}
                   geometry={{
-                    availW: frame.handAvailW,
+                    availW: layout.handWindow.w,
                     roomW: frame.handRoomW,
                     bottomPad: frame.bottomPad,
                     scale,
@@ -1274,6 +1265,7 @@ export function GameTable({
                   selection={{ store: shownSelection, ui: uiSelection, onActivate: handleCardPress }}
                 />
               )}
+              </View>
 
               {!spectating && (
                 <GiocaControl
@@ -1326,6 +1318,7 @@ const styles = StyleSheet.create({
   greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   matchDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSectionReversed: { flexDirection: "row-reverse" },
+  handSlot: { position: "absolute", justifyContent: HAND_ZONE_ALIGN },
 
 
   finishedRow: { alignItems: "center", justifyContent: "center" },
