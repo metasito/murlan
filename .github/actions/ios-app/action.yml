@@ -265,8 +265,10 @@ runs:
         echo "app=$app" >> "$GITHUB_OUTPUT"
 
     # Saved even when the compile failed: the objects it did make are the next run's head start.
+    # Only main saves: every branch reads main's, and a 3G save per pull-request run fills the
+    # repository's 10 GB cache and evicts the app and Pods caches above.
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: always() && (steps.compile.outcome == 'success' || steps.compile.outcome == 'failure')
+      if: always() && github.ref == 'refs/heads/main' && (steps.compile.outcome == 'success' || steps.compile.outcome == 'failure')
       with:
         path: ${{ runner.temp }}/ccache
         key: ios-ccache-${{ runner.arch }}-${{ inputs.sdk }}-${{ inputs.configuration }}-${{ hashFiles('package-lock.json', 'patches/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
