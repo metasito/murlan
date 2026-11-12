@@ -192,12 +192,12 @@ export function expand(word, vars) {
  * it whatever comes before: `$(npm root)/.bin/jest` runs jest.
  */
 function nameOf(word, vars) {
+  const bare = word.replace(/\$\{[^}]*\}|\$\w+|\$\([^)]*\)|`[^`]*`/g, "");
+  if (/[*?[\]{}]/.test(bare)) return null;
   const tail = word.slice(Math.max(word.lastIndexOf(")"), word.lastIndexOf("}")) + 1);
   if (/[\\/]/.test(tail) && !EXPANSION.test(commandName(tail))) return commandName(tail);
   const expanded = expand(word, vars);
   if (expanded === null) return null;
-  const bare = word.replace(/\$\{[^}]*\}|\$\w+|\$\([^)]*\)|`[^`]*`/g, "");
-  if (/[*?[\]{}]/.test(bare)) return null;
   return expanded !== word && /[*?[]/.test(expanded) ? null : commandName(expanded);
 }
 
@@ -253,7 +253,10 @@ function normalize(words, depth, vars, assigned) {
       const scope = { ...env, ...assignmentsIn(body) };
       const reassigned = boundNames(body);
       const inherited = Object.fromEntries(Object.entries({ ...vars, ...literal(env) }).filter(([k]) => !reassigned.has(k)));
-      const inner = commands(body, depth + 1, { ...inherited, ...settledAssignments(body) }, new Set([...assigned, ...reassigned]));
+      // A name the outer line binds and the body rebinds holds the outer value until the rebinding runs.
+      const outer = new Set([...assigned, ...Object.keys(vars), ...Object.keys(env)]);
+      const settled = Object.fromEntries(Object.entries(settledAssignments(body)).filter(([k]) => !outer.has(k)));
+      const inner = commands(body, depth + 1, { ...inherited, ...settled }, new Set([...assigned, ...reassigned]));
       if (inner.length)
         return inner.map((c) =>
         withContext(

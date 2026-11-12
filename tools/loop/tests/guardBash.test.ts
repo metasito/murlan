@@ -243,6 +243,17 @@ describe("a merge spelled through an escape, eval or a variable is still a merge
     "g[h] pr merge 1",
     "gh pr mer?e 1",
     "git -c alias.m='!gh pr merge' m",
+    "/usr/bin/g? pr merge 1",
+    "./g? pr merge 1",
+    "/usr/bin/g[h] pr merge 1",
+    "v=merge; eval 'gh pr $v 1; v=view'",
+    "gh api -X PUT repos/o/r/pulls/$N/$V",
+    "gh api repos/o/r/pulls/$N/$V -f merge_method=squash",
+    "git -c core.pager='gh pr merge 1' log -1",
+    "git -c core.sshCommand='gh pr merge 1' fetch",
+    "git -c diff.external='gh pr merge 1' diff",
+    "git -c core.editor='gh pr merge 1' commit",
+    "git -c sequence.editor='gh pr merge 1' rebase -i HEAD~1",
   ]) {
     test(`blocks: ${JSON.stringify(cmd)}`, () => {
       assert.match(String(guard(cmd)), MERGE);
@@ -300,6 +311,13 @@ describe("a merge spelled through an escape, eval or a variable is still a merge
     "gh api repos/o/r/pulls/5/reviews",
     "gh api -X POST repos/o/r/actions/runs/$RUN/rerun",
     "gh pr view $N --json mergeStateStatus",
+    "gh api repos/{owner}/{repo}/pulls/$PR/comments",
+    "gh api repos/{owner}/{repo}/pulls/$PR/reviews --jq '.[].state'",
+    'gh api "repos/{owner}/{repo}/pulls/$N"',
+    "gh api repos/metasito/murlan/pulls/$N/files --paginate",
+    'gh api "repos/{owner}/{repo}/pulls?head=metasito:$BR"',
+    "gh api repos/{owner}/{repo}/pulls/$PR/ccr/review_threads",
+    "git -c user.name=x commit",
   ]) {
     test(`allows: ${JSON.stringify(cmd)}`, () => {
       assert.equal(guard(cmd), null);

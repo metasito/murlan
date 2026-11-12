@@ -426,15 +426,16 @@ const BODY_FLAG = /^(-\w*c\w*|-command|\/c|\/k)$/i;
  * a body after a flag that could be its `-c` is read too.
  */
 const runsBody = (bodies, vars, assigned) => bodies.some((b) => commands(b, 1, vars, assigned).some(mergesNow));
-/** A `gh api` call on a pull request whose path spells `/merge`, or holds an expansion that could. */
+/** A `gh api` call on a pull request whose path spells `/merge`, or, when the call can write, holds an expansion that could. */
 const apiMerges = (words, vars) => {
   const [verb, ...rest] = withoutGhGlobals(words);
-  return verb === "api" && rest.some((a) => !a.startsWith("-") && /\bpulls\b/.test(a) && (/\/merge\b/.test(a) || expand(a, vars) === null));
+  const writes = apiMethod(rest) !== "GET";
+  return verb === "api" && rest.some((a) => !a.startsWith("-") && /\bpulls\b/.test(a) && (/\/merge\b/.test(a) || (writes && expand(a, vars) === null)));
 };
-/** A `git` subcommand or config that runs a command of its own: `rebase --exec`/`-x`, and a `-c alias.x=!…`. */
+/** What `git` may run as a command: a `rebase --exec`/`-x` body, and any `-c` value (a pager, an editor, an alias, an ssh command). */
 const gitExecBodies = (c) => [
   ...c.args.flatMap((a, k) => (/^(-x|--exec)$/.test(a) ? [c.args[k + 1] ?? ""] : /^--exec=/.test(a) ? [a.slice(7)] : [])),
-  ...(c.config ?? []).filter((v) => v.includes("=!")).map((v) => v.slice(v.indexOf("=!") + 2)),
+  ...(c.config ?? []).filter((v) => v.includes("=")).map((v) => v.slice(v.indexOf("=") + 1).replace(/^!/, "")),
 ];
 
 function mergesNow(c) {
