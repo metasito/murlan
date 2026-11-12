@@ -30,7 +30,7 @@ import { heldRoundFor } from "../game/gameTurn.ts";
 import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
-import { isUserOnline, onlineAmong } from "./socketRegistry.ts";
+import { isUserOnline, shownOnlineAmong } from "./socketRegistry.ts";
 import { forgetPresence, onPresenceLost, onPresenceRestored, socialVersion } from "../store/presence.ts";
 import type { OnlineList } from "../../shared/protocol.ts";
 import { payload } from "../shared/payload.ts";
@@ -116,7 +116,7 @@ type FriendRows = Awaited<ReturnType<typeof friendStore.getFriends>>;
 async function onlineList(userId: string, friends: FriendRows): Promise<OnlineList> {
   const ids = friends.map((f) => f.friend.id);
   const [online, social] = await Promise.all([
-    onlineAmong(ids),
+    shownOnlineAmong(ids),
     socialVersion(userId).catch((err: unknown) => {
       logger.warn({ err, userId }, "Could not read the social version; the client refetches its lists");
       return null;
@@ -127,20 +127,17 @@ async function onlineList(userId: string, friends: FriendRows): Promise<OnlineLi
   return { onlineIds: ids.filter((id) => online.has(id)), lastSeen, ...(social !== null && { social }) };
 }
 
-/** The friends of accounts found on a dead instance are told once, by the instance whose sweep cleared them. */
+/** The friends of accounts a sweep cleared, from a crashed instance or a left one, are told once, by the instance whose sweep it was. */
 export function registerLostPresence(): void {
-  onPresenceLost((userIds, connectedAt) => {
+  onPresenceLost((userIds, leftAt) => {
     for (const userId of userIds) {
-      const since = connectedAt.get(userId) ?? new Date(now());
+      const at = leftAt ?? new Date(now());
       void track(
         userStore
-          .lastSeenSince(userId, since)
-          .catch((err: unknown) => {
-            logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account");
-            return null;
-          })
-          .then(async (stored) => {
-            const lastSeen = (stored ?? new Date(now())).toISOString();
+          .updateLastSeen(userId, at)
+          .catch((err: unknown) => logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account"))
+          .then(async () => {
+            const lastSeen = at.toISOString();
             const friends = await friendStore.getFriends(userId);
             friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen });
           })

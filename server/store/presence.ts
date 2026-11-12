@@ -5,6 +5,7 @@ import { logger } from "../shared/logger.ts";
 import { track } from "../shared/inFlight.ts";
 import { currentKeyspace, instanceId, openRedis, WatchError, type RedisClient } from "./redis.ts";
 import { DRAINING_SPREAD_MS } from "../../lib/reconnectDelay.ts";
+import { now } from "../http/clock.ts";
 
 export const HEARTBEAT_MS = 3_000;
 /** How often this instance fills its entries Redis lost: every beat. */
@@ -21,6 +22,8 @@ export function healChunks<T>(entries: readonly T[]): T[][] {
 export const INSTANCE_TTL_MS = 10_000;
 /** How long after `leave()` its accounts' entries are left unswept: the drain's reconnect spread, and a beat for the reconnect itself. */
 export const LEAVING_MS = DRAINING_SPREAD_MS + HEARTBEAT_MS;
+/** How long a left instance's leaving time is kept for a sweep that comes late; the sweep deletes it first. */
+const LEFT_KEPT_MS = 24 * 60 * 60 * 1000;
 /** Accounts a sweep claims per transaction, so a large dead instance never holds the sweeper past its own TTL. */
 const SWEEP_BATCH = 100;
 /** How often a guarded transaction is tried again after its key moved or its link reconnected. */
@@ -46,18 +49,27 @@ export interface PresenceStore {
   seat(socketId: string, roomId: string): void;
   unseat(socketId: string): void;
   /**
-   * Where each account is connected, for accounts whose instance is alive or inside its leaving
-   * window; anyone else is offline and absent. Rejects while Redis is unreachable.
+   * Where each account is connected, for accounts whose instance is alive; anyone else is
+   * offline and absent, a leaving instance's included. Rejects while Redis is unreachable.
    */
   locate(userIds: readonly string[], opts?: { tables?: boolean }): Promise<Map<string, Located>>;
+  /**
+   * Of `userIds`, those `locate` reads as gone only because their instance left within LEAVING_MS:
+   * their friends were told nothing yet, and a sweep tells them later. Rejects while Redis is unreachable.
+   */
+  departing(userIds: readonly string[]): Promise<Set<string>>;
   /** How many other instances are alive. Rejects while Redis is unreachable. */
   livePeers(): Promise<number>;
   /** The other instances alive now. Rejects while Redis is unreachable. */
   liveInstances(): Promise<string[]>;
   /** Refreshes this instance's liveness, then clears up after every instance that has none. */
   beat(): Promise<void>;
-  /** Called with the accounts this instance found on a dead instance and cleared, and when each had connected; each exactly once cluster-wide. */
-  onLost(handler: (userIds: string[], connectedAt: ReadonlyMap<string, Date>) => void): void;
+  /**
+   * Called with the accounts this instance cleared from an instance with no liveness, each exactly
+   * once cluster-wide: a crashed one's, or a left one's once LEAVING_MS has passed. `leftAt` is
+   * when a left instance left, and null for a crash.
+   */
+  onLost(handler: (userIds: string[], leftAt: Date | null) => void): void;
   /** Called with this instance's accounts once it has put back what a sweep, during its lapse, took. */
   onRestored(handler: (userIds: string[]) => void): void;
   /** Marks each account's friend and invite lists as changed. Never rejects; a failed mark is retried on the beat. */
@@ -110,6 +122,7 @@ export function openPresenceStore({
     instance: (of: string) => `${ns}:instance:${of}`,
     instances: `${ns}:instances`,
     leaving: (of: string) => `${ns}:instance-leaving:${of}`,
+    left: (of: string) => `${ns}:instance-left:${of}`,
     users: (of: string) => `${ns}:instance-users:${of}`,
     social: (userId: string) => `${ns}:social:${userId}`,
     // A counter Redis lost restarts at 1, so a value is read against the store's lifetime too.
@@ -129,7 +142,7 @@ export function openPresenceStore({
   const unbumped = new Set<string>();
   /** The newest stamp Redis has given this instance; 0 before the first. */
   let newestStamp = 0n;
-  let lost: (userIds: string[], connectedAt: ReadonlyMap<string, Date>) => void = () => {};
+  let lost: (userIds: string[], leftAt: Date | null) => void = () => {};
   let restored: (userIds: string[]) => void = () => {};
   let alive = true;
   const warn = (msg: string) => (err: unknown) => logger.warn({ err }, msg);
@@ -227,7 +240,8 @@ export function openPresenceStore({
     const held = mine.get(userId);
     const written = held?.socketId === socketId ? held.written : Promise.resolve();
     if (held?.socketId === socketId) mine.delete(userId);
-    if (!alive) return true;
+    // Only an entry known to be in Redis can be left to a sweep; one still being written is cleared here.
+    if (!alive && held?.socketId === socketId && held.at !== undefined) return true;
     // After its own connect's write, or a late write would put back what this clears.
     void track(
       written
@@ -243,33 +257,50 @@ export function openPresenceStore({
     return false;
   }
 
-  /** Of `ids`, those alive, and those that left inside LEAVING_MS: still holding their accounts, never a peer to hand work to. */
-  async function liveAmong(ids: readonly string[]): Promise<{ live: Set<string>; leaving: Set<string> }> {
+  async function liveAmong(ids: readonly string[]): Promise<Set<string>> {
     const others = ids.filter((i) => i !== id);
     const live = new Set(ids.includes(id) && alive ? [id] : []);
-    const leaving = new Set<string>();
-    if (others.length === 0) return { live, leaving };
-    const found = await client.mGet([...others.map(key.instance), ...others.map(key.leaving)]);
+    if (others.length === 0) return live;
+    const found = await client.mGet(others.map(key.instance));
     others.forEach((other, i) => {
       if (found[i] !== null) live.add(other);
-      else if (found[others.length + i] !== null) leaving.add(other);
     });
-    return { live, leaving };
+    return live;
+  }
+
+  /** Of `ids`, which `live` does not hold, those inside their leaving window: never swept, never a peer. */
+  async function leavingAmong(ids: readonly string[], live: Set<string>): Promise<Set<string>> {
+    const gone = ids.filter((i) => !live.has(i) && i !== id);
+    const leaving = new Set(ids.includes(id) && !alive ? [id] : []);
+    if (gone.length === 0) return leaving;
+    const found = await client.mGet(gone.map(key.leaving));
+    gone.forEach((other, i) => {
+      if (found[i] !== null) leaving.add(other);
+    });
+    return leaving;
   }
 
   async function liveInstances(): Promise<string[]> {
     const members = await client.sMembers(key.instances);
-    return [...(await liveAmong(members)).live].filter((m) => m !== id);
+    return [...(await liveAmong(members))].filter((m) => m !== id);
+  }
+
+  async function departing(userIds: readonly string[]): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+    const entries = (await client.mGet(userIds.map(key.presence))).map(parse);
+    const instances = [...new Set(entries.flatMap((e) => (e ? [e.instance] : [])))];
+    const leaving = await leavingAmong(instances, await liveAmong(instances));
+    return new Set(userIds.filter((_, i) => leaving.has(entries[i]?.instance ?? "")));
   }
 
   async function locate(userIds: readonly string[], { tables = false } = {}): Promise<Map<string, Located>> {
     const where = new Map<string, Located>();
     if (userIds.length === 0) return where;
     const entries = (await client.mGet(userIds.map(key.presence))).map(parse);
-    const { live, leaving } = await liveAmong([...new Set(entries.flatMap((e) => (e ? [e.instance] : [])))]);
+    const live = await liveAmong([...new Set(entries.flatMap((e) => (e ? [e.instance] : [])))]);
     userIds.forEach((userId, i) => {
       const entry = entries[i];
-      if (!entry || !(live.has(entry.instance) || leaving.has(entry.instance))) return;
+      if (!entry || !live.has(entry.instance)) return;
       // This instance's own sockets are known here first-hand, an entry whose clear has not landed yet included.
       if (entry.instance === id && mine.get(userId)?.socketId !== entry.socket) return;
       where.set(userId, { instance: entry.instance, socket: entry.socket });
@@ -292,23 +323,23 @@ export function openPresenceStore({
     const users = await client.sMembers(key.users(dead));
     for (let i = 0; i < users.length; i += SWEEP_BATCH) {
       const batch = users.slice(i, i + SWEEP_BATCH);
-      const took = await guard([key.instance(dead), ...batch.map(key.presence)], ([liveness, ...values], tx) => {
+      const took = await guard([key.instance(dead), key.left(dead), ...batch.map(key.presence)], ([liveness, left, ...values], tx) => {
         if (liveness !== null) return null;
-        const connectedAt = new Map<string, Date>();
+        const ids: string[] = [];
         values.forEach((value, j) => {
           const entry = parse(value);
           if (entry?.instance !== dead) return;
           tx.del([key.presence(batch[j]!), key.table(entry.socket)]);
-          connectedAt.set(batch[j]!, new Date(Number(entry.at / 1000n)));
+          ids.push(batch[j]!);
         });
-        return connectedAt.size > 0 ? connectedAt : null;
+        return ids.length > 0 ? { ids, leftAt: left && /^\d+$/.test(left) ? new Date(Number(left)) : null } : null;
       });
       // Told per batch: a later batch failing must not cost these their friends' notice.
-      if (took) lost([...took.keys()], took);
+      if (took) lost(took.ids, took.leftAt);
     }
     await guard([key.instance(dead)], ([liveness], tx) => {
       if (liveness !== null) return null;
-      tx.del(key.users(dead)).sRem(key.instances, dead);
+      tx.del([key.users(dead), key.left(dead)]).sRem(key.instances, dead);
       return true;
     });
   }
@@ -357,7 +388,8 @@ export function openPresenceStore({
     }
     if (unbumped.size > 0) await bump(unbumped).catch(warn("Could not mark friend lists as changed"));
     const members = await client.sMembers(key.instances);
-    const { live, leaving } = await liveAmong(members);
+    const live = await liveAmong(members);
+    const leaving = await leavingAmong(members, live);
     for (const member of members) {
       if (!live.has(member) && !leaving.has(member)) await sweep(member);
     }
@@ -417,6 +449,7 @@ export function openPresenceStore({
       void track(client.del(key.table(socketId)).catch(warn("Could not clear the table a socket sat at")));
     },
     locate,
+    departing,
     bumpSocial(userIds) {
       void track(bump(userIds).catch(warn("Could not mark friend lists as changed")));
     },
@@ -439,14 +472,21 @@ export function openPresenceStore({
       if (!alive) return;
       alive = false;
       clearInterval(timer);
-      // One transaction: a sweep that sees the liveness gone sees the leaving mark too.
+      const leftAt = now();
       void track(
-        client
-          .multi()
-          .del(key.instance(id))
-          .set(key.leaving(id), "1", { expiration: { type: "PX", value: LEAVING_MS } })
-          .exec()
-          .catch(warn("Could not mark this instance as leaving"))
+        (async () => {
+          // Before the liveness goes: no beat retries these after it, and a sweep would announce them again.
+          for (const [userId, socketId] of [...unforgotten]) {
+            if (!mine.has(userId) && (await clear(userId, socketId).catch(() => null)) !== null) unforgotten.delete(userId);
+          }
+          // One transaction: a sweep that sees the liveness gone sees the leaving mark too.
+          await client
+            .multi()
+            .del(key.instance(id))
+            .set(key.leaving(id), "1", { expiration: { type: "PX", value: LEAVING_MS } })
+            .set(key.left(id), String(leftAt), { expiration: { type: "PX", value: LEFT_KEPT_MS } })
+            .exec();
+        })().catch(warn("Could not mark this instance as leaving"))
       );
     },
     close() {
@@ -458,7 +498,7 @@ export function openPresenceStore({
 }
 
 let store: PresenceStore | null = null;
-let lostHandler: (userIds: string[], connectedAt: ReadonlyMap<string, Date>) => void = () => {};
+let lostHandler: (userIds: string[], leftAt: Date | null) => void = () => {};
 let restoredHandler: (userIds: string[]) => void = () => {};
 
 /** Opened at boot; until then, and after `closePresence`, nothing is recorded and nobody is found. */
@@ -479,7 +519,7 @@ export function leavePresence(): void {
   store?.leave();
 }
 
-export function onPresenceLost(handler: (userIds: string[], connectedAt: ReadonlyMap<string, Date>) => void): void {
+export function onPresenceLost(handler: (userIds: string[], leftAt: Date | null) => void): void {
   lostHandler = handler;
   store?.onLost(handler);
 }
@@ -517,6 +557,10 @@ function opened(): PresenceStore {
 
 export function locate(userIds: readonly string[], opts?: { tables?: boolean }): Promise<Map<string, Located>> {
   return opened().locate(userIds, opts);
+}
+
+export function departingAmong(userIds: readonly string[]): Promise<Set<string>> {
+  return opened().departing(userIds);
 }
 
 /** The instance each account is connected to; an account with no live entry is absent. */

@@ -20,6 +20,7 @@ import { resumeOrphanedTables } from "../../server/game/tableLifecycle.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
+import { settleInFlight } from "../../server/shared/inFlight.ts";
 
 describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, () => {
   const redisUrl = process.env.REDIS_URL!;
@@ -120,13 +121,14 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     await eventually(async () => (await a.locate(users)).size === users.length, "the dead instance's entries");
 
     const reported: string[] = [];
-    a.onLost((ids) => reported.push(...ids));
-    b.onLost((ids) => reported.push(...ids));
+    const leftAts = new Set<Date | null>();
+    for (const x of [a, b]) x.onLost((ids, leftAt) => (reported.push(...ids), leftAts.add(leftAt)));
     dead.close();
     await probe.del(c.key(`instance:${dead.id}`));
     await Promise.all([a.beat(), b.beat(), a.beat(), b.beat()]);
 
     assert.deepEqual([...reported].sort(), [...users].sort(), "an account was reported twice, or not at all");
+    assert.deepEqual([...leftAts], [null], "a crashed instance was said to have left at a time");
     assert.equal((await a.locate(users)).size, 0);
     assert.equal(await probe.exists(users.map((u) => c.key(`online:${u}`))), 0);
     assert.equal(await probe.exists(users.map((u) => c.key(`table:s-${u}`))), 0);
@@ -141,27 +143,29 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     await redisReady();
     await Promise.all([peer.beat(), leaving.beat()]);
     leaving.record("early", "s-early");
-    const recordedAt = Date.now();
     leaving.record("gone", "s-gone");
     leaving.record("back", "s-back");
     await eventually(async () => (await peer.locate(["early", "gone", "back"])).size === 3, "the entries");
     const reported: string[] = [];
-    let connectedAt: ReadonlyMap<string, Date> = new Map();
+    let leftAt: Date | null = null;
     peer.onLost((ids, at) => {
       reported.push(...ids);
-      connectedAt = at;
+      leftAt = at;
     });
 
     assert.equal(leaving.forget("early", "s-early"), false, "a departure before leave() is its own instance's to report");
     await eventually(async () => !(await peer.locate(["early"])).has("early"), "the early departure's clear");
+    const leaveAt = Date.now();
     leaving.leave();
     await eventually(async () => (await probe.exists(c.key(`instance:${leaving.id}`))) === 0, "the liveness to go");
     assert.equal(leaving.forget("gone", "s-gone"), true, "a departure after leave() was not left to the sweep");
     assert.equal(leaving.forget("back", "s-back"), true);
-    assert.equal((await peer.locate(["gone"])).get("gone")?.instance, leaving.id, "inside the window, its account reads as offline");
+    assert.equal((await peer.locate(["gone"])).has("gone"), false, "a leaving instance's account reads as online, so a seat it held is never released");
     assert.deepEqual(await peer.liveInstances(), [], "a leaving instance reads as a peer to hand work to");
+    assert.deepEqual([...(await peer.departing(["gone", "early"]))], ["gone"]);
     peer.record("back", "s-back-2");
     await eventually(async () => (await peer.locate(["back"])).get("back")?.instance === peer.id, "the reconnect's entry");
+    assert.deepEqual([...(await peer.departing(["back"]))], [], "an account that came back elsewhere reads as departing");
     await peer.beat();
     assert.deepEqual(reported, [], "a departure was reported inside the reconnect window");
 
@@ -170,8 +174,57 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     await probe.del(c.key(`instance-leaving:${leaving.id}`));
     await peer.beat();
     assert.deepEqual(reported, ["gone"]);
-    assert.ok(Math.abs(connectedAt.get("gone")!.getTime() - recordedAt) < 2_000, "the sweep did not say when the account connected");
+    const said = leftAt as Date | null;
+    assert.ok(said && Math.abs(said.getTime() - leaveAt) < 2_000, `the sweep said the instance left at ${said?.toISOString()}`);
+    assert.equal(await probe.exists(c.key(`instance-left:${leaving.id}`)), 0, "the leaving time outlived the final sweep");
     assert.equal((await peer.locate(["back"])).get("back")?.instance, peer.id, "the reconnect's entry was swept");
+  });
+
+  test("a departure after leave() whose connect never reached Redis is cleared at once, not left to a sweep", async () => {
+    const c = cluster();
+    const [peer, leaving] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([peer.beat(), leaving.beat()]);
+    const reported: string[] = [];
+    peer.onLost((ids) => reported.push(...ids));
+    leaving.record("fresh", "s-fresh");
+    leaving.leave();
+    assert.equal(leaving.forget("fresh", "s-fresh"), false, "a departure no sweep can see was left to one");
+    await eventually(async () => (await probe.exists(c.key("online:fresh"))) === 0, "the entry to be cleared");
+    await probe.del(c.key(`instance-leaving:${leaving.id}`));
+    await peer.beat();
+    assert.deepEqual(reported, []);
+  });
+
+  test("a clear that failed before leave() is made by leave(), with no beat left to retry it", async () => {
+    const c = cluster();
+    const proxy = await startProxy(targetOf(redisUrl, 6379));
+    try {
+      const peer = c.open();
+      const x = openPresenceStore({ ns: c.ns, url: viaProxy(redisUrl, proxy), heartbeat: false });
+      opened.push(x);
+      await redisReady();
+      await Promise.all([peer.beat(), x.beat()]);
+      const reported: string[] = [];
+      peer.onLost((ids) => reported.push(...ids));
+      x.record("uli", "s-uli");
+      await eventually(async () => (await peer.locate(["uli"])).has("uli"), "the entry");
+      proxy.refuse(true);
+      await eventually(() => x.locate(["uli"]).then(() => false, () => true), "reads to fail");
+      assert.equal(x.forget("uli", "s-uli"), false);
+      await settleInFlight(10_000);
+      assert.equal(await probe.exists(c.key("online:uli")), 1, "the clear reached Redis while it was refused");
+      proxy.refuse(false);
+      await eventually(() => x.locate(["uli"]).then(() => true, () => false), "the link to come back");
+      x.leave();
+      await eventually(async () => (await probe.exists(c.key(`instance:${x.id}`))) === 0, "the liveness to go");
+      assert.equal(await probe.exists(c.key("online:uli")), 0, "the failed clear was never retried");
+      await probe.del(c.key(`instance-leaving:${x.id}`));
+      await peer.beat();
+      assert.deepEqual(reported, [], "an account cleared before leave() was announced again by the sweep");
+    } finally {
+      await proxy.close();
+    }
   });
 
   test("an instance swept while its liveness lapsed puts its accounts back on its next beat", async () => {

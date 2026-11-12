@@ -15,6 +15,7 @@ import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { payload } from "../shared/payload.ts";
 import { track } from "../shared/inFlight.ts";
+import { departingAmong } from "../store/presence.ts";
 
 let _rt: TableRuntime | null = null;
 
@@ -44,6 +45,21 @@ export async function isUserOnline(userId: string): Promise<boolean> {
 export async function onlineAmong(userIds: readonly string[]): Promise<Set<string>> {
   const online = await _rt?.presence.onlineAmong(userIds);
   return online ?? new Set(userIds.filter((id) => userSocketMap.has(id)));
+}
+
+/**
+ * Of `userIds`, those a friend sees online: `onlineAmong`, and those whose instance is leaving,
+ * whose offline notice a sweep sends once they had the reconnect spread to come back.
+ */
+export async function shownOnlineAmong(userIds: readonly string[]): Promise<Set<string>> {
+  const [online, departing] = await Promise.all([
+    onlineAmong(userIds),
+    departingAmong(userIds).catch((err: unknown) => {
+      logger.warn({ err }, "Could not read who is departing; shown offline");
+      return new Set<string>();
+    }),
+  ]);
+  return new Set([...online, ...departing]);
 }
 
 /**

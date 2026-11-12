@@ -116,11 +116,14 @@ export async function shutdown(
   (forceExit as unknown as { unref?: () => void }).unref?.();
 
   try {
-    await within(SHUTDOWN_BUDGET.handOff, tables.handOffTables(SHUTDOWN_BUDGET.handOff));
-    await within(SHUTDOWN_BUDGET.drainNotice, drainNotice(io, SHUTDOWN_BUDGET.drainNotice));
-    // Before `io.close()`, which closes every socket before the adapter that would leave otherwise:
-    // each departure from here on is a peer's sweep to report, after the reconnect spread.
-    leavePresence();
+    try {
+      await within(SHUTDOWN_BUDGET.handOff, tables.handOffTables(SHUTDOWN_BUDGET.handOff));
+      await within(SHUTDOWN_BUDGET.drainNotice, drainNotice(io, SHUTDOWN_BUDGET.drainNotice));
+    } finally {
+      // Before `io.close()`, which closes every socket before the adapter that would leave otherwise:
+      // each departure from here on is a peer's sweep to report, after the reconnect spread.
+      leavePresence();
+    }
     // Closes the adapter too, which ends its read loop before Redis goes below.
     await within(
       SHUTDOWN_BUDGET.ioClose,
