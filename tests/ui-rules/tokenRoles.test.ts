@@ -361,6 +361,6 @@ describe("stacking order is stated as a role", () => {
   });
 });
 
-test("the bomb's felt scrim sits over the felt and under every card", () => {
-  assert.ok(Layer.felt < Layer.feltScrim && Layer.feltScrim < Layer.table);
+test("the bomb's felt scrim sits over both ends of the felt and under every card", () => {
+  assert.ok(Layer.felt < Layer.feltEnd && Layer.feltEnd < Layer.feltScrim && Layer.feltScrim < Layer.table);
 });

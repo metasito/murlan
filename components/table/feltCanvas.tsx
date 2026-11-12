@@ -36,7 +36,7 @@ import {
 import { ReduceMotion, useAnimatedReaction, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
-import { FeltDraws, useBenchHandle } from "@/lib/diagnostics";
+import { FeltDraws, useBenchHandle, useCanvasDraws, type FeltCanvasName } from "@/lib/diagnostics";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
@@ -529,12 +529,13 @@ interface FeltDrawingProps {
   canvasRef?: RefObject<CanvasRef | null>;
   opaque: boolean;
   testID: string;
+  draws: FeltCanvasName;
   view: SharedValue<Shown>;
   settle: SharedValue<number>;
   scene: FeltScene;
 }
 
-function FeltDrawing({ canvasRef, opaque, testID, view, settle, scene }: FeltDrawingProps) {
+function FeltDrawing({ canvasRef, opaque, testID, draws: canvas, view, settle, scene }: FeltDrawingProps) {
   const { sx, sy, layer, rail, rest, planes, texel, base, glows, shadows, cast, contacts, glow, pile, felt } = scene;
   const uniforms = useDerivedValue(() => ({
     ...base,
@@ -555,6 +556,7 @@ function FeltDrawing({ canvasRef, opaque, testID, view, settle, scene }: FeltDra
   const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: view.value.lx, y: view.value.ly }), felt));
   const contact = shadowTransform(shadowFall("fan", pile, pile), felt);
   const flat = shadowTransform({ x: 0, y: 0 }, felt);
+  useCanvasDraws(canvas, [uniforms, lean, cross, hand, handing, light, soft, coat, shade, fall, glow, cast, contacts]);
   const { width, height } = DESIGN;
   return (
     <Canvas ref={canvasRef} opaque={opaque} style={StyleSheet.absoluteFill} testID={testID} pointerEvents="none">
@@ -666,7 +668,7 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
     }
   );
   const [target, setTarget] = useState("");
-  const ends = !!given;
+  const ends = !!(tracks && given);
   useAnimatedReaction(
     () => (ends ? `${lamp.value.tx},${lamp.value.ty},${lamp.value.tr}` : ""),
     (now, before) => {
@@ -711,12 +713,8 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
       const s = now();
       FeltDraws.frames.value += 1;
       if (isRested(s)) FeltDraws.rested.value += 1;
-      FeltDraws.probe.value = { dx: s.x - s.tx, dy: s.y - s.ty, dr: s.r - s.tr, flare: s.flare, kick: s.kick, dlvl: s.lvlT - s.lvl, freeze: s.freeze, side: side.value, settle: settle.value, t: s.t };
     }
-    if (next !== held.value) {
-      held.value = next;
-      if (FeltDraws) FeltDraws.felt.value += 1;
-    }
+    if (next !== held.value) held.value = next;
     return next;
   });
 
@@ -758,10 +756,10 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   }, [onReady]);
 
   const scene: FeltScene = { sx, sy, layer: greyLayer, rail, rest, planes, texel, base, glows, shadows, cast, contacts, glow, pile, felt };
-  const drawn = <FeltDrawing canvasRef={canvasRef} opaque={opaque} testID="felt-skia" view={view} settle={settle} scene={scene} />;
+  const drawn = <FeltDrawing canvasRef={canvasRef} opaque={opaque} testID="felt-skia" draws="felt" view={view} settle={settle} scene={scene} />;
   if (!given) return drawn;
   const Ends = given;
-  const draw = (end: SharedValue<Shown>, endSettle: SharedValue<number>) => <FeltDrawing opaque={opaque} testID="felt-end-b" view={end} settle={endSettle} scene={scene} />;
+  const draw = (end: SharedValue<Shown>, endSettle: SharedValue<number>) => <FeltDrawing opaque={opaque} testID="felt-end-b" draws="end" view={end} settle={endSettle} scene={scene} />;
   return (
     <>
       <View ref={host} style={StyleSheet.absoluteFill} pointerEvents="none">

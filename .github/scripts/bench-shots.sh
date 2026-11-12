@@ -1,21 +1,17 @@
 #!/bin/sh
 # Waits for the bench run recorded in $1 to end, taking a screenshot beside it for each `shot` row as the row
 # lands: from the Android emulator, or the iOS simulator $SIMULATOR_UDID, as $2 names. Gives up after
-# $WAIT_SECONDS. Writes `ok`, or why not, to shots-status beside the record, for a caller that started it in
-# the background.
+# $WAIT_SECONDS of the clock, and fails for a screenshot taken after its state had gone.
 record=$1
 platform=$2
 out=$(dirname "$record")
-status="$out/shots-status"
-rm -f "$status"
 fail() {
   echo "::error::$1"
-  echo "$1" > "$status"
   exit 1
 }
 taken=" "
 late=""
-i=0
+deadline=$(($(date +%s) + WAIT_SECONDS))
 ended=false
 until $ended; do
   # Read before the shots, so a shot whose row lands with the run's end is still taken, and known late.
@@ -34,9 +30,7 @@ until $ended; do
     taken="$taken$id "
   done
   $ended && break
-  i=$((i + 1))
-  [ "$i" -lt "$WAIT_SECONDS" ] || fail "The scenario never ended."
+  [ "$(date +%s)" -lt "$deadline" ] || fail "The scenario never ended."
   sleep 1
 done
 [ -z "$late" ] || fail "Screenshots taken after their state had gone:$late"
-echo ok > "$status"

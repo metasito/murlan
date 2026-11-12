@@ -84,25 +84,25 @@ jobs:
         with:
           out-dir: ${{ runner.temp }}/spike
           record: ios.ndjson
-      - name: Open the bench by its deep link
+      - name: Run the scenario by its deep link, taking its screenshots and sampling the app's memory
         env:
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
         run: |
-          # Watching from here, not after Maestro: Maestro can return a minute after the link starts the scenario.
-          nohup sh .github/scripts/bench-shots.sh "$RUNNER_TEMP/spike/ios.ndjson" ios > "$RUNNER_TEMP/spike/shots.log" 2>&1 &
           printf 'appId: ${MAESTRO_APP_ID}\n---\n- openLink: "murlan://bench?host=127.0.0.1&scenario=%s&capture=0"\n- tapOn:\n    text: "Open"\n    optional: true\n' "$SCENARIO" > "$RUNNER_TEMP/spike.yaml"
-          maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" "$RUNNER_TEMP/spike.yaml"
-      - name: Wait for the scenario, sampling the app's memory
-        run: |
-          i=0; until grep -q '"k":"run".*"phase":"end"' "$RUNNER_TEMP/spike/ios.ndjson" 2>/dev/null; do
-            i=$((i+1)); [ $i -lt $((WAIT_SECONDS / 2)) ] || { echo "::error::The scenario never ended."; exit 1; }
+          maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" "$RUNNER_TEMP/spike.yaml" &
+          maestro=$!
+          while sleep 2; do
             pid=$(pgrep -x "$APP_EXE" | head -1)
             echo "$(date -u +%H:%M:%S) pid=${pid:-none} rss_kb=$( [ -n "$pid" ] && ps -o rss= -p "$pid" | tr -d ' ')" >> "$RUNNER_TEMP/spike/host-rss.txt"
-            sleep 2
-          done
+          done &
+          sampler=$!
+          # The watcher runs beside Maestro, not after it: Maestro can return a minute after the link starts the scenario.
+          shots=0
+          sh .github/scripts/bench-shots.sh "$RUNNER_TEMP/spike/ios.ndjson" ios || shots=$?
+          kill "$sampler"
+          wait "$maestro" || { echo "::error::Maestro could not open the bench."; exit 1; }
+          [ "$shots" = 0 ] || exit "$shots"
           grep -q "\"name\":\"$SCENARIO\",\"phase\":\"end\"" "$RUNNER_TEMP/spike/ios.ndjson" || { echo "::error::Scenario $SCENARIO never ran."; exit 1; }
-          i=0; until [ -f "$RUNNER_TEMP/spike/shots-status" ]; do i=$((i+1)); [ $i -lt 60 ] || { echo "::error::The screenshot watcher never finished."; exit 1; }; sleep 1; done
-          grep -qx ok "$RUNNER_TEMP/spike/shots-status" || { echo "::error::$(cat "$RUNNER_TEMP/spike/shots-status")"; exit 1; }
       - name: Collect crash reports
         if: always()
         run: |

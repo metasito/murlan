@@ -41,7 +41,10 @@ export interface DiagRows {
   shown: { kind: string; fixture: number; reduced: boolean };
   orientation: { rn: { w: number; h: number }; native: Record<string, unknown> | null; error?: string };
   gate: { name: "deal" | "exchangeReady" | "exchangeDone" };
-  atRest: { id: string; ms: number; felt: number; end: number; frames: number; rested: number; lamp: Record<string, number> };
+  /** Draws of the felt (`felt`) and of its end B (`end`) over a window at rest, and the frames the rig stepped, `rested` of them at rest. */
+  atRest: { id: string; ms: number; felt: number; end: number; frames: number; rested: number };
+  /** The same over a window of bots playing, `plays` cards thrown. */
+  inPlay: { ms: number; plays: number; felt: number; end: number; frames: number; rested: number };
   shot: { id: string };
 }
 

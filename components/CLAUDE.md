@@ -27,7 +27,7 @@ Verify against source before changing any.
   reverse (`tests/ui-rules/seatLayoutTakesNoCount.test.ts`).
 - **State which view covers which with a `Layer` role** (or a value derived from one), never
   sibling order or a bare number: web and Android paint in tree order, iOS does not (#209).
-  `Layer.felt` (0) < `Layer.feltScrim` (the bomb's) < `Layer.table`;
+  `Layer.felt` (0) < `Layer.feltEnd` < `Layer.feltScrim` (the bomb's) < `Layer.table`;
   `tests/ui-rules/tokenRoles.test.ts` resolves every `zIndex` through its constant.
 - **Before proposing a fix for a native-only visual defect** — sample device pixels, not
   reasoning, first (`docs/agents/device-runs.md`); code-only arguments keep failing on device.
