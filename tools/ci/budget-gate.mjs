@@ -124,7 +124,7 @@ export function overBudget(repo, prNumber, runId, gh, until) {
 export const UNREAD_STEP = "The run's over-budget lists were read";
 
 /** Storage answers a burst of downloads with `503 Egress is over the account limit` (run 37784854605). */
-const RETRY_WAITS_S = [5, 10, 20];
+export const RETRY_WAITS_S = [5, 10, 20];
 const READ_DEADLINE_MS = 5 * 60_000;
 
 /** @type {GhExec} */
