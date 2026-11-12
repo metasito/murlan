@@ -160,6 +160,7 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(await probe.exists(c.key(`instance:${leaving.id}`)), 0, "leave() resolved before the liveness went");
     assert.equal(leaving.forget("gone", "s-gone"), true, "a departure after leave() was not left to the sweep");
     assert.equal(leaving.forget("back", "s-back"), true);
+    await settleInFlight(5_000);
     assert.equal((await peer.locate(["gone"])).has("gone"), false, "a leaving instance's account reads as online, so a seat it held is never released");
     assert.deepEqual(await peer.liveInstances(), [], "a leaving instance reads as a peer to hand work to");
     assert.deepEqual([...(await peer.shownOnline(["gone", "early"]))], ["gone"], "friends were told of a departure inside the reconnect window");
@@ -337,8 +338,57 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     x.record("una", "s-una");
     await eventually(async () => (await peer.locate(["una"])).has("una"), "the entry");
     await x.leave();
+    await settleInFlight(5_000);
     await probe.set(c.key("online:stale"), `${x.id}|s-stale|1`);
     assert.deepEqual([...(await peer.shownOnline(["una", "stale"]))], ["una"], "a stale entry naming a left instance was shown online, so no notice ever tells its friends");
+  });
+
+  test("a retried clear for an account's old socket never drops the clear its newer socket still owes", async () => {
+    const c = cluster();
+    const proxy = await startProxy(targetOf(redisUrl, 6379));
+    let gate: Promise<void> | null = null;
+    let release = () => {};
+    let held = false;
+    let failNext = false;
+    const beforeExec = async (keys: string[]) => {
+      if (keys.includes(c.key("online:ada"))) {
+        held = true;
+        await gate;
+      } else if (failNext && keys.includes(c.key("online:rio"))) {
+        failNext = false;
+        throw new Error("the clear is refused");
+      }
+    };
+    try {
+      const x = openPresenceStore({ ns: c.ns, url: viaProxy(redisUrl, proxy), heartbeat: false, hooks: { beforeExec } });
+      opened.push(x);
+      await redisReady();
+      await x.beat();
+      x.record("ada", "s-ada");
+      x.record("rio", "s-rio-1");
+      await eventually(async () => (await probe.exists(c.key("online:ada"))) + (await probe.exists(c.key("online:rio"))) === 2, "the entries");
+      proxy.refuse(true);
+      await eventually(() => x.locate(["rio"]).then(() => false, () => true), "reads to fail");
+      x.forget("ada", "s-ada");
+      x.forget("rio", "s-rio-1");
+      await settleInFlight(10_000);
+      gate = new Promise((resolve) => (release = resolve));
+      proxy.refuse(false);
+      await eventually(() => x.locate(["rio"]).then(() => true, () => false), "the link to come back");
+      await eventually(async () => held, "the retry to reach the first account");
+      x.record("rio", "s-rio-2");
+      await eventually(async () => (await probe.get(c.key("online:rio")))?.includes("s-rio-2") ?? false, "the newer socket's entry");
+      failNext = true;
+      x.forget("rio", "s-rio-2");
+      release();
+      await settleInFlight(10_000);
+      assert.equal(failNext, false, "the newer socket's clear was never tried");
+      await x.beat();
+      assert.equal(await probe.exists(c.key("online:rio")), 0, "the newer socket's failed clear was dropped by the old one's retry, so its entry stays for good");
+    } finally {
+      release();
+      await proxy.close();
+    }
   });
 
   test("a departure after leave() whose entry cannot be read is reported by its own instance, not left online for good", async () => {

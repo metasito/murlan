@@ -270,7 +270,7 @@ export function openPresenceStore({
       written
         .then(() => clear(userId, socketId))
         .then(
-          () => unforgotten.delete(userId),
+          () => settled(userId, socketId),
           (err: unknown) => {
             if (!mine.has(userId)) unforgotten.set(userId, socketId);
             logger.warn({ err, userId }, "Could not clear where an account was connected");
@@ -305,11 +305,16 @@ export function openPresenceStore({
     lost([userId], new Date(leftAt ?? now()), new Map());
   }
 
+  /** Only the clear still owed for this socket: a later socket's clear that failed meanwhile stays owed. */
+  function settled(userId: string, socketId: string): void {
+    if (unforgotten.get(userId) === socketId) unforgotten.delete(userId);
+  }
+
   /** Clears that failed before; one for an account connected here again is dropped. */
   async function retryClears(): Promise<void> {
     for (const [userId, socketId] of [...unforgotten]) {
       if (mine.has(userId)) unforgotten.delete(userId);
-      else if ((await clear(userId, socketId).catch(() => null)) !== null) unforgotten.delete(userId);
+      else if ((await clear(userId, socketId).catch(() => null)) !== null) settled(userId, socketId);
     }
   }
 
@@ -556,16 +561,19 @@ export function openPresenceStore({
       const mark = (async () => {
         await livenessWrite;
         // One transaction: a sweep that sees the liveness gone sees the leaving mark too.
-        const tx = client
+        await client
           .multi()
           .del(key.instance(id))
           .set(key.leaving(id), "1", { expiration: { type: "PX", value: LEAVING_MS } })
-          .set(key.left(id), String(at), { expiration: { type: "PX", value: LEFT_KEPT_MS } });
-        for (const held of mine.values()) {
-          if (held.at !== undefined) tx.set(key.handed(held.socketId), "1", { expiration: { type: "PX", value: LEFT_KEPT_MS } });
-        }
-        await tx.exec();
+          .set(key.left(id), String(at), { expiration: { type: "PX", value: LEFT_KEPT_MS } })
+          .exec();
         marked = true;
+        // After the mark, not in it: the mark's size is a shutdown budget step; a socket gone meanwhile is handed by `forget`.
+        const sockets = [...mine.values()].flatMap((held) => (held.at !== undefined ? [held.socketId] : []));
+        if (sockets.length === 0) return;
+        const handing = client.multi();
+        for (const socketId of sockets) handing.set(key.handed(socketId), "1", { expiration: { type: "PX", value: LEFT_KEPT_MS } });
+        void track(handing.execAsPipeline().catch(warn("Could not hand this instance's sockets to the sweep")));
       })().catch(warn("Could not mark this instance as leaving"));
       // No beat retries these after `leave()`; the leaving window gives them until the sweep.
       void track(retryClears().catch(warn("Could not retry clears on leaving")));
