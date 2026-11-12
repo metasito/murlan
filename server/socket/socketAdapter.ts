@@ -1,6 +1,7 @@
 import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { MessageType, type ClusterMessage } from "socket.io-adapter";
 import { now } from "../http/clock.ts";
+import type { RedisArgument } from "redis";
 import { BLOCK_MS, instanceId, openRedis, redisKey, streamMaxLen, type RedisClient } from "../store/redis.ts";
 import { clusterMessages, noteStreamRead } from "../shared/metrics.ts";
 import { leavePresence, livePeers, type PresenceStore } from "../store/presence.ts";
@@ -93,6 +94,24 @@ function adapterLinks(): AdapterLinks {
       const copy = openRedis("adapter", { connect: false });
       copies.push(copy);
       const { connect, subscribe, xRead } = { connect: copy.connect.bind(copy), subscribe: copy.subscribe.bind(copy), xRead: copy.xRead.bind(copy) };
+      // The adapter reads from `$` until it has read an entry, and every empty read moves `$` to
+      // the tail, so an entry appended between two reads of a quiet stream was never read: each
+      // `$` is replaced by the tail the first read found.
+      const tails = new Map<string, Promise<string>>();
+      const tailOf = (key: RedisArgument): Promise<string> => {
+        const name = String(key);
+        const known = tails.get(name);
+        if (known) return known;
+        const tail = copy.xRevRange(key, "+", "-", { COUNT: 1 }).then(
+          (last) => last?.[0]?.id ?? "0-0",
+          (err: unknown) => {
+            tails.delete(name);
+            throw err;
+          }
+        );
+        tails.set(name, tail);
+        return tail;
+      };
       return Object.assign(copy, {
         connect: () => connect().catch(() => copy),
         disconnect: () => Promise.resolve(),
@@ -103,10 +122,13 @@ function adapterLinks(): AdapterLinks {
             },
             () => {}
           ),
-        xRead: (...args: Parameters<typeof xRead>) => {
+        xRead: async (...[streams, ...rest]: Parameters<typeof xRead>) => {
           if (!copy.isOpen) return new Promise<never>(() => {});
           reading = true;
-          return xRead(...args);
+          const from = await Promise.all(
+            (Array.isArray(streams) ? streams : [streams]).map(async (s) => (s.id === "$" ? { ...s, id: await tailOf(s.key) } : s))
+          );
+          return xRead(from, ...rest);
         },
       });
     },
