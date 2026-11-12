@@ -145,6 +145,14 @@ describe("the rules see what they are for", () => {
     for (const name of new Set([...TABLE_RULES.inside, ...TABLE_RULES.apart.flat()])) assert.ok(t.rects[name] ?? badged.rects[name], name);
   });
 
+  test("play on the left swaps PASSA's and GIOCA's rects, and the table still keeps its rules", () => {
+    const right = solved();
+    const left = tableRects({ ...tablet, state, playOnLeft: true });
+    assert.deepEqual([left.rects.passa, left.rects.gioca], [right.rects.gioca, right.rects.passa]);
+    assert.ok(left.rects.gioca!.x < left.rects.passa!.x, "GIOCA on the left");
+    assert.deepEqual(brokenRules(left), []);
+  });
+
   test("an overlap goes red", () => {
     const t = solved();
     const pile = t.rects.pile!;
