@@ -35,6 +35,10 @@
 /.github/workflows/target-freeze.yml                 @rotonmeta
 /tests/tooling/targetFreeze.test.ts                  @rotonmeta
 /.github/CODEOWNERS                                  @rotonmeta
+/tools/ci/verdict-check.mjs                          @rotonmeta
+/tools/ci/verdict-name.mjs                           @rotonmeta
+/.github/workflows/test-verdict.yml                  @rotonmeta
+/tests/tooling/verdictCheck.test.ts                  @rotonmeta
 /tools/ci/test-verdict.mjs                           @rotonmeta
 /tools/ci/quarantine.json                            @rotonmeta
 /tools/ci/results-*.mjs                              @rotonmeta
