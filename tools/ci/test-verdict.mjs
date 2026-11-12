@@ -5,11 +5,12 @@
  * still skip or replace this step (docs/agents/suites.md § A flake is fixed, Limits).
  */
 import { execFileSync } from "node:child_process";
-import { appendFileSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { prSpec } from "../../tests/e2e/tiers.mjs";
+import { RETRY_WAITS_S } from "./budget-gate.mjs";
 import { matcher, ownedBy } from "./codeowners.mjs";
 import { JOBS, scopeOf } from "./scopeOf.mjs";
 
@@ -334,6 +335,36 @@ export function readArtifacts(dir) {
 const gh = (args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 1024 * 1024, timeout: 5 * 60_000 });
 /** @type {Exec} */
 const git = (args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+/** @param {number} seconds */
+const pause = (seconds) => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
+
+/** @param {unknown} err */
+const failure = (err) => {
+  const said = String(/** @type {{ stderr?: unknown }} */ (err)?.stderr ?? "").trim();
+  return [String(err instanceof Error ? err.message : err).split("\n")[0], said].filter(Boolean).join(": ");
+};
+
+/**
+ * @param {Exec} hub
+ * @param {string[]} args
+ * @param {string} dir
+ * @param {(seconds: number) => void} sleep
+ * @param {(line: string) => void} log
+ */
+function download(hub, args, dir, sleep, log) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      hub(args);
+      return;
+    } catch (err) {
+      if (attempt >= RETRY_WAITS_S.length) throw err;
+      log(`::warning::${escape(`downloading the results failed (${failure(err)}); trying again in ${RETRY_WAITS_S[attempt]} s`)}`);
+      rmSync(dir, { recursive: true, force: true });
+      mkdirSync(dir);
+      sleep(RETRY_WAITS_S[attempt] ?? 0);
+    }
+  }
+}
 
 /** @param {string} status `git diff --name-status -z`, whose renames carry two paths */
 export function renames(status) {
@@ -385,9 +416,9 @@ function scriptsAt(at, rev) {
  * a dispatch or a schedule, or `HEAD` on a push to main alone. `NEEDS` is the workflow's
  * `toJSON(needs)`; `EVENT` and `REF` are the run's `github.event_name` and `github.ref`.
  * @param {Record<string, string | undefined>} env
- * @param {{ gh?: Exec, git?: Exec, log?: (line: string) => void }} [io]
+ * @param {{ gh?: Exec, git?: Exec, log?: (line: string) => void, sleep?: (seconds: number) => void }} [io]
  */
-export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}) {
+export function run(env, { gh: hub = gh, git: at = git, log = console.log, sleep = pause } = {}) {
   const repo = env.GITHUB_REPOSITORY ?? "";
   const runId = Number(env.GITHUB_RUN_ID);
   if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || !Number.isInteger(runId) || runId <= 0 || !env.BASE) {
@@ -405,7 +436,7 @@ export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}
     const names = hub(["api", `repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`, "--paginate", "--jq", `.artifacts[] | select(.name | startswith("${ARTIFACT_PREFIX}")) | .name`])
       .split("\n")
       .filter(Boolean);
-    if (names.length) hub(["run", "download", String(runId), "--repo", repo, "--pattern", `${ARTIFACT_PREFIX}*`, "--dir", dir]);
+    if (names.length) download(hub, ["run", "download", String(runId), "--repo", repo, "--pattern", `${ARTIFACT_PREFIX}*`, "--dir", dir], dir, sleep, log);
     const artifacts = readArtifacts(dir);
     if (artifacts.length !== new Set(names).size) log(`::error::${artifacts.length} of ${new Set(names).size} results artifacts arrived`);
     const ledger = { head: ledgerAt(at, "HEAD") ?? { quarantine: [] }, base: ledgerAt(at, env.BASE) };
@@ -439,7 +470,7 @@ export function run(env, { gh: hub = gh, git: at = git, log = console.log } = {}
     if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\n`);
     return problems.length || artifacts.length !== new Set(names).size ? 1 : 0;
   } catch (err) {
-    log(`::error::the results could not be read: ${escape(String(err instanceof Error ? err.message : err).split("\n")[0])}`);
+    log(`::error::the results could not be read: ${escape(failure(err))}`);
     return 1;
   } finally {
     rmSync(dir, { recursive: true, force: true });
