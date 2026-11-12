@@ -41,6 +41,13 @@ export interface DiagRows {
   shown: { kind: string; fixture: number; reduced: boolean };
   orientation: { rn: { w: number; h: number }; native: Record<string, unknown> | null; error?: string };
   gate: { name: "deal" | "exchangeReady" | "exchangeDone" };
+  /** Draws of the felt over a window at rest, and the frames the rig stepped, `rested` of them at rest. */
+  atRest: { id: string; ms: number; felt: number; frames: number; rested: number };
+  /** The same over a window of bots playing, `plays` cards thrown. */
+  inPlay: { ms: number; plays: number; felt: number; frames: number; rested: number };
+  /** A screenshot for the runner to take; the state stays until it says so, `acked` false when it never did. */
+  shot: { id: string };
+  shotAcked: { id: string; acked: boolean };
 }
 
 export type DiagRow = { [K in keyof DiagRows]: { k: K; t: number } & DiagRows[K] }[keyof DiagRows];
