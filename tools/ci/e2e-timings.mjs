@@ -15,14 +15,9 @@
 //   node tools/ci/e2e-timings.mjs merged.json
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { readTimings, specFilesIn } from "./e2e-shard.mjs";
-
-const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const TIMINGS = path.join(repoRoot, "tests", "e2e", "timings.json");
+import { readTimings, specFilesIn, TIMINGS } from "./e2e-shard.mjs";
 
 /**
  * Every test's own duration, summed per spec file. Playwright runs this suite

@@ -4,8 +4,27 @@
 // TypeScript loader reaches plain `.ts` only).
 
 export const ONLINE_TABLE = "tests/e2e/57-polish-audit/online-table.txt";
-/** The survey leaves its measured rows under this name in each test's output dir, which CI keeps when the suite goes red. */
+/** The survey leaves its measured rows under this name in each test's output dir, beside the capture. */
 export const MEASURED_ROWS = "online-table.rows.txt";
+/** Where CI keeps that output dir when the browser suite goes red: ci.yml's upload, held to these by tests/tooling/regen.test.ts. */
+export const RESULTS_ARTIFACT = { prefix: "playwright-test-results-", path: "tests/e2e/test-results/" } as const;
+
+export const captureName = (viewport: string) => `online-table__${viewport}.png`;
+export const CAPTURES = `${ONLINE_TABLE.slice(0, ONLINE_TABLE.lastIndexOf("/"))}/captures`;
+
+const TREE = "TREE\t";
+
+/**
+ * The rows, headed by the git tree they measured. On a pull request CI measures the merge with
+ * main, not the branch's head, so only the tree says whether the rows describe a given checkout.
+ */
+export const measuredText = (tree: string, rows: string[]) => [TREE + tree, ...rows].join("\n") + "\n";
+
+export function parseMeasured(text: string): { tree: string | undefined; rows: string[] } {
+  const lines = text.split("\n").filter(Boolean);
+  const tree = lines[0]?.startsWith(TREE) ? lines[0].slice(TREE.length) : undefined;
+  return { tree, rows: tree === undefined ? lines : lines.slice(1) };
+}
 
 /** The audit's own four, named as `content.txt` and `table.txt` name them. */
 export const VIEWPORTS = [

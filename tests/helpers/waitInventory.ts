@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fixedSleeps } from "./sleepScan.ts";
-import { blankComments } from "./sourceScan.ts";
+import { blankComments, sourcesUnder } from "./sourceScan.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
@@ -14,16 +14,7 @@ export type Inventory = { waits: Record<string, Entry>; windows: Record<string, 
 
 const CODE = /\.(?:[cm]?[jt]s|tsx)$/;
 
-export function sources(): [string, string][] {
-  return SCANNED.flatMap((dir) =>
-    readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-      .filter((f) => CODE.test(f))
-      .map((f): [string, string] => {
-        const rel = path.posix.join(dir, f.split(path.sep).join("/"));
-        return [rel, readFileSync(path.join(repoRoot, rel), "utf8")];
-      })
-  );
-}
+export const sources = (): [string, string][] => sourcesUnder(repoRoot, SCANNED, CODE);
 
 /** The `nothingArrives(...)` calls in `code` whose options set `ms`, by file. */
 export function widenedWindows(files: [string, string][]): Map<string, number> {

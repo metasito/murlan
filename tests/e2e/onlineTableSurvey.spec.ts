@@ -14,6 +14,7 @@
 // beside the rest of the survey, so a finding can be re-measured rather than
 // re-argued — and the run is held to that record, so a table that lays out
 // differently has to say so rather than leaving the audit quietly wrong.
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
@@ -23,13 +24,26 @@ import { openOnlineTable } from "./helpers/onlineTable";
 import { assertFresh } from "./helpers/freshTable";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
-import { audited, keyOf, MEASURED_ROWS, mergedRecord, ONLINE_TABLE, recordOf, VIEWPORTS } from "./helpers/onlineTableRecord";
+import {
+  audited,
+  CAPTURES,
+  captureName,
+  keyOf,
+  measuredText,
+  MEASURED_ROWS,
+  mergedRecord,
+  ONLINE_TABLE,
+  recordOf,
+  VIEWPORTS,
+} from "./helpers/onlineTableRecord";
 
 /** Four seats fills the top seat and both side columns — the arrangement with the most to measure. */
 const SEATS = 4;
 
-const AUDIT_DIR = path.resolve(__dirname, "57-polish-audit");
-const RECORD = path.resolve(__dirname, "..", "..", ONLINE_TABLE);
+const REPO = path.resolve(__dirname, "..", "..");
+const RECORD = path.join(REPO, ONLINE_TABLE);
+const AUDIT_DIR = path.dirname(RECORD);
+const AUDITED = `${path.posix.dirname(ONLINE_TABLE)}/`;
 /** Set to rewrite the record instead of being held to it. */
 const UPDATING = process.env.AUDIT_UPDATE === "1";
 const regenerate = (grep?: string) =>
@@ -52,6 +66,14 @@ function recordText(): string {
 }
 function recorded(): Map<string, string> {
   return recordOf(recordText());
+}
+/** The tree this checkout holds, which on a pull request's CI is the merge with main. */
+function measuredTree(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: REPO, encoding: "utf8" }).trim();
+  } catch {
+    return "unknown";
+  }
 }
 /** Past `FLARE_BRIEF_MS` (components/table/moments.tsx), the longest moment a bot's play raises; the match flare's 3 s needs a finished match. */
 const MOMENT_CEILING_MS = 1_600;
@@ -334,7 +356,7 @@ test("the record holds rows for the audited viewports only", () => {
   const orphans = [...recorded().keys()].filter((key) => !audited(key));
   expect(
     orphans,
-    "tests/e2e/57-polish-audit/online-table.txt holds rows for a viewport VIEWPORTS no longer lists; " +
+    `${ONLINE_TABLE} holds rows for a viewport VIEWPORTS no longer lists; ` +
       `regenerate it with ${regenerate()}, which drops them`
   ).toEqual([]);
 });
@@ -360,7 +382,7 @@ test.describe("the online table, at the audit's viewports", () => {
       try {
         const online = await stillMeasure(page, "ONLINE");
         const capture = await page.screenshot();
-        writeFileSync(test.info().outputPath(`online-table__${vp.name}.png`), capture);
+        writeFileSync(test.info().outputPath(captureName(vp.name)), capture);
 
         // Dealt the same number of cards the server just dealt, not the seed
         // helper's default: the hand row sizes its cards to fit however many it
@@ -429,23 +451,23 @@ test.describe("the online table, at the audit's viewports", () => {
         const measured = [line("ONLINE", vp, online), line("OFFLINE", vp, offline)];
         rows.push(...measured);
         if (UPDATING) {
-          mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
-          writeFileSync(path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`), capture);
+          mkdirSync(path.join(REPO, CAPTURES), { recursive: true });
+          writeFileSync(path.join(REPO, CAPTURES, captureName(vp.name)), capture);
         }
 
         if (!UPDATING) {
-          writeFileSync(test.info().outputPath(MEASURED_ROWS), measured.join("\n") + "\n");
+          writeFileSync(test.info().outputPath(MEASURED_ROWS), measuredText(measuredTree(), measured));
           const record = recorded();
           for (const row of measured) {
             const was = record.get(keyOf(row));
             expect(
               was,
-              `tests/e2e/57-polish-audit/ records no row for ${keyOf(row).replaceAll("\t", " ")}, so ` +
+              `${AUDITED} records no row for ${keyOf(row).replaceAll("\t", " ")}, so ` +
                 `nothing holds this table to anything. Regenerate the record with ${regenerate(vp.name)}, ${fromRun}.`
             ).toBeDefined();
             expect(
               row,
-              `the table no longer lays out the way tests/e2e/57-polish-audit/ records it ` +
+              `the table no longer lays out the way ${AUDITED} records it ` +
                 `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
                 `it and regenerate this viewport's rows with ${regenerate(vp.name)}, ${fromRun}, ` +
                 `correcting the numbers README.md quotes.`
