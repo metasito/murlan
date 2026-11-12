@@ -431,13 +431,11 @@ export const Opacity = {
  */
 export const Layer = {
   felt: 0,
-  /** End B of the settled felt, over end A and under the bomb's scrim (`feltEndBNative.tsx`). */
-  feltEnd: 1,
   /** Dims the felt before a bomb lands, under every card. */
-  feltScrim: 2,
-  table: 3,
+  feltScrim: 1,
+  table: 2,
   /** The lamp's level over one hand, fan or pile card, face or back, and a face's lip, as the mockup's `#shade` over `#lit`. */
-  levelShade: 4,
+  levelShade: 3,
   /** The bomb's sparks and embers, the deal's specks and the win's motes: over every card, under the HUD, as the mockup's `#fx` over `#lit`. */
   particles: 6,
   moment: 10,
