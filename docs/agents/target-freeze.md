@@ -31,9 +31,10 @@ matched by name, and any workflow's job can report a check of that name: a head'
 `pull_request` and could add a green `Target freeze` of its own. On a mixed pull request the real
 check is red from the verdict already, so whether a spoof gets through rests on how GitHub resolves
 a red and a green check of one name, which is not measured. Main's script also refuses a head whose
-workflows name a job or step `Target freeze` outside this file (`impostors`); that only keeps a
-spoof from landing on `main` through a clean pull request, and flags one that carries it. This file
-is exempt because editing it is a target change, which a mixed pull request is refused for already.
+workflows name a job or step `Target freeze` outside this file, or `Test verdict` outside
+`test-verdict.yml` (`impostors`, from `POSTERS`); that only keeps a spoof from landing on `main`
+through a clean pull request, and flags one that carries it. Each poster is exempt for its own name
+because editing it is a target change, which a mixed pull request is refused for already.
 The scan reads lines, so it misses a name built by an expression, YAML it does not parse (flow
 mappings, block scalars, anchors, escapes, a quoted `name` key), and a check run or commit status
 posted through the API with `GITHUB_TOKEN`. Moving the repository to an organization with the

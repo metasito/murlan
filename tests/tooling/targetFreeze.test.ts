@@ -261,7 +261,7 @@ describe("the workflow runs base's script on the head's objects, and of the head
     );
   });
 
-  test("no other workflow names a job Target freeze, whose check would stand in for this one", () => {
+  test("no other workflow names a job Target freeze or Test verdict, whose check would stand in for the real one", () => {
     const dirOf = path.join(root, ".github", "workflows");
     const workflows = fs.readdirSync(dirOf).map((f) => ({ path: `.github/workflows/${f}`, text: fs.readFileSync(path.join(dirOf, f), "utf8") }));
     assert.ok(workflows.length > 5);
@@ -270,6 +270,10 @@ describe("the workflow runs base's script on the head's objects, and of the head
       assert.deepEqual(impostors([{ path: ".github/workflows/ci.yml", text: `jobs:\n  x:\n${line}\n` }]), [".github/workflows/ci.yml"], line);
     }
     assert.deepEqual(impostors([{ path: WORKFLOW, text: workflowText }]), []);
+    const verdictPoster = ".github/workflows/test-verdict.yml";
+    assert.deepEqual(impostors([{ path: ".github/workflows/ci.yml", text: "jobs:\n  x:\n    name: Test verdict\n" }]), [".github/workflows/ci.yml"]);
+    assert.deepEqual(impostors([{ path: verdictPoster, text: fs.readFileSync(path.join(root, verdictPoster), "utf8") }]), []);
+    assert.deepEqual(impostors([{ path: verdictPoster, text: "jobs:\n  x:\n    name: Target freeze\n" }]), [verdictPoster]);
   });
 });
 
@@ -530,7 +534,7 @@ describe("planted diffs", () => {
   test("a head whose other workflow names a job Target freeze is refused", () => {
     assert.deepEqual(judge("spoof"), {
       code: 1,
-      out: "::error::.github/workflows/ci.yml names a job or step Target freeze: a job so named reports a check that would stand in for this one, and a step so named is refused because the scan cannot tell it from a job (RULES.md 52).",
+      out: "::error::.github/workflows/ci.yml names a job or step Target freeze or Test verdict outside its poster: a job so named reports a check that would stand in for the real one, and a step so named is refused because the scan cannot tell it from a job (RULES.md 52).",
     });
   });
 

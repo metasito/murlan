@@ -41,6 +41,9 @@
 /tools/ci/gate.mjs                                   @rotonmeta
 /tools/ci/scope*.mjs                                 @rotonmeta
 /tests/tooling/testVerdict.test.ts                   @rotonmeta
+/tools/ci/verdict-check.mjs                          @rotonmeta
+/.github/workflows/test-verdict.yml                  @rotonmeta
+/tests/tooling/verdictCheck.test.ts                  @rotonmeta
 /.github/workflows/ci.yml                            @rotonmeta
 package.json                                         @rotonmeta
 /scripts/nodeTest.mjs                                @rotonmeta

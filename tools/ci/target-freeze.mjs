@@ -62,6 +62,9 @@ export const JUDGES = Object.freeze([
   { pattern: "tools/ci/gate.mjs", what: "the needs CI gate requires" },
   { pattern: "tools/ci/scope*.mjs", what: "which suites a change runs" },
   { pattern: "tests/tooling/testVerdict.test.ts", what: "the plants the verdict reds on" },
+  { pattern: "tools/ci/verdict-check.mjs", what: "the verdict posted from main, over CI's jobs and artifacts" },
+  { pattern: ".github/workflows/test-verdict.yml", what: "the workflow that posts it" },
+  { pattern: "tests/tooling/verdictCheck.test.ts", what: "its job names and the workflow's shape" },
   { pattern: ".github/workflows/ci.yml", what: "the jobs, their uploads and the gate that reads them" },
   { pattern: "package.json", what: "the node runs' reporters, results among them" },
   { pattern: "scripts/nodeTest.mjs", what: "the launcher the node runs and their reporters go through" },
@@ -185,14 +188,17 @@ export function listAt(head, at, node = process.versions.node) {
   }
 }
 
+/** Each check the ruleset requires by name, and the one workflow that may report it. */
+export const POSTERS = Object.freeze({ [CHECK]: WORKFLOW, "Test verdict": ".github/workflows/test-verdict.yml" });
+
 /**
- * The workflows other than WORKFLOW that name something CHECK: a check run of theirs answers the
- * ruleset's requirement as the real one does.
+ * The workflows that name something a check in POSTERS but are not its poster: a check run of
+ * theirs answers the ruleset's requirement as the real one does.
  * @param {{ path: string, text: string }[]} workflows
  */
 export function impostors(workflows) {
-  const named = new RegExp(`^[ \\t-]*name:[ \\t]*(["']?)${CHECK}\\1[ \\t]*(#.*)?$`, "im");
-  return workflows.filter((w) => w.path !== WORKFLOW && named.test(w.text)).map((w) => w.path);
+  const named = Object.entries(POSTERS).map(([check, home]) => ({ home, re: new RegExp(`^[ \\t-]*name:[ \\t]*(["']?)${check}\\1[ \\t]*(#.*)?$`, "im") }));
+  return workflows.filter((w) => named.some((n) => w.path !== n.home && n.re.test(w.text))).map((w) => w.path);
 }
 
 export function codeowners() {
@@ -254,7 +260,7 @@ export function run(base, head, at = git(), log = console.log, node = process.ve
       .map((f) => ({ path: f, text: at.text(["show", `${head}:${f}`]) }));
     const spoofs = impostors(workflows);
     if (spoofs.length) {
-      log(`::error::${spoofs.join(", ")} ${spoofs.length === 1 ? "names" : "name"} a job or step ${CHECK}: a job so named reports a check that would stand in for this one, and a step so named is refused because the scan cannot tell it from a job (RULES.md 52).`);
+      log(`::error::${spoofs.join(", ")} ${spoofs.length === 1 ? "names" : "name"} a job or step ${Object.keys(POSTERS).join(" or ")} outside its poster: a job so named reports a check that would stand in for the real one, and a step so named is refused because the scan cannot tell it from a job (RULES.md 52).`);
       return 1;
     }
   } catch (err) {

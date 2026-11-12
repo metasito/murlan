@@ -1336,8 +1336,9 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: node tools/ci/gate.mjs
       # The base branch's judge, so a pull request that leaves this workflow alone cannot loosen the
-      # verdict on itself; one that edits this step can (docs/agents/suites.md § A flake is fixed,
-      # Limits). A base without the judge is red (tests/tooling/testVerdict.test.ts).
+      # verdict on itself; one that edits this step can, which the Test verdict check answers
+      # (docs/agents/suites.md § A flake is fixed, Limits). A base without the judge is red
+      # (tests/tooling/testVerdict.test.ts).
       - name: Every test that ran passed, once, and none was skipped unheard
         if: ${{ !cancelled() }}
         env:
