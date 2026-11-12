@@ -1,6 +1,7 @@
 import { CAPTURE_STATES, captureGameState } from "@/lib/captureStates";
 import { mulberry32 } from "@/lib/game/simulate";
 import { registerBenchScenario, type BenchContext } from "../bench";
+import { isBenchHost } from "../benchLaunch";
 import { botTable, driveBots } from "../benchTable";
 import { diag, FeltDraws } from "../index";
 
@@ -8,8 +9,11 @@ import { diag, FeltDraws } from "../index";
 const SETTLE_MS = 4000;
 /** A window at rest, about two thirds of the sway's 7.5 s period: long enough for a live sway to cross the felt's redraw step many times. */
 const WINDOW_MS = 5000;
-/** Long enough for the runner to see a `shot` row and take a screenshot on a loaded simulator, which can take several seconds. */
-const SHOT_MS = 10000;
+/** The runner acknowledges each screenshot here once taken (`.github/scripts/bench-shots.sh`). */
+const ACK_PORT = 5098;
+/** A capture on a loaded simulator has taken 16 s; past this the runner is taken to have missed the shot. */
+const ACK_MS = 60000;
+const ACK_POLL_MS = 500;
 const SHOTS = 2;
 /** A window of bots playing, a card thrown every `PLAY_STEP_MS`: what the felt costs while cards fly over it. */
 const PLAY_MS = 10000;
@@ -46,6 +50,20 @@ function seedRandomness(seed: number): () => void {
   };
 }
 
+async function acknowledged(ctx: BenchContext, id: string): Promise<boolean> {
+  const host = isBenchHost(ctx.params.host) ? ctx.params.host : "127.0.0.1";
+  const until = performance.now() + ACK_MS;
+  while (performance.now() < until) {
+    try {
+      if ((await fetch(`http://${host}:${ACK_PORT}/${id}`)).ok) return true;
+    } catch {
+      // The runner's server is not up yet, or the shot is not taken: ask again.
+    }
+    await ctx.sleep(ACK_POLL_MS);
+  }
+  return false;
+}
+
 registerBenchScenario("restCaptures", async (ctx) => {
   if (!FeltDraws) return;
   const unseed = seedRandomness(SEED);
@@ -65,8 +83,9 @@ async function captures(ctx: BenchContext): Promise<void> {
     await ctx.sleep(WINDOW_MS);
     diag({ k: "atRest", t: performance.now(), id: state.id, ms: performance.now() - t0, ...draws() });
     for (let i = 0; i < SHOTS; i++) {
-      diag({ k: "shot", t: performance.now(), id: `${state.id}-${i}`, holdMs: SHOT_MS });
-      await ctx.sleep(SHOT_MS);
+      const id = `${state.id}-${i}`;
+      diag({ k: "shot", t: performance.now(), id });
+      diag({ k: "shotAcked", t: performance.now(), id, acked: await acknowledged(ctx, id) });
     }
   }
   const table = botTable();
