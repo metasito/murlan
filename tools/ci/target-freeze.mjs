@@ -37,6 +37,7 @@ export const TARGETS = Object.freeze([
   { pattern: "tests/e2e/helpers/virtualClock.ts", what: "the clock the speed budgets are read in" },
   { pattern: "tests/helpers/phoneTable.ts", what: "the table layout and insets the lamp is measured against" },
   { pattern: "tests/e2e/helpers/cardOnCardCss.ts", what: "how the mockup draws a card's shadow on a card" },
+  { pattern: "tests/e2e/helpers/cardContact.ts", what: "how the specs read a card's contact shadow and what the felt rebuilt" },
   { pattern: "tests/e2e/helpers/phones.ts", what: "the viewports every spec is measured at" },
   { pattern: "tests/e2e/helpers/settle.ts", what: "when a spec decides the table has stopped moving" },
   { pattern: "tests/e2e/helpers/safeArea.ts", what: "the insets a spec measures under" },

@@ -3,7 +3,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { BACK_SCALE, CARD_H, FIELD_SCALE, HAND_SCALE } from "../../components/cardFaceModel.ts";
+import { BACK_SCALE, CARD_H, FIELD_SCALE, HAND_SCALE, handCardSize } from "../../components/cardFaceModel.ts";
+import { layoutHandRow } from "../../components/handLayout.ts";
+import { PHONES } from "../e2e/helpers/phones.ts";
 import { drawnFanBounds, fanPoint, seatFanArc } from "../../components/fanGeometry.ts";
 import type { CardFrom } from "../../components/flightPose.ts";
 import { FAN_CARD_SCALE } from "../../components/impact.ts";
@@ -11,6 +13,7 @@ import {
   arrangeOpponents,
   CHIP_H,
   FAN_DRAWN_CARDS,
+  HAND_ZONE_GAP,
   HAND_ZONE_H,
   handVisibleH,
   SEAT_DISC,
@@ -246,5 +249,57 @@ describe("throws and exchange legs start from the layout's seat points", () => {
   test("the pile a throw lands on is the layout's", () => {
     const pair = { type: "pair", cards: [card("x")], strength: 5 } as Combination;
     assert.equal(readThrownPlay({ combo: pair, playedBy: 2 }, odd, seating).pile, real.anchors.pile);
+  });
+});
+
+describe("the middle band, the hand zone and the hand window", () => {
+  const near = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) < 1e-9, `${what}: ${a} vs ${b}`);
+  const tables = PHONES.flatMap((p) => Object.entries(INSETS).map(([inset, insets]) => ({ what: `${p.name} ${inset}`, l: phoneTable(p.width, p.height, insets) })));
+
+  test("the hand window sits between the buttons, a scaled gap from each", () => {
+    for (const { what, l } of tables) {
+      const { handWindow: w, buttons } = l;
+      near(w.x - (buttons.passa.x + buttons.passa.w), HAND_ZONE_GAP * l.scale, `${what} passa`);
+      near(buttons.gioca.x - (w.x + w.w), HAND_ZONE_GAP * l.scale, `${what} gioca`);
+      near(w.y, l.handZone.y, `${what} top`);
+      near(w.h, l.handZone.h - l.handZone.padBottom, `${what} height`);
+    }
+  });
+
+  test("the middle band spans the table from the top band down to the hand zone", () => {
+    for (const { what, l } of tables) {
+      near(l.midBand.y, l.frame.tableTop + topBandHeight(l.scale), `${what} top`);
+      near(l.midBand.y + l.midBand.h, l.handZone.y, `${what} foot`);
+      assert.deepEqual([l.midBand.x, l.midBand.w], [l.handZone.x, l.handZone.w], what);
+    }
+  });
+
+  test("each placed box's edges land it on its rect inside its parent", () => {
+    for (const { what, l } of tables) {
+      const table = { x: l.tableBox.left, y: l.tableBox.top, w: l.window.width - l.tableBox.left - l.tableBox.right, h: l.window.height - l.tableBox.top - l.tableBox.bottom };
+      const cases = [["midBand", table, l.midBand], ["handZone", table, l.handZone], ["handWindow", l.handZone, l.handWindow]] as const;
+      for (const [key, outer, inner] of cases) {
+        const e = l.placed[key];
+        near(outer.x + e.left, inner.x, `${what} ${key} left`);
+        near(outer.y + e.top, inner.y, `${what} ${key} top`);
+        near(outer.x + outer.w - e.right, inner.x + inner.w, `${what} ${key} right`);
+        near(outer.y + outer.h - e.bottom, inner.y + inner.h, `${what} ${key} bottom`);
+      }
+    }
+  });
+
+  test("the hand row rests centred in the window, or at one end of its pan when it scrolls", () => {
+    let scrolled = 0;
+    for (const { what, l } of tables) {
+      for (const n of [5, 27]) {
+        const row = layoutHandRow({ ids: Array.from({ length: n }, (_, i) => `c${i}`), size: handCardSize(l.scale, false, false), roomW: l.frame.handRoomW, availW: l.handWindow.w, bottomPad: l.handZone.padBottom });
+        const rest = l.handWindow.w / 2 + row.left;
+        if (row.scrollable) {
+          scrolled++;
+          near(rest, -row.panLimit, `${what} ${n} scrolled`);
+        } else near(rest + row.width / 2, l.handWindow.w / 2, `${what} ${n} centred`);
+      }
+    }
+    assert.ok(scrolled > 0, "some table scrolls its widest hand");
   });
 });

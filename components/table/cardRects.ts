@@ -83,8 +83,8 @@ export function panShown(pan: number, limit: number): number {
   return Math.min(Math.max(pan, -limit), limit);
 }
 
-/** Where a hand row sits, in window points at rest, and the window a scrolled row shows through (`clipHalf` 0: none). */
-export interface HandPlace { x: number; y: number; clipX: number; clipHalf: number }
+/** Where a hand row sits, in window points at rest, and the window a scrolled row shows through (null: none). */
+export interface HandPlace { x: number; y: number; clip: { x: number; w: number } | null }
 
 export function handCard(
   row: HandPlace,
@@ -94,7 +94,8 @@ export function handCard(
   "worklet";
   const cx = row.x + card.left + card.w / 2 + card.tx - pan;
   const w = card.w * card.scale;
-  const seen = row.clipHalf > 0 ? (Math.min(cx + w / 2, row.clipX + row.clipHalf) - Math.max(cx - w / 2, row.clipX - row.clipHalf)) / w : 1;
+  const clip = row.clip;
+  const seen = clip ? (Math.min(cx + w / 2, clip.x + clip.w) - Math.max(cx - w / 2, clip.x)) / w : 1;
   return {
     cx,
     cy: row.y - card.bottom - card.h / 2 + card.ty,

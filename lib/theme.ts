@@ -61,13 +61,17 @@ export interface ShadowLayer {
 const shadowCss = (x: string, y: string, radius: number, color: string, opacity: number) =>
   `${x} ${y} ${radius}px ${withAlpha(color, opacity)}`;
 
-export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Record<string, any> {
-  // Android draws an outset `boxShadow` only from 9. Below it the prop is
-  // ignored outright, so those devices keep the single-shadow props, carrying
-  // the cast layer. There Android reads only `elevation`, so it is floored:
-  // a caller passing 0 would otherwise get no shadow at all.
+/** Android draws an outset `boxShadow` only from 9; below it the prop is ignored outright. */
+export function drawsBoxShadow(): boolean {
   const api = Number(Platform.Version);
-  if (Platform.OS === "android" && Number.isFinite(api) && api < 28) {
+  return !(Platform.OS === "android" && Number.isFinite(api) && api < 28);
+}
+
+export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Record<string, any> {
+  // Where `boxShadow` is not drawn, the single-shadow props carry the cast
+  // layer. There Android reads only `elevation`, so it is floored: a caller
+  // passing 0 would otherwise get no shadow at all.
+  if (!drawsBoxShadow()) {
     const cast = layers[layers.length - 1];
     return {
       shadowColor: cast.color,
@@ -112,6 +116,21 @@ export function cardShadow(kind: keyof typeof CARD_LAYERS, cast: "table" | null 
   return {
     boxShadow: `${shadowCss("0px", `${contact.offsetY}px`, contact.radius, contact.color, contact.opacity)}, ${shadowCss(x, y, fall.radius, fall.color, fall.opacity)}`,
   };
+}
+
+const contacts: Partial<Record<"face" | "back", { s: number; style: { boxShadow: string } }>> = {};
+
+/**
+ * A table card's contact alone, at the table's scale `s`, where the Skia felt draws its cast. Only where
+ * `boxShadow` is drawn (`cardContacts`): `elevation`, the only fallback, paints a card over its later siblings.
+ */
+export function cardContact(kind: "face" | "back", s: number): { boxShadow: string } {
+  const last = contacts[kind];
+  if (last?.s === s) return last.style;
+  const { color, offsetY, opacity, radius } = contactLayer(CardShadow.alpha[kind]);
+  const style = { boxShadow: shadowCss("0px", `${offsetY * s}px`, radius * s, color, opacity) };
+  contacts[kind] = { s, style };
+  return style;
 }
 
 // Authored at scale 1, where the table's own shadows are quoted. The art

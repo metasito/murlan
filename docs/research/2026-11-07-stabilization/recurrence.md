@@ -41,7 +41,7 @@ Chronology (each commit "fixes" redraw-at-rest; each later feature re-adds per-f
 - 11-03 rule 51 added to `docs/agents/RULES.md` after the fact.
 
 Why earlier fixes didn't hold:
-- The pins are **per-feature build counters** (`tests/native/handShadeRebuild.test.tsx`,
+- The pins are **per-feature build counters** (`handShadeRebuild.test.tsx`, since deleted with the hand shade,
   `shadowClusterBuilds`, `feltRailDispose`, `tests/e2e/landingShadowStill.spec.ts`). Each proves
   "this canvas doesn't rebuild"; none proves "the table costs X ms/frame". A new layer (gloss,
   foil, hand shade, motes) is not covered by any old pin.

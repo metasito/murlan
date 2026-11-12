@@ -61,6 +61,8 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
       timings: ${{ steps.plan.outputs.timings }}
+      stable: ${{ steps.plan.outputs.stable }}
+      split-problems: ${{ steps.plan.outputs.split-problems }}
       verify-timings: ${{ steps.verify-plan.outputs.verify-timings }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -119,12 +121,34 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          # A fork's runs leave no artifact this repository's filter keeps.
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          OPENED: ${{ github.event.pull_request.created_at }}
           RUNS: 5
         run: |
-          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100" || echo '{"artifacts":[]}')
+          # Newest first, across every branch: a burst of pull requests can push main's runs, or this
+          # branch's latest, off one page. Nothing older than the pull request is its branch's.
+          artifacts='{"artifacts":[]}'
+          ours='[.artifacts[] | select((.expired | not) and .workflow_run.head_repository_id == .workflow_run.repository_id)]'
+          for page in $(seq 1 50); do
+            if ! got=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100&page=$page"); then
+              echo "::warning::Listing e2e-timings failed at page $page; the plan prices from what it already holds."
+              break
+            fi
+            artifacts=$(jq -s --arg b "$BRANCH" "{artifacts: (.[0].artifacts + (.[1] | $ours
+              | map(select(.workflow_run.head_branch == \"main\" or .workflow_run.head_branch == \$b))))}" <(echo "$artifacts") <(echo "$got"))
+            [ "$(jq '.artifacts | length' <<< "$got")" -lt 100 ] && break
+            [ "$(jq '.artifacts | map(select(.workflow_run.head_branch == "main")) | length' <<< "$artifacts")" -ge "$RUNS" ] \
+              && { [ "$BRANCH" = main ] || [ "$FORK" = true ] \
+                || [ "$(jq --arg b "$BRANCH" '.artifacts | map(select(.workflow_run.head_branch == $b)) | length' <<< "$artifacts")" -gt 0 ] \
+                || jq -e --arg t "$OPENED" '$t != "" and .artifacts[-1].created_at < $t' <<< "$got" > /dev/null; } \
+              && break
+          done
           branches=(main)
-          [ "$BRANCH" != main ] && branches+=("$BRANCH")
-          for branch in "${branches[@]}"; do
+          if [ "$BRANCH" != main ] && [ "$FORK" != true ]; then branches+=("$BRANCH"); fi
+          layers=("" "")
+          for i in "${!branches[@]}"; do
+            branch=${branches[$i]}
             # Main's price is a median; a branch's is its latest run, so a spec it made heavier costs that on the next run.
             runs=$RUNS; [ "$branch" != main ] && runs=1
             group=()
@@ -140,13 +164,13 @@ jobs:
               [ -s "$RUNNER_TEMP/timings-$id.json" ] && group+=("$RUNNER_TEMP/timings-$id.json")
             done
             if [ ${#group[@]} -gt 0 ]; then
-              layers+=("$(IFS=,; echo "${group[*]}")")
+              layers[$i]=$(IFS=,; echo "${group[*]}")
               echo "Timings for $branch: the median of ${#group[@]} green runs."
             else
               echo "::warning::No green run of $branch has left e2e-timings; its specs keep the older numbers."
             fi
           done
-          node tools/ci/e2e-shard.mjs plan "${layers[@]}"
+          node tools/ci/e2e-shard.mjs plan "${layers[0]}" "${layers[1]}"
 
       # verify's split: each file at its median over main's latest runs, one line of artifact ids a run.
       # A file no run measured is placed as a typical one, so a missing layer costs balance, never a file.
@@ -1049,6 +1073,7 @@ jobs:
       # Over the numbers this run split by, so a spec this run could not price keeps the latest
       # measurement rather than the committed one.
       - name: Regenerate tests/e2e/timings.json
+        id: regen
         env:
           TIMINGS: ${{ needs.scope.outputs.timings }}
         run: |
@@ -1077,10 +1102,33 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      # At this run's prices for the specs the pull request touched, main's for the rest
+      # (tools/ci/e2e-shard.mjs judgedPrices); the guess is scope's plan's, which split by it.
+      - name: The split was measured, even and within the target
+        if: ${{ !cancelled() && steps.regen.outcome == 'success' && needs.browser.result == 'success' }}
+        env:
+          PROBLEMS: ${{ needs.scope.outputs.split-problems }}
+          STABLE: ${{ needs.scope.outputs.stable }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          printf '%s' "$STABLE" > "$RUNNER_TEMP/stable.json"
+          changed=
+          if [ -n "$BASE" ]; then
+            if git fetch -q --no-tags --depth=1 origin "$BASE" && git cat-file -e "$BASE^{commit}" \
+              && names=$(git diff --name-only "$BASE" HEAD -- tests/e2e); then
+              changed=$(paste -sd, - <<< "$names")
+            else
+              changed='?'
+            fi
+          fi
+          node tools/ci/e2e-shard.mjs check "$PROBLEMS" "$RUNNER_TEMP/stable.json" tests/e2e/timings.json "$BASE" "$changed"
+
       # The commit's gate, e2eShardSplit.test.ts, imports `yaml` and lists the suite with the
       # lockfile's Playwright: the one step here that needs node_modules.
+      # Past a red split check: refreshed prices are how a split priced from stale ones gets even again.
       - name: Dependencies for the timings commit
-        if: env.COMMIT_TIMINGS == 'true'
+        id: install
+        if: ${{ !cancelled() && steps.regen.outcome == 'success' && env.COMMIT_TIMINGS == 'true' }}
         uses: ./.github/actions/install
 
       # On the weekly schedule only, never per-merge. `main` has no branch
@@ -1091,20 +1139,18 @@ jobs:
       # full of failures, and a test that fails at its timeout prices its spec
       # at the timeout while one that fails on its first assertion prices it at
       # seconds. Either number is indistinguishable from a real duration once
-      # committed, and lands as the lopsided split `tests/tooling/e2eShardSplit.test.ts`
-      # reds the next pull request over — which is the defect this job exists
-      # to end.
+      # committed, and lands as a lopsided split every later run splits by —
+      # which is the defect this job exists to end.
       #
       # Regenerating on every green main push moved `main` under every open
       # pull request, which cost each one a branch update and a full extra run
       # — and moved the tree out from under `scope`'s skip, so the next main
       # push ran the whole suite and regenerated again. Nine such commits on
-      # 2026-09-11. `tests/tooling/e2eShardSplit.test.ts` tolerates 10% unmeasured
-      # specs, about five new specs at the current count, so a week is well
-      # inside the floor; if it ever trips it says so by name and a
-      # `workflow_dispatch` regenerates.
+      # 2026-09-11. A spec merged in between is priced once a green main run
+      # has measured it; a merge that skips the browser shards measures nothing,
+      # and until main's next one the spec is a guess on every pull request.
       - name: Commit the regenerated timings, if main's copy is stale
-        if: env.COMMIT_TIMINGS == 'true'
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -1119,8 +1165,8 @@ jobs:
               echo "tests/e2e/timings.json already matches this run's measurements."
               exit 0
             fi
-            if ! node --test tests/tooling/e2eShardSplit.test.ts; then
-              echo "::error::The measured timings fail tests/tooling/e2eShardSplit.test.ts; committing them would red main and every pull request."
+            if ! node tools/ci/e2e-shard.mjs judge tests/e2e/timings.json || ! node --test tests/tooling/e2eShardSplit.test.ts; then
+              echo "::error::The measured timings split badly or fail tests/tooling/e2eShardSplit.test.ts; committed, they would red every pull request."
               exit 1
             fi
             git commit -q -m "Regenerate tests/e2e/timings.json from measured durations" -- tests/e2e/timings.json

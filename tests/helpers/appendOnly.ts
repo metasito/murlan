@@ -24,3 +24,21 @@ export function rewritten(main: Record<string, string>, now: Record<string, stri
     .filter(([version, hash]) => now[version] !== hash)
     .map(([version, hash]) => `${version}: was ${hash}, now ${now[version] ?? "missing"}`);
 }
+
+/**
+ * What the record should hold at `version`: main's history and this version's hash, and nothing
+ * else. An entry only `branch` wrote never shipped, so it is not history: it comes back in
+ * `dropped`. A hash main already records for `version` is never replaced: the shape changed under
+ * a shipped version, and only a bump says so.
+ */
+export function withEntry(
+  main: Record<string, string>,
+  branch: Record<string, string>,
+  version: number,
+  hash: string
+): { record: Record<string, string>; dropped: string[] } | { refused: string } {
+  const at = String(version);
+  if (main[at] !== undefined && main[at] !== hash) return { refused: `origin/main already records ${main[at]} for version ${at}` };
+  const dropped = Object.keys(branch).filter((v) => v !== at && main[v] === undefined);
+  return { record: { ...main, [at]: hash }, dropped };
+}

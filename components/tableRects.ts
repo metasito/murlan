@@ -202,18 +202,18 @@ export function tableRects(input: {
     ids: Array.from({ length: state.hand.cards }, (_, i) => String(i)),
     size,
     roomW: frame.handRoomW,
-    availW: frame.handAvailW,
+    availW: layout.handWindow.w,
     bottomPad: frame.bottomPad,
   });
-  const rowLeft = anchors.bottom.x - row.width / 2;
+  const rowLeft = anchors.bottom.x + row.left;
   const rowTop = anchors.bottom.y + row.base - row.visibleH;
   let hand: Rect | null = null;
   if (row.cards.length > 0) {
     const drawn = span(row.cards.map((c) => cover(turned(rowLeft + c.left + c.shift + size.w / 2, rowTop + row.visibleH - c.bottom - size.h / 2, size.w, size.h, c.rot))))!;
     if (row.scrollable) {
-      const x0 = Math.max(drawn.x, anchors.bottom.x - frame.handAvailW / 2);
+      const x0 = Math.max(drawn.x, layout.handWindow.x);
       const y0 = Math.max(drawn.y, rowTop - row.topClearance);
-      const x1 = Math.min(drawn.x + drawn.w, anchors.bottom.x + frame.handAvailW / 2);
+      const x1 = Math.min(drawn.x + drawn.w, layout.handWindow.x + layout.handWindow.w);
       const y1 = Math.min(drawn.y + drawn.h, rowTop + row.visibleH + row.crop + row.tiltOverhang);
       hand = box(x0, y0, x1 - x0, y1 - y0);
     } else hand = drawn;

@@ -3,148 +3,13 @@
 // an absence with `nothingArrives`; real time is left only where real time is the subject.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
-import { fixedSleeps } from "../helpers/sleepScan.ts";
-import { blankComments } from "../helpers/sourceScan.ts";
-
-const repoRoot = path.resolve(import.meta.dirname, "..", "..");
-const SCANNED = ["tests/integration", "tests/server", "tests/helpers"];
+import { fixedWaits, readInventory, SCANNED, sources, WAIT_INVENTORY, widenedWindows } from "../helpers/waitInventory.ts";
 
 /** Exact, not a ceiling: a wait removed goes red until its entry is lowered, so the list only shrinks. */
-const INVENTORY: Record<string, { n: number; why: string }> = {
-  "tests/helpers/client.ts": {
-    n: 2,
-    why: "nothingArrives' window, since absence has no event to await; and eventually's poll cadence, for state that pushes nothing",
-  },
-  "tests/integration/clusterCount.test.ts": {
-    n: 2,
-    why: "the asks are spread across a real 1.5 s outage and the seconds after it: real time is the subject",
-  },
-  "tests/integration/disposeTombstone.test.ts": {
-    n: 1,
-    why: "the window after dispose in which the room must stay unclaimable while its row's delete is held",
-  },
-  "tests/integration/instanceInbox.test.ts": {
-    n: 4,
-    why: "a duplicate delivery, and a delivery over a link that is down, are absences; and the send must meet a link already refused",
-  },
-  "tests/integration/ownerLoss.test.ts": {
-    n: 2,
-    why: "the owner process is killed a beat after its deal persisted; and a disconnect handler slower than the teardown is the scenario",
-  },
-  "tests/integration/postgresRestart.test.ts": {
-    n: 1,
-    why: "both instances are watched staying up after their backends are terminated: a crash that follows has no event to await",
-  },
-  "tests/integration/presenceCluster.test.ts": {
-    n: 1,
-    why: "messages between instances not sent are an absence across both servers, with no event to await",
-  },
-  "tests/integration/presenceCrash.test.ts": {
-    n: 1,
-    why: "a window with no periodic write is real time itself",
-  },
-  "tests/integration/reconnect.test.ts": {
-    n: 2,
-    why: "reconnectOnALoop's cadence is the stimulus: two drop-and-return cycles inside one AFK window",
-  },
-  "tests/integration/roomLifecycleRaces.test.ts": {
-    n: 1,
-    why: "the database is held closed while two writes race, and that window is the race",
-  },
-  "tests/integration/socketHandshakeLimit.test.ts": {
-    n: 3,
-    why: "the server's offline notice waits on a real 400ms timer no installed clock reaches, which quiet() and after() outwait; and the connect's second friends read is fire-and-forget",
-  },
-  "tests/integration/socketOrigin.test.ts": {
-    n: 1,
-    why: "after() outwaits the server's offline notice, a real 400ms timer no installed clock reaches",
-  },
-  "tests/integration/takeoverSerialised.test.ts": {
-    n: 1,
-    why: "the restore's stand-in database read: the window a second racer has to land inside",
-  },
-  "tests/integration/testServerCleanup.test.ts": {
-    n: 1,
-    why: "the connect notice's friend read is held for the stated time, the window stop() has to outwait",
-  },
-  "tests/server/adminConcurrency.test.ts": {
-    n: 1,
-    why: "staggered task durations are the stimulus that interleaves completions against the limit",
-  },
-  "tests/server/closeDatabaseBusy.test.ts": {
-    n: 1,
-    why: "the pool is held busy, and `ended` is watched not settling for that long",
-  },
-  "tests/server/closeTableShutdown.test.ts": {
-    n: 1,
-    why: "a slow status write is the stimulus the shutdown has to outwait",
-  },
-  "tests/server/publishOrder.test.ts": {
-    n: 1,
-    why: "a row write still in flight is the stimulus the last leaver's delete has to queue behind",
-  },
-  "tests/server/sessionEviction.test.ts": {
-    n: 1,
-    why: "socket.io stamps handshake.issued from the real clock, and the two sockets need distinct stamps",
-  },
-  "tests/server/stallHygiene.test.ts": {
-    n: 1,
-    why: "the deadline a deal has to beat: a stall is the absence of the event",
-  },
-};
-
-/** Exact: a call site that widens `nothingArrives` past its default window is real time the sweep above cannot see. */
-const WINDOWS: Record<string, { n: number; why: string }> = {
-  "tests/integration/stateRedelivered.test.ts": {
-    n: 1,
-    why: "a third re-send would follow the second by one more ack timeout, a real timer, so the absence is watched for three of them",
-  },
-  "tests/integration/crossInstance.test.ts": {
-    n: 1,
-    why: "an ack that did not cross instances shows as a re-send after the ack timeout, so the absence is watched for four of them",
-  },
-  "tests/integration/drainPresence.test.ts": {
-    n: 2,
-    why: "the drained instance's offline notice follows a real 400 ms debounce in another process, and a peer's sweep a real heartbeat, so each absence is watched past them",
-  },
-};
-
-/** The `nothingArrives(...)` calls in `code` whose options set `ms`, by file. */
-export function widenedWindows(files: [string, string][]): Map<string, number> {
-  const found = new Map<string, number>();
-  for (const [file, src] of files) {
-    const code = blankComments(src);
-    for (const m of code.matchAll(/(?<!function\s+)\bnothingArrives\s*(?:<[^>(]*>)?\(/g)) {
-      let depth = 1;
-      let end = m.index + m[0].length;
-      for (; end < code.length && depth > 0; end++) {
-        if (code[end] === "(") depth++;
-        else if (code[end] === ")") depth--;
-      }
-      if (/\bms\s*[:,}]/.test(code.slice(m.index + m[0].length, end))) found.set(file, (found.get(file) ?? 0) + 1);
-    }
-  }
-  return found;
-}
-
-const CODE = /\.(?:[cm]?[jt]s|tsx)$/;
-
-function sources(): [string, string][] {
-  return SCANNED.flatMap((dir) =>
-    readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-      .filter((f) => CODE.test(f))
-      .map((f): [string, string] => {
-        const rel = path.posix.join(dir, f.split(path.sep).join("/"));
-        return [rel, readFileSync(path.join(repoRoot, rel), "utf8")];
-      })
-  );
-}
+const { waits: INVENTORY, windows: WINDOWS } = readInventory();
 
 const files = sources();
-const counts = new Map<string, number[]>();
-for (const s of fixedSleeps(files)) counts.set(s.file, [...(counts.get(s.file) ?? []), s.line]);
+const counts = fixedWaits(files);
 
 test("the suites are scanned at all", () => {
   for (const dir of SCANNED) {
@@ -160,8 +25,8 @@ test("every fixed real-time wait left is inventoried, at its exact count", () =>
     found,
     pinned,
     "Install a clock for server time, await the event or ack, or use nothingArrives for an absence. " +
-      "A wait that is about real time itself is listed in INVENTORY in tests/tooling/integrationSleepInventory.test.ts " +
-      "with its reason; a removed one lowers its entry to the count found below. " +
+      `A wait that is about real time itself is listed under "waits" in ${WAIT_INVENTORY} with its reason; ` +
+      "a removed one is lowered by `npm run regen`. " +
       `Found: ${JSON.stringify([...counts].map(([file, lines]) => `${file}: ${lines.join(", ")}`))}`
   );
 });
@@ -176,7 +41,7 @@ test("every nothingArrives call that widens its window is inventoried, at its ex
   assert.deepEqual(
     Object.fromEntries(widenedWindows(files)),
     Object.fromEntries(Object.entries(WINDOWS).map(([file, { n }]) => [file, n])),
-    "A call site that passes `ms` to nothingArrives waits that long on every green run: list it in WINDOWS with its reason, or drop the override."
+    `A call site that passes \`ms\` to nothingArrives waits that long on every green run: list it under "windows" in ${WAIT_INVENTORY} with its reason, or drop the override; a removed one is lowered by \`npm run regen\`.`
   );
   for (const [file, { why }] of Object.entries(WINDOWS)) {
     assert.ok(why.split(/\s+/).length >= 6, `${file}: say why this window is wider than the default`);

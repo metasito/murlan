@@ -57,12 +57,11 @@ describe('a card rect under queued UI writes', () => {
       motion: makeMutable(TABLE_AT_REST),
       pile: at,
       hand: at,
+      handWindow: { x: 0, w: 0 },
       seats: { top: at, left: at, right: at },
       glossLight: makeMutable({ lx: 0, ly: 0, level: 1, r: 1, t: 0 }),
       stillLight: makeMutable({ lx: 0, ly: 0, level: 1, r: 1, t: 0 }),
       shadeLevel: makeMutable(1),
-      handOrder: makeMutable<readonly string[]>([]),
-      pileOrder: makeMutable<readonly string[]>([]),
     };
     const Table = ({ turn, tick = 0, drawn }: { turn: number; tick?: number; drawn: boolean }) => <Owner table={useMemo(() => table, [])} arc={arc} turn={turn} tick={tick} drawn={drawn} />;
 

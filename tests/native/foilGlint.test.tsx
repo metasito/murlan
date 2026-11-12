@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 const at = { x: 0, y: 0 };
-const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, seats: { top: at, left: at, right: at } };
+const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, handWindow: { x: 0, w: 0 }, seats: { top: at, left: at, right: at } };
 const CARD: Card = { id: '3_spades', rank: '3', suit: 'spades', isJoker: false };
 const backAt = (x: number, y: number, rot = 0): CardRect => ({ x, y, w: 40, h: 58, rot, back: true, lift: 0, glow: 0, seen: 1 });
 const lightAt = (lx: number, ly: number, level = 1): GlossLight => ({ lx, ly, level, r: 1, t: 0 });

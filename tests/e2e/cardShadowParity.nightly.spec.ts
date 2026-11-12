@@ -1,13 +1,14 @@
 // tests/e2e/cardShadowParity.nightly.spec.ts — the felt draws a card's shadow as the Lantern Table's `.card`
-// would for the same card under the same light, and no card view keeps one of its own once Skia has
-// drawn (#1259 plan 4, task 12). The mockup's own shadow rules carry the owner's ruling of 2026-11-03 (#1966):
+// would for the same card under the same light, and no card view keeps more than its contact once Skia
+// has drawn (#1259 plan 4, task 12; #1988 item 8). The mockup's own shadow rules carry the owner's ruling of 2026-11-03 (#1966):
 // a thin contact, a tight cast. The same cards are laid on the mockup's stage, its `--shx`/`--shy`
 // set from the app's lamp; each side's shadow is what turning it off gives back.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
-import { SHADOW_PATHS } from "../../components/table/cardShadows";
+import type { ShadowPath } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
+import { cardViewShadows, contactOnFelt, FELT_CONTACTS, feltContactHolds, feltHolds, viewContacts } from "./helpers/cardContact";
 import { feltPixels, rgbaOf, skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -83,7 +84,7 @@ async function appShadows(page: Page) {
   return { on, off };
 }
 
-test("the felt's shadow round the pile is the mockup's, and no card view carries one", async ({ browser, baseURL }, info) => {
+test("the felt's shadow round the pile is the mockup's, and no card view casts more than its contact", async ({ browser, baseURL }, info) => {
   test.setTimeout(5 * 60_000);
   const page = await (await sideContext(browser, baseURL)).newPage();
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -105,7 +106,6 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
     return { shadow: to.shadow - from.shadow, glow: to.glow - from.glow };
   };
   const still = { shadow: 0, glow: 0 };
-  expect(await builds(), "every shadow path built for the seeded table").toBeGreaterThanOrEqual(SHADOW_PATHS.length);
   expect(await rebuiltOverASecond(), "shadow paths and glow rebuilt over a second at rest").toEqual(still);
   const resting = await builds();
   const held = page.locator('[data-testid^="hand-card-"]').filter({ visible: true }).last();
@@ -114,13 +114,20 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   await held.click();
   await expect.poll(rebuiltOverASecond, { message: "shadow paths and glow rebuilt over a second once the cards rest again" }).toEqual(still);
 
-  const shadowed = await page.evaluate(() => {
-    const scopes = document.querySelectorAll('[id^="card-"], [data-testid^="hand-card-"]');
-    const views = new Set([...scopes].flatMap((r) => [r, ...r.querySelectorAll("*")]));
-    return { scopes: scopes.length, views: views.size, cast: [...views].map((v) => getComputedStyle(v).boxShadow).filter((s) => s !== "none") };
-  });
-  expect(shadowed.scopes).toBeGreaterThan(0);
-  expect(shadowed.cast, `platform shadows and glows among the ${shadowed.views} views of the table's cards`).toEqual([]);
+  const table = await cardViewShadows(page, '[id^="card-"], [data-testid^="hand-card-"]');
+  expect(table.cards.filter((c) => c.key.startsWith("pile:")).length, "cards on the pile").toBeGreaterThan(0);
+  expect(table.others, `platform shadows and glows among the views of the table's ${table.cards.length} cards`).toEqual([]);
+  expect(
+    table.cards.map((c) => [`${c.path} ${c.key}`, c.contacts]),
+    "each card's own contact, a seat fan's drawn by the felt"
+  ).toEqual(table.cards.map((c) => [`${c.path} ${c.key}`, viewContacts(c)]));
+  const feltDraws: ShadowPath[] = ["cast", ...FELT_CONTACTS.filter((path) => table.cards.some((c) => c.path === path))];
+  const holds = await feltHolds(page, () => expect.poll(rebuiltOverASecond).toEqual(still), feltDraws);
+  expect(Object.keys(holds).sort(), "the shadow paths the felt holds for the seeded table").toEqual([...feltDraws].sort());
+  expect(
+    table.cards.filter((c) => feltContactHolds(holds, c.key) !== contactOnFelt(c.path)).map((c) => `${c.path} ${c.key}`),
+    "cards whose contact the felt draws where their view should, or does not where it should"
+  ).toEqual([]);
 
   const [rects, felt, anchor] = await page.evaluate(() => {
     const e2e = globalThis as unknown as { murlanCardRects: () => CardRects; murlanCardFelt: () => Felt; murlanCardPile: () => Point };

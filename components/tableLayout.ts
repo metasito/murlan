@@ -22,6 +22,16 @@ export const RAIL_KNOB_ALIGN: Align = "center";
 export interface Point { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Delta { dx: number; dy: number }
+interface Edges { left: number; top: number; right: number; bottom: number }
+
+function edgesIn(outer: Rect, inner: Rect): Edges {
+  return {
+    left: inner.x - outer.x,
+    top: inner.y - outer.y,
+    right: outer.x + outer.w - (inner.x + inner.w),
+    bottom: outer.y + outer.h - (inner.y + inner.h),
+  };
+}
 
 export interface TableLayout {
   scale: number;
@@ -53,8 +63,18 @@ export interface TableLayout {
   pileNote: { centreX: number; top: number; h: number; room: number };
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
+  /** The band between the top band and the hand zone, the table's width: the side seats stand in it and the pile centres in it. */
+  midBand: Rect;
   /** The hand zone at its designed place, and the padding its row and buttons stand on. */
   handZone: Rect & { padBottom: number };
+  /** The span the hand row is drawn in between PASSA and GIOCA, centred on the hand zone, over its padding: a row wider than it scrolls under it. */
+  handWindow: Rect;
+  /**
+   * The absolute boxes as distances from their parent's edges: the band and the hand zone in the
+   * table box, the hand window in the hand zone. By edges, not `top` and `width`: those round to a
+   * layout unit apart from the parent's own edges and move every glyph inside by it.
+   */
+  placed: Record<"midBand" | "handZone" | "handWindow", Edges>;
   /** PASSA and GIOCA, in the hand zone at its designed place. */
   buttons: { passa: Rect; gioca: Rect };
   /** How far each seat's name slides inboard of its disc's outer edge. */
@@ -88,6 +108,10 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const tableW = width - frame.tableLeft - frame.tableRight;
   const x = frame.tableLeft + tableW / 2;
   const handZone = { x: frame.tableLeft, y: tableFloor - handZoneH, w: tableW, h: handZoneH, padBottom: frame.bottomPad };
+  const midBand = { x: frame.tableLeft, y: midTop, w: tableW, h: midH };
+  const handWindow = { x: x - frame.handAvailW / 2, y: handZone.y, w: frame.handAvailW, h: handZone.h - handZone.padBottom };
+  const tableBox = { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus };
+  const table = { x: tableBox.left, y: tableBox.top, w: width - tableBox.left - tableBox.right, h: height - tableBox.top - tableBox.bottom };
   const btn = actionBtnSize(scale);
   const btnY = aligned(HAND_ZONE_ALIGN, handZone.y, handZone.h - handZone.padBottom, btn);
   const knob = physicalTouchTarget(scale);
@@ -137,14 +161,17 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
       menu: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: frame.tableTop, w: knob, h: knob },
       foot: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: height - frame.tableBottom - knob, w: knob, h: knob },
     },
+    midBand,
     handZone,
+    handWindow,
+    placed: { midBand: edgesIn(table, midBand), handZone: edgesIn(table, handZone), handWindow: edgesIn(handZone, handWindow) },
     buttons: {
       passa: { x: frame.tableLeft, y: btnY, w: btn, h: btn },
       gioca,
     },
     nameInset,
     badgeRoom,
-    tableBox: { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus },
+    tableBox,
     pill,
   };
 }

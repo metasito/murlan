@@ -7,7 +7,7 @@
 
 import type { CSSAnimationKeyframes } from "react-native-reanimated";
 import { bakeSway, TRACK_SECONDS, TRACK_STEP, trackAt } from "../../lib/swayTable.ts";
-import type { GlossLight } from "./cardGloss.ts";
+import { GLOSS_POINT_STEP, type GlossLight } from "./cardGloss.ts";
 import { FLARE_SEEN } from "./feltShader.ts";
 import { lightX, lightY, SWAY, SWAY_KICKED, type Lamp } from "./lampRig.ts";
 
@@ -43,18 +43,29 @@ const clamp01 = (v: number) => {
   return Math.min(1, Math.max(0, v));
 };
 
-/** Whether nothing but the sway moves the light: arrived, unflared, unkicked, at its level, and running. */
-export function isRested(s: Lamp): boolean {
+const restedWithin = (s: Lamp, atTarget: number) => {
   "worklet";
   return (
-    Math.abs(s.x - s.tx) < AT_TARGET &&
-    Math.abs(s.y - s.ty) < AT_TARGET &&
+    Math.abs(s.x - s.tx) < atTarget &&
+    Math.abs(s.y - s.ty) < atTarget &&
     Math.abs(s.r - s.tr) < AT_REACH &&
     s.flare < FLARE_SEEN &&
     s.kick * SWAY_KICKED < KICK_SEEN &&
     Math.abs(s.lvlT - s.lvl) < LEVEL_SEEN &&
     s.freeze === 0
   );
+};
+
+/** Whether nothing but the sway moves the light: arrived, unflared, unkicked, at its level, and running. */
+export function isRested(s: Lamp): boolean {
+  "worklet";
+  return restedWithin(s, AT_TARGET);
+}
+
+/** `isRested` as a gloss sees it: a glide's tail under the step no gloss shows is at rest, drawn by a gloss baked at the target. */
+export function glossRested(s: Lamp): boolean {
+  "worklet";
+  return restedWithin(s, GLOSS_POINT_STEP);
 }
 
 /** Whether the felt draws an end of the lamp's sway, not the lamp as it is: `side` names one, and the lamp has rested. */

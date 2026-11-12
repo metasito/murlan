@@ -1,0 +1,98 @@
+{
+  "waits": {
+    "tests/helpers/client.ts": {
+      "n": 2,
+      "why": "nothingArrives' window, since absence has no event to await; and eventually's poll cadence, for state that pushes nothing"
+    },
+    "tests/integration/clusterCount.test.ts": {
+      "n": 2,
+      "why": "the asks are spread across a real 1.5 s outage and the seconds after it: real time is the subject"
+    },
+    "tests/integration/disposeTombstone.test.ts": {
+      "n": 1,
+      "why": "the window after dispose in which the room must stay unclaimable while its row's delete is held"
+    },
+    "tests/integration/instanceInbox.test.ts": {
+      "n": 4,
+      "why": "a duplicate delivery, and a delivery over a link that is down, are absences; and the send must meet a link already refused"
+    },
+    "tests/integration/ownerLoss.test.ts": {
+      "n": 2,
+      "why": "the owner process is killed a beat after its deal persisted; and a disconnect handler slower than the teardown is the scenario"
+    },
+    "tests/integration/postgresRestart.test.ts": {
+      "n": 1,
+      "why": "both instances are watched staying up after their backends are terminated: a crash that follows has no event to await"
+    },
+    "tests/integration/presenceCluster.test.ts": {
+      "n": 1,
+      "why": "messages between instances not sent are an absence across both servers, with no event to await"
+    },
+    "tests/integration/presenceCrash.test.ts": {
+      "n": 1,
+      "why": "a window with no periodic write is real time itself"
+    },
+    "tests/integration/reconnect.test.ts": {
+      "n": 2,
+      "why": "reconnectOnALoop's cadence is the stimulus: two drop-and-return cycles inside one AFK window"
+    },
+    "tests/integration/roomLifecycleRaces.test.ts": {
+      "n": 1,
+      "why": "the database is held closed while two writes race, and that window is the race"
+    },
+    "tests/integration/socketHandshakeLimit.test.ts": {
+      "n": 3,
+      "why": "the server's offline notice waits on a real 400ms timer no installed clock reaches, which quiet() and after() outwait; and the connect's second friends read is fire-and-forget"
+    },
+    "tests/integration/socketOrigin.test.ts": {
+      "n": 1,
+      "why": "after() outwaits the server's offline notice, a real 400ms timer no installed clock reaches"
+    },
+    "tests/integration/takeoverSerialised.test.ts": {
+      "n": 1,
+      "why": "the restore's stand-in database read: the window a second racer has to land inside"
+    },
+    "tests/integration/testServerCleanup.test.ts": {
+      "n": 1,
+      "why": "the connect notice's friend read is held for the stated time, the window stop() has to outwait"
+    },
+    "tests/server/adminConcurrency.test.ts": {
+      "n": 1,
+      "why": "staggered task durations are the stimulus that interleaves completions against the limit"
+    },
+    "tests/server/closeDatabaseBusy.test.ts": {
+      "n": 1,
+      "why": "the pool is held busy, and `ended` is watched not settling for that long"
+    },
+    "tests/server/closeTableShutdown.test.ts": {
+      "n": 1,
+      "why": "a slow status write is the stimulus the shutdown has to outwait"
+    },
+    "tests/server/publishOrder.test.ts": {
+      "n": 1,
+      "why": "a row write still in flight is the stimulus the last leaver's delete has to queue behind"
+    },
+    "tests/server/sessionEviction.test.ts": {
+      "n": 1,
+      "why": "socket.io stamps handshake.issued from the real clock, and the two sockets need distinct stamps"
+    },
+    "tests/server/stallHygiene.test.ts": {
+      "n": 1,
+      "why": "the deadline a deal has to beat: a stall is the absence of the event"
+    }
+  },
+  "windows": {
+    "tests/integration/stateRedelivered.test.ts": {
+      "n": 1,
+      "why": "a third re-send would follow the second by one more ack timeout, a real timer, so the absence is watched for three of them"
+    },
+    "tests/integration/crossInstance.test.ts": {
+      "n": 1,
+      "why": "an ack that did not cross instances shows as a re-send after the ack timeout, so the absence is watched for four of them"
+    },
+    "tests/integration/drainPresence.test.ts": {
+      "n": 2,
+      "why": "the drained instance's offline notice follows a real 400 ms debounce in another process, and a peer's sweep a real heartbeat, so each absence is watched past them"
+    }
+  }
+}
