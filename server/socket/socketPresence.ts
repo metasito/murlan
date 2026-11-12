@@ -131,40 +131,47 @@ interface LostDeps {
   userStore: Pick<typeof userStore, "updateLastSeen" | "settleLastSeen">;
   friendStore: Pick<typeof friendStore, "getFriends">;
   tellStatus: typeof friendships.tellStatus;
-  isShownOnline: (userId: string) => Promise<boolean>;
+  shownOnlineAmong: (userIds: readonly string[]) => Promise<Set<string>>;
 }
 
 /** What a sweep's report of lost accounts does: their last_seen, then their friends' notice. */
 export function lostPresenceHandler(deps: LostDeps): LostHandler {
   return (userIds, leftAt, connectedAt) => {
-    for (const userId of userIds) {
-      const at = leftAt ?? new Date(now());
+    const at = leftAt ?? new Date(now());
+    const read = (userId: string) => {
       const since = connectedAt.get(userId);
       const written: Promise<Date | null> =
         leftAt === null && since !== undefined
           ? deps.userStore.settleLastSeen(userId, since, at)
           : deps.userStore.updateLastSeen(userId, at).then(() => at);
-      void track(
-        written
-          .catch((err: unknown) => {
-            logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account");
-            return at;
-          })
-          .then(async (seen) => {
-            const friends = await deps.friendStore.getFriends(userId);
-            // A reconnect elsewhere while those were read was told to them as online.
-            if (await deps.isShownOnline(userId)) return;
-            deps.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen: (seen ?? at).toISOString() });
-          })
-          .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline"))
-      );
-    }
+      return written
+        .catch((err: unknown) => {
+          logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account");
+          return at;
+        })
+        .then(async (seen) => ({ userId, seen, friends: await deps.friendStore.getFriends(userId) }))
+        .catch((err: unknown) => {
+          logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline");
+          return null;
+        });
+    };
+    void track(
+      (async () => {
+        const lost = await Promise.all(userIds.map(read));
+        // A reconnect elsewhere while those were read was told to them as online.
+        const shown = await deps.shownOnlineAmong(userIds);
+        for (const one of lost) {
+          if (!one || shown.has(one.userId)) continue;
+          deps.tellStatus(one.userId, one.friends.map((f) => f.friend.id), { online: false, lastSeen: (one.seen ?? at).toISOString() });
+        }
+      })().catch((err: unknown) => logger.warn({ err, userIds }, "Could not tell lost accounts' friends they went offline"))
+    );
   };
 }
 
 /** The friends of accounts a sweep cleared, from a crashed instance or a left one, are told once, by the instance whose sweep it was. */
 export function registerLostPresence(): void {
-  onPresenceLost(lostPresenceHandler({ userStore, friendStore, tellStatus: friendships.tellStatus, isShownOnline }));
+  onPresenceLost(lostPresenceHandler({ userStore, friendStore, tellStatus: friendships.tellStatus, shownOnlineAmong }));
 }
 
 /** A peer that swept this instance during a lapse told these accounts' friends they went offline. */

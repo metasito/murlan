@@ -28,6 +28,8 @@ const LEFT_KEPT_MS = 24 * 60 * 60 * 1000;
 const SWEEP_BATCH = 100;
 /** How often a guarded transaction is tried again after its key moved or its link reconnected. */
 const GUARD_ATTEMPTS = 5;
+/** How long a departure's own report waits before reading its entry a second time. */
+const REPORT_RETRY_MS = 250;
 
 export interface Located {
   instance: string;
@@ -55,7 +57,7 @@ export interface PresenceStore {
    */
   locate(userIds: readonly string[], opts?: { tables?: boolean }): Promise<Map<string, Located>>;
   /**
-   * Of `userIds`, those a friend is shown as online: `locate`'s, and those whose instance left and
+   * Of `userIds`, those a friend is shown as online: `locate`'s, and those a left instance handed to the sweep and
    * whose offline notice has not gone yet, which the sweep that clears their entry sends. Read by
    * the same reader as `locate`. Rejects while Redis is unreachable.
    */
@@ -130,6 +132,8 @@ export function openPresenceStore({
     instances: `${ns}:instances`,
     leaving: (of: string) => `${ns}:instance-leaving:${of}`,
     left: (of: string) => `${ns}:instance-left:${of}`,
+    /** Set by a left instance for each socket whose departure it handed to the sweep. */
+    handed: (socketId: string) => `${ns}:handed:${socketId}`,
     users: (of: string) => `${ns}:instance-users:${of}`,
     social: (userId: string) => `${ns}:social:${userId}`,
     // A counter Redis lost restarts at 1, so a value is read against the store's lifetime too.
@@ -257,6 +261,7 @@ export function openPresenceStore({
     // Only an entry whose connect has landed can be left to a sweep; one still being written is cleared here.
     if (marked && held?.socketId === socketId && held.at !== undefined) {
       departed.set(userId, socketId);
+      void track(hand(socketId).catch(warn("Could not mark a departure as the sweep's")));
       void track(reportIfGone(userId, socketId));
       return true;
     }
@@ -275,15 +280,25 @@ export function openPresenceStore({
     return false;
   }
 
+  function hand(socketId: string): Promise<unknown> {
+    return client.set(key.handed(socketId), "1", { expiration: { type: "PX", value: LEFT_KEPT_MS } });
+  }
+
   /** A sweep reports only an entry it finds: one a peer took during a lapse, never put back, is reported here. */
   async function reportIfGone(userId: string, socketId: string): Promise<void> {
-    let value: string | null;
-    try {
-      value = await client.get(key.presence(userId));
-    } catch (err) {
-      // Reported now, a reconnect within the spread would flicker; a sweep that finds it reports it.
-      logger.warn({ err, userId }, "Could not read whether a sweep will report a departure; left to the sweep");
-      return;
+    let value: string | null = null;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        value = await client.get(key.presence(userId));
+        break;
+      } catch (err) {
+        // Unread, the entry may be gone and no sweep would report it: a possible flicker beats online for good.
+        if (attempt >= 2) {
+          logger.warn({ err, userId }, "Could not read whether a sweep will report a departure; reported here");
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, REPORT_RETRY_MS));
+      }
     }
     if (value !== null || departed.get(userId) !== socketId) return;
     departed.delete(userId);
@@ -331,19 +346,21 @@ export function openPresenceStore({
    * `shown` what friends are shown. Inside its leaving window an instance's accounts are gone to
    * the first and still there to the second, until the sweep that tells their friends.
    */
-  async function seen(userIds: readonly string[]): Promise<{ userId: string; entry: Entry; live: boolean; shown: boolean }[]> {
+  async function seen(userIds: readonly string[], { shown = true } = {}): Promise<{ userId: string; entry: Entry; live: boolean; shown: boolean }[]> {
     if (userIds.length === 0) return [];
     const entries = (await client.mGet(userIds.map(key.presence))).map(parse);
-    const others = [...new Set(entries.flatMap((e) => (e && e.instance !== id ? [e.instance] : [])))];
-    const found = others.length > 0 ? await client.mGet([...others.map(key.instance), ...others.map(key.left)]) : [];
+    const elsewhere = entries.flatMap((e) => (e && e.instance !== id ? [e] : []));
+    const others = [...new Set(elsewhere.map((e) => e.instance))];
+    const handable = shown ? elsewhere.map((e) => e.socket) : [];
+    const found = others.length > 0 ? await client.mGet([...others.map(key.instance), ...handable.map(key.handed)]) : [];
     const alivePeer = new Set(others.filter((_, i) => found[i] !== null));
-    const leftPeer = new Set(others.filter((_, i) => found[others.length + i] !== null));
+    const handed = new Set(handable.filter((_, i) => found[others.length + i] !== null));
     return userIds.flatMap((userId, i) => {
       const entry = entries[i];
       if (!entry) return [];
       if (entry.instance !== id) {
         const live = alivePeer.has(entry.instance);
-        return [{ userId, entry, live, shown: live || leftPeer.has(entry.instance) }];
+        return [{ userId, entry, live, shown: live || handed.has(entry.socket) }];
       }
       // This instance's own sockets are known here first-hand, an entry whose clear has not landed yet included.
       const held = mine.get(userId)?.socketId === entry.socket;
@@ -357,7 +374,7 @@ export function openPresenceStore({
 
   async function locate(userIds: readonly string[], { tables = false } = {}): Promise<Map<string, Located>> {
     const where = new Map<string, Located>();
-    for (const s of await seen(userIds)) if (s.live) where.set(s.userId, { instance: s.entry.instance, socket: s.entry.socket });
+    for (const s of await seen(userIds, { shown: false })) if (s.live) where.set(s.userId, { instance: s.entry.instance, socket: s.entry.socket });
     if (tables && where.size > 0) {
       const located = [...where.values()];
       const rooms = await client.mGet(located.map((l) => key.table(l.socket)));
@@ -383,7 +400,7 @@ export function openPresenceStore({
         values.forEach((value, j) => {
           const entry = parse(value);
           if (entry?.instance !== dead) return;
-          tx.del([key.presence(batch[j]!), key.table(entry.socket)]);
+          tx.del([key.presence(batch[j]!), key.table(entry.socket), key.handed(entry.socket)]);
           ids.push(batch[j]!);
           connectedAt.set(batch[j]!, new Date(Number(entry.at / 1000n)));
         });
@@ -477,6 +494,8 @@ export function openPresenceStore({
     void track(restore());
     if (heartbeat) void track(beat().catch(warn("Presence heartbeat failed")));
   });
+  // Clears run on this link, which reconnects on its own clock: after `leave()` no beat retries them.
+  guarded.on("ready", () => void track(retryClears().catch(warn("Could not retry clears"))));
 
   let beating: Promise<void> | null = null;
   const timer = heartbeat
@@ -537,12 +556,15 @@ export function openPresenceStore({
       const mark = (async () => {
         await livenessWrite;
         // One transaction: a sweep that sees the liveness gone sees the leaving mark too.
-        await client
+        const tx = client
           .multi()
           .del(key.instance(id))
           .set(key.leaving(id), "1", { expiration: { type: "PX", value: LEAVING_MS } })
-          .set(key.left(id), String(at), { expiration: { type: "PX", value: LEFT_KEPT_MS } })
-          .exec();
+          .set(key.left(id), String(at), { expiration: { type: "PX", value: LEFT_KEPT_MS } });
+        for (const held of mine.values()) {
+          if (held.at !== undefined) tx.set(key.handed(held.socketId), "1", { expiration: { type: "PX", value: LEFT_KEPT_MS } });
+        }
+        await tx.exec();
         marked = true;
       })().catch(warn("Could not mark this instance as leaving"));
       // No beat retries these after `leave()`; the leaving window gives them until the sweep.

@@ -257,9 +257,9 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
       await eventually(() => x.locate(["uli"]).then(() => false, () => true), "reads to fail");
       x.forget("uli", "s-uli");
       await settleInFlight(10_000);
+      gate = new Promise((resolve) => (release = resolve));
       proxy.refuse(false);
       await eventually(() => x.locate(["uli"]).then(() => true, () => false), "the link to come back");
-      gate = new Promise((resolve) => (release = resolve));
       void x.leave();
       await eventually(async () => (await probe.exists(c.key(`instance:${x.id}`))) === 0, "the liveness to go while a clear is held");
       assert.equal(await probe.exists(c.key("online:uli")), 1, "the clear was not held");
@@ -329,7 +329,19 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     await eventually(async () => (await probe.exists(c.key("online:early"))) === 0, "the early departure's clear");
   });
 
-  test("a departure after leave() whose entry cannot be read is left to the sweep, not reported at once", async () => {
+  test("an entry naming a left instance that never handed its socket to the sweep is not shown online", async () => {
+    const c = cluster();
+    const [peer, x] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([peer.beat(), x.beat()]);
+    x.record("una", "s-una");
+    await eventually(async () => (await peer.locate(["una"])).has("una"), "the entry");
+    await x.leave();
+    await probe.set(c.key("online:stale"), `${x.id}|s-stale|1`);
+    assert.deepEqual([...(await peer.shownOnline(["una", "stale"]))], ["una"], "a stale entry naming a left instance was shown online, so no notice ever tells its friends");
+  });
+
+  test("a departure after leave() whose entry cannot be read is reported by its own instance, not left online for good", async () => {
     const c = cluster();
     const proxy = await startProxy(targetOf(redisUrl, 6379));
     try {
@@ -341,18 +353,13 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
       x.record("yan", "s-yan");
       await eventually(async () => (await peer.locate(["yan"])).has("yan"), "the entry");
       const here: string[] = [];
-      const swept: string[] = [];
       x.onLost((ids) => here.push(...ids));
-      peer.onLost((ids) => swept.push(...ids));
       await x.leave();
       proxy.refuse(true);
       await eventually(() => x.locate(["yan"]).then(() => false, () => true), "reads to fail");
       assert.equal(x.forget("yan", "s-yan"), true);
       await settleInFlight(10_000);
-      assert.deepEqual(here, [], "a departure whose entry could not be read was reported inside the reconnect window");
-      await probe.del(c.key(`instance-leaving:${x.id}`));
-      await peer.beat();
-      assert.deepEqual(swept, ["yan"]);
+      assert.deepEqual(here, ["yan"], "a departure whose entry could not be read was never reported");
     } finally {
       await proxy.close();
     }

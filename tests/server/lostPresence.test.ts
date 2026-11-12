@@ -6,6 +6,7 @@ import { settleInFlight } from "../../server/shared/inFlight.ts";
 
 function harness({ shown = false, stored = null as Date | null } = {}) {
   const told: [string, string[], unknown][] = [];
+  const checks: string[][] = [];
   const writes: string[] = [];
   const handle = lostPresenceHandler({
     userStore: {
@@ -17,9 +18,12 @@ function harness({ shown = false, stored = null as Date | null } = {}) {
     },
     friendStore: { getFriends: async () => [{ friend: { id: "bob" } }] as never },
     tellStatus: (userId, friendIds, status) => void told.push([userId, [...friendIds], status]),
-    isShownOnline: async () => shown,
+    shownOnlineAmong: async (ids) => {
+      checks.push([...ids]);
+      return new Set(shown ? ids : []);
+    },
   });
-  return { handle, told, writes };
+  return { handle, told, writes, checks };
 }
 
 test("a departure with its leave time writes that time and tells the friends it", async () => {
@@ -47,4 +51,12 @@ test("an account that reconnected elsewhere by the time its friends are read is 
   handle(["alice"], new Date(), new Map());
   await settleInFlight(5_000);
   assert.deepEqual(told, []);
+});
+
+test("a sweep's batch is checked against presence once, not once per account", async () => {
+  const { handle, told, checks } = harness();
+  handle(["alice", "carol"], new Date(), new Map());
+  await settleInFlight(5_000);
+  assert.deepEqual(checks, [["alice", "carol"]]);
+  assert.equal(told.length, 2);
 });

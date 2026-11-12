@@ -3,6 +3,7 @@
 import type { SocketServer } from "../../server/socket/socketTypes.ts";
 import type { Emitter, Peers, Presence, TableOutbox, TableStore, TableWriters } from "../../server/game/tableRuntime.ts";
 import { createTableRuntime } from "../../server/game/tableRuntime.ts";
+import { userSocketMap } from "../../server/game/gameRoom.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { tableWriters } from "../../server/game/gamePersistence.ts";
@@ -164,7 +165,7 @@ export function recordingRuntime(options: RecordingOptions = {}) {
             atTable: new Set(userIds.filter((u) => cluster.atTable.get(u)?.has(roomId))),
           },
     onlineAmong: async (userIds) => (cluster.down ? null : new Set(userIds.filter((u) => cluster.online.has(u)))),
-    shownAmong: async (userIds) => new Set(cluster.down ? [] : userIds.filter((u) => cluster.online.has(u))),
+    shownAmong: async (userIds) => new Set(userIds.filter((u) => (cluster.down ? userSocketMap.has(u) : cluster.online.has(u)))),
     ...options.presence,
   };
 

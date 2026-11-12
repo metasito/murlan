@@ -61,6 +61,7 @@ export function storePresence(locate: Locate = locateInStore, shown: Shown = sho
 
     async shownAmong(userIds) {
       const here = userIds.filter((id) => userSocketMap.has(id));
+      if (here.length === userIds.length) return new Set(here);
       try {
         return new Set([...here, ...(await shown(userIds))]);
       } catch (err) {
