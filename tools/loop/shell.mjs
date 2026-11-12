@@ -4,16 +4,16 @@
  */
 import { tmpdir } from "node:os";
 
-const SHELL = /^(bash|sh|zsh|dash|pwsh|powershell|cmd|iex|invoke-expression)$/;
+const SHELL = /^(bash|sh|zsh|dash|pwsh|powershell|cmd|iex|invoke-expression|eval)$/;
 const PIPED_TO_SHELL = /^[^\n]*\|\s*(?:\S*[\\/])?(bash|sh|zsh|dash|pwsh|powershell|iex|invoke-expression)\b/i;
-const WRAPPER = new Set(["env", "xargs", "time", "do", "then", "else", "elif", "if", "while", "until", "!", "exec", "nohup", "command", "sudo", "nice"]);
+const WRAPPER = new Set(["env", "xargs", "time", "do", "then", "else", "elif", "if", "while", "until", "!", "exec", "nohup", "command", "builtin", "sudo", "nice"]);
 const WRAPPER_TAKES_A_VALUE = /^-(?:[IinPdLEsau]|-(?:max-args|max-procs|delimiter|replace|arg-file|unset))$/;
 const GIT_TAKES_A_VALUE = /^(-C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix)$/;
 const GH_TAKES_A_VALUE = /^(-R|--repo|--hostname)$/;
 const REDIRECT = /^(?:\d*|\{[A-Za-z_]\w*\})(?:[<>]+|&>>?)(\S*)$/;
 const MAX_DEPTH = 5;
 
-const commandName = (word) => (word ?? "").replace(/\\/g, "/").split("/").pop().replace(/\.(exe|cmd)$/i, "").toLowerCase();
+export const commandName = (word) => (word ?? "").replace(/\\/g, "/").split("/").pop().replace(/\.(exe|cmd)$/i, "").toLowerCase();
 
 export const has = (args, re) => args.some((a) => re.test(a));
 
@@ -47,9 +47,11 @@ function closing(text, open) {
 /**
  * The words of each simple command, quote-aware: a separator inside quotes is data, and a
  * `$( … )` anywhere, quoted or not, is a command of its own. Backslash is literal (PowerShell and
- * Windows paths) except before a quote or a newline.
+ * Windows paths) except before a quote or a newline, and a backtick separates (PowerShell's escape);
+ * `posix` reads both as bash does: an escape, and a `` `…` `` substitution like `$( … )`; it also
+ * decodes `$'…'`. A segment a `|` feeds is marked `fed`.
  */
-function segments(text, depth) {
+function segments(text, depth, posix = false, base = 0) {
   const out = [];
   let words = [];
   let word = null;
@@ -62,7 +64,7 @@ function segments(text, depth) {
   };
   const endSegment = () => {
     endWord();
-    words.span = [from, i];
+    words.span = [base + from, base + i];
     if (words.length) out.push(words);
     words = [];
     from = i + 1;
@@ -76,7 +78,7 @@ function segments(text, depth) {
     }
     if (ch === "$" && text[i + 1] === "(") {
       const end = closing(text, i + 1);
-      if (depth < MAX_DEPTH) out.push(...segments(text.slice(i + 2, end), depth + 1));
+      if (depth < MAX_DEPTH) out.push(...segments(text.slice(i + 2, end), depth + 1, posix, base + i + 2));
       word = (word ?? "") + text.slice(i, end + 1);
       i = end;
       continue;
@@ -85,6 +87,26 @@ function segments(text, depth) {
       if (text[i + 1] === "\n") endWord();
       else word = (word ?? "") + text[i + 1];
       i += 1;
+      continue;
+    }
+    if (posix && ch === "\\" && i + 1 < text.length && (quote === null || /[$`\\]/.test(text[i + 1]))) {
+      word = (word ?? "") + text[i + 1];
+      i += 1;
+      continue;
+    }
+    if (posix && ch === "`" && text[i + 1] !== "\n") {
+      let end = i + 1;
+      while (end < text.length && (text[end] !== "`" || text[end - 1] === "\\")) end += 1;
+      if (depth < MAX_DEPTH) out.push(...segments(text.slice(i + 1, end), depth + 1, posix, base + i + 1));
+      word = (word ?? "") + text.slice(i, end + 1);
+      i = end;
+      continue;
+    }
+    if (posix && quote === null && ch === "$" && text[i + 1] === "'") {
+      let end = i + 2;
+      while (end < text.length && text[end] !== "'") end += text[end] === "\\" ? 2 : 1;
+      word = (word ?? "") + ansiC(text.slice(i + 2, end));
+      i = end;
       continue;
     }
     if (quote === '"') {
@@ -108,9 +130,18 @@ function segments(text, depth) {
     } else if (ch === "{" && word === null && /^\{[A-Za-z_]\w*\}[<>]/.test(text.slice(i))) {
       word = text.slice(i, text.indexOf("}", i) + 1);
       i = text.indexOf("}", i);
+    } else if (ch === "{" && /^\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/.test(text.slice(i))) {
+      const brace = /^\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/.exec(text.slice(i))[0];
+      word = (word ?? "") + brace;
+      i += brace.length - 1;
+    } else if (ch === "{" && text[i + 1] === "}") {
+      word = (word ?? "") + "{}";
+      i += 1;
     } else if (/[;&|\n(){}`]/.test(ch)) {
-      if (ch === "|" && text[i - 1] !== "|" && text[i + 1] !== "|") words.piped = true;
+      const pipe = ch === "|" && text[i - 1] !== "|" && text[i + 1] !== "|";
+      if (pipe) words.piped = true;
       endSegment();
+      if (pipe) words.fed = true;
     } else if (/\s/.test(ch)) {
       endWord();
     } else {
@@ -121,23 +152,73 @@ function segments(text, depth) {
   return out;
 }
 
-/** The command line a shell (or `iex`) is handed: its `-c` body, a here-string, or the rest of an `iex`. */
+const ESCAPES = { a: "\x07", b: "\b", e: "\x1b", E: "\x1b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" };
+
+/** The body of a bash `$'…'` as the string it stands for. */
+export const ansiC = (body) =>
+  body.replace(/\\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3}|c.|[\s\S])/g, (_, e) =>
+    /^[xuU]/.test(e) ? String.fromCodePoint(parseInt(e.slice(1), 16))
+    : /^[0-7]/.test(e) ? String.fromCharCode(parseInt(e, 8))
+    : e[0] === "c" && e.length === 2 ? String.fromCharCode(e.charCodeAt(1) & 31)
+    : ESCAPES[e] ?? e
+  );
+
+/** The command line a shell (or `iex`, `eval`) is handed: its `-c` body, a here-string, or the rest of an `iex` or `eval`. */
 function shellBodyOf(cmd, rest) {
+  if (cmd === "eval") return (rest[0] === "--" ? rest.slice(1) : rest).join(" ") || null;
   const herestring = rest.indexOf("<<<");
-  const flag = rest.findIndex((a) => /^(-c|-command|\/c|\/k)$/i.test(a));
+  const windows = /^(pwsh|powershell|cmd)$/.test(cmd);
+  const flag = rest.findIndex((a) => (windows ? /^(-c|-command|\/c|\/k)$/i : /^-[A-Za-z]*c[A-Za-z]*$/).test(a));
   if (herestring >= 0) return rest[herestring + 1];
   if (flag < 0) return rest[0] && !rest[0].startsWith("-") && /^(iex|invoke-expression)$/.test(cmd) ? rest.join(" ") : null;
-  return /^(pwsh|powershell|cmd)$/.test(cmd) ? rest.slice(flag + 1).join(" ") : rest[flag + 1];
+  if (windows) return rest.slice(flag + 1).join(" ");
+  return rest[flag + 1] === "--" ? rest[flag + 2] : rest[flag + 1];
 }
+
+const EXPANSION = /[$`]/;
+
+/**
+ * `word` with each `$name` and `${name}` in `vars` substituted, or null while any expansion is left.
+ * @param {string} word @param {Record<string, string>} vars
+ */
+export function expand(word, vars) {
+  if (!EXPANSION.test(word)) return word;
+  const out = word.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, braced, bare) => vars[braced ?? bare] ?? m);
+  return EXPANSION.test(out) ? null : out;
+}
+
+/**
+ * The command a word names, or null when an expansion decides it. A literal last path step decides
+ * it whatever comes before: `$(npm root)/.bin/jest` runs jest.
+ */
+function nameOf(word, vars) {
+  const bare = word.replace(/\$\{[^}]*\}|\$\w+|\$\([^)]*\)|`[^`]*`/g, "");
+  if (/[*?[\]{}]/.test(bare)) return null;
+  const tail = word.slice(Math.max(word.lastIndexOf(")"), word.lastIndexOf("}")) + 1);
+  if (/[\\/]/.test(tail) && !EXPANSION.test(commandName(tail))) return commandName(tail);
+  const expanded = expand(word, vars);
+  if (expanded === null) return null;
+  return expanded !== word && /[*?[]/.test(expanded) ? null : commandName(expanded);
+}
+
+const CONTEXT = new WeakMap();
+
+/**
+ * What resolved `c`'s words: `vars`, the settled values its expansions were read with, and
+ * `assigned`, every name the line (or the shell body it sits in) gives a value; `fed` means a `|` feeds it, `herestring` a `<<<`; `word` is its command word as written, `text` its segment source.
+ */
+export const contextOf = (c) => CONTEXT.get(c) ?? { vars: {}, assigned: new Set(), fed: false };
+const withContext = (c, context) => (CONTEXT.set(c, context), c);
 
 /**
  * One segment as `{ cmd, env, dir, args, piped }`: leading assignments, wrappers and redirections
  * gone, a shell's `-c` body parsed in its place, and git's or gh's global options taken off so
  * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `out` is
  * its stdout redirect targets, `redirected` every file a redirect reads or writes, `input` those it reads; `wrapped` the wrappers
- * (`env`, `exec`, …) taken off with their flags; `piped` means its output feeds a `|`.
+ * (`env`, `exec`, …) taken off with their flags; `piped` means its output feeds a `|`. A command
+ * word an expansion decides is resolved from `vars`; one it cannot be is `unresolved`, its text the `cmd`.
  */
-function normalize(words, depth) {
+function normalize(words, depth, vars, assigned) {
   const env = {};
   const wrapped = [];
   let i = 0;
@@ -147,11 +228,11 @@ function normalize(words, depth) {
       env[assign[1]] = assign[2];
     } else if (REDIRECT.test(words[i])) {
       if (!REDIRECT.exec(words[i])[1]) i += 1;
-    } else if (commandName(words[i]) === "timeout") {
+    } else if (nameOf(words[i], vars) === "timeout") {
       while (words[i + 1]?.startsWith("-")) i += /^(-[sk]|--signal|--kill-after)$/.test(words[i + 1]) ? 2 : 1;
       i += 1;
-    } else if (WRAPPER.has(commandName(words[i]))) {
-      const wrapper = { name: commandName(words[i]), flags: [] };
+    } else if (WRAPPER.has(nameOf(words[i], vars))) {
+      const wrapper = { name: nameOf(words[i], vars), flags: [] };
       wrapped.push(wrapper);
       while (words[i + 1]?.startsWith("-")) {
         wrapper.flags.push(words[i + 1]);
@@ -162,19 +243,27 @@ function normalize(words, depth) {
     }
   }
   if (i >= words.length) return [];
-  const cmd = commandName(words[i]);
+  const named = nameOf(words[i], vars);
+  const cmd = named ?? commandName(words[i]);
   const rest = words.slice(i + 1);
 
   if (SHELL.test(cmd) && depth < MAX_DEPTH) {
     const body = shellBodyOf(cmd, rest);
     if (body) {
       const scope = { ...env, ...assignmentsIn(body) };
-      return commands(body, depth + 1).map((c) => ({
-        ...c,
-        scope: { ...scope, ...c.scope },
-        wrapped: [...wrapped, { name: cmd, flags: rest, env }, ...c.wrapped],
-        piped: c.piped || words.piped === true,
-      }));
+      const reassigned = boundNames(body);
+      const inherited = Object.fromEntries(Object.entries({ ...vars, ...literal(env) }).filter(([k]) => !reassigned.has(k)));
+      // A name the outer line binds and the body rebinds holds the outer value until the rebinding runs.
+      const outer = new Set([...assigned, ...Object.keys(vars), ...Object.keys(env)]);
+      const settled = Object.fromEntries(Object.entries(settledAssignments(body)).filter(([k]) => !outer.has(k)));
+      const inner = commands(body, depth + 1, { ...inherited, ...settled }, new Set([...assigned, ...reassigned]));
+      if (inner.length)
+        return inner.map((c) =>
+        withContext(
+          { ...c, scope: { ...scope, ...c.scope }, wrapped: [...wrapped, { name: cmd, flags: rest, env }, ...c.wrapped], piped: c.piped || words.piped === true },
+          contextOf(c),
+        ),
+      );
     }
   }
 
@@ -195,19 +284,60 @@ function normalize(words, depth) {
     j += redirect[1] ? 0 : 1;
   }
   let dir = null;
+  let configured = false;
+  const config = [];
   const globals = cmd === "git" ? GIT_TAKES_A_VALUE : cmd === "gh" ? GH_TAKES_A_VALUE : null;
-  while (globals && args[0]?.startsWith("-")) {
-    const takes = globals.test(args[0]);
-    if (cmd === "git" && args[0] === "-C") dir = args[1] ?? dir;
-    args.splice(0, takes ? 2 : 1);
+  if (globals) {
+    const end = globalsEnd(args, globals);
+    for (let k = 0; k < end; k += globals.test(args[k]) ? 2 : 1) {
+      if (cmd === "git" && args[k] === "-C") dir = args[k + 1] ?? dir;
+      if (cmd === "git" && /^(-c|--config-env)$/.test(args[k])) {
+        configured = true;
+        if (args[k + 1]) config.push(args[k + 1]);
+      }
+    }
+    args.splice(0, end);
   }
-  return [{ cmd, env, dir, args, out, redirected, input, wrapped, piped: words.piped === true }];
+  const parsed = { cmd, env, dir, args, out, redirected, input, wrapped, configured, config, piped: words.piped === true };
+  return [withContext(named === null ? { ...parsed, unresolved: true } : parsed, { vars, assigned, fed: words.fed === true, word: words[i], herestring: words.slice(i).includes("<<<"), span: words.span })];
 }
 
-export function commands(text, depth = 0) {
+function globalsEnd(args, takesValue) {
+  let i = 0;
+  while (args[i]?.startsWith("-")) i += takesValue.test(args[i]) ? 2 : 1;
+  return i;
+}
+
+/** `args` past gh's own global options, so the first word is the verb. */
+export const withoutGhGlobals = (args) => args.slice(globalsEnd(args, GH_TAKES_A_VALUE));
+
+/**
+ * Every simple command `text` runs, under both readings of a backslash and a backtick: as PowerShell
+ * and a Windows path take them, and as bash does (an escape, a command substitution). The guard is not told which shell runs
+ * the line, so a rule sees each reading.
+ */
+export function commands(text, depth = 0, vars = settledAssignments(text), assigned = boundNames(text)) {
+  const [literalReading, posixReading = []] = readings(text, depth, vars, assigned);
+  const seen = new Set(literalReading.map(([, c]) => JSON.stringify(c)));
+  const extra = posixReading.filter(([, c]) => !seen.has(JSON.stringify(c)));
+  return [...literalReading, ...extra].sort(([a], [b]) => a - b).map(([, c]) => c);
+}
+
+/** Each reading's commands in source order, as `[end, command]`: where the command's segment ends. */
+function readings(text, depth = 0, vars = settledAssignments(text), assigned = boundNames(text)) {
   // gh's own `{owner}`/`{repo}`/`{branch}` placeholders, or the braces split an endpoint in three.
   const spelled = depth === 0 ? text.replace(/\{(owner|repo|branch)\}/g, "$1") : text;
-  return segments(spelled, depth).flatMap((words) => normalize(words, depth));
+  const read = (posix) =>
+    segments(spelled, depth, posix)
+      .flatMap((words) =>
+        normalize(words, depth, vars, assigned).map((c) => {
+          const cx = contextOf(c);
+          if (cx.text === undefined && cx.span) cx.text = spelled.slice(cx.span[0], cx.span[1]);
+          return [words.span[1], c];
+        }),
+      )
+      .sort(([a], [b]) => a - b);
+  return /[\\`$]/.test(spelled) ? [read(false), read(true)] : [read(false)];
 }
 
 /**
@@ -221,10 +351,11 @@ export function commands(text, depth = 0) {
 export function withoutQuotedBodies(command) {
   const blank = (s) => s.replace(/[^\n]/g, " ");
   const lineBefore = (all, offset) => all.slice(all.lastIndexOf("\n", offset - 1) + 1, offset);
-  const feedsShell = (before, after) => {
-    const last = commands(before).pop();
-    return (last && SHELL.test(last.cmd) && !has(last.args, /^[^-]/)) || PIPED_TO_SHELL.test(after);
-  };
+  const feedsShell = (before, after) =>
+    readings(before).some((reading) => {
+      const last = reading.at(-1)?.[1];
+      return last && SHELL.test(last.cmd) && !has(last.args, /^[^-]/);
+    }) || PIPED_TO_SHELL.test(after);
   return command
     .replace(/@(['"])([\s\S]*?)\1@/g, (m, _q, body, offset, all) =>
       feedsShell(lineBefore(all, offset), all.slice(offset + m.length)) ? `  ${body}  ` : blank(m)
@@ -253,6 +384,51 @@ export function assignmentsIn(text) {
  * sets one for the line; a child shell's own and prefix assignments are its scope (`normalize`).
  */
 export const literalAssignments = (text) => literal(assignmentsIn(text));
+
+/**
+ * The literal assignments of variables the line gives one value only: a name reassigned, or bound
+ * some other way, cannot be placed. A line that sets `IFS` splits words its own way, so it settles none.
+ */
+export function settledAssignments(text) {
+  const values = {};
+  for (const w of segments(text, MAX_DEPTH)) {
+    for (const x of w) {
+      const m = ASSIGN.exec(x);
+      if (m) (values[m[1]] ??= new Set()).add(m[2]);
+    }
+  }
+  const rebound = reboundNames(text);
+  if (values.IFS || rebound.has("IFS")) return {};
+  return literal(Object.fromEntries(Object.entries(assignmentsIn(text)).filter(([k]) => values[k]?.size === 1 && !rebound.has(k))));
+}
+
+const BINDS = /^(read|mapfile|readarray|declare|typeset|local|export|readonly|let|getopts|for|select|unset)$/;
+
+/** Names bound other than by a plain `X=…`: `+=`, an array slot, `read`, `printf -v`, a loop variable, `declare` and kin. */
+function reboundNames(text) {
+  const out = new Set();
+  for (const w of segments(text, MAX_DEPTH)) {
+    let i = 0;
+    while (/^(do|then|else|elif|!|if|while|until)$/.test(w[i] ?? "")) i += 1;
+    for (const x of w) {
+      const m = /^([A-Za-z_]\w*)(\[[^\]]*\])?(\+)?=/.exec(x);
+      if (m && (m[2] || m[3])) out.add(m[1]);
+    }
+    if (BINDS.test(w[i] ?? "")) for (const x of w.slice(i + 1)) if (/^[A-Za-z_]\w*(=|$)/.test(x)) out.add(x.split("=")[0]);
+    if (w[i] === "printf") w.forEach((x, k) => {
+      const v = x === "-v" ? w[k + 1] : /^-v(\w+)$/.exec(x)?.[1];
+      if (v) out.add(v.replace(/\[.*$/, ""));
+    });
+  }
+  return out;
+}
+
+/** Every name the text gives a value, in any statement and by any binding. */
+export function boundNames(text) {
+  const out = reboundNames(text);
+  for (const w of segments(text, MAX_DEPTH)) for (const x of w) if (ASSIGN.test(x)) out.add(ASSIGN.exec(x)[1]);
+  return out;
+}
 
 /** Every bare `X=…` statement's variable, whatever its value. */
 export const assignedNames = (text) => Object.keys(assignmentsIn(text));
