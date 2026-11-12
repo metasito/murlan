@@ -29,4 +29,5 @@ export async function check(page: Page, where: string, vp: { width: number; heig
   const solved = tableRects({ width: vp.width, height: vp.height, insets, locale, playOnLeft, state: { ...table.base, chips: { combo: chips.combo!, turn: chips.turn!, note: chips.note ?? undefined } } });
   expect(misfits(got, solved, rects), where).toEqual([]);
   if (keepsRules) expect(brokenRules(solved), `${where}: the solved table breaks its rules`).toEqual([]);
+  return { got, solved };
 }
