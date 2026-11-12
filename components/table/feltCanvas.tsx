@@ -36,8 +36,7 @@ import {
 import { ReduceMotion, useAnimatedReaction, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
-import { useBenchHandle } from "@/lib/diagnostics";
-import { FeltDraws } from "@/lib/diagnostics/feltDraws";
+import { FeltDraws, useBenchHandle } from "@/lib/diagnostics";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
@@ -710,7 +709,7 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
     const next = nextShown(held.value, lamp.value && now(), side.value);
     if (next !== held.value) {
       held.value = next;
-      FeltDraws.felt.value += 1;
+      if (FeltDraws) FeltDraws.felt.value += 1;
     }
     return next;
   });

@@ -1,7 +1,6 @@
 import { CAPTURE_STATES, captureGameState } from "@/lib/captureStates";
 import { registerBenchScenario } from "../bench";
-import { FeltDraws } from "../feltDraws";
-import { diag } from "../index";
+import { diag, FeltDraws } from "../index";
 
 /** Past the lamp's glide to the seat, its breath up from the deal and the felt's cross to its ends. */
 const SETTLE_MS = 4000;
@@ -12,6 +11,7 @@ const SHOT_MS = 2500;
 const SHOTS = 2;
 
 registerBenchScenario("restCaptures", async (ctx) => {
+  if (!FeltDraws) return;
   for (const state of CAPTURE_STATES) {
     await ctx.showTable(captureGameState(state));
     await ctx.sleep(SETTLE_MS);

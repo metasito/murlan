@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import type { ViewInstance } from "react-native";
+import { makeMutable } from "react-native-reanimated";
 import orientation from "@/modules/murlan-orientation";
 import type { DiagRow } from "./types";
 import type { LampSide, Pixels } from "./lampLegibility";
@@ -7,6 +8,9 @@ import type { LampSide, Pixels } from "./lampLegibility";
 export type { DiagRow, DiagRows } from "./types";
 
 export const DIAGNOSTICS = process.env.EXPO_PUBLIC_DIAGNOSTICS === "1";
+
+/** How many times each felt canvas was handed a new light to draw, read by the bench across a window at rest (rule 51); null outside diagnostics. */
+export const FeltDraws = DIAGNOSTICS ? { felt: makeMutable(0), end: makeMutable(0) } : null;
 
 const recorder: { push(row: DiagRow): void; hold?(on: boolean): void } | null =
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- a static import would ship the recorder

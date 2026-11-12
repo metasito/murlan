@@ -6,7 +6,7 @@ import { StyleSheet } from "react-native";
 import Animated, { useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue } from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { FeltDraws } from "@/lib/diagnostics/feltDraws";
+import { FeltDraws } from "@/lib/diagnostics";
 import { useAmbient } from "@/lib/motion";
 import { Layer } from "@/lib/tokens";
 import type { EndsProps } from "./feltCanvas";
@@ -31,7 +31,7 @@ export function EndBNative({ lamp, now: rigNow, settle, side, draw }: EndsProps)
     const next = nextShown(held.value, s, 1);
     if (next !== held.value) {
       held.value = next;
-      FeltDraws.end.value += 1;
+      if (FeltDraws) FeltDraws.end.value += 1;
     }
     return next;
   });
