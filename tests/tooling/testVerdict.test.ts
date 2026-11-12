@@ -431,6 +431,53 @@ describe("the gate step", () => {
     assert.ok(said.some((l) => l.startsWith("::error::") && l.includes("%0A::warning::forged")), said.join("\n"));
   });
 
+  describe("a download storage refuses", () => {
+    const NAME = "test-results-verify-0-1";
+    const EGRESS = "error downloading test-results-verify-0-1: HTTP 503: Egress is over the account limit";
+    const env = { GITHUB_REPOSITORY: "o/r", GITHUB_RUN_ID: "5", BASE: "HEAD^1", NEEDS: JSON.stringify(ran("verify")) };
+    const git = (args: string[]) => (args[0] === "ls-tree" && args.includes("-r") ? `${LONE}\0` : "");
+    const refusing = (refusals: number) => {
+      const calls = { downloads: 0 };
+      const gh = (args: string[]) => {
+        if (args[0] === "api") return `${NAME}\n`;
+        assert.deepEqual(args.slice(0, 2), ["run", "download"]);
+        calls.downloads++;
+        const dir = args[args.indexOf("--dir") + 1]!;
+        if (calls.downloads <= refusals) {
+          mkdirSync(path.join(dir, "test-results-verify-9-1"), { recursive: true });
+          writeFileSync(path.join(dir, "test-results-verify-9-1", "node-1.jsonl"), "");
+          throw Object.assign(new Error(`Command failed: gh ${args.join(" ")}\n${EGRESS}\n`), { stderr: `${EGRESS}\n` });
+        }
+        mkdirSync(path.join(dir, NAME), { recursive: true });
+        writeFileSync(path.join(dir, NAME, "node-1.jsonl"), [{ type: "run", runner: "node", filters: [] }, { type: "test", file: LONE, title: "t", status: "passed" }, { type: "end", ok: true }].map((r) => JSON.stringify(r)).join("\n"));
+        return "";
+      };
+      return { gh, calls };
+    };
+
+    test("is asked again after a bounded wait, from an empty directory, and what it then sends is judged", () => {
+      const said: string[] = [];
+      const waits: number[] = [];
+      const { gh, calls } = refusing(2);
+      run(env, { gh, git, log: (l: string) => void said.push(l), sleep: (s: number) => void waits.push(s) });
+      assert.equal(calls.downloads, 3);
+      assert.deepEqual(waits, [5, 10]);
+      has(said, /HTTP 503: Egress is over the account limit.*trying again in 5 s/);
+      assert.ok(!said.some((l) => /could not be read|arrived/.test(l)), said.join("\n"));
+      has(said, /^1 results artifacts, 3 records/);
+    });
+
+    test("that refuses every time is red, and names what gh said", () => {
+      const said: string[] = [];
+      const waits: number[] = [];
+      const { gh, calls } = refusing(Infinity);
+      assert.equal(run(env, { gh, git, log: (l: string) => void said.push(l), sleep: (s: number) => void waits.push(s) }), 1);
+      assert.equal(calls.downloads, 4);
+      assert.deepEqual(waits, [5, 10, 20]);
+      has(said, /^::error::the results could not be read: Command failed: gh run download .*HTTP 503: Egress is over the account limit/);
+    });
+  });
+
   test("a push to main whose test jobs were all skipped by scope has nothing to judge, and is green", () => {
     const gh = (args: string[]) => (args[0] === "api" ? "" : assert.fail(`downloaded with no artifact: ${args.join(" ")}`));
     const git = () => "";
