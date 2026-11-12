@@ -112,7 +112,7 @@ describe("a CI run judged over scratch histories", () => {
   const notes = ["docs", "notes.md"].join("/");
 
   const later = `tests/a/t${listed.length + 1}.test.ts`;
-  type Recorded = "merge" | "head" | "stranger" | "offBase" | "none";
+  type Recorded = "merge" | "head" | "stranger" | "forged" | "offBase" | "none";
 
   /**
    * A head branched with a docs change; its base branch, `release`, then gains a test, and CI
@@ -143,12 +143,11 @@ describe("a CI run judged over scratch histories", () => {
       return sha;
     };
     const stranger = (sh(origin, "checkout", "-q", "--detach", "main"), write("docs/stranger.md", "x"), commit("stranger"));
-    const shas: Record<Exclude<Recorded, "none">, string> = {
-      merge: mergeOnto("release", "head", "pull/7/merge"),
-      head,
-      stranger: mergeOnto("release", stranger, "stranger"),
-      offBase: "",
-    };
+    const merge = mergeOnto("release", "head", "pull/7/merge");
+    const strange = mergeOnto("release", stranger, "stranger");
+    const forged = sh(origin, "commit-tree", `${strange}^{tree}`, "-p", `${merge}^1`, "-p", head, "-m", "forged");
+    sh(origin, "update-ref", "refs/forged", forged);
+    const shas: Record<Exclude<Recorded, "none">, string> = { merge, head, stranger: strange, forged, offBase: "" };
     sh(origin, "checkout", "-q", "main");
     write(["lib", "code.ts"].join("/"), "1");
     commit("main moves");
@@ -211,6 +210,7 @@ describe("a CI run judged over scratch histories", () => {
     for (const [recorded, why] of [
       ["head", /is not the head \S+ merged onto a base/],
       ["stranger", /is not the head \S+ merged onto a base/],
+      ["forged", /tree is not the merge of its parents/],
       ["offBase", /which release never held/],
       ["none", /recorded no tested commit/],
     ] as const) {
@@ -221,10 +221,16 @@ describe("a CI run judged over scratch histories", () => {
   });
 
   test("ci.yml records the commit each pull request's run tests, under the name the judge reads", () => {
-    const steps = (parse(fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8")).jobs.scope.steps as { uses?: string; if?: string; with?: Record<string, unknown> }[]).filter((s) => s.uses?.startsWith("actions/upload-artifact@"));
-    assert.equal(steps.length, 2);
-    for (const s of steps) assert.equal(s.with!.name, `${TESTED_PREFIX}\${{ github.sha }}`);
-    assert.equal(steps[0]!.if, "${{ github.event_name == 'pull_request' }}");
+    type Upload = { id?: string; uses?: string; if?: string; with?: Record<string, unknown> };
+    const ciJobs = parse(fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8")).jobs as Record<string, { steps?: Upload[] }>;
+    const recording = Object.entries(ciJobs).flatMap(([id, j]) => (j.steps ?? []).filter((s) => String(s.with?.name ?? "").startsWith(TESTED_PREFIX)).map((s) => ({ job: id, ...s })));
+    assert.deepEqual(recording.map((s) => s.job), ["scope", "scope"], "both tested-commit uploads sit in the scope job, which every run has");
+    for (const s of recording) {
+      assert.match(String(s.uses), /^actions\/upload-artifact@/);
+      assert.equal(s.with!.name, `${TESTED_PREFIX}\${{ github.sha }}`);
+    }
+    assert.equal(recording[0]!.if, "${{ github.event_name == 'pull_request' }}");
+    assert.equal(recording[1]!.if, `\${{ !cancelled() && steps.${recording[0]!.id}.outcome == 'failure' }}`);
   });
 
   test("a failed test, or a need CI did not run, posts a red check naming it", () => {

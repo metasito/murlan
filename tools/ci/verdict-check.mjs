@@ -137,6 +137,13 @@ function testedAt(dir, origin, tested, head, baseRef) {
   } catch {
     throw new Error(`${tested} merges onto ${base}, which ${baseRef} never held`);
   }
+  let merged;
+  try {
+    merged = git(["merge-tree", "--write-tree", base, head]).split("\n")[0];
+  } catch {
+    throw new Error(`${head} does not merge onto ${base} cleanly, so ${tested} is not their merge`);
+  }
+  if (merged !== git(["rev-parse", `${tested}^{tree}`]).trim()) throw new Error(`${tested}'s tree is not the merge of its parents, so it is not what this pull request's run tested`);
   git(["symbolic-ref", "HEAD", "refs/heads/judged"]);
   return { git, base };
 }
