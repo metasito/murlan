@@ -61,6 +61,7 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
       timings: ${{ steps.plan.outputs.timings }}
+      stable: ${{ steps.plan.outputs.stable }}
       split-problems: ${{ steps.plan.outputs.split-problems }}
       verify-timings: ${{ steps.verify-plan.outputs.verify-timings }}
     steps:
@@ -120,11 +121,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
+          # A fork's runs leave no artifact this repository's filter keeps.
+          FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          OPENED: ${{ github.event.pull_request.created_at }}
           RUNS: 5
         run: |
           # Newest first, across every branch: a burst of pull requests can push main's runs, or this
-          # branch's latest, off one page.
+          # branch's latest, off one page. Nothing older than the pull request is its branch's.
           artifacts='{"artifacts":[]}'
           ours='[.artifacts[] | select((.expired | not) and .workflow_run.head_repository_id == .workflow_run.repository_id)]'
           for page in $(seq 1 50); do
@@ -135,12 +138,13 @@ jobs:
             artifacts=$(jq -s '{artifacts: (.[0].artifacts + .[1].artifacts)}' <(echo "$artifacts") <(echo "$got"))
             [ "$(jq '.artifacts | length' <<< "$got")" -lt 100 ] && break
             [ "$(jq "$ours | map(select(.workflow_run.head_branch == \"main\")) | length" <<< "$artifacts")" -ge "$RUNS" ] \
-              && { [ "$BRANCH" = main ] || [ "$(jq --arg b "$BRANCH" "$ours | map(select(.workflow_run.head_branch == \$b)) | length" <<< "$artifacts")" -gt 0 ]; } \
+              && { [ "$BRANCH" = main ] || [ "$FORK" = true ] \
+                || [ "$(jq --arg b "$BRANCH" "$ours | map(select(.workflow_run.head_branch == \$b)) | length" <<< "$artifacts")" -gt 0 ] \
+                || jq -e --arg t "$OPENED" '$t != "" and .artifacts[-1].created_at < $t' <<< "$got" > /dev/null; } \
               && break
           done
-          changed=$([ -n "$BASE" ] && git diff --name-only "$BASE" HEAD -- tests/e2e | paste -sd, - || true)
           branches=(main)
-          [ "$BRANCH" != main ] && branches+=("$BRANCH")
+          if [ "$BRANCH" != main ] && [ "$FORK" != true ]; then branches+=("$BRANCH"); fi
           layers=("" "")
           for i in "${!branches[@]}"; do
             branch=${branches[$i]}
@@ -165,7 +169,7 @@ jobs:
               echo "::warning::No green run of $branch has left e2e-timings; its specs keep the older numbers."
             fi
           done
-          node tools/ci/e2e-shard.mjs plan "${layers[0]}" "${layers[1]}" "$changed"
+          node tools/ci/e2e-shard.mjs plan "${layers[0]}" "${layers[1]}"
 
       # verify's split: each file at its median over main's latest runs, one line of artifact ids a run.
       # A file no run measured is placed as a typical one, so a missing layer costs balance, never a file.
@@ -1097,13 +1101,26 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Judged by scope's plan, which alone holds the layers apart (tools/ci/e2e-shard.mjs splitProblems);
-      # failed here rather than there so the suite still runs and reports.
+      # At this run's prices for the specs the pull request touched, main's for the rest
+      # (tools/ci/e2e-shard.mjs judgedPrices); the guess is scope's plan's, which split by it.
       - name: The split was measured, even and within the target
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.regen.outcome == 'success' }}
         env:
           PROBLEMS: ${{ needs.scope.outputs.split-problems }}
-        run: node tools/ci/e2e-shard.mjs check "$PROBLEMS"
+          STABLE: ${{ needs.scope.outputs.stable }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          printf '%s' "$STABLE" > "$RUNNER_TEMP/stable.json"
+          changed=
+          if [ -n "$BASE" ]; then
+            if git fetch -q --no-tags --depth=1 origin "$BASE" && git cat-file -e "$BASE^{commit}" \
+              && names=$(git diff --name-only "$BASE" HEAD -- tests/e2e); then
+              changed=$(paste -sd, - <<< "$names")
+            else
+              changed='?'
+            fi
+          fi
+          node tools/ci/e2e-shard.mjs check "$PROBLEMS" "$RUNNER_TEMP/stable.json" tests/e2e/timings.json "$changed"
 
       # The commit's gate, e2eShardSplit.test.ts, imports `yaml` and lists the suite with the
       # lockfile's Playwright: the one step here that needs node_modules.

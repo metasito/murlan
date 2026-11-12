@@ -126,7 +126,7 @@ export function medianTimings(runs) {
 
 /**
  * As many shards as it takes for the suite to fit the target, overhead and all. Unclamped:
- * above `MAX_SHARDS` the target is out of reach, and `splitProblems` says so.
+ * above `MAX_SHARDS` the target is out of reach, and `fitProblems` says so.
  * @param {string[]} files
  * @param {Record<string, number>} timings
  */
@@ -141,43 +141,60 @@ export function shardsNeeded(files, timings) {
  * @param {(string | string[])[]} layers JSON timings files, oldest first; a list is one branch's
  *   runs, priced by `medianTimings`; a missing file is skipped
  * @param {number} [stableLayers] how many of `layers`, from the oldest, are main's, not the branch's
- * @param {string[]} [changed] specs the branch changed, which `judged` prices as the branch runs them
- * @returns {{ shards: number[], timings: Record<string, number>, judged: Record<string, number> }}
+ * @returns {{ shards: number[], timings: Record<string, number>, stable: Record<string, number> }}
  */
-export function plan(layers, stableLayers = layers.length, changed = []) {
+export function plan(layers, stableLayers = layers.length) {
   const read = (/** @type {string[]} */ group) => group.filter((f) => existsSync(f)).map((f) => readTimings(f));
   const priced = layers.map((layer) => (Array.isArray(layer) ? medianTimings(read(layer)) : read([layer])[0] ?? null));
-  const branch = resolveTimings(...priced.slice(stableLayers));
-  const mine = Object.fromEntries(changed.filter((f) => f in branch).map((f) => [f, branch[f]]));
   return {
     shards: Array.from({ length: MAX_SHARDS }, (_, i) => i + 1),
     timings: resolveTimings(...priced),
-    judged: resolveTimings(branch, ...priced.slice(0, stableLayers), mine),
+    stable: resolveTimings(...priced.slice(0, stableLayers)),
   };
 }
 
 /**
- * What is wrong with a run's split. How much was guessed is read from `timings`, what the shards
- * split by, so a spec any layer measured counts as measured. Fit and evenness price each spec from
- * `judged`: main's numbers for a spec the branch left alone, since one branch run is a noisy sample
- * and a slow runner must not red a pull request that changed no spec; the branch's for a spec it
- * added or changed, which must not land priced at a guess or at its old cost.
+ * How much of the split was a guess, read from `timings`, what the shards split by: a spec any
+ * layer measured counts as measured.
  * @param {string[]} files
  * @param {Record<string, number>} timings
+ * @returns {string[]}
+ */
+export function guessProblems(files, timings) {
+  const guessed = files.filter((file) => !(file in timings));
+  if (guessed.length <= files.length * UNMEASURED_SHARE) return [];
+  return [
+    `${guessed.length} of ${files.length} specs were priced at the ${UNMEASURED_SECONDS}s guess, over the ` +
+      `${UNMEASURED_SHARE * 100}% the split can absorb and still be even in wall clock: ${guessed.join(", ")}. ` +
+      `Once this branch has a run whose browser shards all passed, push again or use "Re-run all jobs" ` +
+      `to price them from it; "Re-run failed jobs" keeps this plan.`,
+  ];
+}
+
+/**
+ * The prices that predict main's next run: main's for a spec the pull request left alone, so noise
+ * in a run cannot red a change that touched no spec; this run's measurement for one it added or
+ * changed, or one main has never measured. A slowdown a pull request causes through a helper or app
+ * code, under specs it left alone, is priced at main's numbers and shows only once main measures it.
+ * @param {Record<string, number>} stable main's prices: the committed file under main's medians
+ * @param {Record<string, number>} measured this run's
+ * @param {string[]} changed specs the pull request added or changed
+ * @returns {Record<string, number>}
+ */
+export function judgedPrices(stable, measured, changed) {
+  return resolveTimings(measured, stable, Object.fromEntries(changed.filter((f) => f in measured).map((f) => [f, measured[f]])));
+}
+
+/**
+ * Whether the suite at `judged` fits the target, and splits evenly: the split is rebuilt at those
+ * prices, so it is the split main's next run makes.
+ * @param {string[]} files
  * @param {Record<string, number>} judged
  * @returns {string[]}
  */
-export function splitProblems(files, timings, judged) {
+export function fitProblems(files, judged) {
   if (!files.length) return ["no spec to split: the listing found none"];
   const problems = [];
-  const guessed = files.filter((file) => !(file in timings));
-  if (guessed.length > files.length * UNMEASURED_SHARE)
-    problems.push(
-      `${guessed.length} of ${files.length} specs were priced at the ${UNMEASURED_SECONDS}s guess, over the ` +
-        `${UNMEASURED_SHARE * 100}% the split can absorb and still be even in wall clock: ${guessed.join(", ")}. ` +
-        `Once this branch has a run whose browser shards all passed, push again or use "Re-run all jobs" ` +
-        `to price them from it; "Re-run failed jobs" keeps this plan.`
-    );
   const needed = shardsNeeded(files, judged);
   if (needed > MAX_SHARDS) problems.push(`${needed} shards to meet rule 46's ${TARGET_RUN_SECONDS} s, over the ${MAX_SHARDS} allowed`);
   // Fewer specs than shards leaves a shard empty, which no split can help.
@@ -186,35 +203,41 @@ export function splitProblems(files, timings, judged) {
     const fair = files.reduce((sum, f) => sum + seconds(f), 0) / MAX_SHARDS;
     const over = files.filter((f) => seconds(f) > fair);
     if (over.length) problems.push(`over the ${fair.toFixed(0)}s each of ${MAX_SHARDS} shards gets; split them: ${over.map((f) => `${f} ${seconds(f)}s`).join(", ")}`);
-    const shards = assignShards(files, timings, MAX_SHARDS).map((s) => Math.round(s.files.reduce((sum, f) => sum + seconds(f), 0)));
+    const shards = assignShards(files, judged, MAX_SHARDS).map((s) => s.seconds);
     if (Math.max(...shards) > Math.min(...shards) * (4 / 3))
       problems.push(`shards range ${Math.min(...shards)}s to ${Math.max(...shards)}s, more than a third again of the lightest`);
   }
   return problems;
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "check") {
-  const problems = JSON.parse(process.argv[3] ?? "");
-  if (!Array.isArray(problems)) throw new Error(`check takes the plan's split-problems, a JSON list, got ${process.argv[3]}`);
+/** @param {string[]} problems */
+const report = (problems) => {
   for (const problem of problems) process.stdout.write(`::error::${problem}\n`);
   process.exitCode = problems.length ? 1 : 0;
+};
+
+if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "check") {
+  if (process.argv.length !== 7) throw new Error("check takes the plan's split-problems, main's prices, this run's, and the specs changed");
+  const [planned, stable, measured, changed] = process.argv.slice(3);
+  const problems = JSON.parse(planned);
+  if (!Array.isArray(problems)) throw new Error(`check takes the plan's split-problems, a JSON list, got ${planned}`);
+  if (changed === "?") problems.push("the pull request's base could not be read, so the specs it changed could not be priced from this run");
+  const mine = changed.split(",").flatMap((f) => (f.startsWith("tests/e2e/") ? [f.slice("tests/e2e/".length)] : []));
+  report([...problems, ...fitProblems(specFilesIn(), judgedPrices(readTimings(stable), readTimings(measured), mine))]);
 } else if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "judge") {
   if (!process.argv[3]) throw new Error("judge takes the timings file a commit would land");
   const timings = readTimings(process.argv[3]);
-  const problems = splitProblems(specFilesIn(), timings, timings);
-  for (const problem of problems) process.stdout.write(`::error::${problem}\n`);
-  process.exitCode = problems.length ? 1 : 0;
+  report([...guessProblems(specFilesIn(), timings), ...fitProblems(specFilesIn(), timings)]);
 } else if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "plan") {
   const list = (/** @type {string | undefined} */ arg) => (arg ?? "").split(",").filter(Boolean);
-  const [main, branch, changed] = process.argv.slice(3);
-  const mine = list(changed).flatMap((f) => (f.startsWith("tests/e2e/") ? [f.slice("tests/e2e/".length)] : []));
-  const { shards, timings, judged } = plan([TIMINGS, list(main), list(branch)], 2, mine);
-  const problems = list(main).some((f) => existsSync(f))
-    ? splitProblems(specFilesIn(), timings, judged)
-    : ["no run of main's e2e-timings could be read, so the split stands on the committed file alone; see the plan step's log"];
+  const [main, branch] = process.argv.slice(3);
+  const { shards, timings, stable } = plan([TIMINGS, list(main), list(branch)], 2);
+  const problems = guessProblems(specFilesIn(), timings);
+  if (!list(main).some((f) => existsSync(f)))
+    problems.push(`no run of main's e2e-timings could be read, so the split stood on the committed file alone; see the plan step's log, and once the API answers again use "Re-run all jobs"`);
   const out =
     `shards=${JSON.stringify(shards)}\nshard-count=${shards.length}\ntimings=${JSON.stringify(timings)}\n` +
-    `split-problems=${JSON.stringify(problems)}\n`;
+    `stable=${JSON.stringify(stable)}\nsplit-problems=${JSON.stringify(problems)}\n`;
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, out);
   process.stdout.write(out);
 } else if (isInvokedDirectly(process.argv[1], import.meta.url)) {
