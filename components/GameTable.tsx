@@ -1151,7 +1151,7 @@ export function GameTable({
                 {opponentSeat("left")}
               </View>
 
-              <View style={[sharedTableStyles.centerSection, layout.placed.pileBand]}>
+              <View style={[sharedTableStyles.centerSection, layout.placed.pile]}>
                 <PileLayer
                   trick={trick}
                   flights={flights}

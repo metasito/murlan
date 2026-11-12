@@ -19,19 +19,37 @@ import { computeTableFrame, SIDE_SEAT_GAP, sideSlotHeight, topBandHeight, type E
 /** Where the rail holds each knob across its width: `rail`'s slots and `ControlRail` both read it. */
 export const RAIL_KNOB_ALIGN: Align = "center";
 
+/** The pile's least height: `pile.tsx` draws its area at least this tall, and `pile` is placed at it. */
+export const PILE_MIN_H = 80;
+
 export interface Point { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Delta { dx: number; dy: number }
-interface Edges { left: number; top: number; right: number; bottom: number }
-type PlacedBox = "topBand" | "midBand" | "seatLeft" | "seatRight" | "pileBand" | "handZone" | "handWindow" | "passa" | "gioca";
+type PlacedBox = "topBand" | "midBand" | "seatLeft" | "seatRight" | "pile" | "handZone" | "handWindow" | "passa" | "gioca";
+/**
+ * Along one axis a box spans its parent between two edges, stands against its start or end edge
+ * at its own size, or (down only) centres in it at its own size.
+ */
+type Span = "stretch" | "start" | "end";
+type Placed = { left: number; right: number } | { left: number; width: number } | { right: number; width: number };
+type PlacedY =
+  | { top: number; bottom: number }
+  | { top: number; height: number }
+  | { bottom: number; height: number }
+  | { top: 0; bottom: 0; height: number; marginVertical: "auto" };
 
-function edgesIn(outer: Rect, inner: Rect): Edges {
-  return {
-    left: inner.x - outer.x,
-    top: inner.y - outer.y,
-    right: outer.x + outer.w - (inner.x + inner.w),
-    bottom: outer.y + outer.h - (inner.y + inner.h),
-  };
+function placeIn(outer: Rect, inner: Rect, x: Span, y: Span | "centre"): Placed & PlacedY {
+  const left = inner.x - outer.x;
+  const top = inner.y - outer.y;
+  const right = outer.x + outer.w - (inner.x + inner.w);
+  const bottom = outer.y + outer.h - (inner.y + inner.h);
+  const across: Placed = x === "stretch" ? { left, right } : x === "start" ? { left, width: inner.w } : { right, width: inner.w };
+  const down: PlacedY =
+    y === "stretch" ? { top, bottom }
+    : y === "start" ? { top, height: inner.h }
+    : y === "end" ? { bottom, height: inner.h }
+    : { top: 0, bottom: 0, height: inner.h, marginVertical: "auto" };
+  return { ...across, ...down };
 }
 
 export interface TableLayout {
@@ -72,17 +90,25 @@ export interface TableLayout {
   seatSlots: Record<"left" | "right", Rect>;
   /** The middle band between the side seats' columns: the pile and every moment drawn over it centre in it. */
   pileBand: Rect;
+  /**
+   * The pile's box: the pile band's width at `PILE_MIN_H`, centred on the pile's anchor, and a
+   * taller pile overflows it evenly. Not the band's height: a box reaching the hand, which rises
+   * into the band, takes the hand into the pile's compositing layer and moves its antialiasing.
+   */
+  pile: Rect;
   /** The hand zone at its designed place; its row and buttons stand on `frame.bottomPad`. */
   handZone: Rect;
   /** The span the hand row is drawn in between PASSA and GIOCA, centred on the hand zone, over its padding: a row wider than it scrolls under it. */
   handWindow: Rect;
   /**
-   * The absolute boxes as distances from their parent's edges: the bands and the hand zone in the
-   * table box, the seat slots and the pile band in the middle band, the hand window and the buttons
-   * in the hand zone. By edges, not `top` and `width`: those round to a layout unit apart from the
-   * parent's own edges and move every glyph inside by it.
+   * The absolute boxes in their parents: the bands and the hand zone in the table box, the seat
+   * slots and the pile in the middle band, the hand window and the buttons in the hand zone.
+   * The browser rounds each length to a layout unit, so a box spanning its parent takes both edges
+   * and a box of its own size takes that size and the one edge it stands against, or auto margins
+   * when it centres, so the browser halves the room it has rounded: any other form lands a layout
+   * unit off and moves every glyph inside by it.
    */
-  placed: Record<PlacedBox, Edges>;
+  placed: Record<PlacedBox, Placed & PlacedY>;
   /** PASSA and GIOCA, in the hand zone at its designed place: GIOCA on the right, or on the left under `playOnLeft`. */
   buttons: { passa: Rect; gioca: Rect };
   /** How far each seat's name slides inboard of its disc's outer edge. */
@@ -145,6 +171,7 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     left: { x: seatSlots.left.x + ring / 2, y: sideY },
     right: { x: seatSlots.right.x + seatSlots.right.w - ring / 2, y: sideY },
   };
+  const pile = { x: pileBand.x, y: anchors.pile.y - PILE_MIN_H / 2, w: pileBand.w, h: PILE_MIN_H };
   const nameInset = {
     top: 0,
     left: sideNameInset("left", anchors.left.x, ring, width),
@@ -183,18 +210,19 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
     midBand,
     seatSlots,
     pileBand,
+    pile,
     handZone,
     handWindow,
     placed: {
-      topBand: edgesIn(table, topBand),
-      midBand: edgesIn(table, midBand),
-      seatLeft: edgesIn(midBand, seatSlots.left),
-      seatRight: edgesIn(midBand, seatSlots.right),
-      pileBand: edgesIn(midBand, pileBand),
-      handZone: edgesIn(table, handZone),
-      handWindow: edgesIn(handZone, handWindow),
-      passa: edgesIn(handZone, passa),
-      gioca: edgesIn(handZone, gioca),
+      topBand: placeIn(table, topBand, "stretch", "start"),
+      midBand: placeIn(table, midBand, "stretch", "stretch"),
+      seatLeft: placeIn(midBand, seatSlots.left, "start", "start"),
+      seatRight: placeIn(midBand, seatSlots.right, "end", "start"),
+      pile: placeIn(midBand, pile, "stretch", "centre"),
+      handZone: placeIn(table, handZone, "stretch", "stretch"),
+      handWindow: placeIn(handZone, handWindow, "stretch", "stretch"),
+      passa: placeIn(handZone, passa, passa === leftBtn ? "start" : "end", "end"),
+      gioca: placeIn(handZone, gioca, gioca === leftBtn ? "start" : "end", "end"),
     },
     buttons: { passa, gioca },
     nameInset,

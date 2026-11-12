@@ -25,7 +25,7 @@ import {
 import { readExchangeLegs } from "../../components/table/exchangeModel.ts";
 import { readThrownPlay } from "../../components/table/throws.ts";
 import { sideSlotHeight, topBandHeight } from "../../components/tableFrame.ts";
-import { ownSlotFrom, tableLayout, type Delta, type TableLayout } from "../../components/tableLayout.ts";
+import { ownSlotFrom, PILE_MIN_H, tableLayout, type Delta, type TableLayout } from "../../components/tableLayout.ts";
 import type { Card, Combination, Player } from "../../lib/game/gameEngine.ts";
 import { clientSources, scanSources } from "../helpers/sourceScan.ts";
 import { INSETS, phoneTable } from "../helpers/phoneTable.ts";
@@ -319,10 +319,13 @@ describe("the middle band, the hand zone and the hand window", () => {
       near(l.pileBand.x + l.pileBand.w / 2, l.anchors.pile.x, `${what} pile x`);
       near(l.pileBand.y + l.pileBand.h / 2, l.anchors.pile.y, `${what} pile y`);
       near(l.pileBand.h, l.midBand.h, `${what} pile band height`);
+      assert.deepEqual([l.pile.x, l.pile.w, l.pile.h], [l.pileBand.x, l.pileBand.w, PILE_MIN_H], `${what}: the pile is the band's width at its least height`);
+      near(l.pile.y + l.pile.h / 2, l.anchors.pile.y, `${what} pile centred`);
+      assert.ok(l.pile.y + l.pile.h < l.handZone.y, `${what}: the pile's box stops short of the hand zone`);
     }
   });
 
-  test("each placed box's edges land it on its rect inside its parent", () => {
+  test("each placed box lands on its rect, spanning its parent or at its own size against one edge", () => {
     for (const { what, l } of tables) {
       const table = { x: l.tableBox.left, y: l.tableBox.top, w: l.window.width - l.tableBox.left - l.tableBox.right, h: l.window.height - l.tableBox.top - l.tableBox.bottom };
       const cases = [
@@ -330,7 +333,7 @@ describe("the middle band, the hand zone and the hand window", () => {
         ["midBand", table, l.midBand],
         ["seatLeft", l.midBand, l.seatSlots.left],
         ["seatRight", l.midBand, l.seatSlots.right],
-        ["pileBand", l.midBand, l.pileBand],
+        ["pile", l.midBand, l.pile],
         ["handZone", table, l.handZone],
         ["handWindow", l.handZone, l.handWindow],
         ["passa", l.handZone, l.buttons.passa],
@@ -338,12 +341,28 @@ describe("the middle band, the hand zone and the hand window", () => {
       ] as const;
       assert.deepEqual(cases.map(([key]) => key).sort(), Object.keys(l.placed).sort(), `${what}: every placed box is checked`);
       for (const [key, outer, inner] of cases) {
-        const e = l.placed[key];
-        near(outer.x + e.left, inner.x, `${what} ${key} left`);
-        near(outer.y + e.top, inner.y, `${what} ${key} top`);
-        near(outer.x + outer.w - e.right, inner.x + inner.w, `${what} ${key} right`);
-        near(outer.y + outer.h - e.bottom, inner.y + inner.h, `${what} ${key} bottom`);
+        const { marginVertical, ...p }: Partial<Record<"left" | "right" | "width" | "top" | "bottom" | "height", number>> & { marginVertical?: "auto" } = l.placed[key];
+        assert.equal(Object.keys(p).length, marginVertical ? 5 : 4, `${what} ${key}: two lengths per axis, or three when centred`);
+        const x = p.left ?? outer.w - p.right! - p.width!;
+        const y = marginVertical ? (outer.h - p.height!) / 2 : p.top ?? outer.h - p.bottom! - p.height!;
+        near(outer.x + x, inner.x, `${what} ${key} left`);
+        near(outer.y + y, inner.y, `${what} ${key} top`);
+        near(p.width ?? outer.w - x - p.right!, inner.w, `${what} ${key} width`);
+        near(p.height ?? outer.h - y - p.bottom!, inner.h, `${what} ${key} height`);
       }
+      const pins = Object.fromEntries(Object.entries(l.placed).map(([key, p]) => [key, Object.keys(p).sort().join(" ")]));
+      const [passaSide, giocaSide] = l.buttons.gioca.x > l.buttons.passa.x ? ["left", "right"] : ["right", "left"];
+      assert.deepEqual(pins, {
+        topBand: "height left right top",
+        midBand: "bottom left right top",
+        seatLeft: "height left top width",
+        seatRight: "height right top width",
+        pile: "bottom height left marginVertical right top",
+        handZone: "bottom left right top",
+        handWindow: "bottom left right top",
+        passa: `bottom height ${passaSide} width`,
+        gioca: `bottom height ${giocaSide} width`,
+      }, `${what}: a box of its own size stands against the edge it is drawn at`);
     }
   });
 
