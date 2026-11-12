@@ -52,8 +52,9 @@ describe("the offline exchange overlay's E2E hold", () => {
   test("only the E2E harness's own build configs ever set EXPO_PUBLIC_E2E_FAST", () => {
     // A plain assignment (`= "1"` / `: "1"`), never a read: `lib/e2eConfig.ts`
     // compares against it with `===`, which this flag
-    // does not match, so a reader gating its own behaviour is not a setter.
-    const FLAG = /EXPO_PUBLIC_E2E_FAST\s*[:=]\s*["']1["']/;
+    // does not match, so a reader gating its own behaviour is not a setter. `flavour: e2e` asks
+    // the ios-app action to set it.
+    const FLAG = /EXPO_PUBLIC_E2E_FAST\s*[:=]\s*["']1["']|^\s*flavour:\s*e2e\s*$/m;
     const workflows = readdirSync(path.join(repoRoot, ".github/workflows")).map(
       (name) => `.github/workflows/${name}`
     );
@@ -72,6 +73,7 @@ describe("the offline exchange overlay's E2E hold", () => {
       setters,
       [
         ".github/actions/ios-app/action.yml",
+        ".github/workflows/ios-app-cache.yml",
         ".github/workflows/ios.yml",
         ".github/workflows/maestro.yml",
         "scripts/e2e-server.mjs",

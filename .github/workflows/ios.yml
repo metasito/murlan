@@ -59,24 +59,12 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/install
 
-      # Started in the background, so it runs beside the fingerprint and restore below. The .app it
-      # writes into is a stand-in: hermesc embeds only its input's directory, which stays Xcode's.
-      - name: Start bundling the JS
-        env:
-          EXPO_PUBLIC_E2E_FAST: "1"
-        run: |
-          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
-          echo "JS_BUNDLE=$products/js.app" >> "$GITHUB_ENV"
-          mkdir -p "$products/js.app"
-          (
-            status=0
-            tools/ci/rebundle-ios-app.sh "$products/js.app" > "$RUNNER_TEMP/bundle.log" 2>&1 || status=$?
-            echo "$status" > "$RUNNER_TEMP/bundle.status"
-          ) > /dev/null 2>&1 &
-
-      - name: Restore the app
+      - name: Restore the app, its JS bundled from this commit
         id: native
         uses: ./.github/actions/ios-app
+        with:
+          mode: restore
+          flavour: e2e
 
       - name: Say how to fill the cache
         if: failure() && steps.native.outputs.key != '' && steps.native.outputs.cache-hit != 'true'
@@ -87,30 +75,10 @@ jobs:
             "Dispatch ios-app-cache.yml on this branch, then this workflow again."
           exit 1
 
-      - name: Bundle the JS into the app
-        run: |
-          for _ in $(seq 1 300); do
-            [ -s "$RUNNER_TEMP/bundle.status" ] && break
-            sleep 2
-          done
-          cat "$RUNNER_TEMP/bundle.log"
-          [ "$(cat "$RUNNER_TEMP/bundle.status" 2>/dev/null)" = 0 ] || { echo "::error::Bundling the JS failed or never finished."; exit 1; }
-          cached=""
-          for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
-            [ -d "$candidate" ] && { cached="$candidate"; break; }
-          done
-          [ -n "$cached" ] || { echo "::error::No .app was restored."; exit 1; }
-          app="$(dirname "$JS_BUNDLE")/$(basename "$cached")"
-          rm -rf "$app"
-          cp -R "$cached" "$app"
-          cp -R "$JS_BUNDLE/." "$app/"
-          echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
-
-      - name: The bundle carries the test-only flag
-        run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
-
       # Tarred, because an artifact keeps neither the executable bit nor the symlinks an .app has.
       - name: Pack the app
+        env:
+          APP_BUNDLE: ${{ steps.native.outputs.app }}
         run: tar -czf "$RUNNER_TEMP/app.tgz" -C "$(dirname "$APP_BUNDLE")" "$(basename "$APP_BUNDLE")"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

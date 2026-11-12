@@ -25,11 +25,14 @@ test("the root layout loads the mark", () => {
   assert.match(layout, /^import "@\/lib\/e2eConfig";$/m);
 });
 
-test("every workflow that builds with a test-only flag checks the build carries it", () => {
-  const dir = path.join(root, ".github", "workflows");
-  const flagged = readdirSync(dir).filter((f) => /EXPO_PUBLIC_E2E_\w+: "1"/.test(readFileSync(path.join(dir, f), "utf8")));
-  assert.ok(flagged.includes("ios.yml"), "the scan no longer sees ios.yml's flag");
-  for (const f of flagged) assert.match(readFileSync(path.join(dir, f), "utf8"), /e2eBuildMark\.mjs --present /, f);
+test("every workflow or action that builds with a test-only flag checks the build carries it", () => {
+  const files = [
+    ...readdirSync(path.join(root, ".github", "workflows")).map((f) => path.join(".github", "workflows", f)),
+    ...readdirSync(path.join(root, ".github", "actions")).map((a) => path.join(".github", "actions", a, "action.yml")),
+  ];
+  const flagged = files.filter((f) => /EXPO_PUBLIC_E2E_\w+\s*[:=]\s*"1"/.test(readFileSync(path.join(root, f), "utf8")));
+  assert.ok(flagged.includes(path.join(".github", "actions", "ios-app", "action.yml")), "the scan no longer sees the iOS build's flag");
+  for (const f of flagged) assert.match(readFileSync(path.join(root, f), "utf8"), /e2eBuildMark\.mjs [^\n]*--present/, f);
 });
 
 test("every store build ci.yml compiles proves it carries no test-only flag", () => {

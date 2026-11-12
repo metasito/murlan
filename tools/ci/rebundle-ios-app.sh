@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuilds the JS inside a built Release .app: `usage: rebundle-ios-app.sh <path/to/App.app>`.
+# Rebuilds the JS inside a built Release .app: `usage: rebundle-ios-app.sh <path/to/App.app> [iphonesimulator|iphoneos]`.
 # It runs the same react-native-xcode.sh, with the same environment, as the
 # "Bundle React Native code and images" phase expo prebuild writes into the Xcode project.
 set -euo pipefail
@@ -9,7 +9,7 @@ node_binary="$(command -v node)"
 
 rm -f "$app/main.jsbundle"
 CONFIGURATION=Release \
-PLATFORM_NAME=iphonesimulator \
+PLATFORM_NAME="${2:-iphonesimulator}" \
 CONFIGURATION_BUILD_DIR="$(dirname "$app")" \
 UNLOCALIZED_RESOURCES_FOLDER_PATH="$(basename "$app")" \
 PROJECT_ROOT="$PWD" \
