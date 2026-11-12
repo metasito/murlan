@@ -122,7 +122,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
           # A fork's runs leave no artifact this repository's filter keeps.
-          FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           OPENED: ${{ github.event.pull_request.created_at }}
           RUNS: 5
         run: |
@@ -135,11 +135,12 @@ jobs:
               echo "::warning::Listing e2e-timings failed at page $page; the plan prices from what it already holds."
               break
             fi
-            artifacts=$(jq -s '{artifacts: (.[0].artifacts + .[1].artifacts)}' <(echo "$artifacts") <(echo "$got"))
+            artifacts=$(jq -s --arg b "$BRANCH" "{artifacts: (.[0].artifacts + (.[1] | $ours
+              | map(select(.workflow_run.head_branch == \"main\" or .workflow_run.head_branch == \$b))))}" <(echo "$artifacts") <(echo "$got"))
             [ "$(jq '.artifacts | length' <<< "$got")" -lt 100 ] && break
-            [ "$(jq "$ours | map(select(.workflow_run.head_branch == \"main\")) | length" <<< "$artifacts")" -ge "$RUNS" ] \
+            [ "$(jq '.artifacts | map(select(.workflow_run.head_branch == "main")) | length' <<< "$artifacts")" -ge "$RUNS" ] \
               && { [ "$BRANCH" = main ] || [ "$FORK" = true ] \
-                || [ "$(jq --arg b "$BRANCH" "$ours | map(select(.workflow_run.head_branch == \$b)) | length" <<< "$artifacts")" -gt 0 ] \
+                || [ "$(jq --arg b "$BRANCH" '.artifacts | map(select(.workflow_run.head_branch == $b)) | length' <<< "$artifacts")" -gt 0 ] \
                 || jq -e --arg t "$OPENED" '$t != "" and .artifacts[-1].created_at < $t' <<< "$got" > /dev/null; } \
               && break
           done
@@ -1104,7 +1105,7 @@ jobs:
       # At this run's prices for the specs the pull request touched, main's for the rest
       # (tools/ci/e2e-shard.mjs judgedPrices); the guess is scope's plan's, which split by it.
       - name: The split was measured, even and within the target
-        if: ${{ !cancelled() && steps.regen.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.regen.outcome == 'success' && needs.browser.result == 'success' }}
         env:
           PROBLEMS: ${{ needs.scope.outputs.split-problems }}
           STABLE: ${{ needs.scope.outputs.stable }}
@@ -1126,6 +1127,7 @@ jobs:
       # lockfile's Playwright: the one step here that needs node_modules.
       # Past a red split check: refreshed prices are how a split priced from stale ones gets even again.
       - name: Dependencies for the timings commit
+        id: install
         if: ${{ !cancelled() && steps.regen.outcome == 'success' && env.COMMIT_TIMINGS == 'true' }}
         uses: ./.github/actions/install
 
@@ -1137,8 +1139,8 @@ jobs:
       # full of failures, and a test that fails at its timeout prices its spec
       # at the timeout while one that fails on its first assertion prices it at
       # seconds. Either number is indistinguishable from a real duration once
-      # committed, and lands as the lopsided split scope's plan reds the next
-      # pull request over — which is the defect this job exists to end.
+      # committed, and lands as a lopsided split every later run splits by —
+      # which is the defect this job exists to end.
       #
       # Regenerating on every green main push moved `main` under every open
       # pull request, which cost each one a branch update and a full extra run
@@ -1148,7 +1150,7 @@ jobs:
       # has measured it; a merge that skips the browser shards measures nothing,
       # and until main's next one the spec is a guess on every pull request.
       - name: Commit the regenerated timings, if main's copy is stale
-        if: ${{ !cancelled() && steps.regen.outcome == 'success' && env.COMMIT_TIMINGS == 'true' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
