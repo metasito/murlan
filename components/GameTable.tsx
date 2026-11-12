@@ -90,7 +90,6 @@ import { useSelection } from "@/components/table/useSelection";
 import { GiocaControl, settledSelection } from "@/components/table/selectionLeaves";
 import { PassaButton } from "@/components/table/actions";
 import { Felt } from "@/components/table/feltSkia";
-import { HandShade } from "@/components/table/handShade";
 import { useLampRig } from "@/components/table/useLampRig";
 import { useLinkHold } from "@/components/table/useLinkHold";
 import type { OwnLink } from "@/lib/ownLink";
@@ -147,7 +146,6 @@ const BANNER_BAND_Z = Layer.band;
  */
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
-const CARD_SHADE_Z = { zIndex: Layer.cardShade } as const;
 const PARTICLES_Z = { zIndex: Layer.particles } as const;
 const RAIL_Z = { zIndex: Layer.rail } as const;
 /**
@@ -924,9 +922,6 @@ export function GameTable({
           moving edge, so the strip the kick uncovers is the cloth behind it
           rather than whatever the window is drawn on. */}
       <Animated.View testID="game-layer" style={[styles.kick, clipOverflow, TABLE_Z, kickStyle]}>
-        <View testID="card-shade" style={[StyleSheet.absoluteFill, CARD_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
-          <HandShade lamp={rig.lamp} cards={cardTable} ready={cardCast === "felt"} />
-        </View>
         <Animated.View testID="table-particles" style={[StyleSheet.absoluteFill, PARTICLES_Z, edgeGreyStyle]} pointerEvents="none" {...a11yHidden()}>
           <ParticleLayer ref={particles} rig={rig} landing={landingSignal} grey={grey} />
         </Animated.View>

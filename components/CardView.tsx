@@ -1,18 +1,22 @@
 import React, { useContext } from "react";
-import { View, StyleSheet, Pressable, Image, Platform, type KeyDownEvent } from "react-native";
+import { View, StyleSheet, Pressable, Image, Platform, type KeyDownEvent, type StyleProp, type ViewStyle } from "react-native";
 import { TableText } from "@/components/table/TableText";
-import Animated from "react-native-reanimated";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import type { Felt } from "@/components/table/cardRects";
 import { Asset } from "expo-asset";
 import Svg, { Path, Circle, G, Rect } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/game/gameEngine";
 import {
+  cardContact,
   cardShadow,
   Colors,
   FontSize,
   Layer,
   withAlpha,
 } from "@/lib/theme";
-import { CardCastContext } from "@/components/table/feltReady";
+import { CardCastContext, cardContacts, useCardShadowsOn } from "@/components/table/feltReady";
+import { contactPose, shadowKind } from "@/components/table/cardShadows";
+import { useCardTable } from "@/components/table/useCardRects";
 import { FOIL_ART, FoilGlint, GLOSS_SPOT_ART, LampGloss, LevelShade } from "@/components/table/LampGloss";
 import type { OwnedRects } from "@/components/table/useCardRects";
 import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
@@ -412,6 +416,27 @@ interface CardViewProps {
   a11yActionKeys?: Record<string, string>;
 }
 
+/** Outside the card's box, which clips to its corners; an outset shadow paints nothing under the card it is cast by. */
+const CardContact = React.memo(function CardContact({ kind, rectKey, rects, width, height }: { kind: "face" | "back"; rectKey: string; rects: OwnedRects | undefined; width: number; height: number }) {
+  const table = useCardTable();
+  const shadowsOn = useCardShadowsOn();
+  const contact = table && shadowsOn ? cardContact(kind, table.felt.s) : null;
+  if (!table || !contact) return null;
+  return <RestingContact felt={table.felt} rectKey={rectKey} rects={rects} style={[styles.contact, { width, height, borderRadius: cardRadius(width) }, contact]} width={width} />;
+});
+
+// One array for every run that leaves the contact under its card: an equal style writes nothing.
+const UNDER_CARD = [{ translateX: 0 }, { translateY: 0 }, { rotate: "0deg" }, { scale: 1 }];
+
+/** At the card's rest pose while its landing wobbles it (`rect.shadow`), where the felt draws its contact. */
+function RestingContact({ felt, rectKey, rects, style, width }: { felt: Felt; rectKey: string; rects: OwnedRects | undefined; style: StyleProp<ViewStyle>; width: number }) {
+  const pose = useAnimatedStyle(() => {
+    const p = contactPose(rects?.value[rectKey], felt, width);
+    return { transform: p ? [{ translateX: p.x }, { translateY: p.y }, { rotate: `${p.rot}deg` }, { scale: p.scale }] : UNDER_CARD };
+  });
+  return <Animated.View testID="card-contact" pointerEvents="none" style={[style, pose]} {...a11yHidden()} />;
+}
+
 function CardViewBase({
   card,
   selected = false,
@@ -450,6 +475,8 @@ function CardViewBase({
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
   const cast = useContext(CardCastContext);
   const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast);
+  const contactKind = cast === "felt" && rectKey ? cardContacts().view(shadowKind(rectKey, { back: faceDown })) : null;
+  const contact = contactKind && <CardContact kind={contactKind} rectKey={rectKey as string} rects={rects} width={w} height={h} />;
 
   if (faceDown) {
     const backStyle = {
@@ -459,6 +486,7 @@ function CardViewBase({
     };
     return (
       <View style={style}>
+        {contact}
         <View
           testID="card-box-back"
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
@@ -537,6 +565,7 @@ function CardViewBase({
         // corners, and a strip narrower than the card would clip the art with it.
         style={{ width: hitWidth ?? w, height: h }}
       >
+        {contact}
         {/* Named because it is not the same box as the pressable around it: in
             a hand, that one is only the strip this card exposes. Anything
             measuring what the player *sees* has to measure this.
@@ -612,7 +641,9 @@ const styles = StyleSheet.create({
   cardBack: {
     backgroundColor: Colors.felt,
     borderWidth: 1,
+    zIndex: Layer.table,
   },
+  contact: { position: "absolute", left: 0, top: 0, zIndex: Layer.felt },
   // A solid view under the card rather than a shadow layer: nothing to mask, on the felt or off it.
   stock: { zIndex: Layer.table },
   // The index characters sit in the drawn index column: the suit mark below

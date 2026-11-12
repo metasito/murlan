@@ -227,7 +227,7 @@ describe("the split is stable and even", () => {
     const known = specFilesIn(E2E_DIR);
     const stale = Object.keys(readTimings()).filter((f) => !known.includes(f));
 
-    assert.deepEqual(stale, [], "timings.json names specs that are gone: run `node tools/ci/e2e-timings.mjs --prune`");
+    assert.deepEqual(stale, [], "timings.json names specs that are gone: run `npm run regen`");
   });
 });
 

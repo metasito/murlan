@@ -42,7 +42,7 @@ import { useBombBeat } from "./useBombBeat";
 import type { TableTimeline } from "./tableTimeline";
 import { designRect, pileCard, type GroupPose, type WobblePose } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
-import { pileGroupZ, pilePaintOrder } from "./cardShadows";
+import { pileGroupZ } from "./cardShadows";
 
 /**
  * Where a combination's cards sit on the felt, the flight's own slots. A
@@ -476,12 +476,6 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
     ...flights.filter((f) => !held.has(f.key)).map((play) => ({ play, role: "top" as const, sweep: null, sweepTop: false })),
   ];
   const flightOf = new Map(flights.map((f) => [f.key, f]));
-  const cardTable = useCardTable();
-  const paintOrder = pilePaintOrder(groups.map(({ play, role, sweep: motion }) => ({ key: play.key, ids: play.combo.cards.map((c) => c.id), role, flying: flightOf.has(play.key), sweep: motion !== null })));
-  const paintKey = paintOrder.join(",");
-  useEffect(() => {
-    cardTable?.pileOrder.set(paintKey === "" ? [] : paintKey.split(","));
-  }, [cardTable, paintKey]);
 
   const top = topPlay(trick.plays);
   const stack = top ? fieldSlots(top.combo.cards, cardScale, roomW) : null;

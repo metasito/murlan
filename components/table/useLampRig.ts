@@ -53,11 +53,7 @@ function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight
     const still = nextStillLight(stillLight.value, s);
     if (still) stillLight.value = still;
     // Called as the page, not scheduled onto it: on web a worklet runs on the JS thread, and `tracks` and `hold` are undefined on native, which never gets here.
-    if (tracks) {
-      const rested = isRested(s);
-      if (rested === tracks.live()) tracks.update(rested);
-      tracks.pose(s);
-    }
+    tracks?.follow(s);
     const level = nextShadeLevel(shadeLevel.value, s);
     if (level !== null) shadeLevel.value = level;
     if (hold && tracks && endsCarry(s, tracks.ends.value, reduced.value)) {

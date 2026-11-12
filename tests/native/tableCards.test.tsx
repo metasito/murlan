@@ -1,5 +1,5 @@
 // tests/native/tableCards.test.tsx — every card the table draws is in the registry under its owner's scope,
-// and no card view on the table carries a platform shadow (the felt draws them all), judged on the same
+// and no card view on the table carries a platform shadow but its own contact (the felt draws the casts), judged on the same
 // frames at rest, mid-throw, mid-deal and mid-exchange (#1259 plan 4, tasks 11 and 12).
 import { describe, it, expect, jest, beforeAll, beforeEach, afterEach, afterAll } from '@jest/globals';
 import React from 'react';
@@ -10,14 +10,16 @@ import { getAnimatedStyle } from './harness/animatedStyle';
 
 import { CardView } from '@/components/CardView';
 import { CARD_SCOPES, type CardRects } from '@/components/table/cardRects';
-import { restingCast } from '@/components/table/cardShadows';
+import type * as Shadows from '@/components/table/cardShadows';
+import { restingCast, shadowRect } from '@/components/table/cardShadows';
 import { CardCastContext, useCardCast } from '@/components/table/feltReady';
 import type { Pool } from '@/components/table/lampRig';
 import { dealCards } from '@/lib/game/gameEngine';
-import { CardShadow, cardShadow, Colors, Shadow, TABLE_CAST, withAlpha } from '@/lib/theme';
+import { CardShadow, cardContact, cardShadow, Colors, Shadow, TABLE_CAST, withAlpha } from '@/lib/theme';
 import { card } from '../support/game.ts';
 import { FLYING, THROW, cardTable, dealtTable, pairThrownBy3, runScenario, type Scenario } from './helpers/cardScenarios';
 import { frames } from './helpers/exchangeLegs';
+import { setWindow } from './harness/env';
 import { bootFeedback } from './helpers/feedback';
 
 jest.mock('@/lib/e2eConfig', () =>
@@ -57,17 +59,39 @@ function scopeOf(n: TestInstance): string | null {
 const styleOf = (n: TestInstance) => (StyleSheet.flatten(n.props.style as StyleProp<ViewStyle>) ?? {}) as Record<string, unknown>;
 const isGlow = (n: TestInstance) => SHADOW_PROPS.every((p) => styleOf(n)[p] === Shadow.cardGlow[p]);
 
-/** Every view in every card's scope, and those carrying a platform shadow, the gold glows apart. */
-function cardHosts() {
-  const scopes = screen.container.queryAll((n) => scopeOf(n) !== null);
-  const hosts = new Set(scopes.flatMap((s) => (shadowJudged.add(scopeOf(s)!), [s, ...s.queryAll(() => true)])));
-  const shadowed = [...hosts].filter((n) => SHADOW_PROPS.some((p) => styleOf(n)[p] !== undefined));
-  return { scopes: scopes.length, shadowed: shadowed.filter((n) => !isGlow(n)), glows: shadowed.filter(isGlow) };
+const feltScale = () => (globalThis as { murlanCardFelt?: () => { s: number } }).murlanCardFelt!().s;
+/** A card's own contact at the table's scale, of its own kind (its sibling box's), the one shadow a card view on the felt carries. */
+function isContact(n: TestInstance, scope: string): boolean {
+  const style = styleOf(n);
+  if (scope === 'fan' || n.props.testID !== 'card-contact' || SHADOW_PROPS.some((p) => p !== 'boxShadow' && style[p] !== undefined)) return false;
+  const boxes = (n.parent?.children ?? []).filter((c): c is TestInstance => typeof c !== 'string' && /^card-box(-back)?$/.test(String(c.props.testID)));
+  if (boxes.length !== 1) return false;
+  const kind = boxes[0].props.testID === 'card-box-back' ? 'back' : 'face';
+  return style.boxShadow === cardContact(kind, feltScale()).boxShadow;
 }
 
-function expectNoCardShadow() {
-  const { scopes, shadowed } = cardHosts();
+describe('a card contact', () => {
+  it("is the contact token's at the table's scale: half a point down times the scale, one point of blur times it, the kind's alpha", () => {
+    expect(cardContact('face', 2).boxShadow).toBe(`0px 1px 2px ${withAlpha('#000000', 0.3)}`);
+    expect(cardContact('back', 2).boxShadow).toBe(`0px 1px 2px ${withAlpha('#000000', 0.35)}`);
+    expect(cardContact('face', 1.5).boxShadow).toBe(`0px 0.75px 1.5px ${withAlpha('#000000', 0.3)}`);
+  });
+});
+
+/** Every view in every card's scope, and those carrying a platform shadow, the gold glows and contacts apart. */
+function cardHosts() {
+  const scopes = screen.container.queryAll((n) => scopeOf(n) !== null);
+  const hosts = new Map(scopes.flatMap((s) => (shadowJudged.add(scopeOf(s)!), [s, ...s.queryAll(() => true)].map((n) => [n, scopeOf(s)!] as const))));
+  const shadowed = [...hosts.keys()].filter((n) => SHADOW_PROPS.some((p) => styleOf(n)[p] !== undefined));
+  const contacts = shadowed.filter((n) => isContact(n, hosts.get(n)!));
+  return { scopes: scopes.length, shadowed: shadowed.filter((n) => !isGlow(n) && !contacts.includes(n)), glows: shadowed.filter(isGlow), contacts };
+}
+
+function expectContactOnly() {
+  const { scopes, shadowed, contacts } = cardHosts();
   expect(scopes).toBeGreaterThan(0);
+  expect(feltScale()).not.toBe(1);
+  expect(contacts.length).toBeGreaterThan(0);
   expect(shadowed.map(styleOf)).toEqual([]);
 }
 
@@ -88,11 +112,12 @@ afterEach(() => {
 });
 
 describe('a card on the table', () => {
-  it.each<Scenario>(['throw', 'deal', 'exchange'])('is registered exactly as drawn and casts no shadow of its own through a %s', async (scenario) => {
+  it.each<Scenario>(['throw', 'deal', 'exchange'])('is registered exactly as drawn and casts only its own contact through a %s', async (scenario) => {
     let peak = 0;
+    await setWindow({ width: 1180, height: 820 });
     await runScenario(scenario, (t) => {
       expectExactlyDrawn();
-      expectNoCardShadow();
+      expectContactOnly();
       peak = Math.max(peak, scoped(FLYING[scenario]).length);
       if (scenario !== 'throw' || (t !== THROW.air && t !== THROW.rest)) return;
       expect(scoped('pile')).toEqual(['pile:a', 'pile:b']);
@@ -104,6 +129,41 @@ describe('a card on the table', () => {
     expect(peak).toBeGreaterThan(0);
     await frames(32);
     expect(registry()).toEqual({});
+  }, 120_000);
+
+  it("carries no elevation below Android 9, where it would paint a card's box over its own level shade, and the felt draws its contact", async () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'android');
+    const version = jest.spyOn(Platform, 'Version', 'get').mockReturnValue(27);
+    const clusters = jest.spyOn(jest.requireMock<typeof Shadows>('@/components/table/cardShadows'), 'shadowClusters').mockImplementation(jest.requireActual<typeof Shadows>('@/components/table/cardShadows').shadowClusters);
+    const e2e = globalThis as { murlanShadowClusterBuilds?: Record<string, number> };
+    delete e2e.murlanShadowClusterBuilds;
+    try {
+      let seen = 0;
+      const elevated: Record<string, unknown>[] = [];
+      const viewContacts: Record<string, unknown>[] = [];
+      const owed = new Set<string>();
+      await runScenario('throw', () => {
+        const { scopes, shadowed, contacts } = cardHosts();
+        seen += scopes;
+        elevated.push(...[...shadowed, ...contacts].map(styleOf).filter((s) => s.elevation !== undefined));
+        viewContacts.push(...contacts.map(styleOf));
+        const rects = registry();
+        for (const key of Object.keys(rects)) if (!key.startsWith('fan:') && shadowRect(rects[key]).seen > 0) owed.add(`${shadowRect(rects[key]).back ? 'back' : 'face'}|${key}`);
+      });
+      const drawn = new Set(Object.keys(e2e.murlanShadowClusterBuilds ?? {}).flatMap((cluster) => {
+        const [kind, members] = cluster.split('|');
+        return members.split(',').map((key) => `${kind}|${key}`);
+      }));
+      expect(seen).toBeGreaterThan(0);
+      expect(elevated).toEqual([]);
+      expect(viewContacts).toEqual([]);
+      expect(owed.size).toBeGreaterThan(0);
+      expect([...owed].filter((at) => !drawn.has(at))).toEqual([]);
+    } finally {
+      clusters.mockRestore();
+      version.mockRestore();
+      os.restore();
+    }
   }, 120_000);
 
   it("lights the pile's cards through a going-out catch, and not through a play that leaves cards in hand", async () => {
@@ -122,7 +182,7 @@ describe('a card on the table', () => {
     expect(kept).toBe(0);
   }, 120_000);
 
-  it('carries no shadow however many cards are held', async () => {
+  it('carries no shadow but its contact however many cards are held', async () => {
     const counts: number[] = [];
     for (const held of [13, 3]) {
       const dealt = dealtTable();

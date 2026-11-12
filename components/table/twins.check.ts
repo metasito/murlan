@@ -6,15 +6,12 @@ import type * as FanGlossSlot from "./FanGlossSlot";
 import * as FanGlossSlotWeb from "./FanGlossSlot.web";
 import type * as feltSkia from "./feltSkia";
 import * as feltSkiaWeb from "./feltSkia.web";
-import type * as handShade from "./handShade";
-import * as handShadeWeb from "./handShade.web";
 import type * as particleLayer from "./particleLayer";
 import * as particleLayerWeb from "./particleLayer.web";
 
-export const twins: [typeof FanGlossSlot, typeof FoilMask, typeof feltSkia, typeof handShade, typeof particleLayer] = [
+export const twins: [typeof FanGlossSlot, typeof FoilMask, typeof feltSkia, typeof particleLayer] = [
   FanGlossSlotWeb,
   FoilMaskWeb,
   feltSkiaWeb,
-  handShadeWeb,
   particleLayerWeb,
 ];

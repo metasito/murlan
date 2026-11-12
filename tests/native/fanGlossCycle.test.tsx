@@ -9,7 +9,7 @@ import { makeMutable } from 'react-native-reanimated';
 import { FanGloss } from '@/components/table/FanGloss';
 import { createGlossTracks } from '@/components/table/glossTrackStore';
 import { DRIFT_CHECK_MS, DRIFT_PT, driftPt, endTrack, placeOf } from '@/components/table/restEnds';
-import { restingLamp, MAX_DT, steppedLamp } from '@/components/table/lampRig';
+import { lampControls, restingLamp, MAX_DT, steppedLamp } from '@/components/table/lampRig';
 import { bootFeedback } from './helpers/feedback';
 
 beforeEach(async () => {
@@ -118,12 +118,14 @@ describe('the fan\'s gloss against the rig', () => {
     await render(<FanGloss tracks={tracks} {...props} onCover={covered} />);
     expect(covered).toHaveBeenLastCalledWith(true);
     expect(root().opacity).not.toBe(0);
-    await act(async () => tracks.update(false));
+    const away = structuredClone(lamp.value);
+    lampControls.setTarget(away, [700, 120, 1], false);
+    await act(async () => tracks.follow(away));
     expect(covered).toHaveBeenLastCalledWith(false);
     expect(root().opacity).toBe(0);
     expect(root().display).not.toBe('none');
     lamp.value.t += 3;
-    await act(async () => tracks.update(true));
+    await act(async () => tracks.follow(lamp.value));
     expect(covered).toHaveBeenLastCalledWith(true);
     expect(root().opacity).not.toBe(0);
     await act(async () => void jest.advanceTimersByTime(100));

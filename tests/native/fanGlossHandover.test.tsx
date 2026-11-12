@@ -12,7 +12,7 @@ import { LampGloss } from '@/components/table/LampGloss';
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';
 import type { GlossLight } from '@/components/table/cardGloss';
 import { createGlossTracks, type GlossTracks } from '@/components/table/glossTrackStore';
-import { restingLamp, steppedLamp } from '@/components/table/lampRig';
+import { lampControls, restingLamp, steppedLamp } from '@/components/table/lampRig';
 import { CardTableProvider, useCardTableValue, type OwnedRects } from '@/components/table/useCardRects';
 import { bootFeedback } from './helpers/feedback';
 
@@ -34,11 +34,16 @@ const card = { id: '3_spades', rank: '3', suit: 'spades', isJoker: false } as co
 const sway = makeMutable(light(457));
 const still = makeMutable(light(300));
 let made: GlossTracks | undefined;
+const glidingLamp = () => {
+  const lamp = restingLamp([437, 180, 1]);
+  lampControls.setTarget(lamp, [700, 120, 1], false);
+  return lamp;
+};
 
 function Table({ tracks, live, children }: { tracks: boolean; live?: boolean; children: React.ReactNode }) {
   const [store] = React.useState(() => {
     made = tracks ? createGlossTracks(steppedLamp(makeMutable(restingLamp([437, 180, 1]))), { rest: makeMutable(light(437)), light: makeMutable(light(457)), ends: makeMutable(0) }, restingLamp([437, 180, 1])) : undefined;
-    made?.update(!live);
+    if (live) made?.follow(glidingLamp());
     return made;
   });
   const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), sway, still, useSharedValue(1), store);
@@ -81,7 +86,7 @@ describe('an opponent\'s back on a table with tracks', () => {
     });
     expect(streak()).toBe(gliding);
     await act(async () => {
-      made!.pose({ ...light(500), t: 1 });
+      made!.follow({ ...glidingLamp(), ...light(500), t: 1 });
       jest.advanceTimersByTime(16);
     });
     expect(streak()).not.toBe(gliding);

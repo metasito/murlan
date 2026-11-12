@@ -14,6 +14,7 @@
 // beside the rest of the survey, so a finding can be re-measured rather than
 // re-argued — and the run is held to that record, so a table that lays out
 // differently has to say so rather than leaving the audit quietly wrong.
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
@@ -23,52 +24,55 @@ import { openOnlineTable } from "./helpers/onlineTable";
 import { assertFresh } from "./helpers/freshTable";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
-
-/** The audit's own four, named as `content.txt` and `table.txt` name them. */
-const VIEWPORTS = [
-  { name: "phone-se", width: 568, height: 320 },
-  { name: "phone-12", width: 844, height: 390 },
-  { name: "phone-max", width: 956, height: 440 },
-  { name: "tablet", width: 1112, height: 834 },
-] as const;
+import {
+  audited,
+  CAPTURES,
+  captureName,
+  keyOf,
+  measuredText,
+  MEASURED_ROWS,
+  mergedRecord,
+  ONLINE_TABLE,
+  recordOf,
+  VIEWPORTS,
+} from "./helpers/onlineTableRecord";
 
 /** Four seats fills the top seat and both side columns — the arrangement with the most to measure. */
 const SEATS = 4;
 
-const AUDIT_DIR = path.resolve(__dirname, "57-polish-audit");
-const RECORD = path.join(AUDIT_DIR, "online-table.txt");
+const REPO = path.resolve(__dirname, "..", "..");
+const RECORD = path.join(REPO, ONLINE_TABLE);
+const AUDIT_DIR = path.dirname(RECORD);
+const AUDITED = `${path.posix.dirname(ONLINE_TABLE)}/`;
 /** Set to rewrite the record instead of being held to it. */
 const UPDATING = process.env.AUDIT_UPDATE === "1";
 const regenerate = (grep?: string) =>
   `\`AUDIT_UPDATE=1 npx playwright test -c tests/e2e/playwright.config.ts onlineTableSurvey${grep ? ` -g "${grep}"` : ""}\``;
-
-/**
- * `MODE\tviewport\tcards=N`. Every seat here is a real account now (#800),
- * so a fresh 4-player deal's leader is whichever of the four `dealFirstSeat`
- * (server/game/tableLifecycle.ts) happens to give the 3♠ — two of the four seats
- * get 14 cards, two get 13 (`dealCards`, lib/game/gameEngine.ts), so the hand this
- * measures is genuinely, legitimately, either. Leaving `cards` out of the key
- * would hold a 13-card table to a 14-card table's own recorded row — the
- * exact byte-for-byte fields a fresh shuffle changed on purpose — and reds a
- * table that never drifted, on the very lottery this file exists to remove.
- */
-const keyOf = (row: string) => {
-  const parts = row.split("\t");
-  return [parts[0], parts[1], parts[6]].join("\t");
-};
+const fromRun = "or, from the CI run that measured it, `npm run regen -- --from-run <run id>`";
 
 /**
  * The record by `MODE\tviewport\tcards`, so a shard is held to the rows it
  * measured. CI does write a whole one — the split is by spec file, so one
- * shard runs all four — but onto a runner nothing commits from, so the
- * checked-in copy only ever moves when someone runs the survey locally.
+ * shard runs all four — but onto a runner nothing commits from: the checked-in
+ * copy moves when someone runs the survey locally, or applies the rows a red CI
+ * run left as `MEASURED_ROWS`.
  */
-function recorded(): Map<string, string> {
+function recordText(): string {
   try {
-    const lines = readFileSync(RECORD, "utf8").split("\n").filter(Boolean);
-    return new Map(lines.map((l) => [keyOf(l), l]));
+    return readFileSync(RECORD, "utf8");
   } catch {
-    return new Map();
+    return "";
+  }
+}
+function recorded(): Map<string, string> {
+  return recordOf(recordText());
+}
+/** The tree this checkout holds, which on a pull request's CI is the merge with main. */
+function measuredTree(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: REPO, encoding: "utf8" }).trim();
+  } catch {
+    return "unknown";
   }
 }
 /** Past `FLARE_BRIEF_MS` (components/table/moments.tsx), the longest moment a bot's play raises; the match flare's 3 s needs a finished match. */
@@ -348,13 +352,11 @@ async function stillMeasure(page: Page, kind: "ONLINE" | "OFFLINE"): Promise<Mea
 
 const rows: string[] = [];
 
-const audited = (key: string) => VIEWPORTS.some((vp) => vp.name === key.split("\t")[1]);
-
 test("the record holds rows for the audited viewports only", () => {
   const orphans = [...recorded().keys()].filter((key) => !audited(key));
   expect(
     orphans,
-    "tests/e2e/57-polish-audit/online-table.txt holds rows for a viewport VIEWPORTS no longer lists; " +
+    `${ONLINE_TABLE} holds rows for a viewport VIEWPORTS no longer lists; ` +
       `regenerate it with ${regenerate()}, which drops them`
   ).toEqual([]);
 });
@@ -380,7 +382,7 @@ test.describe("the online table, at the audit's viewports", () => {
       try {
         const online = await stillMeasure(page, "ONLINE");
         const capture = await page.screenshot();
-        writeFileSync(test.info().outputPath(`online-table__${vp.name}.png`), capture);
+        writeFileSync(test.info().outputPath(captureName(vp.name)), capture);
 
         // Dealt the same number of cards the server just dealt, not the seed
         // helper's default: the hand row sizes its cards to fit however many it
@@ -449,24 +451,25 @@ test.describe("the online table, at the audit's viewports", () => {
         const measured = [line("ONLINE", vp, online), line("OFFLINE", vp, offline)];
         rows.push(...measured);
         if (UPDATING) {
-          mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
-          writeFileSync(path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`), capture);
+          mkdirSync(path.join(REPO, CAPTURES), { recursive: true });
+          writeFileSync(path.join(REPO, CAPTURES, captureName(vp.name)), capture);
         }
 
         if (!UPDATING) {
+          writeFileSync(test.info().outputPath(MEASURED_ROWS), measuredText(measuredTree(), measured));
           const record = recorded();
           for (const row of measured) {
             const was = record.get(keyOf(row));
             expect(
               was,
-              `tests/e2e/57-polish-audit/ records no row for ${keyOf(row).replaceAll("\t", " ")}, so ` +
-                `nothing holds this table to anything. Regenerate the record with ${regenerate(vp.name)}.`
+              `${AUDITED} records no row for ${keyOf(row).replaceAll("\t", " ")}, so ` +
+                `nothing holds this table to anything. Regenerate the record with ${regenerate(vp.name)}, ${fromRun}.`
             ).toBeDefined();
             expect(
               row,
-              `the table no longer lays out the way tests/e2e/57-polish-audit/ records it ` +
+              `the table no longer lays out the way ${AUDITED} records it ` +
                 `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
-                `it and regenerate this viewport's rows with ${regenerate(vp.name)}, ` +
+                `it and regenerate this viewport's rows with ${regenerate(vp.name)}, ${fromRun}, ` +
                 `correcting the numbers README.md quotes.`
             ).toBe(was);
           }
@@ -480,14 +483,6 @@ test.describe("the online table, at the audit's viewports", () => {
   test.afterAll(() => {
     if (!UPDATING || rows.length === 0) return;
     mkdirSync(AUDIT_DIR, { recursive: true });
-    // Merged into the existing file by key, never replacing it outright: this
-    // run's rows hold whichever `cards` count each viewport's real deal
-    // happened to land on, and the *other* count's own row — a real, already
-    // -verified table this run had no occasion to redeal — would be lost by
-    // a plain overwrite rather than left standing.
-    const merged = recorded();
-    for (const key of [...merged.keys()]) if (!audited(key)) merged.delete(key);
-    for (const row of rows) merged.set(keyOf(row), row);
-    writeFileSync(RECORD, [...merged.values()].join("\n") + "\n", "utf8");
+    writeFileSync(RECORD, mergedRecord(recordText(), rows), "utf8");
   });
 });

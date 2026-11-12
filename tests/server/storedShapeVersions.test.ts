@@ -2,60 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { GAME_SCHEMA_VERSION } from "../../shared/persistedEnvelope.ts";
-import { OFFLINE_SAVE_VERSION } from "../../lib/offlineSave.ts";
-import { PROTOCOL_VERSION } from "../../shared/protocol.ts";
-import { programFor, shapeHash, typeShape } from "../helpers/typeShape.ts";
+import { DOCUMENTS, type Document, shapeHashes, shapes, STORED_SHAPES as SHAPES } from "../helpers/storedShapes.ts";
 import { atMain, rewritten } from "../helpers/appendOnly.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
-
-const PROBE = "tests/server/storedShapeProbe.ts";
-const PROBE_TEXT = [
-  `import type { toEnvelope } from "../../server/game/tableState.ts";`,
-  `import type { OfflineSave } from "../../lib/offlineSave.ts";`,
-  `import type { ClientToServerEvents, ServerToClientEvents } from "../../shared/protocol.ts";`,
-  `type Sent<A> = { [I in keyof A]: A[I] extends (...reply: infer R) => void ? R : A[I] };`,
-  `type Payloads<M> = { [E in keyof M]: M[E] extends (...args: infer A) => void ? Sent<A> : never };`,
-  `export type activeGames = ReturnType<typeof toEnvelope>;`,
-  `export type offlineSave = OfflineSave;`,
-  `export type wire = { toClient: Payloads<ServerToClientEvents>; toServer: Payloads<ClientToServerEvents> };`,
-].join("\n");
-
-const DOCUMENTS = {
-  activeGames: {
-    version: GAME_SCHEMA_VERSION,
-    bump: "GAME_SCHEMA_VERSION in shared/persistedEnvelope.ts",
-    golden: "",
-  },
-  offlineSave: {
-    version: OFFLINE_SAVE_VERSION,
-    bump: "OFFLINE_SAVE_VERSION in lib/offlineSave.ts",
-    golden: " Regenerate tests/fixtures/offlineSave.json through encodeOfflineSave.",
-  },
-  wire: {
-    version: PROTOCOL_VERSION,
-    bump: "PROTOCOL_VERSION in shared/protocol.ts",
-    golden: " Raise MIN_PROTOCOL_VERSION if bundles in the field cannot read the change.",
-  },
-} as const;
-type Document = keyof typeof DOCUMENTS;
-
-function shapes(override: Record<string, string> = {}): Record<Document, string> {
-  const program = programFor([PROBE], { [PROBE]: PROBE_TEXT, ...override });
-  const checker = program.getTypeChecker();
-  const probe = program.getSourceFile(path.join(root, PROBE))!;
-  const exports = checker.getExportsOfModule(checker.getSymbolAtLocation(probe)!);
-  const shapeOf = (name: Document) =>
-    typeShape(checker, checker.getDeclaredTypeOfSymbol(exports.find((s) => s.name === name)!));
-  return { activeGames: shapeOf("activeGames"), offlineSave: shapeOf("offlineSave"), wire: shapeOf("wire") };
-}
-
-const hashes = (override?: Record<string, string>) => {
-  const s = shapes(override);
-  return { activeGames: shapeHash(s.activeGames), offlineSave: shapeHash(s.offlineSave), wire: shapeHash(s.wire) };
-};
 
 function edit(file: string, from: string, to: string): Record<string, string> {
   const source = read(file);
@@ -64,7 +15,6 @@ function edit(file: string, from: string, to: string): Record<string, string> {
 }
 
 let current: Record<Document, string> | undefined;
-const SHAPES = "tests/fixtures/storedShapes.json";
 
 for (const name of Object.keys(DOCUMENTS) as Document[]) {
   test(`the stored ${name} shape does not change without its version`, () => {
@@ -75,28 +25,23 @@ for (const name of Object.keys(DOCUMENTS) as Document[]) {
       assert.ok(Number(at) <= version, `${name} records version ${at}, above ${bump} (${version})`);
     }
     const base = atBase?.[name];
-    if (atBase) assert.deepEqual(rewritten(base ?? {}, recorded[name] ?? {}), [], `${SHAPES} only grows: restore what origin/main records for ${name}`);
-    current ??= hashes();
-    const missing = recorded[name]?.[String(version)] === undefined;
-    const rerun =
-      "Rerun `node --test tests/server/storedShapeVersions.test.ts` in a clone that holds origin/main: it prints the entry to add.";
-    // assert.ok, not equal: equal's report prints the hash, and a hash handed out where the base
-    // cannot be read is one pasted over the entry it replaces.
+    if (atBase) assert.deepEqual(rewritten(base ?? {}, recorded[name] ?? {}), [], `${SHAPES} only grows: \`npm run regen\` restores what origin/main records for ${name}`);
+    current ??= shapeHashes();
+    // assert.ok, not equal: equal's report prints the hash, and a hash pasted from a log skips the
+    // generator's refusal to replace what origin/main records.
     assert.ok(
       current[name] === recorded[name]?.[String(version)],
-      !missing
-        ? `the stored ${name} shape changed at version ${version}. Bump ${bump}. ${rerun}${golden}`
-        : atBase
-          ? `no ${name} shape is recorded for version ${version}: add "${name}" → "${version}": "${current[name]}" to ${SHAPES}.${golden}`
-          : `no ${name} shape is recorded for version ${version}. ${rerun}${golden}`
+      recorded[name]?.[String(version)] !== undefined
+        ? `the stored ${name} shape changed at version ${version}. Bump ${bump}, then run \`npm run regen\`.${golden}`
+        : `no ${name} shape is recorded for version ${version}: run \`npm run regen\`.${golden}`
     );
   });
 }
 
 test("the shape hash moves with the stored document and nothing else", () => {
-  const base = hashes();
+  const base = shapeHashes();
   const moved = (override: Record<string, string>) => {
-    const next = hashes(override);
+    const next = shapeHashes(override);
     return (Object.keys(base) as Document[]).filter((d) => next[d] !== base[d]);
   };
   const GAME = "lib/game/gameEngine.ts";

@@ -28,10 +28,6 @@ export interface CardTable {
   tracks?: GlossTracks;
   /** The lamp's level alone, which a card's shade reads (`LevelShade`). */
   shadeLevel: SharedValue<number>;
-  /** The hand's registry keys in the order its cards paint, bottom first (`handPaintOrder`). */
-  handOrder: SharedValue<readonly string[]>;
-  /** The pile's registry keys in the order its cards paint, bottom first (`pilePaintOrder`). */
-  pileOrder: SharedValue<readonly string[]>;
 }
 
 /** One publisher's own cards, mirrored from the registry: a reader of these re-runs on its owner's writes alone. */
@@ -58,8 +54,6 @@ type Places = Pick<CardTable, "pile" | "hand" | "handWindow" | "seats" | "felt">
 
 export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, glossLight: SharedValue<GlossLight>, stillLight: SharedValue<GlossLight>, shadeLevel: SharedValue<number>, tracks?: GlossTracks): CardTable {
   const rects = useSharedValue<CardRects>({});
-  const handOrder = useSharedValue<readonly string[]>([]);
-  const pileOrder = useSharedValue<readonly string[]>([]);
   const key = JSON.stringify(places);
   useEffect(() => {
     if (!E2E_FAST) return;
@@ -76,7 +70,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
       if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, stillLight, tracks, shadeLevel, handOrder, pileOrder }), [key, rects, motion, glossLight, stillLight, tracks, shadeLevel, handOrder, pileOrder]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, glossLight, stillLight, tracks, shadeLevel }), [key, rects, motion, glossLight, stillLight, tracks, shadeLevel]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {
