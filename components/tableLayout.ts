@@ -7,7 +7,7 @@
 import type { Player } from "@/lib/game/gameEngine";
 import { CARD_H, chipScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget, tableScale } from "./cardFaceModel.ts";
 import type { CardFrom } from "./flightPose.ts";
-import { actionBtnSize, CHIP_H, drawnDisc, HAND_ZONE_ALIGN, HAND_ZONE_H, seatGap, seatLabelH } from "./seatLayout.ts";
+import { actionBtnSize, CHIP_H, drawnDisc, HAND_ZONE_ALIGN, HAND_ZONE_H, SIDE_SECTION_W, seatGap, seatLabelH } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement, OpponentSide } from "./seatLayout.ts";
 import { aligned, type Align } from "./flexAlign.ts";
 import { drawnFanBounds } from "./fanGeometry.ts";
@@ -23,6 +23,7 @@ export interface Point { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Delta { dx: number; dy: number }
 interface Edges { left: number; top: number; right: number; bottom: number }
+type PlacedBox = "topBand" | "midBand" | "seatLeft" | "seatRight" | "pileBand" | "handZone" | "handWindow" | "passa" | "gioca";
 
 function edgesIn(outer: Rect, inner: Rect): Edges {
   return {
@@ -63,18 +64,25 @@ export interface TableLayout {
   pileNote: { centreX: number; top: number; h: number; room: number };
   /** The rail, and the slots of its two knobs. */
   rail: { width: number; menu: Rect; foot: Rect };
+  /** The band across the table's head, the drawn cap's height: the top seat hangs centred from its top edge. */
+  topBand: Rect;
   /** The band between the top band and the hand zone, the table's width: the side seats stand in it and the pile centres in it. */
   midBand: Rect;
+  /** Each side seat's slot at the middle band's top, inside the seat's gap from the table's edge: the seat centres in it down the band and stands against its outer side. */
+  seatSlots: Record<"left" | "right", Rect>;
+  /** The middle band between the side seats' columns: the pile and every moment drawn over it centre in it. */
+  pileBand: Rect;
   /** The hand zone at its designed place, and the padding its row and buttons stand on. */
   handZone: Rect & { padBottom: number };
   /** The span the hand row is drawn in between PASSA and GIOCA, centred on the hand zone, over its padding: a row wider than it scrolls under it. */
   handWindow: Rect;
   /**
-   * The absolute boxes as distances from their parent's edges: the band and the hand zone in the
-   * table box, the hand window in the hand zone. By edges, not `top` and `width`: those round to a
-   * layout unit apart from the parent's own edges and move every glyph inside by it.
+   * The absolute boxes as distances from their parent's edges: the bands and the hand zone in the
+   * table box, the seat slots and the pile band in the middle band, the hand window and the buttons
+   * in the hand zone. By edges, not `top` and `width`: those round to a layout unit apart from the
+   * parent's own edges and move every glyph inside by it.
    */
-  placed: Record<"midBand" | "handZone" | "handWindow", Edges>;
+  placed: Record<PlacedBox, Edges>;
   /** PASSA and GIOCA, in the hand zone at its designed place. */
   buttons: { passa: Rect; gioca: Rect };
   /** How far each seat's name slides inboard of its disc's outer edge. */
@@ -102,13 +110,21 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const handCardH = CARD_H(scale * HAND_SCALE);
   const handZoneH = HAND_ZONE_H(handCardH, frame.bottomPad);
   const ring = drawnDisc(scale);
-  const midTop = frame.tableTop + topBandHeight(scale);
+  const topH = topBandHeight(scale);
+  const midTop = frame.tableTop + topH;
   const tableFloor = height - frame.surplus;
   const midH = tableFloor - midTop - handZoneH;
   const tableW = width - frame.tableLeft - frame.tableRight;
   const x = frame.tableLeft + tableW / 2;
   const handZone = { x: frame.tableLeft, y: tableFloor - handZoneH, w: tableW, h: handZoneH, padBottom: frame.bottomPad };
+  const topBand = { x: frame.tableLeft, y: frame.tableTop, w: tableW, h: topH };
   const midBand = { x: frame.tableLeft, y: midTop, w: tableW, h: midH };
+  const slotW = SIDE_SECTION_W - 2 * SIDE_SEAT_GAP;
+  const seatSlots = {
+    left: { x: frame.tableLeft + SIDE_SEAT_GAP, y: midTop, w: slotW, h: sideSlotHeight(scale) },
+    right: { x: width - frame.tableRight - SIDE_SECTION_W + SIDE_SEAT_GAP, y: midTop, w: slotW, h: sideSlotHeight(scale) },
+  };
+  const pileBand = { x: frame.tableLeft + SIDE_SECTION_W, y: midTop, w: tableW - 2 * SIDE_SECTION_W, h: midH };
   const handWindow = { x: x - frame.handAvailW / 2, y: handZone.y, w: frame.handAvailW, h: handZone.h - handZone.padBottom };
   const tableBox = { left: frame.tableLeft, top: frame.tableTop, right: frame.tableRight, bottom: frame.surplus };
   const table = { x: tableBox.left, y: tableBox.top, w: width - tableBox.left - tableBox.right, h: height - tableBox.top - tableBox.bottom };
@@ -118,13 +134,14 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
   const chips = chipScale(scale, width);
   const pill = pillAnchorFor(frame, width, scale);
   const chipsBottom = frame.tableTop + CHIP_H(scale) + frame.pad;
+  const passa = { x: frame.tableLeft, y: btnY, w: btn, h: btn };
   const gioca = { x: width - frame.tableRight - btn, y: btnY, w: btn, h: btn };
-  const sideY = midTop + sideSlotHeight(scale) / 2;
+  const sideY = seatSlots.left.y + seatSlots.left.h / 2;
   const anchors: Record<FlyDirection | "pile", Point> = {
     pile: { x, y: midTop + midH / 2 },
     top: { x, y: frame.tableTop + seatLabelH(scale) + ring / 2 },
     bottom: { x, y: tableFloor - handZoneH / 2 },
-    left: { x: frame.tableLeft + SIDE_SEAT_GAP + ring / 2, y: sideY },
+    left: { x: seatSlots.left.x + ring / 2, y: sideY },
     right: { x: width - frame.tableRight - SIDE_SEAT_GAP - ring / 2, y: sideY },
   };
   const nameInset = {
@@ -161,14 +178,24 @@ export function tableLayout(i: { width: number; height: number; insets: EdgeInse
       menu: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: frame.tableTop, w: knob, h: knob },
       foot: { x: aligned(RAIL_KNOB_ALIGN, 0, frame.rail, knob), y: height - frame.tableBottom - knob, w: knob, h: knob },
     },
+    topBand,
     midBand,
+    seatSlots,
+    pileBand,
     handZone,
     handWindow,
-    placed: { midBand: edgesIn(table, midBand), handZone: edgesIn(table, handZone), handWindow: edgesIn(handZone, handWindow) },
-    buttons: {
-      passa: { x: frame.tableLeft, y: btnY, w: btn, h: btn },
-      gioca,
+    placed: {
+      topBand: edgesIn(table, topBand),
+      midBand: edgesIn(table, midBand),
+      seatLeft: edgesIn(midBand, seatSlots.left),
+      seatRight: edgesIn(midBand, seatSlots.right),
+      pileBand: edgesIn(midBand, pileBand),
+      handZone: edgesIn(table, handZone),
+      handWindow: edgesIn(handZone, handWindow),
+      passa: edgesIn(handZone, passa),
+      gioca: edgesIn(handZone, gioca),
     },
+    buttons: { passa, gioca },
     nameInset,
     badgeRoom,
     tableBox,

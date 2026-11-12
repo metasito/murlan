@@ -16,7 +16,6 @@ import {
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useOwnedValue } from "@/lib/motion";
 import { a11yState } from "@/lib/a11y";
-import { HAND_ZONE_ALIGN, SIDE_SECTION_W } from "@/components/seatLayout";
 import { RAIL_KNOB_ALIGN, type Rect } from "@/components/tableLayout";
 import type { Channel } from "@/lib/harnessChannels";
 
@@ -174,40 +173,25 @@ export const sharedTableStyles = StyleSheet.create({
     position: "absolute",
     overflow: "visible",
   },
-  tableContent: { flex: 1, flexDirection: "column" },
-  // Its height is `topBandHeight` (components/tableFrame.ts), passed in: sized for the drawn cap,
-  // so the band below it, and the pile in it, stay put as the top seat's hand shrinks.
-  topSection: {
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-  midSection: { position: "absolute", flexDirection: "row", alignItems: "center" },
-  // A side seat's fan is wider than SIDE_SECTION_W and is meant to be: it
-  // leans in over the felt, the way a real player's hand does. Anchoring each
-  // section to the table's outer edge is what keeps that overflow pointing
+  tableContent: { flex: 1 },
+  // Every box below is placed at its `tableLayout` rect through `layout.placed`; what is left here
+  // is how a seat or the pile, sized by what it holds, stands inside its box.
+  topSection: { position: "absolute", alignItems: "center" },
+  midSection: { position: "absolute" },
+  // A side seat's fan is wider than its slot and is meant to be: it leans in
+  // over the felt, the way a real player's hand does. Standing each seat
+  // against the table's outer edge is what keeps that overflow pointing
   // inward — centred, half of it lands off the side of the screen and takes
   // the avatar with it.
-  // `alignSelf`, not `justifyContent`: the mid band is a row, so up-and-down is
-  // its cross axis and only `alignSelf` moves a seat along it. Inside, the seat
-  // centres in a slot `sideSlotHeight` tall (components/tableFrame.ts), passed in.
-  sideSection: {
-    width: SIDE_SECTION_W,
-    alignSelf: "flex-start",
-    justifyContent: "center",
-    paddingHorizontal: Spacing.sm,
-  },
+  sideSection: { position: "absolute", justifyContent: "center" },
   sideSectionLeft: { alignItems: "flex-start" },
   sideSectionRight: { alignItems: "flex-end" },
   // Above both side seats: a combination thrown from a side seat crosses that
   // seat's own column on its way in, and the flight is drawn in here so that it
   // lands on the pile's centre rather than the screen's.
-  centerSection: { flex: 1, alignItems: "center", justifyContent: "center", zIndex: Layer.table },
-  handSection: {
-    position: "absolute",
-    flexDirection: "row",
-    alignItems: HAND_ZONE_ALIGN,
-    justifyContent: "space-between",
-  },
+  centerSection: { position: "absolute", alignItems: "center", justifyContent: "center", zIndex: Layer.table },
+  handSection: { position: "absolute" },
+  handButton: { position: "absolute" },
 });
 
 /**

@@ -274,10 +274,49 @@ describe("the middle band, the hand zone and the hand window", () => {
     }
   });
 
+  test("the top band runs from the table's top to the middle band, and its seat's ring centres in it", () => {
+    for (const { what, l } of tables) {
+      near(l.topBand.y, l.frame.tableTop, `${what} top`);
+      near(l.topBand.y + l.topBand.h, l.midBand.y, `${what} foot`);
+      assert.deepEqual([l.topBand.x, l.topBand.w], [l.midBand.x, l.midBand.w], what);
+      near(l.anchors.top.x, l.topBand.x + l.topBand.w / 2, `${what} ring`);
+    }
+  });
+
+  test("each side seat's ring stands against its slot's outer side, centred down it; the pile centres between the slots", () => {
+    for (const { what, l } of tables) {
+      const ring = l.anchors.left.y - l.seatSlots.left.y;
+      const disc = 2 * (l.anchors.left.x - l.seatSlots.left.x);
+      const { left, right } = l.seatSlots;
+      near(left.y, l.midBand.y, `${what} left top`);
+      near(right.y, l.midBand.y, `${what} right top`);
+      near(ring, left.h / 2, `${what} left centred`);
+      near(l.anchors.right.y, right.y + right.h / 2, `${what} right centred`);
+      near(right.x + right.w - l.anchors.right.x, disc / 2, `${what} right against its side`);
+      near(left.x - l.midBand.x, l.midBand.x + l.midBand.w - (right.x + right.w), `${what} gaps mirror`);
+      assert.ok(left.x > l.midBand.x && left.x + left.w < l.pileBand.x, `${what}: the left slot sits inside its column`);
+      assert.ok(right.x > l.pileBand.x + l.pileBand.w && right.x + right.w < l.midBand.x + l.midBand.w, `${what}: the right slot sits inside its column`);
+      near(l.pileBand.x + l.pileBand.w / 2, l.anchors.pile.x, `${what} pile x`);
+      near(l.pileBand.y + l.pileBand.h / 2, l.anchors.pile.y, `${what} pile y`);
+      near(l.pileBand.h, l.midBand.h, `${what} pile band height`);
+    }
+  });
+
   test("each placed box's edges land it on its rect inside its parent", () => {
     for (const { what, l } of tables) {
       const table = { x: l.tableBox.left, y: l.tableBox.top, w: l.window.width - l.tableBox.left - l.tableBox.right, h: l.window.height - l.tableBox.top - l.tableBox.bottom };
-      const cases = [["midBand", table, l.midBand], ["handZone", table, l.handZone], ["handWindow", l.handZone, l.handWindow]] as const;
+      const cases = [
+        ["topBand", table, l.topBand],
+        ["midBand", table, l.midBand],
+        ["seatLeft", l.midBand, l.seatSlots.left],
+        ["seatRight", l.midBand, l.seatSlots.right],
+        ["pileBand", l.midBand, l.pileBand],
+        ["handZone", table, l.handZone],
+        ["handWindow", l.handZone, l.handWindow],
+        ["passa", l.handZone, l.buttons.passa],
+        ["gioca", l.handZone, l.buttons.gioca],
+      ] as const;
+      assert.deepEqual(cases.map(([key]) => key).sort(), Object.keys(l.placed).sort(), `${what}: every placed box is checked`);
       for (const [key, outer, inner] of cases) {
         const e = l.placed[key];
         near(outer.x + e.left, inner.x, `${what} ${key} left`);
