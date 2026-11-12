@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: Bench scenario the branch registers (the Android start-row wait expects the spike scenario's rows)
+        description: Bench scenario the branch registers; each of its `shot` rows is a screenshot in the record
         default: spike
         required: true
       platform:
@@ -58,10 +58,10 @@ jobs:
             adb shell settings put global hide_error_dialogs 1
             timeout 300 adb install -r "$APP_APK"
             adb shell "am start -W -a android.intent.action.VIEW -d 'murlan://bench?host=10.0.2.2&scenario=$SCENARIO&capture=0' $APP_ID"
-            i=0; until grep -q '"k":"spike".*"phase":"start"' "$RUNNER_TEMP/spike/android.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt 150 ] || { echo "::error::The spike never started."; exit 1; }; sleep 2; done
+            i=0; until grep -q '"k":"run".*"phase":"start"' "$RUNNER_TEMP/spike/android.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt 150 ] || { echo "::error::The spike never started."; exit 1; }; sleep 2; done
             adb shell dumpsys meminfo "$APP_ID" > "$RUNNER_TEMP/spike/meminfo-early.txt" 2>&1 || true
             adb shell dumpsys gfxinfo "$APP_ID" reset > /dev/null 2>&1 || true
-            i=0; until grep -q '"k":"run".*"phase":"end"' "$RUNNER_TEMP/spike/android.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt $((WAIT_SECONDS / 2)) ] || { echo "::error::The scenario never ended."; exit 1; }; sleep 2; done
+            sh .github/scripts/bench-shots.sh "$RUNNER_TEMP/spike/android.ndjson" android
             grep -q "\"name\":\"$SCENARIO\",\"phase\":\"end\"" "$RUNNER_TEMP/spike/android.ndjson" || { echo "::error::Scenario $SCENARIO never ran."; exit 1; }
             adb shell dumpsys meminfo "$APP_ID" > "$RUNNER_TEMP/spike/meminfo-end.txt" 2>&1 || true
             adb shell dumpsys gfxinfo "$APP_ID" > "$RUNNER_TEMP/spike/gfxinfo.txt" 2>&1 || true
@@ -92,6 +92,7 @@ jobs:
           maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" "$RUNNER_TEMP/spike.yaml"
       - name: Wait for the scenario, sampling the app's memory
         run: |
+          sh .github/scripts/bench-shots.sh "$RUNNER_TEMP/spike/ios.ndjson" ios &
           i=0; until grep -q '"k":"run".*"phase":"end"' "$RUNNER_TEMP/spike/ios.ndjson" 2>/dev/null; do
             i=$((i+1)); [ $i -lt $((WAIT_SECONDS / 2)) ] || { echo "::error::The scenario never ended."; exit 1; }
             pid=$(pgrep -x "$APP_EXE" | head -1)

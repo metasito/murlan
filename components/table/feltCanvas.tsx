@@ -36,6 +36,7 @@ import { ReduceMotion, useAnimatedReaction, useDerivedValue, useSharedValue, wit
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
+import { FeltDraws } from "@/lib/diagnostics/feltDraws";
 import { E2E_FAST } from "@/lib/e2eConfig";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
@@ -579,7 +580,10 @@ export function FeltCanvas({ lamp, now, sx, sy, stops, onReady, cards, grey, tra
   // `lamp.value` subscribes the view to the rig's writes; a held rig writes none, and an end that leaves draws the lamp carried on, not where it was held.
   const view = useDerivedValue(() => {
     const next = nextShown(held.value, lamp.value && now(), side.value);
-    if (next !== held.value) held.value = next;
+    if (next !== held.value) {
+      held.value = next;
+      FeltDraws.felt.value += 1;
+    }
     return next;
   });
   const uniforms = useDerivedValue(() => ({
