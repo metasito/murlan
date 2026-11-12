@@ -18,7 +18,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, DEADLINE_SCALE, eventually, reconnectWith, waitFor, type TestSocket } from "../helpers/client.ts";
-import { isUserOnline } from "../../server/socket/socketRegistry.ts";
+import { isShownOnline } from "../../server/socket/socketRegistry.ts";
 import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 
 
@@ -78,7 +78,7 @@ describe("a game invite outlives the socket that would have carried it", {
 
     // The whole point: nobody is listening when the invite is sent.
     friend.socket.close();
-    await eventually(async () => !(await isUserOnline(friend.user.id)), "the friend's socket gone from the registry");
+    await eventually(async () => !(await isShownOnline(friend.user.id)), "the friend's socket gone from the registry");
     return { host, friend, room };
   }
 

@@ -8,7 +8,8 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "redis";
 import { eventually } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
-import { openPresenceStore, type PresenceStore } from "../../server/store/presence.ts";
+import { LEAVING_MS, openPresenceStore, type PresenceStore } from "../../server/store/presence.ts";
+import { DRAINING_SPREAD_MS } from "../../lib/reconnectDelay.ts";
 import { closeRedis, redisReady } from "../../server/store/redis.ts";
 import { startProxy, targetOf, viaProxy } from "../helpers/tcpProxy.ts";
 import { recordingRuntime } from "../helpers/recordingRuntime.ts";
@@ -19,6 +20,7 @@ import { resumeOrphanedTables } from "../../server/game/tableLifecycle.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { activeGameStore } from "../../server/store/activeGameStore.ts";
 import { startRound } from "../../lib/game/gameEngine.ts";
+import { settleInFlight } from "../../server/shared/inFlight.ts";
 
 describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, () => {
   const redisUrl = process.env.REDIS_URL!;
@@ -119,19 +121,316 @@ describe("the presence store", { skip: hasDatabase() ? false : skipMessage() }, 
     await eventually(async () => (await a.locate(users)).size === users.length, "the dead instance's entries");
 
     const reported: string[] = [];
-    a.onLost((ids) => reported.push(...ids));
-    b.onLost((ids) => reported.push(...ids));
+    const leftAts = new Set<Date | null>();
+    for (const x of [a, b]) x.onLost((ids, leftAt) => (reported.push(...ids), leftAts.add(leftAt)));
     dead.close();
     await probe.del(c.key(`instance:${dead.id}`));
     await Promise.all([a.beat(), b.beat(), a.beat(), b.beat()]);
 
     assert.deepEqual([...reported].sort(), [...users].sort(), "an account was reported twice, or not at all");
+    assert.deepEqual([...leftAts], [null], "a crashed instance was said to have left at a time");
     assert.equal((await a.locate(users)).size, 0);
     assert.equal(await probe.exists(users.map((u) => c.key(`online:${u}`))), 0);
     assert.equal(await probe.exists(users.map((u) => c.key(`table:s-${u}`))), 0);
     assert.equal(await probe.exists(c.key(`instance-users:${dead.id}`)), 0);
     assert.equal(await probe.sIsMember(c.key("instances"), dead.id), 0);
     assert.equal((await a.locate(["alive"])).has("alive"), true, "a live instance's account was swept");
+  });
+
+  test("a leaving instance's departures are reported by a peer's sweep once the reconnect window has passed, and one that came back elsewhere never", async () => {
+    const c = cluster();
+    const [peer, leaving] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([peer.beat(), leaving.beat()]);
+    leaving.record("early", "s-early");
+    leaving.record("gone", "s-gone");
+    leaving.record("back", "s-back");
+    await eventually(async () => (await peer.locate(["early", "gone", "back"])).size === 3, "the entries");
+    const reported: string[] = [];
+    let leftAt: Date | null = null;
+    peer.onLost((ids, at) => {
+      reported.push(...ids);
+      leftAt = at;
+    });
+
+    assert.equal(leaving.forget("early", "s-early"), false, "a departure before leave() is its own instance's to report");
+    await eventually(async () => !(await peer.locate(["early"])).has("early"), "the early departure's clear");
+    const leaveAt = Date.now();
+    await leaving.leave();
+    assert.equal(await probe.exists(c.key(`instance:${leaving.id}`)), 0, "leave() resolved before the liveness went");
+    assert.equal(leaving.forget("gone", "s-gone"), true, "a departure after leave() was not left to the sweep");
+    assert.equal(leaving.forget("back", "s-back"), true);
+    await settleInFlight(5_000);
+    assert.equal((await peer.locate(["gone"])).has("gone"), false, "a leaving instance's account reads as online, so a seat it held is never released");
+    assert.deepEqual(await peer.liveInstances(), [], "a leaving instance reads as a peer to hand work to");
+    assert.deepEqual([...(await peer.shownOnline(["gone", "early"]))], ["gone"], "friends were told of a departure inside the reconnect window");
+    peer.record("back", "s-back-2");
+    await eventually(async () => (await peer.locate(["back"])).get("back")?.instance === peer.id, "the reconnect's entry");
+    assert.deepEqual([...(await peer.shownOnline(["back"]))], ["back"]);
+    await peer.beat();
+    assert.deepEqual(reported, [], "a departure was reported inside the reconnect window");
+
+    const window = await probe.pTTL(c.key(`instance-leaving:${leaving.id}`));
+    assert.ok(window > DRAINING_SPREAD_MS && window <= LEAVING_MS, `the window is ${window} ms`);
+    await probe.del(c.key(`instance-leaving:${leaving.id}`));
+    assert.deepEqual([...(await peer.shownOnline(["gone"]))], ["gone"], "a departure was shown offline before the sweep that tells its friends");
+    await peer.beat();
+    assert.deepEqual(reported, ["gone"]);
+    assert.deepEqual([...(await peer.shownOnline(["gone"]))], [], "a reported departure is still shown online");
+    const said = leftAt as Date | null;
+    assert.ok(said && Math.abs(said.getTime() - leaveAt) < 2_000, `the sweep said the instance left at ${said?.toISOString()}`);
+    assert.equal(await probe.exists(c.key(`instance-left:${leaving.id}`)), 0, "the leaving time outlived the final sweep");
+    assert.equal((await peer.locate(["back"])).get("back")?.instance, peer.id, "the reconnect's entry was swept");
+  });
+
+  test("a departure after leave() whose connect never reached Redis is cleared at once, not left to a sweep", async () => {
+    const c = cluster();
+    const [peer, leaving] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([peer.beat(), leaving.beat()]);
+    const reported: string[] = [];
+    peer.onLost((ids) => reported.push(...ids));
+    leaving.record("fresh", "s-fresh");
+    void leaving.leave();
+    assert.equal(leaving.forget("fresh", "s-fresh"), false, "a departure no sweep can see was left to one");
+    await eventually(async () => (await probe.exists(c.key("online:fresh"))) === 0, "the entry to be cleared");
+    await probe.del(c.key(`instance-leaving:${leaving.id}`));
+    await peer.beat();
+    assert.deepEqual(reported, []);
+  });
+
+  test("a clear that failed before leave() is made by leave(), with no beat left to retry it", async () => {
+    const c = cluster();
+    const proxy = await startProxy(targetOf(redisUrl, 6379));
+    try {
+      const peer = c.open();
+      const x = openPresenceStore({ ns: c.ns, url: viaProxy(redisUrl, proxy), heartbeat: false });
+      opened.push(x);
+      await redisReady();
+      await Promise.all([peer.beat(), x.beat()]);
+      const reported: string[] = [];
+      peer.onLost((ids) => reported.push(...ids));
+      x.record("uli", "s-uli");
+      await eventually(async () => (await peer.locate(["uli"])).has("uli"), "the entry");
+      proxy.refuse(true);
+      await eventually(() => x.locate(["uli"]).then(() => false, () => true), "reads to fail");
+      assert.equal(x.forget("uli", "s-uli"), false);
+      await settleInFlight(10_000);
+      assert.equal(await probe.exists(c.key("online:uli")), 1, "the clear reached Redis while it was refused");
+      proxy.refuse(false);
+      await eventually(() => x.locate(["uli"]).then(() => true, () => false), "the link to come back");
+      await x.leave();
+      await eventually(async () => (await probe.exists(c.key("online:uli"))) === 0, "the failed clear to be retried");
+      await eventually(async () => (await probe.exists(c.key(`instance:${x.id}`))) === 0, "the liveness to go");
+      await probe.del(c.key(`instance-leaving:${x.id}`));
+      await peer.beat();
+      assert.deepEqual(reported, [], "an account cleared before leave() was announced again by the sweep");
+    } finally {
+      await proxy.close();
+    }
+  });
+
+  test("a beat in flight when leave() is called never puts the liveness back", async () => {
+    const c = cluster();
+    const x = c.open();
+    await redisReady();
+    await x.beat();
+    const beating = x.beat();
+    void x.leave();
+    await beating;
+    await settleInFlight(10_000);
+    assert.equal(await probe.exists(c.key(`instance:${x.id}`)), 0, "a left instance reads as alive");
+  });
+
+  test("leave() marks the instance gone without waiting on a clear it retries", async () => {
+    const c = cluster();
+    const proxy = await startProxy(targetOf(redisUrl, 6379));
+    let gate: Promise<void> | null = null;
+    let release = () => {};
+    try {
+      const x = openPresenceStore({ ns: c.ns, url: viaProxy(redisUrl, proxy), heartbeat: false, hooks: { beforeExec: async () => void (await gate) } });
+      opened.push(x);
+      await redisReady();
+      await x.beat();
+      x.record("uli", "s-uli");
+      await eventually(async () => (await probe.exists(c.key("online:uli"))) === 1, "the entry");
+      proxy.refuse(true);
+      await eventually(() => x.locate(["uli"]).then(() => false, () => true), "reads to fail");
+      x.forget("uli", "s-uli");
+      await settleInFlight(10_000);
+      gate = new Promise((resolve) => (release = resolve));
+      proxy.refuse(false);
+      await eventually(() => x.locate(["uli"]).then(() => true, () => false), "the link to come back");
+      void x.leave();
+      await eventually(async () => (await probe.exists(c.key(`instance:${x.id}`))) === 0, "the liveness to go while a clear is held");
+      assert.equal(await probe.exists(c.key("online:uli")), 1, "the clear was not held");
+      release();
+      await eventually(async () => (await probe.exists(c.key("online:uli"))) === 0, "the retried clear");
+    } finally {
+      release();
+      await proxy.close();
+    }
+  });
+
+  test("a departure after leave() whose entry a sweep already took is reported by its own instance", async () => {
+    const c = cluster();
+    const x = c.open();
+    await redisReady();
+    await x.beat();
+    x.record("vik", "s-vik");
+    await eventually(async () => (await probe.exists(c.key("online:vik"))) === 1, "the entry");
+    await probe.del(c.key("online:vik"));
+    const reported: [string[], Date | null][] = [];
+    x.onLost((ids, at) => reported.push([ids, at]));
+    const leaveAt = Date.now();
+    await x.leave();
+    assert.equal(x.forget("vik", "s-vik"), true);
+    await eventually(async () => reported.length > 0, "the departure to be reported");
+    const [[ids, at]] = reported as [[string[], Date | null]];
+    assert.deepEqual(ids, ["vik"]);
+    assert.ok(at && Math.abs(at.getTime() - leaveAt) < 2_000, `reported as leaving at ${at?.toISOString()}`);
+  });
+
+  test("an account whose clear has not landed is shown offline by its own instance", async () => {
+    const c = cluster();
+    let gate: Promise<void> | null = null;
+    let release = () => {};
+    const x = openPresenceStore({ ns: c.ns, heartbeat: false, hooks: { beforeExec: async () => void (await gate) } });
+    opened.push(x);
+    try {
+      await redisReady();
+      await x.beat();
+      x.record("wes", "s-wes");
+      await eventually(async () => (await probe.exists(c.key("online:wes"))) === 1, "the entry");
+      gate = new Promise((resolve) => (release = resolve));
+      assert.equal(x.forget("wes", "s-wes"), false);
+      assert.equal(await probe.exists(c.key("online:wes")), 1, "the clear was not held");
+      assert.deepEqual([...(await x.shownOnline(["wes"]))], [], "an account gone from here was shown online, so its friends never hear it left");
+      assert.deepEqual([...(await x.locate(["wes"]))], []);
+    } finally {
+      release();
+    }
+  });
+
+  test("a departure before leave()'s mark has landed is cleared at once; one after it is left to the sweep and shown online until then", async () => {
+    const c = cluster();
+    const [peer, x] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([peer.beat(), x.beat()]);
+    x.record("early", "s-early");
+    x.record("late", "s-late");
+    await eventually(async () => (await peer.locate(["early", "late"])).size === 2, "the entries");
+    const leaving = x.leave();
+    assert.equal(x.forget("early", "s-early"), false, "a departure was left to a sweep while peers could still read its instance alive");
+    assert.deepEqual([...(await x.locate(["late"]))], [], "a leaving instance reads its own account as connected");
+    await leaving;
+    assert.equal(x.forget("late", "s-late"), true);
+    assert.deepEqual([...(await x.shownOnline(["early", "late"]))], ["late"]);
+    assert.deepEqual([...(await peer.locate(["late"]))], [], "a peer reads a left instance's account as connected");
+    await eventually(async () => (await probe.exists(c.key("online:early"))) === 0, "the early departure's clear");
+  });
+
+  test("an entry naming a left instance that never handed its socket to the sweep is not shown online", async () => {
+    const c = cluster();
+    const [peer, x] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([peer.beat(), x.beat()]);
+    x.record("una", "s-una");
+    await eventually(async () => (await peer.locate(["una"])).has("una"), "the entry");
+    await x.leave();
+    await settleInFlight(5_000);
+    await probe.set(c.key("online:stale"), `${x.id}|s-stale|1`);
+    assert.deepEqual([...(await peer.shownOnline(["una", "stale"]))], ["una"], "a stale entry naming a left instance was shown online, so no notice ever tells its friends");
+  });
+
+  test("a retried clear for an account's old socket never drops the clear its newer socket still owes", async () => {
+    const c = cluster();
+    const proxy = await startProxy(targetOf(redisUrl, 6379));
+    let gate: Promise<void> | null = null;
+    let release = () => {};
+    let held = false;
+    let failNext = false;
+    const beforeExec = async (keys: string[]) => {
+      if (keys.includes(c.key("online:ada"))) {
+        held = true;
+        await gate;
+      } else if (failNext && keys.includes(c.key("online:rio"))) {
+        failNext = false;
+        throw new Error("the clear is refused");
+      }
+    };
+    try {
+      const x = openPresenceStore({ ns: c.ns, url: viaProxy(redisUrl, proxy), heartbeat: false, hooks: { beforeExec } });
+      opened.push(x);
+      await redisReady();
+      await x.beat();
+      x.record("ada", "s-ada");
+      x.record("rio", "s-rio-1");
+      await eventually(async () => (await probe.exists(c.key("online:ada"))) + (await probe.exists(c.key("online:rio"))) === 2, "the entries");
+      proxy.refuse(true);
+      await eventually(() => x.locate(["rio"]).then(() => false, () => true), "reads to fail");
+      x.forget("ada", "s-ada");
+      x.forget("rio", "s-rio-1");
+      await settleInFlight(10_000);
+      gate = new Promise((resolve) => (release = resolve));
+      proxy.refuse(false);
+      await eventually(() => x.locate(["rio"]).then(() => true, () => false), "the link to come back");
+      await eventually(async () => held, "the retry to reach the first account");
+      x.record("rio", "s-rio-2");
+      await eventually(async () => (await probe.get(c.key("online:rio")))?.includes("s-rio-2") ?? false, "the newer socket's entry");
+      failNext = true;
+      x.forget("rio", "s-rio-2");
+      release();
+      await settleInFlight(10_000);
+      assert.equal(failNext, false, "the newer socket's clear was never tried");
+      await x.beat();
+      assert.equal(await probe.exists(c.key("online:rio")), 0, "the newer socket's failed clear was dropped by the old one's retry, so its entry stays for good");
+    } finally {
+      release();
+      await proxy.close();
+    }
+  });
+
+  test("a departure after leave() whose entry cannot be read is reported by its own instance, not left online for good", async () => {
+    const c = cluster();
+    const proxy = await startProxy(targetOf(redisUrl, 6379));
+    try {
+      const peer = c.open();
+      const x = openPresenceStore({ ns: c.ns, url: viaProxy(redisUrl, proxy), heartbeat: false });
+      opened.push(x);
+      await redisReady();
+      await Promise.all([peer.beat(), x.beat()]);
+      x.record("yan", "s-yan");
+      await eventually(async () => (await peer.locate(["yan"])).has("yan"), "the entry");
+      const here: string[] = [];
+      x.onLost((ids) => here.push(...ids));
+      await x.leave();
+      proxy.refuse(true);
+      await eventually(() => x.locate(["yan"]).then(() => false, () => true), "reads to fail");
+      assert.equal(x.forget("yan", "s-yan"), true);
+      await settleInFlight(10_000);
+      assert.deepEqual(here, ["yan"], "a departure whose entry could not be read was never reported");
+    } finally {
+      await proxy.close();
+    }
+  });
+
+  test("a crashed instance's accounts are reported with when each connected", async () => {
+    const c = cluster();
+    const [peer, dead] = [c.open(), c.open()];
+    await redisReady();
+    await Promise.all([peer.beat(), dead.beat()]);
+    const before = Date.now();
+    dead.record("zed", "s-zed");
+    await eventually(async () => (await peer.locate(["zed"])).has("zed"), "the entry");
+    const reported: [string[], Date | null, ReadonlyMap<string, Date>][] = [];
+    peer.onLost((ids, at, connectedAt) => reported.push([ids, at, connectedAt]));
+    await probe.del(c.key(`instance:${dead.id}`));
+    await peer.beat();
+    const [[ids, at, connectedAt]] = reported as [[string[], Date | null, ReadonlyMap<string, Date>]];
+    assert.deepEqual([ids, at], [["zed"], null]);
+    const connected = connectedAt.get("zed");
+    assert.ok(connected && Math.abs(connected.getTime() - before) < 2_000, `connected at ${connected?.toISOString()}`);
   });
 
   test("an instance swept while its liveness lapsed puts its accounts back on its next beat", async () => {

@@ -15,6 +15,7 @@ import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { payload } from "../shared/payload.ts";
 import { track } from "../shared/inFlight.ts";
+import { storePresence } from "./socketOutbox.ts";
 
 let _rt: TableRuntime | null = null;
 
@@ -31,19 +32,22 @@ export function emitToUser<E extends Exclude<keyof ServerToClientEvents, "game:s
   _rt?.out.user(userId).emit(event, ...data);
 }
 
-/** Whether this account has a socket anywhere in the cluster. Never throws. */
-export async function isUserOnline(userId: string): Promise<boolean> {
-  return _rt ? _rt.presence.isOnline(userId) : userSocketMap.has(userId);
+/** The runtime's, once bound; until then the same port over the store, for the HTTP layer. */
+const unbound = storePresence();
+const presence = () => _rt?.presence ?? unbound;
+
+/** Friend-facing: lists, notices and the status a new friendship shows. Never rejects. */
+export function shownOnlineAmong(userIds: readonly string[]): Promise<Set<string>> {
+  return presence().shownAmong(userIds);
 }
 
-/**
- * Of `userIds`, every account with a socket anywhere in the cluster, in one round trip. Only this
- * instance's own when presence did not answer: a friend elsewhere shown offline is the smaller
- * wrong.
- */
-export async function onlineAmong(userIds: readonly string[]): Promise<Set<string>> {
-  const online = await _rt?.presence.onlineAmong(userIds);
-  return online ?? new Set(userIds.filter((id) => userSocketMap.has(id)));
+export async function isShownOnline(userId: string): Promise<boolean> {
+  return (await presence().shownAmong([userId])).has(userId);
+}
+
+/** Connected now, so a live socket will see what is emitted to it. Never rejects. */
+export function isOnline(userId: string): Promise<boolean> {
+  return presence().isOnline(userId);
 }
 
 /**

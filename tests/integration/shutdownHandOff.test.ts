@@ -208,6 +208,7 @@ describe("a graceful shutdown hands its tables to a live peer", { skip: hasDatab
     assert.ok(reconnectAfterMs >= 0 && reconnectAfterMs < 10_000, `reconnectAfterMs ${reconnectAfterMs}`);
     assert.deepEqual(replies.filter((r) => (r.reply as { ok?: boolean }).ok !== true), [], "a rejoin during the hand-off was refused");
     assert.ok(activeGames.has(room.roomId), "the peer does not hold the game");
+    await eventually(() => pending("disconnect", host.user.id), "the in-game grace for the host, who never came back", 10_000);
   });
 
   test("an idle table is handed off before a socket closes", { timeout: 90_000 }, async (t) => {

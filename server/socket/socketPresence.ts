@@ -30,8 +30,8 @@ import { heldRoundFor } from "../game/gameTurn.ts";
 import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating, unseatSocket } from "./seating.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
-import { isUserOnline, onlineAmong } from "./socketRegistry.ts";
-import { onPresenceLost, onPresenceRestored, socialVersion } from "../store/presence.ts";
+import { isShownOnline, shownOnlineAmong } from "./socketRegistry.ts";
+import { forgetPresence, onPresenceLost, onPresenceRestored, socialVersion, type LostHandler } from "../store/presence.ts";
 import type { OnlineList } from "../../shared/protocol.ts";
 import { payload } from "../shared/payload.ts";
 import { OK, refuse } from "../shared/refusal.ts";
@@ -116,7 +116,7 @@ type FriendRows = Awaited<ReturnType<typeof friendStore.getFriends>>;
 async function onlineList(userId: string, friends: FriendRows): Promise<OnlineList> {
   const ids = friends.map((f) => f.friend.id);
   const [online, social] = await Promise.all([
-    onlineAmong(ids),
+    shownOnlineAmong(ids),
     socialVersion(userId).catch((err: unknown) => {
       logger.warn({ err, userId }, "Could not read the social version; the client refetches its lists");
       return null;
@@ -127,21 +127,51 @@ async function onlineList(userId: string, friends: FriendRows): Promise<OnlineLi
   return { onlineIds: ids.filter((id) => online.has(id)), lastSeen, ...(social !== null && { social }) };
 }
 
-/** The friends of accounts found on a dead instance are told once, by the instance whose sweep cleared them. */
+interface LostDeps {
+  userStore: Pick<typeof userStore, "updateLastSeen" | "settleLastSeen">;
+  friendStore: Pick<typeof friendStore, "getFriends">;
+  tellStatus: typeof friendships.tellStatus;
+  shownOnlineAmong: (userIds: readonly string[]) => Promise<Set<string>>;
+}
+
+/** What a sweep's report of lost accounts does: their last_seen, then their friends' notice. */
+export function lostPresenceHandler(deps: LostDeps): LostHandler {
+  return (userIds, leftAt, connectedAt) => {
+    const at = leftAt ?? new Date(now());
+    const read = (userId: string) => {
+      const since = connectedAt.get(userId);
+      const written: Promise<Date | null> =
+        leftAt === null && since !== undefined
+          ? deps.userStore.settleLastSeen(userId, since, at)
+          : deps.userStore.updateLastSeen(userId, at).then(() => at);
+      return written
+        .catch((err: unknown) => {
+          logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account");
+          return at;
+        })
+        .then(async (seen) => ({ userId, seen, friends: await deps.friendStore.getFriends(userId) }))
+        .catch((err: unknown) => {
+          logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline");
+          return null;
+        });
+    };
+    void track(
+      (async () => {
+        const lost = await Promise.all(userIds.map(read));
+        // A reconnect elsewhere while those were read was told to them as online.
+        const shown = await deps.shownOnlineAmong(userIds);
+        for (const one of lost) {
+          if (!one || shown.has(one.userId)) continue;
+          deps.tellStatus(one.userId, one.friends.map((f) => f.friend.id), { online: false, lastSeen: (one.seen ?? at).toISOString() });
+        }
+      })().catch((err: unknown) => logger.warn({ err, userIds }, "Could not tell lost accounts' friends they went offline"))
+    );
+  };
+}
+
+/** The friends of accounts a sweep cleared, from a crashed instance or a left one, are told once, by the instance whose sweep it was. */
 export function registerLostPresence(): void {
-  onPresenceLost((userIds) => {
-    const lastSeen = new Date(now()).toISOString();
-    for (const userId of userIds) {
-      void track(
-        userStore
-          .updateLastSeen(userId)
-          .catch((err: unknown) => logger.debug({ err, userId }, "Failed to update users.last_seen for a lost account"))
-          .then(() => friendStore.getFriends(userId))
-          .then((friends) => friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen }))
-          .catch((err: unknown) => logger.warn({ err, userId }, "Could not tell a lost account's friends it went offline"))
-      );
-    }
-  });
+  onPresenceLost(lostPresenceHandler({ userStore, friendStore, tellStatus: friendships.tellStatus, shownOnlineAmong }));
 }
 
 /** A peer that swept this instance during a lapse told these accounts' friends they went offline. */
@@ -161,6 +191,7 @@ export function registerRestoredPresence(): void {
 export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
 
     socket.on("disconnect", (reason: DisconnectReason) => {
+      const swept = forgetPresence(userId, socket.id);
       trackEvent("socket.closed", userId, { reason });
       void track((async () => {
         let offlineNotice: Promise<void> | undefined;
@@ -182,7 +213,7 @@ export function registerDisconnect({ rt, socket, userId }: HandlerContext) {
             );
 
           const lastSeen = new Date(now()).toISOString();
-          offlineNotice = emitFriendStatusOffline(userId, lastSeen);
+          if (!swept) offlineNotice = emitFriendStatusOffline(userId, lastSeen);
 
           const currentRoomId = unseatSocket(socket.id);
           // Three paths reach a return without announcing the drop, and from
@@ -332,7 +363,7 @@ async function announceOnlineToFriends(
   friends: Awaited<ReturnType<typeof friendStore.getFriends>>
 ) {
   // The read the caller did is awaited, so the socket may already be gone.
-  if (!(await isUserOnline(userId))) return;
+  if (!(await isShownOnline(userId))) return;
   friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: true });
 }
 
@@ -340,8 +371,8 @@ async function emitFriendStatusOffline(userId: string, lastSeen: string) {
   // Debounced, and re-checked after every await: a reconnect inside any of
   // these windows must cancel the offline notice rather than race it.
   await new Promise((resolve) => setTimeout(resolve, 400));
-  if (await isUserOnline(userId)) return;
+  if (await isShownOnline(userId)) return;
   const friends = await friendStore.getFriends(userId).catch(() => []);
-  if (await isUserOnline(userId)) return;
+  if (await isShownOnline(userId)) return;
   friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen });
 }

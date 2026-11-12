@@ -44,6 +44,11 @@ export interface Presence {
   tablePresence(roomId: string, userIds: readonly string[]): Promise<{ online: Set<string>; atTable: Set<string> } | null>;
   /** Of `userIds`, who is connected. Null when the store did not answer — never read as "nobody": the sweep disposes on it. */
   onlineAmong(userIds: readonly string[]): Promise<Set<string> | null>;
+  /**
+   * Of `userIds`, those their friends are shown as online: these, and those a left instance handed to the sweep
+   * and whose offline notice a sweep has yet to send. Only this instance's own when the store fails.
+   */
+  shownAmong(userIds: readonly string[]): Promise<Set<string>>;
 }
 
 /** The other instances, one address at a time (`server/store/instanceInbox.ts`). */

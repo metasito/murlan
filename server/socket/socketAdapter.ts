@@ -5,7 +5,7 @@ import { BLOCK_MS, instanceId, openRedis, redisKey, streamMaxLen, type RedisClie
 import { clusterMessages, noteStreamRead } from "../shared/metrics.ts";
 import { leavePresence, livePeers, type PresenceStore } from "../store/presence.ts";
 
-type Liveness = Pick<PresenceStore, "livePeers" | "leave">;
+type Liveness = Pick<PresenceStore, "livePeers"> & { leave(): void };
 
 type Packet = unknown[];
 
