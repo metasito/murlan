@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { assertMark, DIAGNOSTICS_MARK, E2E_BUILD_MARK } from "../../scripts/e2eBuildMark.mjs";
 import { blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
-import { loadAction, loadWorkflow, step } from "../helpers/workflow.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const markSource = readFileSync(path.join(root, "lib", "e2eConfig.ts"), "utf8");
@@ -38,17 +37,9 @@ test("every workflow or action that builds with a test-only flag checks the buil
 
 test("every store build ci.yml compiles proves it carries no test-only flag", () => {
   const ci = readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
-  for (const built of ["dist", '"$RUNNER_TEMP/apk"']) {
+  for (const built of ["dist", '"$RUNNER_TEMP/apk"', '"$app"']) {
     assert.match(ci, new RegExp(`e2eBuildMark\\.mjs --absent ${built.replace(/\$/g, "\\$")}\\n`), built);
   }
-  const ios = loadWorkflow("ci.yml").jobs["ios-build"].steps!.filter((s) => s.uses === "./.github/actions/ios-app");
-  assert.deepEqual(ios.map((s) => [s.with?.flavour, s.with?.configuration]), [[undefined, undefined]], "ci.yml compiles the player's Release build");
-  const action = loadAction("ios-app");
-  assert.equal((action.inputs?.flavour as { default?: string }).default, "player");
-  assert.equal((action.inputs?.configuration as { default?: string }).default, "Release");
-  const marks = step(action, "The app carries its flavour's marks, and no other's");
-  assert.equal(marks.if, "inputs.mode != 'fill' && inputs.configuration == 'Release'");
-  assert.match(marks.run ?? "", /echo --present \|\| echo --absent\)" "\$APP"\n/);
 });
 
 test("a build directory is judged by whether any file carries the mark", () => {
