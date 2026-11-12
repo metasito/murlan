@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parse } from "yaml";
-import { CHECK, JOB_NAMES, needsOf, resultOf, run } from "../../tools/ci/verdict-check.mjs";
+import { CHECK, JOB_NAMES, needsOf, resultOf, run, TESTED_PREFIX } from "../../tools/ci/verdict-check.mjs";
 import { NON_TEST_JOBS, SUITES } from "../../tools/ci/test-verdict.mjs";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
@@ -111,11 +111,15 @@ describe("a CI run judged over scratch histories", () => {
   const added = `tests/a/t${listed.length}.test.ts`;
   const notes = ["docs", "notes.md"].join("/");
 
+  const later = `tests/a/t${listed.length + 1}.test.ts`;
+  type Recorded = "merge" | "head" | "stranger" | "offBase" | "none";
+
   /**
-   * A head branched with a docs change; its base branch, `release`, then gains a test, and `main`
-   * moves on with code. CI ran the head merged onto `release`, so its records hold the added test.
+   * A head branched with a docs change; its base branch, `release`, then gains a test, and CI
+   * tests the head merged onto it, so its records hold the added test. While it runs, `release`
+   * gains another (when `moved`) and `main` moves on with code.
    */
-  function histories() {
+  function histories(moved: boolean) {
     const origin = fs.mkdtempSync(path.join(work, "origin-"));
     const write = (file: string, text: string) => (fs.mkdirSync(path.dirname(path.join(origin, file)), { recursive: true }), fs.writeFileSync(path.join(origin, file), text));
     const commit = (m: string) => (sh(origin, "add", "-A"), sh(origin, "commit", "-q", "-m", m), sh(origin, "rev-parse", "HEAD"));
@@ -130,16 +134,36 @@ describe("a CI run judged over scratch histories", () => {
     const head = commit("head");
     sh(origin, "checkout", "-q", "release");
     write(added, "");
-    const base = commit("release gains a test");
+    commit("release gains a test");
+    const mergeOnto = (onto: string, other: string, ref: string) => {
+      sh(origin, "checkout", "-q", "--detach", onto);
+      sh(origin, "merge", "-q", "--no-ff", "-m", ref, other);
+      const sha = sh(origin, "rev-parse", "HEAD");
+      sh(origin, "update-ref", `refs/${ref}`, sha);
+      return sha;
+    };
+    const stranger = (sh(origin, "checkout", "-q", "--detach", "main"), write("docs/stranger.md", "x"), commit("stranger"));
+    const shas: Record<Exclude<Recorded, "none">, string> = {
+      merge: mergeOnto("release", "head", "pull/7/merge"),
+      head,
+      stranger: mergeOnto("release", stranger, "stranger"),
+      offBase: "",
+    };
     sh(origin, "checkout", "-q", "main");
     write(["lib", "code.ts"].join("/"), "1");
     commit("main moves");
-    return { head, base, origin: `file://${origin}` };
+    shas.offBase = mergeOnto("main", "head", "off-base");
+    sh(origin, "checkout", "-q", "release");
+    if (moved) (write(later, ""), commit("release gains a test CI never ran"));
+    const base = sh(origin, "rev-parse", "release");
+    sh(origin, "checkout", "-q", "main");
+    return { head, base, shas, origin: `file://${origin}` };
   }
 
-  type Judged = { event?: string; workflowId?: number; jobs?: ReturnType<typeof green>; failed?: boolean; conclusion?: string; listedPr?: boolean; nowAt?: string; newer?: boolean; ciLookup?: () => string };
-  function judge({ event = "pull_request", workflowId = 77, jobs = green(), failed = false, conclusion = "success", listedPr = true, nowAt, newer = false, ciLookup = () => "77\n" }: Judged = {}) {
-    const { head, base, origin } = histories();
+  type Judged = { event?: string; workflowId?: number; jobs?: ReturnType<typeof green>; failed?: boolean; conclusion?: string; listedPr?: boolean; nowAt?: string; newer?: boolean; ciLookup?: () => string; moved?: boolean; recorded?: Recorded };
+  function judge({ event = "pull_request", workflowId = 77, jobs = green(), failed = false, conclusion = "success", listedPr = true, nowAt, newer = false, ciLookup = () => "77\n", moved = true, recorded = "merge" }: Judged = {}) {
+    const { head, base, shas, origin } = histories(moved);
+    const tested = recorded === "none" ? "" : shas[recorded];
     const eventPath = path.join(work, `event-${path.basename(origin)}.json`);
     const pr = { number: 7, head: { sha: head }, base: { ref: "release", sha: base } };
     fs.writeFileSync(eventPath, JSON.stringify({ workflow_run: { id: 5, run_attempt: 1, head_sha: head, head_branch: "head", head_repository: { owner: { login: "f" } }, event, conclusion, workflow_id: workflowId, html_url: "https://example.invalid/run/5", pull_requests: listedPr ? [pr] : [] } }));
@@ -151,10 +175,10 @@ describe("a CI run judged over scratch histories", () => {
       asked.push(args[1]!);
       if (args[1]!.endsWith("/actions/workflows/ci.yml")) return ciLookup();
       if (args[1]!.endsWith("/runs/5/jobs?filter=latest&per_page=100")) return jobs.map((j) => JSON.stringify(j)).join("\n");
-      if (args[1]!.includes("/runs/5/artifacts")) return "test-results-verify-1-1\n";
+      if (args[1]!.includes("/runs/5/artifacts")) return args.at(-1)!.includes(TESTED_PREFIX) ? (tested ? `${TESTED_PREFIX}${tested}\n` : "") : "test-results-verify-1-1\n";
       if (args[1] === "repos/o/r/pulls/7") return `${nowAt ?? head}\n`;
       if (args[1]!.startsWith("repos/o/r/actions/workflows/ci.yml/runs?head_sha=")) return newer ? "5\n6\n" : "5\n";
-      if (args[1] === "repos/o/r/pulls?state=open&per_page=100&head=f%3Ahead") return `${JSON.stringify({ number: 7, head: { sha: head }, base: { sha: base } })}\n`;
+      if (args[1] === "repos/o/r/pulls?state=open&per_page=100&head=f%3Ahead") return `${JSON.stringify({ number: 7, head: { sha: head }, base: { ref: "release" } })}\n`;
       if (args[0] === "run" && args[1] === "download") {
         const dir = path.join(args[args.indexOf("--dir") + 1]!, "test-results-verify-1-1");
         fs.mkdirSync(dir, { recursive: true });
@@ -165,20 +189,42 @@ describe("a CI run judged over scratch histories", () => {
     };
     const said: string[] = [];
     const code = run({ GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_PATH: eventPath, ORIGIN: origin }, { gh, log: (l) => void said.push(l) });
-    return { code, posted, asked, said: said.join("\n"), head };
+    return { code, posted, asked, said: said.join("\n"), head, tested };
   }
 
   /** A docs-only change: the suites its scope skips are skipped, and verify ran. */
   const docsRun = () =>
     green().map((j) => (/^(Loop harness|Native tests|Browser tests |Lint$|Build and boot$)/.test(j.name) ? { ...j, conclusion: "skipped" } : j));
 
-  test("a green run posts a green check on the head, judged as the merge onto the event's base CI ran, not onto main", () => {
-    for (const listedPr of [true, false]) {
-      const r = judge({ jobs: docsRun(), listedPr });
-      assert.equal(r.code, 0, r.said);
-      assert.equal(r.posted.length, 1, r.said);
-      assert.deepEqual([r.posted[0]!.name, r.posted[0]!.head_sha, r.posted[0]!.status, r.posted[0]!.conclusion], [CHECK, r.head, "completed", "success"], r.said);
+  test("a green run posts a green check on the head, judged at the merge CI recorded, though the base moved since", () => {
+    for (const listedPr of [true, false])
+      for (const moved of [true, false]) {
+        const r = judge({ jobs: docsRun(), listedPr, moved });
+        assert.equal(r.code, 0, r.said);
+        assert.equal(r.posted.length, 1, r.said);
+        assert.deepEqual([r.posted[0]!.name, r.posted[0]!.head_sha, r.posted[0]!.status, r.posted[0]!.conclusion], [CHECK, r.head, "completed", "success"], r.said);
+        assert.match(r.posted[0]!.output.summary, new RegExp(`judged at ${r.tested}, the commit it tested`));
+      }
+  });
+
+  test("a recorded commit that is no merge of the head onto the base branch, or none, posts red", () => {
+    for (const [recorded, why] of [
+      ["head", /is not the head \S+ merged onto a base/],
+      ["stranger", /is not the head \S+ merged onto a base/],
+      ["offBase", /which release never held/],
+      ["none", /recorded no tested commit/],
+    ] as const) {
+      const r = judge({ jobs: docsRun(), recorded });
+      assert.equal(r.posted[0]!.conclusion, "failure", `${recorded}: ${r.said}`);
+      assert.match(r.posted[0]!.output.text, why, recorded);
     }
+  });
+
+  test("ci.yml records the commit each pull request's run tests, under the name the judge reads", () => {
+    const steps = (parse(fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8")).jobs.scope.steps as { uses?: string; if?: string; with?: Record<string, unknown> }[]).filter((s) => s.uses?.startsWith("actions/upload-artifact@"));
+    assert.equal(steps.length, 2);
+    for (const s of steps) assert.equal(s.with!.name, `${TESTED_PREFIX}\${{ github.sha }}`);
+    assert.equal(steps[0]!.if, "${{ github.event_name == 'pull_request' }}");
   });
 
   test("a failed test, or a need CI did not run, posts a red check naming it", () => {

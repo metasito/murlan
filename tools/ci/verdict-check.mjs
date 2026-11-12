@@ -87,18 +87,37 @@ export function needsOf(jobs) {
 /** @typedef {(args: string[]) => string} Exec */
 /** @type {(dir: string) => Exec} */
 const gitIn = (dir) => (args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
-const IDENTITY = ["-c", "user.name=Test verdict", "-c", "user.email=test-verdict@invalid"];
+
+/** The artifact ci.yml names after `github.sha`, the commit a pull request's run tested. */
+export const TESTED_PREFIX = "tested-commit-";
 
 /**
- * The commit CI ran: the head merged onto the base the run was for, as `refs/pull/<n>/merge` was
- * then, so the judge's `HEAD^1` is that base as in ci.yml. Built in a scratch repository fetched
- * blob-less from `origin`; the judge's reads fetch the blobs they need, and no file is written out.
- * @param {string} origin
- * @param {string} base
- * @param {string} head
+ * The commit the run tested, as ci.yml recorded it. Rebuilding the merge here would land on the
+ * base as it is now, and a base that moved during the run lists tests CI never ran.
+ * @param {string} repo
+ * @param {number} id
+ * @param {Exec} hub
  */
-function mergedAt(origin, base, head) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "judged-"));
+function testedOf(repo, id, hub) {
+  const names = hub(["api", `repos/${repo}/actions/runs/${id}/artifacts?per_page=100`, "--paginate", "--jq", `.artifacts[] | select(.name | startswith("${TESTED_PREFIX}")) | .name`])
+    .split("\n")
+    .filter(Boolean);
+  const shas = [...new Set(names.map((n) => n.slice(TESTED_PREFIX.length)))];
+  if (shas.length !== 1 || !/^[0-9a-f]{40}$/.test(String(shas[0]))) throw new Error(`the run recorded ${shas.length ? `the tested commits ${shas.join(", ")}` : "no tested commit"} (${TESTED_PREFIX}<sha>), so there is no one commit to judge`);
+  return /** @type {string} */ (shas[0]);
+}
+
+/**
+ * The tested commit, fetched blob-less into a scratch repository and held to be the head merged
+ * onto a commit of the base branch. The judge's reads fetch the blobs they need, and no file is
+ * written out.
+ * @param {string} dir an empty directory
+ * @param {string} origin
+ * @param {string} tested
+ * @param {string} head
+ * @param {string} baseRef
+ */
+function testedAt(dir, origin, tested, head, baseRef) {
   const git = gitIn(dir);
   git(["init", "-q", "--bare"]);
   for (const [k, v] of [
@@ -109,42 +128,41 @@ function mergedAt(origin, base, head) {
     ["remote.origin.partialclonefilter", "blob:none"],
   ])
     git(["config", /** @type {string} */ (k), /** @type {string} */ (v)]);
-  git(["fetch", "-q", "--no-tags", "--filter=blob:none", "origin", `+${head}:refs/verdict/head`, `+${base}:refs/verdict/base`]);
-  for (const [ref, sha] of [["head", head], ["base", base]]) if (git(["rev-parse", `refs/verdict/${ref}`]).trim() !== sha) throw new Error(`the fetched ${ref} is not ${sha}`);
-  let tree;
+  git(["fetch", "-q", "--no-tags", "--filter=blob:none", "origin", `+${tested}:refs/heads/judged`, `+refs/heads/${baseRef}:refs/verdict/base`]);
+  if (git(["rev-parse", "refs/heads/judged"]).trim() !== tested) throw new Error(`the fetched commit is not ${tested}`);
+  const [, base, second, ...more] = git(["rev-list", "--parents", "-n", "1", tested]).trim().split(" ");
+  if (!base || second !== head || more.length) throw new Error(`${tested} is not the head ${head} merged onto a base, so it is not what this pull request's run tested`);
   try {
-    tree = /** @type {string} */ (git(["merge-tree", "--write-tree", base, head]).split("\n")[0]);
+    git(["merge-base", "--is-ancestor", base, "refs/verdict/base"]);
   } catch {
-    throw new Error(`${head} does not merge onto ${base} cleanly, so CI ran no merge of them`);
+    throw new Error(`${tested} merges onto ${base}, which ${baseRef} never held`);
   }
-  const merged = git([...IDENTITY, "commit-tree", tree, "-p", base, "-p", head, "-m", "judged"]).trim();
-  git(["update-ref", "refs/heads/judged", merged]);
   git(["symbolic-ref", "HEAD", "refs/heads/judged"]);
-  return { dir, git };
+  return { git, base };
 }
 
 /**
- * The pull request CI ran for, and the base commit it merged onto. The event lists a pull request
- * of this repository; one from a fork it leaves out, so that one is looked up by its head.
+ * The pull request CI ran for, and its base branch. The event lists a pull request of this
+ * repository; one from a fork it leaves out, so that one is looked up by its head.
  * @param {any} wr
  * @param {string} repo
  * @param {Exec} hub
- * @returns {{ number: number, base: string }}
+ * @returns {{ number: number, baseRef: string }}
  */
 function pullOf(wr, repo, hub) {
   const listed = (wr.pull_requests ?? []).filter((/** @type {any} */ p) => p?.head?.sha === wr.head_sha);
   const label = encodeURIComponent(`${wr.head_repository?.owner?.login}:${wr.head_branch}`);
   const found = listed.length
     ? listed
-    : hub(["api", `repos/${repo}/pulls?state=open&per_page=100&head=${label}`, "--jq", ".[] | {number, head: {sha: .head.sha}, base: {sha: .base.sha}}"])
+    : hub(["api", `repos/${repo}/pulls?state=open&per_page=100&head=${label}`, "--jq", ".[] | {number, head: {sha: .head.sha}, base: {ref: .base.ref}}"])
         .split("\n")
         .filter(Boolean)
         .map((l) => JSON.parse(l))
         .filter((p) => p.head.sha === wr.head_sha);
   if (found.length !== 1) throw new Error(`${found.length} open pull requests have head ${wr.head_sha}, so there is no one base to judge it on`);
   const pr = found[0];
-  if (!Number.isInteger(pr.number) || !/^[0-9a-f]{40}$/.test(String(pr.base?.sha))) throw new Error("the pull request names no number and base commit");
-  return { number: pr.number, base: pr.base.sha };
+  if (!Number.isInteger(pr.number) || !/^[\w.][\w./-]*$/.test(String(pr.base?.ref))) throw new Error("the pull request names no number and base branch");
+  return { number: pr.number, baseRef: pr.base.ref };
 }
 
 /**
@@ -195,6 +213,8 @@ export function run(env, { gh: hub = gh, log = console.log } = {}) {
   let ok = false;
   /** @type {string | undefined} */
   let scratch;
+  /** @type {string | undefined} */
+  let tested;
   try {
     if (!Number.isInteger(wr.id) || !Number.isInteger(wr.run_attempt)) throw new Error("the event names no CI run and attempt");
     const ci = hub(["api", `repos/${repo}/actions/workflows/${CI}`, "--jq", ".id"]).trim();
@@ -215,10 +235,12 @@ export function run(env, { gh: hub = gh, log = console.log } = {}) {
     for (const p of problems) say(`::error::${p}`);
     const gate = gateVerdict(Object.entries(needs).map(([id, n]) => (n.result === "success" || n.result === "skipped" ? n.result : `${id} ${n.result}`)));
     if (!gate.ok) say(`::error::CI gate's needs are ${gate.why}`);
-    const judged = mergedAt(env.ORIGIN ?? `${env.GITHUB_SERVER_URL ?? "https://github.com"}/${repo}.git`, pr.base, sha);
-    scratch = judged.dir;
+    const recorded = testedOf(repo, wr.id, hub);
+    scratch = fs.mkdtempSync(path.join(os.tmpdir(), "judged-"));
+    const judged = testedAt(scratch, env.ORIGIN ?? `${env.GITHUB_SERVER_URL ?? "https://github.com"}/${repo}.git`, recorded, sha, pr.baseRef);
+    tested = recorded;
     const code = judge(
-      { GITHUB_REPOSITORY: repo, GITHUB_RUN_ID: String(wr.id), BASE: pr.base, NEEDS: JSON.stringify(needs), EVENT: "pull_request", REF: `refs/pull/${pr.number}/merge`, GITHUB_STEP_SUMMARY: env.GITHUB_STEP_SUMMARY },
+      { GITHUB_REPOSITORY: repo, GITHUB_RUN_ID: String(wr.id), BASE: judged.base, NEEDS: JSON.stringify(needs), EVENT: "pull_request", REF: `refs/pull/${pr.number}/merge`, GITHUB_STEP_SUMMARY: env.GITHUB_STEP_SUMMARY },
       { gh: hub, git: judged.git, log: say },
     );
     ok = code === 0 && !problems.length && gate.ok;
@@ -236,7 +258,7 @@ export function run(env, { gh: hub = gh, log = console.log } = {}) {
     details_url: wr.html_url,
     output: {
       title: ok ? "Every test that ran passed, once" : "The run is red (RULES.md 53)",
-      summary: `CI run ${wr.id}, attempt ${wr.run_attempt}, judged by the default branch's tools/ci/test-verdict.mjs.`,
+      summary: `CI run ${wr.id}, attempt ${wr.run_attempt}, judged ${tested ? `at ${tested}, the commit it tested, ` : ""}by the default branch's tools/ci/test-verdict.mjs.`,
       text: lines.join("\n").slice(0, 60_000),
     },
   };

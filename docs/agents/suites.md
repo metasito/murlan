@@ -215,7 +215,8 @@ nothing until the ruleset requires code-owner review (`docs/agents/target-freeze
 review is the only thing in the way. `.github/workflows/test-verdict.yml` guards against
 accidental drift, a dropped reporter, upload or gate step, and not against deliberate forgery: on
 `workflow_run` it runs main's copy of itself and of the judge once CI completes, over the merge
-commit CI tested (the pull request's base from the event, not `main`), rebuilds the gate's needs
+commit CI tested, as `ci.yml` recorded it (red unless it is the head merged onto a commit the base
+branch has held, so a base that moved during the run changes nothing), rebuilds the gate's needs
 from the run's latest jobs by main's names (a need CI never ran is red), and posts the
 `Test verdict` check on the pull request's head; a cancelled run is skipped only when a newer run
 or head replaced it. It binds once the ruleset requires that check. A head's `ci.yml` that writes

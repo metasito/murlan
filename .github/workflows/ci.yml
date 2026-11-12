@@ -197,6 +197,31 @@ jobs:
             layers+=("$(for id in $ids; do printf '%s,' "$RUNNER_TEMP"/verify-timings/"$id"/*.timings.json; done)")
           done <<< "$runs"
           node tools/ci/verify-shard.mjs plan "${layers[@]}"
+      # The Test verdict judges this commit, not the merge onto the base as it is once CI completes
+      # (tools/ci/verdict-check.mjs TESTED_PREFIX).
+      - name: Record the commit this run tests
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        run: echo "$GITHUB_SHA" > "$RUNNER_TEMP/tested-commit"
+      - if: ${{ github.event_name == 'pull_request' }}
+        id: tested
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-commit-${{ github.sha }}
+          path: ${{ runner.temp }}/tested-commit
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+      - name: Upload tested-commit-${{ github.sha }} again after a failed attempt
+        if: ${{ !cancelled() && steps.tested.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-commit-${{ github.sha }}
+          path: ${{ runner.temp }}/tested-commit
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
   # Runs unconditionally rather than depending on `scope`: `scope` exempts
   # doc-only changes (docs/, .claude/, *.md), but a secret can land in exactly
