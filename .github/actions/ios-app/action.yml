@@ -157,12 +157,14 @@ runs:
         # Named from app.json rather than fixed here, so renaming the app does not silently start
         # building a stale one. Matched by the shell rather than by `ls`: under `bash -eo pipefail`
         # a failed `ls` in an assignment kills the step before the message below prints.
-        workspace=""
-        for candidate in ios/*.xcworkspace; do
-          [ -d "$candidate" ] && { workspace="$candidate"; break; }
+        # The project, not the workspace: `pod install` writes the workspace, below.
+        project=""
+        for candidate in ios/*.xcodeproj; do
+          [ -d "$candidate" ] && { project="$candidate"; break; }
         done
-        [ -n "$workspace" ] || { echo "::error::expo prebuild produced no ios/*.xcworkspace."; exit 1; }
-        scheme=$(basename "$workspace" .xcworkspace)
+        [ -n "$project" ] || { echo "::error::expo prebuild produced no ios/*.xcodeproj."; exit 1; }
+        scheme=$(basename "$project" .xcodeproj)
+        workspace="ios/$scheme.xcworkspace"
         # Plain http to the PC's LAN address: Metro on 8081, the game server on 5000, the bench collector on 5099.
         if [ "$SDK" = device ]; then
           plutil -replace NSAppTransportSecurity.NSAllowsLocalNetworking -bool YES "ios/$scheme/Info.plist"
