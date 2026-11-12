@@ -120,16 +120,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
           RUNS: 5
         run: |
-          # Newest first, across every branch: a burst of pull requests can push main's runs off one page.
+          # Newest first, across every branch: a burst of pull requests can push main's runs, or this
+          # branch's latest, off one page.
           artifacts='{"artifacts":[]}'
-          for page in 1 2 3 4 5; do
-            got=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100&page=$page" || echo '{"artifacts":[]}')
+          ours='[.artifacts[] | select((.expired | not) and .workflow_run.head_repository_id == .workflow_run.repository_id)]'
+          for page in $(seq 1 50); do
+            if ! got=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100&page=$page"); then
+              echo "::warning::Listing e2e-timings failed at page $page; the plan prices from what it already holds."
+              break
+            fi
             artifacts=$(jq -s '{artifacts: (.[0].artifacts + .[1].artifacts)}' <(echo "$artifacts") <(echo "$got"))
             [ "$(jq '.artifacts | length' <<< "$got")" -lt 100 ] && break
-            [ "$(jq '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == "main")] | length' <<< "$artifacts")" -ge "$RUNS" ] && break
+            [ "$(jq "$ours | map(select(.workflow_run.head_branch == \"main\")) | length" <<< "$artifacts")" -ge "$RUNS" ] \
+              && { [ "$BRANCH" = main ] || [ "$(jq --arg b "$BRANCH" "$ours | map(select(.workflow_run.head_branch == \$b)) | length" <<< "$artifacts")" -gt 0 ]; } \
+              && break
           done
+          changed=$([ -n "$BASE" ] && git diff --name-only "$BASE" HEAD -- tests/e2e | paste -sd, - || true)
           branches=(main)
           [ "$BRANCH" != main ] && branches+=("$BRANCH")
           layers=("" "")
@@ -156,7 +165,7 @@ jobs:
               echo "::warning::No green run of $branch has left e2e-timings; its specs keep the older numbers."
             fi
           done
-          node tools/ci/e2e-shard.mjs plan "${layers[0]}" "${layers[1]}"
+          node tools/ci/e2e-shard.mjs plan "${layers[0]}" "${layers[1]}" "$changed"
 
       # verify's split: each file at its median over main's latest runs, one line of artifact ids a run.
       # A file no run measured is placed as a typical one, so a missing layer costs balance, never a file.
@@ -1059,6 +1068,7 @@ jobs:
       # Over the numbers this run split by, so a spec this run could not price keeps the latest
       # measurement rather than the committed one.
       - name: Regenerate tests/e2e/timings.json
+        id: regen
         env:
           TIMINGS: ${{ needs.scope.outputs.timings }}
         run: |
@@ -1097,8 +1107,9 @@ jobs:
 
       # The commit's gate, e2eShardSplit.test.ts, imports `yaml` and lists the suite with the
       # lockfile's Playwright: the one step here that needs node_modules.
+      # Past a red split check: refreshed prices are how a split priced from stale ones gets even again.
       - name: Dependencies for the timings commit
-        if: env.COMMIT_TIMINGS == 'true'
+        if: ${{ !cancelled() && steps.regen.outcome == 'success' && env.COMMIT_TIMINGS == 'true' }}
         uses: ./.github/actions/install
 
       # On the weekly schedule only, never per-merge. `main` has no branch
@@ -1109,9 +1120,8 @@ jobs:
       # full of failures, and a test that fails at its timeout prices its spec
       # at the timeout while one that fails on its first assertion prices it at
       # seconds. Either number is indistinguishable from a real duration once
-      # committed, and lands as the lopsided split `tests/tooling/e2eShardSplit.test.ts`
-      # reds the next pull request over — which is the defect this job exists
-      # to end.
+      # committed, and lands as the lopsided split scope's plan reds the next
+      # pull request over — which is the defect this job exists to end.
       #
       # Regenerating on every green main push moved `main` under every open
       # pull request, which cost each one a branch update and a full extra run
@@ -1121,7 +1131,7 @@ jobs:
       # has measured it; a merge that skips the browser shards measures nothing,
       # and until main's next one the spec is a guess on every pull request.
       - name: Commit the regenerated timings, if main's copy is stale
-        if: env.COMMIT_TIMINGS == 'true'
+        if: ${{ !cancelled() && steps.regen.outcome == 'success' && env.COMMIT_TIMINGS == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -1136,8 +1146,8 @@ jobs:
               echo "tests/e2e/timings.json already matches this run's measurements."
               exit 0
             fi
-            if ! node --test tests/tooling/e2eShardSplit.test.ts; then
-              echo "::error::The measured timings fail tests/tooling/e2eShardSplit.test.ts; committing them would red main and every pull request."
+            if ! node tools/ci/e2e-shard.mjs judge tests/e2e/timings.json || ! node --test tests/tooling/e2eShardSplit.test.ts; then
+              echo "::error::The measured timings split badly or fail tests/tooling/e2eShardSplit.test.ts; committed, they would red every pull request."
               exit 1
             fi
             git commit -q -m "Regenerate tests/e2e/timings.json from measured durations" -- tests/e2e/timings.json

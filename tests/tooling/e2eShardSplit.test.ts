@@ -41,6 +41,9 @@ const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
 // Four specs a shard: as even as a split gets, so a fixture reds only on what it changes.
 const SUITE = Array.from({ length: MAX_SHARDS * 4 }, (_, i) => `s${i}.spec.ts`);
 const at = (seconds: number, suite = SUITE) => Object.fromEntries(suite.map((f) => [f, seconds]));
+const fits = (seconds: number) => shardsNeeded(SUITE, at(seconds)) <= MAX_SHARDS;
+/** The most a spec of `SUITE` may cost with the suite still inside the target. */
+const MOST = Array.from({ length: 400 }, (_, s) => s).filter(fits).at(-1) ?? 0;
 
 /** The spec files Playwright itself lists under `config`, relative to tests/e2e. */
 function playwrightLists(config: string): string[] {
@@ -77,7 +80,7 @@ describe("every browser spec reaches exactly one shard", () => {
   test("the weekly timings commit passes this file before it lands, as its bot push runs no CI", () => {
     const step = /- name: Commit the regenerated timings[\s\S]*?\n\n/.exec(ciYml)?.[0] ?? "";
 
-    assert.match(step, /node --test tests\/tooling\/e2eShardSplit\.test\.ts[\s\S]*git commit /);
+    assert.match(step, /node tools\/ci\/e2e-shard\.mjs judge tests\/e2e\/timings\.json \|\| ! node --test tests\/tooling\/e2eShardSplit\.test\.ts; then\n\s+echo[^\n]*\n\s+exit 1\n[\s\S]*git commit /);
   });
 
   test("the weekly timings commit installs the packages this file imports, under the commit's own gate", () => {
@@ -159,8 +162,8 @@ describe("the split is stable and even", () => {
   test("every run's split is judged, by the plan, and fails the run without stopping its suite", () => {
     const report = loadWorkflow("ci.yml").jobs["browser-report"];
     const steps = report.steps ?? [];
-    const at = steps.findIndex((s) => s.run === 'node tools/ci/e2e-shard.mjs check "$PROBLEMS"');
-    const check = steps[at];
+    const checkAt = steps.findIndex((s) => s.run === 'node tools/ci/e2e-shard.mjs check "$PROBLEMS"');
+    const check = steps[checkAt];
 
     assert.ok(check, "browser-report no longer fails a run whose split was guessed, uneven or over the target");
     assert.equal(check.env?.PROBLEMS, "${{ needs.scope.outputs.split-problems }}");
@@ -169,12 +172,28 @@ describe("the split is stable and even", () => {
     assert.equal(report.if, "${{ !cancelled() && needs.browser.result != 'skipped' }}");
     assert.equal((report as Record<string, unknown>)["continue-on-error"], undefined);
     assert.match(ciYml, /split-problems: \$\{\{ steps\.plan\.outputs\.split-problems \}\}/);
-    assert.match(ciYml, /node tools\/ci\/e2e-shard\.mjs plan "\$\{layers\[0\]\}" "\$\{layers\[1\]\}"\n/);
+    assert.match(ciYml, /node tools\/ci\/e2e-shard\.mjs plan "\$\{layers\[0\]\}" "\$\{layers\[1\]\}" "\$changed"\n/);
+    assert.match(ciYml, /changed=\$\(\[ -n "\$BASE" \] && git diff --name-only "\$BASE" HEAD -- tests\/e2e \| paste -sd, - \|\| true\)/);
     const uploads = steps.flatMap((s, i) => ((s.with as { name?: string } | undefined)?.name === "e2e-timings" ? [i] : []));
-    const commits = steps.flatMap((s, i) => (s.if === "env.COMMIT_TIMINGS == 'true'" ? [i] : []));
-    assert.ok(uploads.length === 2 && commits.length >= 2, "the timings uploads or the weekly commit moved");
-    assert.ok(at > Math.max(...uploads), "a red split would stop this run's timings from reaching the next run");
-    assert.ok(at < Math.min(...commits), "the weekly commit can reset to a newer main before the check reads this run's split");
+    const commits = steps.flatMap((s, i) => (/env\.COMMIT_TIMINGS == 'true'/.test(s.if ?? "") ? [i] : []));
+    assert.ok(uploads.length === 2 && commits.length === 2, "the timings uploads or the weekly commit moved");
+    assert.ok(checkAt > Math.max(...uploads), "a red split would stop this run's timings from reaching the next run");
+    assert.ok(checkAt < Math.min(...commits), "the weekly commit can reset to a newer main before the check reads this run's split");
+    for (const i of commits) {
+      assert.equal(steps[i].if, "${{ !cancelled() && steps.regen.outcome == 'success' && env.COMMIT_TIMINGS == 'true' }}", "a red split would keep the prices that made it");
+    }
+    assert.equal(steps.find((s) => s.id === "regen")?.name, "Regenerate tests/e2e/timings.json");
+  });
+
+  test("the plan pages past other branches' artifacts to main's runs and this branch's latest", () => {
+    const run = loadWorkflow("ci.yml").jobs.scope.steps?.find((s) => s.id === "plan")?.run ?? "";
+
+    assert.match(run, /for page in \$\(seq 1 50\); do\n/);
+    assert.match(run, /actions\/artifacts\?name=e2e-timings&per_page=100&page=\$page"\); then\n\s+echo "::warning::/);
+    assert.match(run, /\[ "\$\(jq '\.artifacts \| length' <<< "\$got"\)" -lt 100 \] && break\n/);
+    assert.match(run, /ours='\[\.artifacts\[\] \| select\(\(\.expired \| not\) and \.workflow_run\.head_repository_id == \.workflow_run\.repository_id\)\]'/);
+    assert.match(run, /"\$ours \| map\(select\(\.workflow_run\.head_branch == \\"main\\"\)\) \| length" <<< "\$artifacts"\)" -ge "\$RUNS" \]/);
+    assert.match(run, /\[ "\$BRANCH" = main \] \|\| \[ "\$\(jq --arg b "\$BRANCH" "\$ours \| map\(select\(\.workflow_run\.head_branch == \\\$b\)\) \| length" <<< "\$artifacts"\)" -gt 0 \]/);
   });
 
   test("the target is the owner's five minutes, as rule 46 states it", () => {
@@ -187,12 +206,9 @@ describe("the split is stable and even", () => {
   });
 
   test("a suite past the target within the shards a run may have is a problem of the split", () => {
-    const fits = (seconds: number) => shardsNeeded(SUITE, at(seconds)) <= MAX_SHARDS;
-    const most = Array.from({ length: 400 }, (_, s) => s).filter(fits).at(-1) ?? 0;
-
-    assert.ok(most > 0 && !fits(400), "the fixture never crosses the target");
-    assert.deepEqual(splitProblems(SUITE, at(most), at(most)), []);
-    assert.match(splitProblems(SUITE, at(most + 1), at(most + 1)).join(), new RegExp(`over the ${MAX_SHARDS} allowed`));
+    assert.ok(MOST > 0 && !fits(400), "the fixture never crosses the target");
+    assert.deepEqual(splitProblems(SUITE, at(MOST), at(MOST)), []);
+    assert.match(splitProblems(SUITE, at(MOST + 1), at(MOST + 1)).join(), new RegExp(`over the ${MAX_SHARDS} allowed`));
   });
 
   test("a spec over a shard's fair share is a problem, named", () => {
@@ -228,7 +244,7 @@ describe("the plan prices each spec by its latest green run", () => {
   const even = Object.fromEntries(files.map((f) => [f, 100]));
 
   type Layer = Record<string, number> | Record<string, number>[];
-  const planned = (layers: Record<string, Layer>, missing: string[] = []) => {
+  const planned = (layers: Record<string, Layer>, missing: string[] = [], changed: string[] = []) => {
     const dir = mkdtempSync(path.join(tmpdir(), "e2e-plan-"));
     const write = (name: string, timings: Record<string, number>) => {
       writeFileSync(path.join(dir, name), JSON.stringify(timings));
@@ -238,7 +254,7 @@ describe("the plan prices each spec by its latest green run", () => {
       const paths = Object.entries(layers).map(([name, layer]) =>
         Array.isArray(layer) ? layer.map((timings, i) => write(`${name}${i}`, timings)) : write(name, layer)
       );
-      return plan([...paths, ...missing.map((m) => path.join(dir, m))], Math.min(2, paths.length + missing.length));
+      return plan([...paths, ...missing.map((m) => path.join(dir, m))], Math.min(2, paths.length + missing.length), changed);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -289,30 +305,54 @@ describe("the plan prices each spec by its latest green run", () => {
   test("specs main has measured are not held against a pull request the committed file is stale for", () => {
     const fresh = Array.from({ length: 11 }, (_, i) => `new${i}.spec.ts`);
     const suite = [...SUITE, ...fresh];
-    const { timings, stable } = planned({ committed: at(10), main: [at(10, suite)] });
+    const { timings, judged } = planned({ committed: at(10), main: [at(10, suite)] });
 
     assert.match(splitProblems(suite, at(10), at(10, suite)).join(), /11 of 79 specs were priced at the/);
-    assert.deepEqual(splitProblems(suite, timings, stable), []);
+    assert.deepEqual(splitProblems(suite, timings, judged), []);
   });
 
   test("a pull request bringing more unmeasured specs than the split absorbs is named, spec by spec", () => {
     const mine = Array.from({ length: 8 }, (_, i) => `mine${i}.spec.ts`);
     const { timings } = planned({ committed: at(10), main: [at(10)] });
-    const [problem] = splitProblems([...SUITE, ...mine], timings, at(10, [...SUITE, ...mine]));
+    const [problem] = splitProblems([...SUITE, ...mine], timings, timings);
 
     assert.match(problem ?? "", new RegExp(`8 of 76 specs .*: ${mine.join(", ").replaceAll(".", "\\.")}\\.`));
-    assert.deepEqual(splitProblems([...SUITE, ...mine.slice(1)], timings, at(10, [...SUITE, ...mine])), []);
+    assert.deepEqual(splitProblems([...SUITE, ...mine.slice(1)], timings, timings), []);
   });
 
   test("a branch run slower than main's does not red the fit or the evenness, only main's numbers do", () => {
-    const fits = (seconds: number) => shardsNeeded(SUITE, at(seconds)) <= MAX_SHARDS;
-    const most = Array.from({ length: 400 }, (_, s) => s).filter(fits).at(-1) ?? 0;
-    const slow = Object.fromEntries(SUITE.map((f, i) => [f, Math.round(most * (i % 2 ? 1.1 : 1.2))]));
-    const { timings, stable } = planned({ committed: at(most), main: [at(most)], branch: slow });
+    const slow = Object.fromEntries(SUITE.map((f, i) => [f, Math.round(MOST * (i % 2 ? 1.1 : 1.2))]));
+    const { timings, judged } = planned({ committed: at(MOST), main: [at(MOST)], branch: slow });
 
-    assert.ok(!fits(most + 1) && shardsNeeded(SUITE, timings) > MAX_SHARDS, "the branch run is not slow enough to miss the target");
-    assert.deepEqual(splitProblems(SUITE, timings, stable), []);
+    assert.ok(shardsNeeded(SUITE, timings) > MAX_SHARDS, "the branch run is not slow enough to miss the target");
+    assert.deepEqual(splitProblems(SUITE, timings, judged), []);
     assert.match(splitProblems(SUITE, timings, timings).join(), /over the \d+ allowed/);
+  });
+
+  test("a spec the branch adds is judged at what the branch measured, not at the guess", () => {
+    const { timings, judged } = planned({ committed: at(10), main: [at(10)], branch: { ...at(10), "new.spec.ts": 200 } });
+
+    assert.match(splitProblems([...SUITE, "new.spec.ts"], timings, judged).join("\n"), /split them: new\.spec\.ts 200s/);
+  });
+
+  test("a spec the branch changed is judged at what the branch measured, one it left alone at main's", () => {
+    const branch = { ...at(12), "s0.spec.ts": 200 };
+    const { judged } = planned({ committed: at(10), main: [at(10)], branch }, [], ["s0.spec.ts"]);
+
+    assert.equal(judged["s0.spec.ts"], 200);
+    assert.equal(judged["s1.spec.ts"], 10);
+    assert.match(splitProblems(SUITE, judged, judged).join("\n"), /split them: s0\.spec\.ts 200s/);
+  });
+
+  test("evenness is measured over the split the shards ran, at the judged prices", () => {
+    const ran = { ...at(10), "s0.spec.ts": 1000 };
+
+    assert.deepEqual(splitProblems(SUITE, ran, at(10)), ["shards range 10s to 50s, more than a third again of the lightest"]);
+    assert.deepEqual(splitProblems(SUITE, at(10), at(10)), []);
+  });
+
+  test("fewer specs than shards leave shards empty, which is not called uneven or over a share", () => {
+    assert.deepEqual(splitProblems(SUITE.slice(0, MAX_SHARDS - 1), at(10), at(10)), []);
   });
 
   test("a split of no spec at all is a problem, not a pass", () => {
@@ -335,15 +375,47 @@ describe("the plan prices each spec by its latest green run", () => {
     assert.notEqual(run("{}"), 0);
   });
 
-  test("the plan reports the problems of the split it hands the shards", () => {
-    const out = execFileSync(process.execPath, [path.join(repoRoot, "tools", "ci", "e2e-shard.mjs"), "plan", "", ""], {
-      encoding: "utf8",
-      env: { ...process.env, GITHUB_OUTPUT: "" },
-    });
-    const problems = /^split-problems=(.*)$/m.exec(out)?.[1];
-    const { timings, stable } = plan([path.join(E2E_DIR, "timings.json"), [], []], 2);
+  const shardCli = (...args: string[]) => {
+    try {
+      return { status: 0, out: execFileSync(process.execPath, [path.join(repoRoot, "tools", "ci", "e2e-shard.mjs"), ...args], { encoding: "utf8", stdio: "pipe", env: { ...process.env, GITHUB_OUTPUT: "" } }) };
+    } catch (err) {
+      return { status: (err as { status: number }).status, out: String((err as { stdout: unknown }).stdout) };
+    }
+  };
 
-    assert.equal(problems, JSON.stringify(splitProblems(specFilesIn(E2E_DIR), timings, stable)));
+  test("the plan reports the problems of the split it hands the shards", () => {
+    const committed = path.join(E2E_DIR, "timings.json");
+    const [spec] = specFilesIn(E2E_DIR);
+    const problems = /^split-problems=(.*)$/m.exec(shardCli("plan", committed, "", `tests/e2e/${spec}`).out)?.[1];
+    const { timings, judged } = plan([committed, [committed], []], 2, [spec]);
+
+    assert.equal(problems, JSON.stringify(splitProblems(specFilesIn(E2E_DIR), timings, judged)));
+  });
+
+  test("a plan with no main run to read says so, rather than splitting on the committed file unremarked", () => {
+    const problems = JSON.parse(/^split-problems=(.*)$/m.exec(shardCli("plan", "", "").out)?.[1] ?? "null");
+
+    assert.match(problems.join(), /no run of main's e2e-timings could be read/);
+  });
+
+  test("the weekly commit's judge reds a timings file that splits badly, and needs one", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "e2e-judge-"));
+    try {
+      const write = (timings: Record<string, number>) => {
+        writeFileSync(path.join(dir, "t.json"), JSON.stringify(timings));
+        return path.join(dir, "t.json");
+      };
+      // A spec merged since the weekly commit is priced at a second, so a stale file cannot red this.
+      const measured = { ...at(1, specFilesIn(E2E_DIR)), ...readTimings() };
+      assert.equal(shardCli("judge", write(measured)).status, 0);
+      const lopsided = shardCli("judge", write({ ...measured, [specFilesIn(E2E_DIR)[0]]: 500 }));
+      assert.equal(lopsided.status, 1);
+      assert.match(lopsided.out, /^::error::over the \d+s each of \d+ shards gets; split them: /m);
+      assert.equal(shardCli("judge", write({})).status, 1);
+      assert.notEqual(shardCli("judge").status, 0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("the fit check grows with the suite", () => {
