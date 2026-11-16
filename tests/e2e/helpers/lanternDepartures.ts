@@ -1,7 +1,7 @@
 // Where the Lantern mockup (tests/e2e/fixtures/lantern-table/index.html) is made to do what the app
 // does instead of what it drew, so a parity run compares like with like (plan 3 L5).
 import { expect, type Page } from "@playwright/test";
-import { DESIGN, GLIDE, LAMP_LIGHT, LIGHT_ABOVE, lampPools, type LampTarget, type Pool } from "../../../components/table/lampRig";
+import { DESIGN, LAMP_LIGHT, LIGHT_ABOVE, lampPools, type LampTarget, type Pool } from "../../../components/table/lampRig";
 import { CLOTH_DEPARTURES } from "../../helpers/clothDepartures";
 import { phoneTable } from "../../helpers/phoneTable";
 
@@ -22,7 +22,7 @@ const seats = Object.entries(MOCKUP_SEAT).map(([dir, k]) => [k, MOCKUP_POOLS[dir
 
 /**
  * Run in the mockup before `start`: its lamp aims the app's way, rests where the app's does, its
- * reach glides with the pool, and its cloth draws the app's two light lines at the app's light and the app's weave visibility.
+ * reach is the app's at each seat, and its cloth draws the app's two light lines at the app's light and the app's weave visibility.
  */
 export const DEPART_SCRIPT = `(() => {
   const seats = ${JSON.stringify(seats)};
@@ -41,15 +41,10 @@ export const DEPART_SCRIPT = `(() => {
     lamp.lx = lamp.x;
     lamp.ly = lamp.y - ${LIGHT_ABOVE};
   };
-  const aim = lampTo;
-  lampTo = (k) => {
-    aim(k);
+  const aim = lampAim;
+  lampAim = (k) => {
     lamp.tr = reach[k];
-  };
-  const glide = lampStep;
-  lampStep = (dt) => {
-    glide(dt);
-    lamp.r += (lamp.tr - lamp.r) * (1 - Math.exp(-dt * ${GLIDE}));
+    aim(k);
   };
   lamp.r = lamp.tr = reach.you;
 

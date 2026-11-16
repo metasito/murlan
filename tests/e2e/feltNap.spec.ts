@@ -106,7 +106,7 @@ async function mockupCloth(browser: Browser, deviceScaleFactor: number, side: "l
     T.go("rest", ${MOCKUP_REST_MS});
     lamp.m.length = 0;
     lampTo("${MOCKUP_SEAT[side]}");
-    Object.assign(lamp, { x: lamp.tx, y: lamp.ty, r: lamp.tr });
+    Object.assign(lamp, { x: lamp.tx, y: lamp.ty, r: lamp.tr, orb: null });
     step(0, true);
     const s = Math.round(${PATCH.size} * V.K);
     const { data } = fxc.getImageData(Math.round(${PATCH.x} * W * V.K), Math.round(${PATCH.y} * H * V.K), s, s);

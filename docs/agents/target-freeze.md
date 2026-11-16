@@ -97,7 +97,7 @@ cannot be seen by any static scan, so the guard is not complete. `lib/e2eTrace.t
 Some targets take their values from the app, so a code change moves them without touching the
 list:
 
-- `tests/e2e/helpers/lanternDepartures.ts` injects `LIGHT_ABOVE`, `GLIDE`, `LAMP_LIGHT` and
+- `tests/e2e/helpers/lanternDepartures.ts` injects `LIGHT_ABOVE`, `LAMP_LIGHT` and
   `lampPools` from `components/table/lampRig.ts`.
 - `tests/e2e/helpers/handParity.ts` asserts `HAND_NEAR_RATIO` from `components/cardFaceModel.ts`.
 
