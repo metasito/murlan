@@ -9,7 +9,21 @@ jest.mock('@/components/table/dealSlots', () => {
   return { ...actual, __esModule: true, dealSlots: jest.fn(actual.dealSlots) };
 });
 
+const mockFanRenders: Record<string, number> = {};
+jest.mock('@/components/table/useCardRects', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/useCardRects')>('@/components/table/useCardRects');
+  return {
+    ...actual,
+    __esModule: true,
+    useStaticCardRects: (...args: Parameters<typeof actual.useStaticCardRects>) => {
+      mockFanRenders[args[1]] = (mockFanRenders[args[1]] ?? 0) + 1;
+      return actual.useStaticCardRects(...args);
+    },
+  };
+});
+
 import { dealSlots } from '@/components/table/dealSlots';
+import { FAN_DRAWN_CARDS, type OpponentSide } from '@/components/seatLayout';
 import { busiest } from './helpers/dealSweep';
 import { along, freshDeal, frame, handPoses, table, type Pose } from './helpers/dealTable';
 import { bootFeedback, startsOf } from './helpers/feedback';
@@ -61,6 +75,24 @@ describe("an opponent's hand arrives with the deal", () => {
 
     expect(sawCount).toBe(true);
     for (const id of SEATS) expect(counted(id)).toBe(13);
+    await r.unmount();
+  });
+
+  it('renders no fan for a card landing past what the fan draws', async () => {
+    const sides: [string, OpponentSide][] = [['top-seat', 'top'], ['side-seat-left', 'left'], ['side-seat-right', 'right']];
+    const renders = (side: OpponentSide) => mockFanRenders[`fan:${side}:`] ?? 0;
+    const atCap: Partial<Record<OpponentSide, number>> = {};
+    const r = await render(table());
+    let frames = 0;
+    while (screen.queryAllByTestId('dealt-back').length > 0 && frames++ < 2000) {
+      await frame();
+      for (const [id, side] of sides) if (atCap[side] === undefined && counted(id) >= FAN_DRAWN_CARDS[side]) atCap[side] = renders(side);
+    }
+
+    for (const [id, side] of sides) {
+      expect(counted(id)).toBe(13);
+      expect(renders(side)).toBe(atCap[side]);
+    }
     await r.unmount();
   });
 
