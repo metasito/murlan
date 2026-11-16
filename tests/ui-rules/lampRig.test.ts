@@ -59,6 +59,7 @@ function mockup() {
       fixtureLine("const POOL="),
       fixtureLine("function resetLamp"),
       fixtureLine("function lampTo"),
+      fixtureBlock("function lampAim", "else lamp.w=0;}"),
       fixtureBlock("function lampStep", "if(m.x>870)m.x=64;}}"),
     ],
     { lamp: { m: [] }, simT: 0, H: 402, R: () => 0 }
@@ -87,7 +88,14 @@ const SCRIPT: Event[] = [
 ];
 
 describe("the lamp rig", () => {
-  test("steps as the mockup's lampStep does, through a glide, a flare and kick, a level change and a freeze", () => {
+  // Expected to fail until the rig meets the mockup's lamp B, which the owner chose (https://claude.ai/artifact/CLFqMMeizAGnSf22gW8sfM); docs/agents/target-freeze.md, "Landing a target change".
+  test("parts from the mockup's lampStep until it waits at a turn and goes round the table", () => {
+    assert.throws(followsMockup, assert.AssertionError);
+  });
+});
+
+function followsMockup() {
+  {
     const m = mockup();
     const app = restingLamp(mockupPool("bottom"));
     for (let frame = 0; frame < 480; frame++) {
@@ -109,8 +117,10 @@ describe("the lamp rig", () => {
         assert.ok(Math.abs(a - b) < 1e-9, `frame ${frame}: ${a} against the mockup's ${b}`);
       }
     }
-  });
+  }
+}
 
+describe("the lamp rig", () => {
   test("his page reproduces: your light 7 points inside the hand, at [437, 380] and reach 1", () => {
     const pools = lampPools(phoneTable(874, 402, INSETS["62/21/62"]).anchors, 874, 402);
     const [x, y, reach] = pools.bottom;

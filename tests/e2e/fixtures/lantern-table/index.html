@@ -436,11 +436,15 @@ function stepP(c,dt){
     else if(p.sh==='soft'){const g=c.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);g.addColorStop(0,p.col);g.addColorStop(1,'rgba(0,0,0,0)');c.fillStyle=g;c.fillRect(p.x-p.size,p.y-p.size,p.size*2,p.size*2);}
     else{c.beginPath();c.arc(p.x,p.y,p.size,0,TAU);c.fill();}}
   if(c){c.globalAlpha=1;c.shadowBlur=0;}}
-const POOL={you:[437,292],luan:[672,196],besnik:[437,116],gent:[202,196]};
+const POOL={you:[437,292],luan:[672,196],besnik:[437,116],gent:[202,196]},DWELL=.33,OM=5.5,SPIN=3.4;
 const lamp={m:Array.from({length:40},()=>({x:R(70,860),y:R(10,392),r:R(.4,1.7),vx:R(-5,5),vy:R(-4,2),ph:R(0,TAU)}))};
-function resetLamp(){Object.assign(lamp,{tx:437,ty:292,x:437,y:292,ph:0,flare:0,kick:0,lvl:1,lvlT:1,lvlRate:3,freeze:0,mothAt:simT+R(6,10),mothT:-1,L:1});lamp.lx=lamp.x;lamp.ly=lamp.y-40;}
-function lampTo(k){[lamp.tx,lamp.ty]=POOL[k];}
-function lampStep(dt){const e=1-Math.exp(-dt*2.2);lamp.x+=(lamp.tx-lamp.x)*e;lamp.y+=(lamp.ty-lamp.y)*e;
+function resetLamp(){Object.assign(lamp,{tx:437,ty:292,x:437,y:292,r:1,tr:1,next:null,wait:0,orb:null,th:0,w:0,ph:0,flare:0,kick:0,lvl:1,lvlT:1,lvlRate:3,freeze:0,mothAt:simT+R(6,10),mothT:-1,L:1});lamp.lx=lamp.x;lamp.ly=lamp.y-40;}
+function lampTo(k,waits){const here=lamp.tx===POOL[k][0]&&lamp.ty===POOL[k][1];if(waits&&!here){lamp.next=k;lamp.wait=DWELL;return;}lamp.next=null;lamp.wait=0;if(!here)lampAim(k);}
+function lampAim(k){[lamp.tx,lamp.ty]=POOL[k];const c=[POOL.besnik[0],H/2,(POOL.luan[0]-POOL.gent[0])/2,(POOL.you[1]-POOL.besnik[1])/2],u=(lamp.x-c[0])/c[2],v=(lamp.y-c[1])/c[3],u1=(lamp.tx-c[0])/c[2],v1=(lamp.ty-c[1])/c[3],q0=Math.hypot(u,v),q1=Math.hypot(u1,v1),a0=Math.atan2(v,u),d=Math.atan2(v1,u1)-a0,a1=a0+Math.atan2(Math.sin(d),Math.cos(d));
+  lamp.orb=q0<.3||q1<.3||Math.abs(a1-a0)<1e-3?null:{c,a0,a1,q0,q1,r0:lamp.r};if(lamp.orb)lamp.th=a0;else lamp.w=0;}
+function lampStep(dt){if(lamp.next&&(lamp.wait-=dt)<=0){lampAim(lamp.next);lamp.next=null;lamp.wait=0;}const o=lamp.orb;
+  if(o){lamp.w=Math.max(-SPIN,Math.min(SPIN,lamp.w+(OM*OM*(o.a1-lamp.th)-2*OM*lamp.w)*dt));lamp.th+=lamp.w*dt;const k=clamp((lamp.th-o.a0)/(o.a1-o.a0)),q=o.q0+(o.q1-o.q0)*k;lamp.x=o.c[0]+o.c[2]*q*Math.cos(lamp.th);lamp.y=o.c[1]+o.c[3]*q*Math.sin(lamp.th);lamp.r=o.r0+(lamp.tr-o.r0)*k;}
+  else{const e=1-Math.exp(-dt*2.2);lamp.x+=(lamp.tx-lamp.x)*e;lamp.y+=(lamp.ty-lamp.y)*e;lamp.r+=(lamp.tr-lamp.r)*e;}
   lamp.lvl+=(lamp.lvlT-lamp.lvl)*(1-Math.exp(-dt*lamp.lvlRate));
   const run=1-lamp.freeze,w=.84*(1+.14*Math.sin(simT*.11+1.3)+.06*Math.sin(simT*.37));lamp.ph+=dt*w*run;
   const sw=Math.sin(lamp.ph)*(20+80*lamp.kick);lamp.kick*=Math.exp(-dt*1.1);
@@ -504,7 +508,7 @@ function renderHud(){const cb=S.cur?`${NAMES[S.cur.by]} <b>${S.cur.label}</b>`:M
   const mine=S.turn==='you';$('#passa').classList.toggle('lit',mine&&!!S.cur);$('#gioca').classList.toggle('lit',mine);
   const cc=$('#cchip');cc.hidden=!S.cur;if(S.cur)cc.textContent=S.cur.label;renderTurn();}
 function render(){layHand();renderSeats();renderHud();}
-function setTurn(k,silent){const was=S.turn;S.turn=k;S.used=0;S.urgent=false;S.passed=S.passed.filter(x=>x!==k);if(k)lampTo(k);if(was==='you'||k==='you')layHand();renderSeats();renderHud();if(k==='you'&&!silent)sfx('turn');}
+function setTurn(k,silent){const was=S.turn;S.turn=k;S.used=0;S.urgent=false;S.passed=S.passed.filter(x=>x!==k);if(k)lampTo(k,true);if(was==='you'||k==='you')layHand();renderSeats();renderHud();if(k==='you'&&!silent)sfx('turn');}
 function handoff(a,b){ember(a,b);setTurn(b);}
 function slots(n){const g=n<=2?34:n<=4?28:24;return Array.from({length:n},(_,i)=>({x:PILE[0]+(i-(n-1)/2)*g,y:PILE[1],rot:(i-(n-1)/2)*1.2}));}
 const CW=65.97,CH_=92.77;

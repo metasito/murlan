@@ -255,9 +255,9 @@ const REST_AIR_TO = REST_AIR_FROM + Math.ceil(15_000 / STEP_MS) * STEP_MS;
 
 /** The mockup's three landings in `trick`, as its sampled frames carry them. */
 const MOCKUP_LANDINGS = [1584, 3040, 5792];
-const TRICK_CHECKPOINTS = [1040, 2496, 4000, 5296, 6704];
-/** Not 2496, 4000 or 6704: about a second after a landing, mid-way through its dust's 0.5–1.1 s lives, each side's count is its own draw (`trick-landings` holds the same throws where every speck is alive, then gone). */
-const TRICK_COUNTS_AT = [1040, 5296];
+const TRICK_CHECKPOINTS = [1040, 3456, 4752, 6144];
+/** Not 3456 or 6144: about a second after a landing, mid-way through its dust's 0.5–1.1 s lives, each side's count is its own draw (`trick-landings` holds the same throws where every speck is alive, then gone). */
+const TRICK_COUNTS_AT = [1040, 4752];
 const LANDING_CHECKPOINTS = [1040, ...MOCKUP_LANDINGS.flatMap((t) => [t + 160, t + 1200])];
 /** For a moment whose strip no assertion reads, only the side-by-side page: a JPEG a step was most of its time. */
 const glance = (windowMs: number, checkpoints: number[]) => [...Array.from({ length: Math.floor(windowMs / 240) + 1 }, (_, i) => i * 240), ...checkpoints];
@@ -380,7 +380,7 @@ const MOMENTS: Moment[] = [
   {
     key: "trick",
     windowMs: 6800,
-    // Each 750 ms after a hand-off, where the lamp's glide covers under 2 pt a frame.
+    // Each 200 ms after a hand-off, inside the lamp's dwell, where its last move covers under 2 pt a frame.
     checkpoints: TRICK_CHECKPOINTS,
     countsAt: TRICK_COUNTS_AT,
     stripAt: glance(6800, TRICK_CHECKPOINTS),
