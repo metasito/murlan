@@ -100,9 +100,11 @@ interface Orbit {
   r0: number;
 }
 
+/** `seat` names the place `pool` lays out, so the same seat laid out again is told from a new turn; null names none. */
 interface Aim {
   pool: Pool;
   oval: Oval | null;
+  seat: LampTarget | null;
 }
 
 /** Who may hold the lamp's level down: the lost round, the deal's breath, the viewer's lost link. */
@@ -121,6 +123,8 @@ export interface Lamp {
   /** The aim waiting out `wait` seconds of `DWELL` before it becomes the target; null for none. */
   next: Aim | null;
   wait: number;
+  /** The seat the target is, as `Aim.seat`. */
+  seat: LampTarget | null;
   /** The move round the oval under way, null for a straight glide; `th` the lamp's angle on it, `w` its speed. */
   orbit: Orbit | null;
   th: number;
@@ -156,6 +160,7 @@ export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
     tr: r,
     next: null,
     wait: 0,
+    seat: null,
     orbit: null,
     th: 0,
     w: 0,
@@ -207,7 +212,6 @@ const clamp01 = (v: number) => {
   return Math.min(1, Math.max(0, v));
 };
 
-/** `drawnAt` is the seconds into `dt` the kick and flare are drawn at: a frame draws what it starts with, as the mockup's `lampStep`; a span carried at once, what it ends with. */
 function orbitTo(s: Lamp, oval: Oval): Orbit | null {
   "worklet";
   const [cx, cy, ax, ay] = oval;
@@ -226,9 +230,10 @@ function orbitTo(s: Lamp, oval: Oval): Orbit | null {
   return { oval, a0, a1, q0, q1, r0: s.r };
 }
 
-function aimAt(s: Lamp, { pool, oval }: Aim, reduced: boolean): void {
+function aimAt(s: Lamp, { pool, oval, seat }: Aim, reduced: boolean): void {
   "worklet";
   [s.tx, s.ty, s.tr] = pool;
+  s.seat = seat;
   s.orbit = reduced || oval === null ? null : orbitTo(s, oval);
   if (s.orbit === null) s.w = 0;
   if (reduced) {
@@ -252,6 +257,7 @@ function goRound(s: Lamp, o: Orbit, dt: number): void {
   s.r = o.r0 + (s.tr - o.r0) * k;
 }
 
+/** `drawnAt` is the seconds into `dt` the kick and flare are drawn at: a frame draws what it starts with, as the mockup's `lampStep`; a span carried at once, what it ends with. */
 function advance(s: Lamp, dt: number, swing: number, reduced: boolean, drawnAt: number): void {
   "worklet";
   s.t += dt;
@@ -404,18 +410,25 @@ export function lampSettled(s: Lamp, reduced: boolean): boolean {
 
 /** A moment's hold on the lamp: each call is what the mockup's chapters write into `lamp`. */
 export const lampControls = {
-  /** `oval` null glides straight; `waits`, a turn's aim, goes only once it has stood `DWELL` seconds, and an aim back at the target drops one waiting. */
-  setTarget(s: Lamp, pool: Pool, reduced: boolean, oval: Oval | null = null, waits = false): void {
+  /** `oval` null glides straight. `waits`, a turn's aim, goes once its seat has held the turn `DWELL` seconds; its seat laid out again is no new turn, and an aim back at the target drops one waiting. */
+  setTarget(s: Lamp, pool: Pool, reduced: boolean, { oval = null, waits = false, seat = null }: { oval?: Oval | null; waits?: boolean; seat?: LampTarget | null } = {}): void {
     "worklet";
+    const aim = { pool, oval, seat };
     const here = pool[0] === s.tx && pool[1] === s.ty && pool[2] === s.tr;
-    if (waits && !here) {
-      s.next = { pool, oval };
+    const named = seat !== null;
+    if (waits && named && s.next?.seat === seat) {
+      s.next = aim;
+      return;
+    }
+    if (waits && !here && !(named && seat === s.seat)) {
+      s.next = aim;
       s.wait = DWELL;
       return;
     }
     s.next = null;
     s.wait = 0;
-    if (!here || reduced) aimAt(s, { pool, oval }, reduced);
+    s.seat = seat;
+    if (!here || reduced) aimAt(s, aim, reduced);
   },
   /** `level` null releases `owner`'s hold; `rate` is the glide's only when this write moves the lamp's target. */
   hold(s: Lamp, owner: LevelOwner, level: number | null, rate: number): void {

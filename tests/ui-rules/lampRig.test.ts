@@ -85,7 +85,7 @@ const MOCKUP_OVAL = lampOval({ bottom: mockupPool("bottom"), right: mockupPool("
 
 type Event = [frame: number, mock: (m: MockupLamp, to: (s: string, waits: boolean) => void) => void, app: (s: Lamp) => void];
 
-const aim = (dir: FlyDirection, waits: boolean) => (s: Lamp) => lampControls.setTarget(s, mockupPool(dir), false, MOCKUP_OVAL, waits);
+const aim = (dir: FlyDirection, waits: boolean) => (s: Lamp) => lampControls.setTarget(s, mockupPool(dir), false, { oval: MOCKUP_OVAL, waits });
 
 const SCRIPT: Event[] = [
   [30, (_, to) => to("luan", true), aim("right", true)],
@@ -390,20 +390,33 @@ describe("a lamp that waits at a turn and goes round", () => {
 
   test("goes to a turn's seat only once it has held the turn DWELL seconds", () => {
     const s = restingLamp(pools.bottom);
-    lampControls.setTarget(s, pools.right, false, oval, true);
+    lampControls.setTarget(s, pools.right, false, { oval, waits: true });
     steps(s, DWELL_FRAMES - 1);
     assert.deepEqual([s.x, s.y], [pools.bottom[0], pools.bottom[1]], "the lamp moved before the seat had held the turn");
     steps(s, 2);
     assert.ok(s.x > pools.bottom[0], "the lamp did not go once the seat had held the turn");
   });
 
+  test("its seat laid out again is no new turn: aimed at once, or waiting on the clock it had", () => {
+    const moved: Pool = [pools.right[0] + 6, pools.right[1], pools.right[2]];
+    const s = restingLamp(pools.right);
+    lampControls.setTarget(s, pools.right, false, { oval, waits: true, seat: "right" });
+    lampControls.setTarget(s, moved, false, { oval, waits: true, seat: "right" });
+    assert.deepEqual([s.tx, s.next], [moved[0], null], "a resize of the seat on move waited");
+    lampControls.setTarget(s, pools.top, false, { oval, waits: true, seat: "top" });
+    steps(s, DWELL_FRAMES - 4);
+    lampControls.setTarget(s, [pools.top[0], pools.top[1] + 6, pools.top[2]], false, { oval, waits: true, seat: "top" });
+    steps(s, 5);
+    assert.equal(s.ty, pools.top[1] + 6, "a resize while the turn waited restarted its wait");
+  });
+
   test("passes quicker than DWELL leave the lamp where it is", () => {
     const s = restingLamp(pools.bottom);
     for (const dir of ["right", "top", "left"] as const) {
-      lampControls.setTarget(s, pools[dir], false, oval, true);
+      lampControls.setTarget(s, pools[dir], false, { oval, waits: true });
       steps(s, DWELL_FRAMES - 2);
     }
-    lampControls.setTarget(s, pools.bottom, false, oval, true);
+    lampControls.setTarget(s, pools.bottom, false, { oval, waits: true });
     steps(s, 120);
     assert.deepEqual([s.x, s.y, s.next], [pools.bottom[0], pools.bottom[1], null]);
   });
@@ -412,13 +425,13 @@ describe("a lamp that waits at a turn and goes round", () => {
     for (const reduced of [true, false]) {
       const s = restingLamp(pools.bottom);
       assert.ok(isRested(s) && (reduced ? lampSettled(s, true) : endsCarry(s, 1, false)), "the resting lamp is not at rest");
-      lampControls.setTarget(s, pools.right, reduced, oval, true);
+      lampControls.setTarget(s, pools.right, reduced, { oval, waits: true });
       assert.ok(!lampSettled(s, reduced), `reduced ${reduced}: a waiting aim counted settled`);
       assert.ok(!isRested(s), `reduced ${reduced}: a waiting aim counted rested`);
       assert.ok(!endsCarry(s, 1, reduced), `reduced ${reduced}: the ends carried a waiting aim`);
     }
     const s = restingLamp(pools.bottom);
-    lampControls.setTarget(s, pools.right, true, oval, true);
+    lampControls.setTarget(s, pools.right, true, { oval, waits: true });
     let n = 0;
     for (; !lampSettled(s, true) && n < 600; n++) stepLamp(s, DT, true);
     assert.equal(n, DWELL_FRAMES, "reduced motion: frames to land");
@@ -427,7 +440,7 @@ describe("a lamp that waits at a turn and goes round", () => {
 
   test("goes round the oval between seats, its reach in step with the angle, not across the felt", () => {
     const s = restingLamp(pools.bottom);
-    lampControls.setTarget(s, [pools.right[0], pools.right[1], 1.4], false, oval, false);
+    lampControls.setTarget(s, [pools.right[0], pools.right[1], 1.4], false, { oval });
     const floor = Math.min(out(s), Math.hypot((pools.right[0] - oval[0]) / oval[2], (pools.right[1] - oval[1]) / oval[3]));
     for (let i = 0; i < 180; i++) {
       stepLamp(s, DT, false);
@@ -439,7 +452,7 @@ describe("a lamp that waits at a turn and goes round", () => {
 
   test("an aim to or from the centre glides straight", () => {
     const s = restingLamp(pools.centre);
-    lampControls.setTarget(s, pools.right, false, oval, false);
+    lampControls.setTarget(s, pools.right, false, { oval });
     const [x0, y0] = pools.centre;
     for (let i = 0; i < 60; i++) {
       stepLamp(s, DT, false);
@@ -450,7 +463,7 @@ describe("a lamp that waits at a turn and goes round", () => {
 
   test("half way round is within 5% of the way inside LAMP_SETTLE_MS's three glide constants", () => {
     const s = restingLamp(pools.bottom);
-    lampControls.setTarget(s, pools.top, false, oval, false);
+    lampControls.setTarget(s, pools.top, false, { oval });
     const from = Math.hypot(pools.top[0] - s.x, pools.top[1] - s.y);
     steps(s, Math.floor((3 / GLIDE) / DT));
     assert.ok(Math.hypot(pools.top[0] - s.x, pools.top[1] - s.y) < 0.05 * from, "the orbit outlasts LAMP_SETTLE_MS");
@@ -459,7 +472,7 @@ describe("a lamp that waits at a turn and goes round", () => {
   test("a span carried at once lands where frames would", () => {
     const framed = restingLamp(pools.bottom);
     const carried = restingLamp(pools.bottom);
-    for (const s of [framed, carried]) lampControls.setTarget(s, pools.left, false, oval, false);
+    for (const s of [framed, carried]) lampControls.setTarget(s, pools.left, false, { oval });
     steps(framed, 600);
     resumeLamp(carried, 10, false);
     assert.ok(Math.hypot(carried.x - framed.x, carried.y - framed.y) < 0.25, `carried ${carried.x}, ${carried.y}; framed ${framed.x}, ${framed.y}`);

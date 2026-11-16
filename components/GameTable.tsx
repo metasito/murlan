@@ -709,9 +709,8 @@ export function GameTable({
   // attention mechanism, pointed somewhere else — not a second device.
   const { anchors } = layout;
   const lampPlaces = lampPools(anchors, W, H);
-  const lampAim = lampPlaces[
-    lampToWinner ? winnerDir : holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
-  ];
+  const lampSeat = lampToWinner ? winnerDir : holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length);
+  const lampAim = lampPlaces[lampSeat];
   const emberFrom = useRef(shownTurnIndex);
   const emberRuns = !holdingForStart && !shownExchange && !gameState.roundOver && gameState.openingCard === null;
   useEffect(() => {
@@ -727,6 +726,7 @@ export function GameTable({
     pool: lampAim,
     oval: lampOval(lampPlaces),
     waits: !lampToWinner && !holdingForStart,
+    seat: lampSeat,
     deal: deal.hand,
     width: W,
     height: H,

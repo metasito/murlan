@@ -6,7 +6,7 @@ import { useTraceSource } from "@/lib/e2eTrace";
 import { useDuring } from "@/lib/motion";
 import { Platform } from "react-native";
 import { flareKindFor } from "@/components/impact";
-import { createLampHold, designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, steppedLamp, type Lamp, type LampHold, type LampNow, type LevelOwner, type Oval, type Pool } from "./lampRig";
+import { createLampHold, designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, steppedLamp, type Lamp, type LampHold, type LampNow, type LampTarget, type LevelOwner, type Oval, type Pool } from "./lampRig";
 import { createGlossTracks, type GlossTracks } from "./glossTrackStore";
 import { endsCarry, isRested, restLight } from "./restEnds";
 import { glossLightOf, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "./cardGloss";
@@ -68,6 +68,7 @@ export function useLampRig({
   pool,
   oval = null,
   waits = false,
+  seat = null,
   deal,
   width,
   height,
@@ -79,6 +80,8 @@ export function useLampRig({
   oval?: Oval | null;
   /** `pool` is a turn's seat: the lamp goes once the seat has held the turn (`lampControls.setTarget`). */
   waits?: boolean;
+  /** Which place `pool` is, so a resize of the same seat is no new turn. */
+  seat?: LampTarget | null;
   /** Held at `RoundMoment.lostLevel` while true, back to 1 after. */
   dim?: boolean;
   /** A deal under way, `offsetMs` its onset on its clock: the lamp comes up a lead after it. */
@@ -149,9 +152,9 @@ export function useLampRig({
     const round: Oval | null = ox === undefined ? null : [ox, oy!, ax!, ay!];
     control((s) => {
       "worklet";
-      lampControls.setTarget(s, [px, py, reach], reduced.value, round, waits);
+      lampControls.setTarget(s, [px, py, reach], reduced.value, { oval: round, waits, seat });
     });
-  }, [px, py, reach, ox, oy, ax, ay, waits, reduced, control]);
+  }, [px, py, reach, ox, oy, ax, ay, waits, seat, reduced, control]);
 
   useEffect(() => {
     control((s) => {
