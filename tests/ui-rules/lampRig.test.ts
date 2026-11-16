@@ -88,7 +88,7 @@ const SCRIPT: Event[] = [
 ];
 
 describe("the lamp rig", () => {
-  // Expected to fail until the rig meets the mockup's lamp B, which the owner chose (https://claude.ai/artifact/CLFqMMeizAGnSf22gW8sfM); docs/agents/target-freeze.md, "Landing a target change".
+  // Expected to fail until the rig meets the mockup's lamp B, which the owner chose (https://claude.ai/artifact/CLFqMMeizAGnSf22gW8sfM); the target lands first (docs/agents/target-freeze.md).
   test("parts from the mockup's lampStep until it waits at a turn and goes round the table", () => {
     assert.throws(followsMockup, assert.AssertionError);
   });
