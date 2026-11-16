@@ -420,7 +420,7 @@ describe("a lamp that waits at a turn and goes round", () => {
     const s = restingLamp(pools.bottom);
     lampControls.setTarget(s, pools.right, true, oval, true);
     let n = 0;
-    while (!lampSettled(s, true) && n < 600) (stepLamp(s, DT, true), n++);
+    for (; !lampSettled(s, true) && n < 600; n++) stepLamp(s, DT, true);
     assert.equal(n, DWELL_FRAMES, "reduced motion: frames to land");
     assert.deepEqual([s.x, s.y], [pools.right[0], pools.right[1]]);
   });

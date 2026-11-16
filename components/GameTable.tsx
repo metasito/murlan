@@ -93,7 +93,7 @@ import { useLampRig } from "@/components/table/useLampRig";
 import { useLinkHold } from "@/components/table/useLinkHold";
 import type { OwnLink } from "@/lib/ownLink";
 import { CardTableProvider, useCardTableValue } from "@/components/table/useCardRects";
-import { lampPools } from "@/components/table/lampRig";
+import { lampOval, lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useRoundEnding } from "@/components/table/useRoundEnding";
 import { roundVoteShown } from "@/lib/timeline/roundEnding";
@@ -708,7 +708,8 @@ export function GameTable({
   // off the seat and onto the middle, where the words are. The table's existing
   // attention mechanism, pointed somewhere else — not a second device.
   const { anchors } = layout;
-  const lampAim = lampPools(anchors, W, H)[
+  const lampPlaces = lampPools(anchors, W, H);
+  const lampAim = lampPlaces[
     lampToWinner ? winnerDir : holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
   ];
   const emberFrom = useRef(shownTurnIndex);
@@ -724,6 +725,8 @@ export function GameTable({
   }, [shownTurnIndex, emberRuns, viewerSeat, players.length]);
   const rig = useLampRig({
     pool: lampAim,
+    oval: lampOval(lampPlaces),
+    waits: !lampToWinner && !holdingForStart,
     deal: deal.hand,
     width: W,
     height: H,

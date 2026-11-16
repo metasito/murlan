@@ -6,7 +6,7 @@ import { useTraceSource } from "@/lib/e2eTrace";
 import { useDuring } from "@/lib/motion";
 import { Platform } from "react-native";
 import { flareKindFor } from "@/components/impact";
-import { createLampHold, designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, steppedLamp, type Lamp, type LampHold, type LampNow, type LevelOwner, type Pool } from "./lampRig";
+import { createLampHold, designScale, GLIDE, lampControls, lampMoved, lampSettled, restingLamp, stepLamp, steppedLamp, type Lamp, type LampHold, type LampNow, type LevelOwner, type Oval, type Pool } from "./lampRig";
 import { createGlossTracks, type GlossTracks } from "./glossTrackStore";
 import { endsCarry, isRested, restLight } from "./restEnds";
 import { glossLightOf, nextGlossLight, nextShadeLevel, nextStillLight, type GlossLight } from "./cardGloss";
@@ -66,6 +66,8 @@ function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight
 
 export function useLampRig({
   pool,
+  oval = null,
+  waits = false,
   deal,
   width,
   height,
@@ -73,6 +75,10 @@ export function useLampRig({
   dim = false,
 }: {
   pool: Pool;
+  /** The oval a move between seats rides round; null glides every move straight. */
+  oval?: Oval | null;
+  /** `pool` is a turn's seat: the lamp goes once the seat has held the turn (`lampControls.setTarget`). */
+  waits?: boolean;
   /** Held at `RoundMoment.lostLevel` while true, back to 1 after. */
   dim?: boolean;
   /** A deal under way, `offsetMs` its onset on its clock: the lamp comes up a lead after it. */
@@ -138,12 +144,14 @@ export function useLampRig({
     return () => document.removeEventListener("visibilitychange", shown);
   }, [hold]);
 
+  const [ox, oy, ax, ay] = oval ?? [];
   useEffect(() => {
+    const round: Oval | null = ox === undefined ? null : [ox, oy!, ax!, ay!];
     control((s) => {
       "worklet";
-      lampControls.setTarget(s, [px, py, reach], reduced.value);
+      lampControls.setTarget(s, [px, py, reach], reduced.value, round, waits);
     });
-  }, [px, py, reach, reduced, control]);
+  }, [px, py, reach, ox, oy, ax, ay, waits, reduced, control]);
 
   useEffect(() => {
     control((s) => {

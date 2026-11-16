@@ -48,6 +48,13 @@ export function lampPools(anchors: Record<FlyDirection, Point>, width: number, h
   const centre: Pool = [anchors.top.x / designScale(width, height).sx, TABLE_CENTRE[1], TABLE_CENTRE[2]];
   return { bottom: over("bottom"), right: over("right"), top: over("top"), left: over("left"), centre };
 }
+
+/** The oval a move between seats rides round the table, `[cx, cy, ax, ay]` in design points. */
+export type Oval = readonly [cx: number, cy: number, ax: number, ay: number];
+
+export function lampOval(pools: Record<LampTarget, Pool>): Oval {
+  return [pools.centre[0], pools.centre[1], (pools.right[0] - pools.left[0]) / 2, (pools.bottom[1] - pools.top[1]) / 2];
+}
 /** The light's size at reach 1, in design points: the owner's G1 sliders, the pool's bright radius and the vignette's. */
 export const LAMP_LIGHT = { poolR: 380, vigR: 380 } as const;
 
@@ -74,6 +81,29 @@ const KICK_DECAY = 1.1;
 const FLARE_DECAY = 2.4;
 const DEFAULT_LEVEL_RATE = 3;
 export const MAX_DT = 0.05;
+/** Seconds a seat holds the turn before the lamp goes to it: a pass quicker than this leaves the lamp where it is. */
+export const DWELL = 0.33;
+const ORBIT_OMEGA = 5.5;
+/** Radians a second the lamp may go round the oval at most. */
+const ORBIT_SPIN = 3.4;
+/** Under this far out on the oval a move has no way round, as from or to the centre: it glides straight. */
+const AT_MIDDLE = 0.3;
+const ARC_MIN = 1e-3;
+
+/** A move round the oval: from angle `a0` to `a1`, out from `q0` to `q1` of the oval, the reach from `r0`, each in step with the angle. */
+interface Orbit {
+  oval: Oval;
+  a0: number;
+  a1: number;
+  q0: number;
+  q1: number;
+  r0: number;
+}
+
+interface Aim {
+  pool: Pool;
+  oval: Oval | null;
+}
 
 /** Who may hold the lamp's level down: the lost round, the deal's breath, the viewer's lost link. */
 export type LevelOwner = "lost" | "breath" | "link";
@@ -88,6 +118,13 @@ export interface Lamp {
   /** The light's reach, gliding toward `tr` with the pool. */
   r: number;
   tr: number;
+  /** The aim waiting out `wait` seconds of `DWELL` before it becomes the target; null for none. */
+  next: Aim | null;
+  wait: number;
+  /** The move round the oval under way, null for a straight glide; `th` the lamp's angle on it, `w` its speed. */
+  orbit: Orbit | null;
+  th: number;
+  w: number;
   ph: number;
   kick: number;
   flare: number;
@@ -117,6 +154,11 @@ export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
     ty: y,
     r,
     tr: r,
+    next: null,
+    wait: 0,
+    orbit: null,
+    th: 0,
+    w: 0,
     ph: 0,
     kick: 0,
     flare: 0,
@@ -166,13 +208,69 @@ const clamp01 = (v: number) => {
 };
 
 /** `drawnAt` is the seconds into `dt` the kick and flare are drawn at: a frame draws what it starts with, as the mockup's `lampStep`; a span carried at once, what it ends with. */
-function advance(s: Lamp, dt: number, swing: number, reduced: boolean, drawnAt: number): void {
+function orbitTo(s: Lamp, oval: Oval): Orbit | null {
   "worklet";
-  s.t += dt;
+  const [cx, cy, ax, ay] = oval;
+  const u = (s.x - cx) / ax;
+  const v = (s.y - cy) / ay;
+  const u1 = (s.tx - cx) / ax;
+  const v1 = (s.ty - cy) / ay;
+  const q0 = Math.hypot(u, v);
+  const q1 = Math.hypot(u1, v1);
+  if (q0 < AT_MIDDLE || q1 < AT_MIDDLE) return null;
+  const a0 = Math.atan2(v, u);
+  const d = Math.atan2(v1, u1) - a0;
+  const a1 = a0 + Math.atan2(Math.sin(d), Math.cos(d));
+  if (Math.abs(a1 - a0) < ARC_MIN) return null;
+  s.th = a0;
+  return { oval, a0, a1, q0, q1, r0: s.r };
+}
+
+function aimAt(s: Lamp, { pool, oval }: Aim, reduced: boolean): void {
+  "worklet";
+  [s.tx, s.ty, s.tr] = pool;
+  s.orbit = reduced || oval === null ? null : orbitTo(s, oval);
+  if (s.orbit === null) s.w = 0;
   if (reduced) {
     s.x = s.tx;
     s.y = s.ty;
     s.r = s.tr;
+  }
+}
+
+/** A critically damped spring on the angle, its speed capped. */
+function goRound(s: Lamp, o: Orbit, dt: number): void {
+  "worklet";
+  const w = s.w + (ORBIT_OMEGA * ORBIT_OMEGA * (o.a1 - s.th) - 2 * ORBIT_OMEGA * s.w) * dt;
+  s.w = Math.max(-ORBIT_SPIN, Math.min(ORBIT_SPIN, w));
+  s.th += s.w * dt;
+  const k = clamp01((s.th - o.a0) / (o.a1 - o.a0));
+  const q = o.q0 + (o.q1 - o.q0) * k;
+  const [cx, cy, ax, ay] = o.oval;
+  s.x = cx + ax * q * Math.cos(s.th);
+  s.y = cy + ay * q * Math.sin(s.th);
+  s.r = o.r0 + (s.tr - o.r0) * k;
+}
+
+function advance(s: Lamp, dt: number, swing: number, reduced: boolean, drawnAt: number): void {
+  "worklet";
+  s.t += dt;
+  if (s.next !== null) {
+    s.wait -= dt;
+    if (s.wait <= 0) {
+      aimAt(s, s.next, reduced);
+      s.next = null;
+      s.wait = 0;
+    }
+  }
+  const o = s.orbit;
+  if (reduced) {
+    s.x = s.tx;
+    s.y = s.ty;
+    s.r = s.tr;
+  } else if (o !== null) {
+    // A span carried at once is stepped as frames: the spring is explicit, and unstable past a few of its time constants.
+    for (let left = dt; left > 0; left -= MAX_DT) goRound(s, o, Math.min(MAX_DT, left));
   } else {
     const e = 1 - Math.exp(-dt * GLIDE);
     s.x += (s.tx - s.x) * e;
@@ -289,11 +387,12 @@ export function createLampHold(lamp: { get(): Lamp }, reduced: { get(): boolean 
 
 const SETTLED = 1e-4;
 
-/** Whether a further step would move nothing: under reduced motion, converged on its targets, and the flare and kick spent. */
+/** Whether a further step would move nothing: under reduced motion, no aim waiting, converged on its targets, and the flare and kick spent. */
 export function lampSettled(s: Lamp, reduced: boolean): boolean {
   "worklet";
   return (
     reduced &&
+    s.next === null &&
     Math.abs(s.tx - s.x) < SETTLED &&
     Math.abs(s.ty - s.y) < SETTLED &&
     Math.abs(s.tr - s.r) < SETTLED &&
@@ -305,14 +404,18 @@ export function lampSettled(s: Lamp, reduced: boolean): boolean {
 
 /** A moment's hold on the lamp: each call is what the mockup's chapters write into `lamp`. */
 export const lampControls = {
-  setTarget(s: Lamp, pool: Pool, reduced: boolean): void {
+  /** `oval` null glides straight; `waits`, a turn's aim, goes only once it has stood `DWELL` seconds, and an aim back at the target drops one waiting. */
+  setTarget(s: Lamp, pool: Pool, reduced: boolean, oval: Oval | null = null, waits = false): void {
     "worklet";
-    [s.tx, s.ty, s.tr] = pool;
-    if (reduced) {
-      s.x = s.tx;
-      s.y = s.ty;
-      s.r = s.tr;
+    const here = pool[0] === s.tx && pool[1] === s.ty && pool[2] === s.tr;
+    if (waits && !here) {
+      s.next = { pool, oval };
+      s.wait = DWELL;
+      return;
     }
+    s.next = null;
+    s.wait = 0;
+    if (!here || reduced) aimAt(s, { pool, oval }, reduced);
   },
   /** `level` null releases `owner`'s hold; `rate` is the glide's only when this write moves the lamp's target. */
   hold(s: Lamp, owner: LevelOwner, level: number | null, rate: number): void {

@@ -56,10 +56,10 @@ const restedWithin = (s: Lamp, atTarget: number) => {
   );
 };
 
-/** Whether nothing but the sway moves the light: arrived, unflared, unkicked, at its level, and running. */
+/** Whether nothing but the sway moves the light: arrived, no aim waiting, unflared, unkicked, at its level, and running. */
 export function isRested(s: Lamp): boolean {
   "worklet";
-  return restedWithin(s, AT_TARGET);
+  return s.next === null && restedWithin(s, AT_TARGET);
 }
 
 /** `isRested` as a gloss sees it: a glide's tail under the step no gloss shows is at rest, drawn by a gloss baked at the target. */
