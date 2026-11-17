@@ -195,23 +195,26 @@ function meet(a: Box, b: Box, reach: number): boolean {
 
 /**
  * The path's cards as sets whose blurs, `reach` window points round each outline, never meet: a blur costs its
- * path's bounds, and one path round every seat blurs the whole felt. Apart, the sets draw what their union draws.
+ * path's bounds, and one path round every seat blurs the whole felt. Apart, the sets draw what their union draws,
+ * except that a deal or exchange flight is always a set of its own: joined, it would rebuild and blur every card it
+ * crosses on each frame it moves. Where it overlaps another set, the overlap draws darker for the flight's length.
  */
 export function shadowClusters(path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, reach: number): string[][] {
   "worklet";
-  let clusters: { keys: string[]; box: Box }[] = [];
+  let clusters: { keys: string[]; box: Box; alone: boolean }[] = [];
   for (const key of Object.keys(rects)) {
     const r = shadowRect(rects[key]);
     const box = inPath(path, shadowKind(key, r)) ? outlineBox(r, felt, midX) : null;
     if (!box) continue;
-    let joined = { keys: [key], box };
-    for (let grew = true; grew; ) {
-      const met = clusters.filter((c) => meet(c.box, joined.box, reach));
+    const alone = key.startsWith("deal:") || key.startsWith("leg:");
+    let joined = { keys: [key], box, alone };
+    for (let grew = !alone; grew; ) {
+      const met = clusters.filter((c) => !c.alone && meet(c.box, joined.box, reach));
       grew = met.length > 0;
       clusters = clusters.filter((c) => !met.includes(c));
       for (const c of met) {
         const b = joined.box;
-        joined = { keys: [...joined.keys, ...c.keys], box: { x0: Math.min(b.x0, c.box.x0), y0: Math.min(b.y0, c.box.y0), x1: Math.max(b.x1, c.box.x1), y1: Math.max(b.y1, c.box.y1) } };
+        joined = { alone, keys: [...joined.keys, ...c.keys], box: { x0: Math.min(b.x0, c.box.x0), y0: Math.min(b.y0, c.box.y0), x1: Math.max(b.x1, c.box.x1), y1: Math.max(b.y1, c.box.y1) } };
       }
     }
     clusters.push(joined);

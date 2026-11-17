@@ -126,6 +126,12 @@ describe("the shadow paths", () => {
     assert.deepEqual([gap(5.9), gap(6.1)], [1, 2]);
   });
 
+  test("a deal or exchange flight is a set of its own, so it never drags the cards it crosses into a rebuild", () => {
+    const felt = { sx: 1, sy: 1, s: 1 };
+    const rects = { "hand:a": rect({ x: 200 }), "deal:0": rect({ x: 210, back: true }), "hand:b": rect({ x: 220 }), "leg:x": rect({ x: 230 }), "deal:1": rect({ x: 240, back: true }) };
+    assert.deepEqual(shadowClusters("cast", rects, felt, 0, 3), [["deal:0"], ["hand:b", "hand:a"], ["leg:x"], ["deal:1"]]);
+  });
+
   test("the pile paints by its groups' zIndex, the flight over every resting play", () => {
     assert.ok(pileGroupZ(false, false, "beaten") < pileGroupZ(false, false, "top"));
     assert.ok(pileGroupZ(false, false, "top") < pileGroupZ(false, true, "buried"));

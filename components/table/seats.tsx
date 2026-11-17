@@ -130,8 +130,8 @@ function FanBack({ id, rects, tracked, at, boxW, backScale, zIndex }: {
   );
 }
 
-function CardFan({
-  count,
+const CardFan = memo(function CardFan({
+  count: seated,
   side,
   scale = 1,
 }: {
@@ -141,6 +141,7 @@ function CardFan({
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
+  const count = fanCounts(seated, FAN_DRAWN_CARDS[side]);
   const table = useCardTable();
   const drawn = useMemo(
     () =>
@@ -162,7 +163,7 @@ function CardFan({
 
   const backScale = scale * BACK_SCALE;
   // A fan is never width-budgeted: the seat's own column bounds it, and it is the rise that binds.
-  const full = seatFanArc(fanCounts(count, FAN_DRAWN_CARDS[side]), backScale);
+  const full = seatFanArc(count, backScale);
   const bounds = full.bounds;
 
   // The wrapper is what the cards occupy once turned, so the seat's own row or
@@ -194,7 +195,7 @@ function CardFan({
       ) : null}
     </View>
   );
-}
+}, (a, b) => a.side === b.side && a.scale === b.scale && fanCounts(a.count, FAN_DRAWN_CARDS[a.side]) === fanCounts(b.count, FAN_DRAWN_CARDS[b.side]));
 
 /**
  * The seat's place if it emptied its hand. The round's end also places the
