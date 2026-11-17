@@ -131,16 +131,17 @@ function FanBack({ id, rects, tracked, at, boxW, backScale, zIndex }: {
 }
 
 const CardFan = memo(function CardFan({
-  count,
+  count: seated,
   side,
   scale = 1,
 }: {
-  /** The backs it draws: the seat's count (the thrown cards left it at the throw, ADR-0008) capped at `FAN_DRAWN_CARDS`, so a card dealt past the cap re-renders no fan. */
+  /** The seat's count; the thrown cards left it at the throw (ADR-0008). */
   count: number;
   side: OpponentSide;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
+  const count = fanCounts(seated, FAN_DRAWN_CARDS[side]);
   const table = useCardTable();
   const drawn = useMemo(
     () =>
@@ -162,7 +163,7 @@ const CardFan = memo(function CardFan({
 
   const backScale = scale * BACK_SCALE;
   // A fan is never width-budgeted: the seat's own column bounds it, and it is the rise that binds.
-  const full = seatFanArc(fanCounts(count, FAN_DRAWN_CARDS[side]), backScale);
+  const full = seatFanArc(count, backScale);
   const bounds = full.bounds;
 
   // The wrapper is what the cards occupy once turned, so the seat's own row or
@@ -194,7 +195,7 @@ const CardFan = memo(function CardFan({
       ) : null}
     </View>
   );
-});
+}, (a, b) => a.side === b.side && a.scale === b.scale && fanCounts(a.count, FAN_DRAWN_CARDS[a.side]) === fanCounts(b.count, FAN_DRAWN_CARDS[b.side]));
 
 /**
  * The seat's place if it emptied its hand. The round's end also places the
@@ -658,7 +659,7 @@ export const OpponentSeat = memo(function OpponentSeat({
         focusMode={focusMode}
         mark={mark}
       />
-      {wentOut === undefined && displayed > 0 && <CardFan count={fanCounts(displayed, FAN_DRAWN_CARDS[place])} side={place} scale={scale} />}
+      {wentOut === undefined && displayed > 0 && <CardFan count={displayed} side={place} scale={scale} />}
     </View>
   );
 });
